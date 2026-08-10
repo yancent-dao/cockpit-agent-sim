@@ -1,0 +1,1826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>座舱模拟环境 · Demo Director</title>
+<style>
+:root{--bg:#0B0E14;--sf:#151A23;--el:#1E2530;--tx:#F2F5FA;--t2:#8A94A6;--t3:#5C6675;
+  --brand:#4DA3FF;--ok:#3ED598;--warn:#FFB84D;--dg:#FF5C5C}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:9;background:rgba(11,14,20,.94);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,.08);padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{font-size:16px;font-weight:600}header .sub{font-size:12px;color:var(--t3)}
+.sp{flex:1}
+#dot{width:9px;height:9px;border-radius:50%;background:#3A4250;transition:.3s}
+#dot.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+#connTxt{font-size:12px;color:var(--t2)}
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 22px 60px;max-width:1500px;margin:0 auto}
+@media(max-width:1000px){.wrap{grid-template-columns:1fr}}
+section{background:var(--sf);border-radius:16px;padding:16px 18px;margin-bottom:18px}
+h2{font-size:11px;letter-spacing:1.8px;color:var(--t3);text-transform:uppercase;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px}
+h2 .n{background:var(--el);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0}
+button{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);border-radius:10px;
+  padding:9px 12px;font-size:13px;cursor:pointer;transition:.16s;font-family:inherit}
+button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
+button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+input,select{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);
+  border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;width:100%}
+input::placeholder{color:#4A5462}
+.fld{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.fld label{width:70px;color:var(--t2);font-size:12px;flex:none}
+.fld input[type=range]{accent-color:var(--brand);padding:0}
+.fld .v{width:64px;text-align:right;color:#C9D2E0;font-variant-numeric:tabular-nums;font-size:12px;flex:none}
+.row{display:flex;gap:8px;align-items:center}
+.note{color:var(--t3);font-size:11.5px;line-height:1.65;margin-top:9px}
+.case{width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;line-height:1.45;display:flex;gap:9px}
+.case .no{color:var(--brand);font-weight:700;width:15px;flex:none}
+.case .m{color:var(--t3);font-size:11px;display:block;margin-top:2px}
+.case:hover .no,.case:hover .m{color:#06121F}
+.grp{font-size:11px;color:var(--t3);margin:12px 0 7px;border-left:2px solid var(--brand);padding-left:8px;line-height:1.5}
+.grp b{color:var(--t2)}
+#trace{background:#080B10;border-radius:10px;padding:11px;font-family:ui-monospace,Menlo,monospace;
+  font-size:11px;line-height:1.7;color:#7A8494;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+#trace .u{color:#fff}#trace .p{color:#4A5462}#trace .t{color:var(--brand)}
+#trace .k{color:var(--ok)}#trace .r{color:var(--warn)}#trace .e{color:var(--dg)}
+#trace .a{color:#C9D2E0}
+.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.mini div{background:var(--el);border-radius:9px;padding:8px;text-align:center}
+.mini span{display:block;font-size:10.5px;color:var(--t3)}
+.mini b{font-size:18px;font-variant-numeric:tabular-nums}
+.perm i{font-style:normal;padding:3px 9px;border-radius:6px;background:var(--el);font-size:11px;margin-right:6px}
+.perm i.b{background:rgba(255,92,92,.14);color:var(--dg)}
+.perm i.h{background:rgba(255,184,77,.14);color:var(--warn)}
+.perm i.c{background:rgba(62,213,152,.14);color:var(--ok)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Demo Director</h1><span class="sub">座舱 Agent 模拟环境 v0.1</span>
+  <span class="sp"></span>
+  <span id="dot"></span><span id="connTxt">车机屏未连接</span>
+  <button class="pri" id="openScreen">打开车机屏</button>
+</header>
+
+<div class="wrap">
+ <div>
+  <section>
+    <h2>模型 <span class="n" id="modelCount">—</span></h2>
+    <div class="fld"><label>API Key</label><input id="key" type="password" placeholder="sk-or-v1-…"></div>
+    <div class="fld"><label>模型</label><select id="model"></select></div>
+    <div class="row">
+      <button id="reload">刷新模型列表</button>
+      <button id="fastOnly" class="on">只看快速模型</button>
+    </div>
+    <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
+  </section>
+
+  <section>
+    <h2>对话</h2>
+    <div class="row"><input id="say" placeholder="对主 Agent 说点什么，例如：把后排窗户开一半"><button class="pri" id="send">发送</button></div>
+    <div class="note" id="busy"></div>
+  </section>
+
+  <section>
+    <h2>Golden Case · 真实模型跑 <span class="n">13</span></h2>
+    <div class="grp"><b>Base · 正常路径</b>　验证链路本身是否成立</div><div id="g1"></div>
+    <div class="grp"><b>Disambiguation · 歧义消解</b>　验证上下文与说话人信息是否真被用上</div><div id="g2"></div>
+    <div class="grp"><b>Guardrail · 边界与拒绝</b>　CAR-bench 结论：模型倾向"宁可编造也不认怂"，这几条是必测项</div><div id="g3"></div>
+    <div class="grp"><b>Orchestration · 卡片编排</b>　无APP化独有：优先复用 → 放大 → 新建</div><div id="g4"></div>
+  </section>
+ </div>
+
+ <div>
+  <section>
+    <h2>车辆状态</h2>
+    <div class="fld"><label>车速</label><input type="range" id="spd" min="0" max="140" value="0"><span class="v" id="spdV">0 km/h</span></div>
+    <div class="fld"><label>车外温</label><input type="range" id="tmp" min="-10" max="40" value="3"><span class="v" id="tmpV">3 °C</span></div>
+    <div class="fld"><label>电量</label><input type="range" id="soc" min="0" max="100" value="68"><span class="v" id="socV">68 %</span></div>
+    <div class="fld"><label>说话人</label><select id="vsrc">
+      <option value="driver">主驾</option><option value="passenger">副驾</option>
+      <option value="rearLeft">左后</option><option value="rearRight">右后</option></select></div>
+    <div class="g2"><button id="bLock">儿童锁 关</button><button id="bRain">天气 多云</button></div>
+    <div class="mini">
+      <div><span>主驾</span><b id="m-driver">0</b></div><div><span>副驾</span><b id="m-passenger">0</b></div>
+      <div><span>左后</span><b id="m-rearLeft">0</b></div><div><span>右后</span><b id="m-rearRight">0</b></div>
+    </div>
+    <div class="note" id="invar"></div>
+  </section>
+
+  <section>
+    <h2>场景预设</h2>
+    <div class="g2">
+      <button data-sc="park">静止 · 地库</button><button data-sc="highway">高速巡航 120</button>
+      <button data-sc="rain">雨天市区</button><button data-sc="kids">带孩子 · 儿童锁</button>
+    </div>
+    <div class="perm" style="margin-top:12px">
+      <i class="c">彩 可直接执行</i><i class="h">灰 需确认</i><i class="b">黑 AI 禁区</i>
+    </div>
+  </section>
+
+  <section>
+    <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
+    <div id="trace"></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
+  </section>
+ </div>
+</div>
+<script>
+"use strict";
+(() => {
+  // src/core/glob.ts
+  var cache = /* @__PURE__ */ new Map();
+  function globMatch(pattern, path) {
+    if (pattern === "*") return true;
+    let re = cache.get(pattern);
+    if (!re) {
+      const src = "^" + pattern.split("").map((c) => c === "*" ? "[^.]*" : c === "." ? "\\." : c.replace(/[|\\{}()[\]^$+?]/g, "\\$&")).join("") + "$";
+      re = new RegExp(src);
+      cache.set(pattern, re);
+    }
+    return re.test(path);
+  }
+
+  // src/config/constraints.ts
+  var CONSTRAINTS = [
+    {
+      id: "SPEED_LIMITED",
+      when: ["vehicle.speed", ">", 100],
+      target: "cabin.window.*.position",
+      action: "clamp",
+      value: 30,
+      message: "当前车速 {vehicle.speed}km/h，车窗最多开到 {value}%"
+    },
+    {
+      id: "CHILD_LOCK_ON",
+      when: ["cabin.childLock", "==", true],
+      target: "cabin.window.rear*.position",
+      action: "reject",
+      message: "儿童锁已开启，后排车窗当前不可控制",
+      suggestion: "可以先关闭儿童锁，或改开前排车窗"
+    },
+    {
+      id: "SPEED_TOO_HIGH",
+      when: ["vehicle.speed", ">", 5],
+      target: "cabin.door.*.isOpen",
+      action: "reject",
+      message: "当前车速 {vehicle.speed}km/h，行驶中无法开启车门",
+      suggestion: "停稳后我可以帮你打开"
+    }
+  ];
+  var INVARIANTS = [
+    {
+      id: "POSITION_IN_RANGE",
+      check: (get) => {
+        for (const p of [
+          "cabin.window.driver.position",
+          "cabin.window.passenger.position",
+          "cabin.window.rearLeft.position",
+          "cabin.window.rearRight.position"
+        ]) {
+          const v = get(p);
+          if (typeof v === "number" && (v < 0 || v > 100)) return `${p} 越界：${v}`;
+        }
+        return null;
+      }
+    },
+    {
+      id: "NO_DOOR_OPEN_WHILE_MOVING",
+      check: (get) => {
+        const speed = get("vehicle.speed");
+        if (speed > 5 && get("cabin.door.driver.isOpen") === true)
+          return `行驶中存在开启的车门（speed=${speed}）`;
+        return null;
+      }
+    },
+    {
+      id: "CHILD_LOCK_HOLDS",
+      check: (get) => {
+        const v = get("cabin.window.rearLeft.position");
+        if (typeof v === "number" && v < 0) return "rearLeft 车窗位置异常";
+        return null;
+      }
+    }
+  ];
+
+  // src/core/store.ts
+  var compare = (a, op, b) => {
+    switch (op) {
+      case ">":
+        return a > b;
+      case "<":
+        return a < b;
+      case ">=":
+        return a >= b;
+      case "<=":
+        return a <= b;
+      case "==":
+        return a === b;
+      case "!=":
+        return a !== b;
+    }
+  };
+  function createStore(signals, constraints, invariants = INVARIANTS) {
+    const cells = /* @__PURE__ */ new Map();
+    for (const sig of signals) cells.set(sig.alias, { sig, current: sig.initial, target: sig.initial });
+    const listeners = [];
+    const notify = (path, value) => {
+      for (const l of listeners) if (globMatch(l.pattern, path)) l.cb(path, value);
+    };
+    const get = (path) => cells.get(path)?.current;
+    const getTarget = (path) => cells.get(path)?.target;
+    const render = (tpl, cVal) => tpl.replace(/\{([^}]+)\}/g, (_, key) => key === "value" ? String(cVal ?? "") : String(get(key) ?? key));
+    function canSet(path, value) {
+      const cell = cells.get(path);
+      if (!cell) return { status: "unavailable", code: "UNKNOWN_SIGNAL", message: `未知信号 ${path}` };
+      const { sig } = cell;
+      if (sig.equipped === false)
+        return {
+          status: "unavailable",
+          code: "NOT_EQUIPPED",
+          message: `本车型未配备${sig.label ?? path}`
+        };
+      if (sig.access === "READ")
+        return { status: "rejected", code: "READ_ONLY", message: `${sig.label ?? path}是只读信号，不能设置` };
+      if (sig.type === "number") {
+        const n = value;
+        if (typeof n !== "number" || Number.isNaN(n))
+          return { status: "rejected", code: "OUT_OF_RANGE", message: `${sig.label ?? path}需要数值` };
+        if (sig.range && (n < sig.range[0] || n > sig.range[1]))
+          return {
+            status: "rejected",
+            code: "OUT_OF_RANGE",
+            message: `${sig.label ?? path}取值需在 ${sig.range[0]}~${sig.range[1]} 之间`
+          };
+      }
+      if (sig.type === "enum" && sig.values && !sig.values.includes(value))
+        return { status: "rejected", code: "OUT_OF_RANGE", message: `${sig.label ?? path}不支持取值 ${value}` };
+      let applied = value;
+      let code;
+      let message;
+      for (const c of constraints) {
+        if (!globMatch(c.target, path)) continue;
+        const [wPath, op, wVal] = c.when;
+        if (!compare(get(wPath), op, wVal)) continue;
+        if (c.action === "reject")
+          return {
+            status: "rejected",
+            code: c.id,
+            message: render(c.message, c.value),
+            suggestion: c.suggestion
+          };
+        if (c.action === "clamp" && typeof applied === "number" && c.value !== void 0) {
+          if (applied > c.value) {
+            applied = c.value;
+            code = c.id;
+            message = render(c.message, c.value);
+          }
+        }
+      }
+      return { status: "ok", applied, changed: [path], ...code && { code, message } };
+    }
+    function set(path, value) {
+      const outcome = canSet(path, value);
+      if (outcome.status !== "ok") return outcome;
+      const cell = cells.get(path);
+      const applied = outcome.applied;
+      const changedTarget = cell.target !== applied;
+      cell.target = applied;
+      if (!cell.sig.transition) cell.current = applied;
+      if (changedTarget) notify(path, cell.current);
+      return outcome;
+    }
+    function setDirect(path, value) {
+      const cell = cells.get(path);
+      if (!cell) return;
+      cell.target = value;
+      cell.current = value;
+      notify(path, value);
+    }
+    function subscribe(pattern, cb) {
+      const entry = { pattern, cb };
+      listeners.push(entry);
+      return () => {
+        const i = listeners.indexOf(entry);
+        if (i >= 0) listeners.splice(i, 1);
+      };
+    }
+    function tick(dtMs) {
+      for (const [path, cell] of cells) {
+        const { sig } = cell;
+        if (!sig.transition || sig.type !== "number") continue;
+        const cur = cell.current;
+        const tgt = cell.target;
+        if (cur === tgt) continue;
+        const span = sig.range ? sig.range[1] - sig.range[0] : 100;
+        const step = dtMs / sig.transition * span;
+        const next = cur < tgt ? Math.min(cur + step, tgt) : Math.max(cur - step, tgt);
+        cell.current = next;
+        notify(path, next);
+      }
+    }
+    const snapshot = () => {
+      const out = {};
+      for (const [k, c] of cells) out[k] = c.current;
+      return out;
+    };
+    const checkInvariants = () => invariants.map((inv) => inv.check(get)).filter((x) => x !== null);
+    return { get, getTarget, canSet, set, setDirect, subscribe, tick, snapshot, checkInvariants, signals };
+  }
+
+  // src/tools/registry.ts
+  var compare2 = (a, op, b) => op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : op === "<=" ? a <= b : op === "==" ? a === b : a !== b;
+  var CONFIRM_TTL = 6e4;
+  function createRegistry(store2, tools, clock = Date.now, deps = {}) {
+    const byName = new Map(tools.map((t) => [t.name, t]));
+    const tokens = /* @__PURE__ */ new Map();
+    let seq = 0;
+    const handlers = {
+      getState: (args) => {
+        const snap = store2.snapshot();
+        if (!args?.paths?.length) return { status: "ok", data: snap };
+        const data = {};
+        for (const p of args.paths) if (p in snap) data[p] = snap[p];
+        return { status: "ok", data };
+      },
+      speak: (args) => ({ status: "ok", data: { spoken: args.text }, message: args.text }),
+      /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
+      cardShow: (args) => toResult(need().show({
+        template: args.template,
+        size: args.size,
+        ttl: parseTtl(args.ttl),
+        key: args.key,
+        data: args.data,
+        kind: args.kind
+      })),
+      cardUpdate: (args) => toResult(need().update(args.cardId, args.data)),
+      cardResize: (args) => toResult(need().resize(args.cardId, args.size)),
+      cardDismiss: (args) => toResult(need().dismiss(args.cardId)),
+      cardFocus: (args) => toResult(need().focus(args.cardId)),
+      deskPin: (args) => toResult(need().pin(args.cardId)),
+      deskUnpin: (args) => toResult(need().unpin(args.cardId)),
+      deskLayout: () => {
+        const l = need().layout();
+        const brief2 = (c) => ({ id: c.id, key: c.key, template: c.template, size: c.size, title: c.data?.title ?? c.template });
+        return {
+          status: "ok",
+          data: {
+            agent: l.agent.map(brief2),
+            fixed: l.fixed.map(brief2),
+            overlay: l.overlay ? brief2(l.overlay) : null,
+            agentFree: l.agentFree,
+            fixedFree: l.fixedFree
+          }
+        };
+      }
+    };
+    const need = () => {
+      if (!deps.desk) throw new Error("卡片能力未装配：createRegistry 缺少 desk");
+      return deps.desk;
+    };
+    const parseTtl = (v) => {
+      if (v === void 0 || v === null) return void 0;
+      const n = Number(v);
+      return Number.isFinite(n) && String(v).trim() !== "" ? n : v;
+    };
+    const toResult = (r) => r.status === "ok" ? {
+      status: "ok",
+      data: { cardId: r.cardId, ...r.level && { level: r.level } },
+      ...r.shrunk && { code: "CARD_SHRUNK" },
+      ...r.note && { message: r.note }
+    } : { status: "rejected", code: r.code, message: r.message };
+    const authorized = (name, allow) => !allow || allow.some((p) => globMatch(p, name));
+    function permissionOf(name) {
+      const t = byName.get(name);
+      if (!t) return void 0;
+      let perm = t.permission;
+      for (const e of t.escalate ?? []) {
+        const [path, op, val] = e.when;
+        if (compare2(store2.get(path), op, val)) perm = e.to;
+      }
+      return perm;
+    }
+    function validate(t, args) {
+      for (const [key, def] of Object.entries(t.params)) {
+        const v = args?.[key];
+        if (v === void 0 || v === null) {
+          if (def.required) return `缺少必填参数 ${key}`;
+          continue;
+        }
+        if (def.type === "number") {
+          if (typeof v !== "number" || Number.isNaN(v)) return `${key} 需要数值`;
+          if (def.range && (v < def.range[0] || v > def.range[1]))
+            return `${key} 需在 ${def.range[0]}~${def.range[1]} 之间`;
+        }
+        if (def.type === "enum" && !def.values?.includes(v)) return `${key} 不支持取值 ${v}`;
+        if (def.type === "boolean" && typeof v !== "boolean") return `${key} 需要布尔值`;
+        if (def.type === "array" && !Array.isArray(v)) return `${key} 需要数组`;
+      }
+      return null;
+    }
+    function applyWrites(t, args) {
+      const w = t.writes;
+      let variants = [args];
+      for (const [key, table] of Object.entries(t.expand ?? {})) {
+        const list2 = table[args[key]];
+        if (list2) variants = list2.map((v) => ({ ...args, [key]: v }));
+      }
+      const raw = args[w.from];
+      const value = w.map ? w.map[String(raw)] : raw;
+      const targets = variants.map((v) => w.path.replace(/\{(\w+)\}/g, (_, k) => String(v[k])));
+      for (const path of targets) {
+        const probe = store2.canSet(path, value);
+        if (probe.status !== "ok") return probe;
+      }
+      let code, message;
+      for (const path of targets) {
+        const r = store2.set(path, value);
+        if (r.status === "ok" && r.code) {
+          code = r.code;
+          message = r.message;
+        }
+      }
+      return { status: "ok", changed: targets, ...code && { code, message } };
+    }
+    function invoke(name, args = {}, ctx = {}) {
+      const t = byName.get(name);
+      if (!t) return { status: "unavailable", code: "UNKNOWN_TOOL", message: `没有名为 ${name} 的能力` };
+      if (t.permission === "黑")
+        return { status: "unavailable", code: "BLOCKED", message: `${name} 属于安全禁区，不对 AI 开放` };
+      if (!authorized(name, ctx.allow))
+        return { status: "unavailable", code: "NOT_AUTHORIZED", message: `当前 Agent 无权调用 ${name}` };
+      const bad = validate(t, args);
+      if (bad) return { status: "rejected", code: "INVALID_PARAMS", message: bad };
+      const supplied = ctx.confirmToken || args.confirmToken || void 0;
+      if (permissionOf(name) === "灰" && !ctx.force) {
+        const tk = supplied && tokens.get(supplied);
+        const valid = tk && tk.tool === name && tk.expires > clock();
+        if (!valid) {
+          const token = `ct_${(++seq).toString(36)}_${clock().toString(36)}`;
+          tokens.set(token, { tool: name, expires: clock() + CONFIRM_TTL });
+          return {
+            status: "inputRequired",
+            code: "CONFIRM_REQUIRED",
+            message: t.confirmPrompt ?? `即将执行 ${name}，确认吗？`,
+            token
+          };
+        }
+        tokens.delete(supplied);
+      }
+      try {
+        if (t.writes) return applyWrites(t, args);
+        const h = t.handler && handlers[t.handler];
+        if (h) return h(args);
+        return { status: "failed", code: "NO_HANDLER", message: `${name} 尚未实现` };
+      } catch (e) {
+        return { status: "failed", code: "HANDLER_ERROR", message: String(e) };
+      }
+    }
+    const list = (allow) => tools.filter((t) => t.permission !== "黑" && authorized(t.name, allow));
+    const jsonType = (d) => d.type === "enum" ? "string" : d.type === "array" ? "array" : d.type;
+    function schemas(format = "openai", allow) {
+      return list(allow).map((t) => {
+        const properties = {};
+        const required = [];
+        for (const [k, d] of Object.entries(t.params)) {
+          properties[k] = { type: jsonType(d), description: d.desc };
+          if (d.values) properties[k].enum = d.values;
+          if (d.items) properties[k].items = { type: d.items };
+          if (d.required) required.push(k);
+        }
+        if (t.permission === "灰" || t.escalate?.some((e) => e.to === "灰"))
+          properties.confirmToken = {
+            type: "string",
+            description: "二次确认令牌。首次调用不要传；若返回 CONFIRM_REQUIRED，在用户明确同意后用返回的 token 再次调用本工具。"
+          };
+        const parameters = { type: "object", properties, required };
+        if (format === "openai")
+          return { type: "function", function: { name: t.name, description: t.desc, parameters } };
+        if (format === "anthropic")
+          return { name: t.name, description: t.desc, input_schema: parameters };
+        return { name: t.name, description: t.desc, inputSchema: parameters };
+      });
+    }
+    return { list, schemas, invoke, permissionOf, tools };
+  }
+
+  // src/agent/context.ts
+  var SEAT_CN = {
+    driver: "主驾",
+    passenger: "副驾",
+    rearLeft: "左后",
+    rearRight: "右后"
+  };
+  var WEATHER_CN = {
+    clear: "晴",
+    cloudy: "多云",
+    rain: "小雨",
+    heavyRain: "大雨",
+    snow: "雪",
+    fog: "雾"
+  };
+  var GEAR_CN = { p: "P", r: "R", n: "N", d: "D" };
+  function buildSystemPrompt(manifest, store2, registry2, extras = {}) {
+    const parts = [manifest.persona];
+    const want = new Set(manifest.context);
+    const g = (p) => store2.get(p);
+    if (want.has("vehicleState")) {
+      const lines = [];
+      for (const sig of store2.signals) {
+        if (sig.equipped === false) continue;
+        if (sig.alias.startsWith("perception.") || sig.alias.startsWith("env.")) continue;
+        let v = g(sig.alias);
+        if (sig.changeMode === "CONTINUOUS" && typeof v === "number") v = Math.round(v);
+        if (typeof v === "number") v = Math.round(v);
+        if (sig.alias === "vehicle.gear") v = GEAR_CN[v] ?? v;
+        lines.push(`- ${sig.label ?? sig.alias}: ${v}${sig.unit ?? ""}  (${sig.alias})`);
+      }
+      parts.push(`
+## 当前车辆状态
+${lines.join("\n")}`);
+    }
+    if (want.has("environment")) {
+      const w = WEATHER_CN[g("env.weather")] ?? g("env.weather");
+      parts.push(`
+## 环境
+- 天气: ${w}
+- 车外温度: ${Math.round(g("cabin.temperature.outside"))}°C`);
+    }
+    if (want.has("speaker")) {
+      const seat = SEAT_CN[g("perception.voiceSource")] ?? "主驾";
+      parts.push(`
+## 说话人
+当前说话的人坐在 **${seat}**。当他说"开窗""我这边"这类没有指明位置的话时，默认指他自己所在的位置。`);
+    }
+    if (want.has("capabilities")) {
+      const missing = store2.signals.filter((s) => s.equipped === false);
+      if (missing.length)
+        parts.push(`
+## 本车型未配备（绝对不要假装能操作）
+${missing.map((s) => `- ${s.label}`).join("\n")}`);
+      parts.push(`
+你当前可用的能力共 ${registry2.list(manifest.tools).length} 项，均已在工具列表中给出。列表之外的能力一律不存在。`);
+    }
+    if (want.has("desktop") && extras.desktop)
+      parts.push(`
+## 桌面布局（本车无 App，一切都是卡片）
+${extras.desktop}`);
+    return parts.join("\n");
+  }
+
+  // src/agent/runtime.ts
+  function createAgent({ manifest, registry: registry2, store: store2, llm: llm2, clock = Date.now, desktopSummary }) {
+    const listeners = [];
+    const emit = (e) => listeners.forEach((l) => l(e));
+    const on = (cb) => {
+      listeners.push(cb);
+      return () => listeners.splice(listeners.indexOf(cb), 1);
+    };
+    let history = [];
+    const reset = () => {
+      history = [];
+    };
+    async function run(userText) {
+      const trace = [];
+      const t0 = clock();
+      trace.push({ type: "userInput", at: t0, text: userText });
+      history.push({ role: "user", content: userText });
+      const tools = registry2.schemas("openai", manifest.tools);
+      let rounds = 0;
+      try {
+        while (rounds < manifest.maxRounds) {
+          rounds++;
+          const system = buildSystemPrompt(manifest, store2, registry2, { desktop: desktopSummary?.() });
+          trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
+          emit({ type: "thinking" });
+          const reply = await llm2.chat({ system, messages: history, tools });
+          if (!reply.toolCalls?.length) {
+            const text = reply.text ?? "";
+            history.push({ role: "assistant", content: text });
+            trace.push({ type: "reply", at: clock(), text });
+            emit({ type: "speaking", text });
+            emit({ type: "done" });
+            return { reply: text, trace, rounds, stopReason: "reply" };
+          }
+          history.push({
+            role: "assistant",
+            content: reply.text ?? "",
+            tool_calls: reply.toolCalls.map((c) => ({
+              id: c.id,
+              type: "function",
+              function: { name: c.name, arguments: JSON.stringify(c.args) }
+            }))
+          });
+          const results = await Promise.all(reply.toolCalls.map(async (c) => {
+            trace.push({
+              type: "toolCall",
+              at: clock(),
+              name: c.name,
+              args: c.args,
+              permission: registry2.permissionOf(c.name)
+            });
+            emit({ type: "executing", name: c.name });
+            const s = clock();
+            const result = registry2.invoke(c.name, c.args, { allow: manifest.tools });
+            trace.push({ type: "toolResult", at: clock(), name: c.name, result, ms: clock() - s });
+            if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
+            if (result.status === "rejected" || result.status === "unavailable")
+              emit({ type: "rejected", text: result.message ?? "无法执行" });
+            return { c, result };
+          }));
+          for (const { c, result } of results)
+            history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
+        }
+        emit({ type: "done" });
+        return { reply: "", trace, rounds, stopReason: "maxRounds" };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        trace.push({ type: "error", at: clock(), message });
+        emit({ type: "error", message });
+        return { reply: "", trace, rounds, stopReason: "error" };
+      }
+    }
+    return { run, on, reset, manifest, get history() {
+      return history;
+    } };
+  }
+
+  // src/agent/llm.ts
+  var FAST_NAME = /flash|mini|haiku|lite|turbo|small|nano|instant|fast/i;
+  var SLOW_VARIANT = /:(batch|free|thinking|extended)\b/;
+  function pickFastModels(models) {
+    return models.filter((m) => !SLOW_VARIANT.test(m.id)).filter((m) => FAST_NAME.test(m.id) || FAST_NAME.test(m.name)).slice().sort((a, b) => (a.promptPrice ?? 0) - (b.promptPrice ?? 0));
+  }
+  var FALLBACK_MODELS = [
+    { id: "qwen/qwen3.7-flash", name: "Qwen3.7 Flash（最快）", tools: true, promptPrice: 3e-8 },
+    { id: "z-ai/glm-4.7-flash", name: "GLM-4.7 Flash（快）", tools: true, promptPrice: 6e-8 },
+    { id: "openai/gpt-5-nano", name: "GPT-5 nano（快）", tools: true, promptPrice: 5e-8 },
+    { id: "google/gemini-3.6-flash", name: "Gemini 3.6 Flash（稳）", tools: true, promptPrice: 3e-7 }
+  ];
+  function createOpenRouter(getKey, getModel) {
+    const base = "https://openrouter.ai/api/v1";
+    return {
+      async models() {
+        const res = await fetch(`${base}/models`, {
+          headers: { Authorization: `Bearer ${getKey()}` }
+        });
+        if (!res.ok) throw new Error(`模型列表拉取失败 ${res.status}`);
+        const json = await res.json();
+        return (json.data ?? []).filter((m) => (m.supported_parameters ?? []).includes("tools")).map((m) => ({
+          id: m.id,
+          name: m.name ?? m.id,
+          tools: true,
+          contextLength: m.context_length,
+          promptPrice: parseFloat(m.pricing?.prompt ?? "0")
+        }));
+      },
+      async chat(req) {
+        const res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${getKey()}`,
+            "Content-Type": "application/json",
+            "X-Title": "Cockpit Agent Sim"
+          },
+          body: JSON.stringify({
+            model: getModel(),
+            messages: [{ role: "system", content: req.system }, ...req.messages],
+            tools: req.tools,
+            tool_choice: "auto",
+            temperature: 0.3
+          })
+        });
+        if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`);
+        const json = await res.json();
+        const m = json.choices?.[0]?.message;
+        if (!m) throw new Error("模型返回为空");
+        return {
+          text: m.content || void 0,
+          toolCalls: (m.tool_calls ?? []).map((c) => ({
+            id: c.id,
+            name: c.function.name,
+            args: safeParse(c.function.arguments)
+          }))
+        };
+      }
+    };
+  }
+  var safeParse = (s) => {
+    try {
+      return JSON.parse(s || "{}");
+    } catch {
+      return {};
+    }
+  };
+
+  // src/bus.ts
+  function createBus(onMsg) {
+    let bc = null;
+    try {
+      bc = new BroadcastChannel("cockpit-sim");
+    } catch {
+    }
+    let peer = null;
+    const handle = (m) => {
+      if (m && m.type) onMsg(m);
+    };
+    addEventListener("message", (e) => {
+      if (e.data?.type === "hello" && e.source) peer = e.source;
+      handle(e.data);
+    });
+    if (bc) bc.onmessage = (e) => handle(e.data);
+    return {
+      send(m) {
+        try {
+          if (peer && !peer.closed) peer.postMessage(m, "*");
+        } catch {
+        }
+        try {
+          if (opener) opener.postMessage(m, "*");
+        } catch {
+        }
+        bc?.postMessage(m);
+      },
+      setPeer(w) {
+        peer = w;
+      },
+      get connected() {
+        return !!peer || !!opener;
+      }
+    };
+  }
+
+  // src/cards/desk.ts
+  var WIDTH = { "1/6": 1, "1/3": 2, "1/2": 3, full: 3 };
+  var LADDER = ["1/6", "1/3", "1/2"];
+  var COLS = 3;
+  var PRIORITY = { persistent: 1, task: 2, system: 4 };
+  var titleOf = (c) => c.data?.title ?? c.template;
+  function createDesk(clock = Date.now) {
+    const cards = /* @__PURE__ */ new Map();
+    let agent2 = [];
+    let fixed = [];
+    let overlay;
+    let saved;
+    let seq = 0;
+    const listeners = [];
+    const emit = () => listeners.forEach((l) => l());
+    const used = (row) => row.reduce((n, id) => n + WIDTH[cards.get(id).size], 0);
+    const free = (row) => COLS - used(row);
+    function makeRoom(need, incomingKind) {
+      const shrunk = [];
+      const evicted = [];
+      const titles = [];
+      const oldestFirst = () => agent2.map((id) => cards.get(id)).sort((a, b) => a.touchedAt - b.touchedAt);
+      while (free(agent2) < need) {
+        const target = oldestFirst().find((c) => LADDER.indexOf(c.size) > 0);
+        if (!target) break;
+        target.size = LADDER[LADDER.indexOf(target.size) - 1];
+        shrunk.push(target.id);
+      }
+      while (free(agent2) < need) {
+        const victim = oldestFirst().find(
+          (c) => c.preemptable && PRIORITY[c.kind] <= PRIORITY[incomingKind]
+        );
+        if (!victim) return { status: "rejected", code: "DESKTOP_FULL", message: "桌面已满，且没有可以让位的卡片" };
+        agent2 = agent2.filter((x) => x !== victim.id);
+        evicted.push(victim.id);
+        titles.push(titleOf(victim));
+        cards.delete(victim.id);
+      }
+      return { shrunk, evicted, titles };
+    }
+    function show(input) {
+      if (input.ttl === void 0 || input.ttl === null)
+        return { status: "rejected", code: "TTL_REQUIRED", message: "卡片必须声明 ttl，否则会在桌面堆积" };
+      if (input.zone === "fixed")
+        return { status: "rejected", code: "FIXED_ZONE_READONLY", message: "固定区归用户所有，需要用户确认后才能入驻" };
+      const size = input.size ?? "1/6";
+      const kind = input.kind ?? "task";
+      const id = input.id ?? `card_${++seq}`;
+      if (size === "full") {
+        if (!saved) saved = { agent: [...agent2], fixed: [...fixed] };
+        overlay = id;
+        cards.set(id, mkCard(id, input, size, kind));
+        emit();
+        return { status: "ok", cardId: id };
+      }
+      const need = WIDTH[size];
+      let shrunk = [], evicted = [], titles = [], note;
+      if (free(agent2) < need) {
+        const room = makeRoom(need, kind);
+        if ("status" in room) return room;
+        shrunk = room.shrunk;
+        evicted = room.evicted;
+        titles = room.titles;
+      }
+      if (titles.length) note = `我把${titles.map((t) => `「${t}」`).join("、")}收起来了`;
+      cards.set(id, mkCard(id, input, size, kind));
+      agent2.push(id);
+      emit();
+      return {
+        status: "ok",
+        cardId: id,
+        ...shrunk.length && { shrunk },
+        ...evicted.length && { evicted, note }
+      };
+    }
+    const mkCard = (id, i, size, kind) => ({
+      id,
+      key: i.key,
+      template: i.template,
+      size,
+      kind,
+      zone: "agent",
+      data: i.data ?? {},
+      ttl: i.ttl,
+      preemptable: i.preemptable ?? true,
+      createdAt: clock(),
+      touchedAt: clock()
+    });
+    function update(id, data) {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      c.data = { ...c.data, ...data };
+      c.touchedAt = clock();
+      emit();
+      return { status: "ok", cardId: id };
+    }
+    function resize(id, size) {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      if (c.zone === "agent") {
+        const delta = WIDTH[size] - WIDTH[c.size];
+        if (delta > 0 && free(agent2) < delta) {
+          const others = agent2.filter((x) => x !== id);
+          const backup = agent2;
+          agent2 = others;
+          const room = makeRoom(WIDTH[size], c.kind);
+          if ("status" in room) {
+            agent2 = backup;
+            return room;
+          }
+          agent2 = [...agent2, id];
+        }
+      }
+      c.size = size;
+      c.touchedAt = clock();
+      emit();
+      return { status: "ok", cardId: id };
+    }
+    const enlarge = (id) => {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      const i = LADDER.indexOf(c.size);
+      if (i < 0 || i === LADDER.length - 1) return { status: "ok", cardId: id };
+      return resize(id, LADDER[i + 1]);
+    };
+    function dismiss(id) {
+      if (overlay === id) {
+        overlay = void 0;
+        cards.delete(id);
+        if (saved) {
+          agent2 = saved.agent;
+          fixed = saved.fixed;
+          saved = void 0;
+        }
+        emit();
+        return { status: "ok", cardId: id };
+      }
+      if (!cards.has(id)) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      agent2 = agent2.filter((x) => x !== id);
+      fixed = fixed.filter((x) => x !== id);
+      cards.delete(id);
+      emit();
+      return { status: "ok", cardId: id };
+    }
+    const focus = (id) => {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      c.touchedAt = clock();
+      emit();
+      return { status: "ok", cardId: id };
+    };
+    function pin(id) {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      if (fixed.includes(id)) return { status: "ok", cardId: id };
+      if (free(fixed) < WIDTH[c.size])
+        return { status: "rejected", code: "FIXED_ZONE_FULL", message: "固定区已经满了，先移走一张再固定" };
+      agent2 = agent2.filter((x) => x !== id);
+      fixed.push(id);
+      c.zone = "fixed";
+      c.ttl = "persistent";
+      emit();
+      return { status: "ok", cardId: id };
+    }
+    function unpin(id) {
+      const c = cards.get(id);
+      if (!c || !fixed.includes(id))
+        return { status: "rejected", code: "NO_SUCH_CARD", message: `${id} 不在固定区` };
+      fixed = fixed.filter((x) => x !== id);
+      c.zone = "agent";
+      c.ttl = "untilDismissed";
+      if (free(agent2) < WIDTH[c.size]) {
+        const room = makeRoom(WIDTH[c.size], c.kind);
+        if ("status" in room) return room;
+      }
+      agent2.push(id);
+      emit();
+      return { status: "ok", cardId: id };
+    }
+    function render(i) {
+      const exist = [...cards.values()].find((c) => c.key === i.key);
+      const want = i.size ?? "1/6";
+      if (exist) {
+        if (WIDTH[exist.size] >= WIDTH[want]) {
+          const r3 = update(exist.id, i.data ?? {});
+          return { ...r3, level: "L1" };
+        }
+        const r2 = resize(exist.id, want);
+        if (r2.status !== "ok") return r2;
+        update(exist.id, i.data ?? {});
+        return { ...r2, level: "L2" };
+      }
+      const r = show(i);
+      return r.status === "ok" ? { ...r, level: "L3" } : r;
+    }
+    function tick() {
+      const t = clock();
+      let changed = false;
+      for (const c of [...cards.values()]) {
+        if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) {
+          dismiss(c.id);
+          changed = true;
+        }
+      }
+      if (changed) emit();
+    }
+    function endTask() {
+      for (const c of [...cards.values()]) if (c.ttl === "untilTaskEnd") dismiss(c.id);
+    }
+    const layout = () => ({
+      agent: agent2.map((id) => cards.get(id)),
+      fixed: fixed.map((id) => cards.get(id)),
+      overlay: overlay ? cards.get(overlay) : void 0,
+      agentFree: free(agent2),
+      fixedFree: free(fixed)
+    });
+    function summary() {
+      const l = layout();
+      const fmt = (c) => `${titleOf(c)}(${c.size})`;
+      const lines = [];
+      if (l.overlay) lines.push(`全屏卡：${fmt(l.overlay)}（占据整屏，关闭后自动还原）`);
+      lines.push(`固定区（用户所有，你不能改）：${l.fixed.length ? l.fixed.map(fmt).join("、") : "空"}`);
+      lines.push(`Agent 区（你可自由编排）：${l.agent.length ? l.agent.map(fmt).join("、") : "空"}，剩余 ${l.agentFree} 格`);
+      return lines.join("\n");
+    }
+    return {
+      show,
+      update,
+      resize,
+      enlarge,
+      dismiss,
+      focus,
+      pin,
+      unpin,
+      render,
+      tick,
+      endTask,
+      layout,
+      summary,
+      get: (id) => cards.get(id),
+      findByKey: (key) => [...cards.values()].find((c) => c.key === key),
+      widthOf: (s) => WIDTH[s],
+      subscribe: (cb) => {
+        listeners.push(cb);
+        return () => listeners.splice(listeners.indexOf(cb), 1);
+      }
+    };
+  }
+
+  // src/config/signals.ts
+  var SIGNALS = [
+    /* ── 行驶与动力 ── */
+    {
+      alias: "vehicle.speed",
+      vssPath: "Vehicle.Speed",
+      type: "number",
+      range: [0, 220],
+      unit: "km/h",
+      label: "车速",
+      access: "READ",
+      changeMode: "CONTINUOUS",
+      initial: 0
+    },
+    {
+      alias: "vehicle.gear",
+      vssPath: "Vehicle.Powertrain.Transmission.CurrentGear",
+      type: "enum",
+      values: ["p", "r", "n", "d"],
+      label: "挡位",
+      access: "READ",
+      changeMode: "ONCHANGE",
+      initial: "p"
+    },
+    {
+      alias: "powertrain.soc",
+      vssPath: "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "电量",
+      access: "READ",
+      changeMode: "CONTINUOUS",
+      initial: 68
+    },
+    /* ── 车窗（本 Demo 主角） ── */
+    {
+      alias: "cabin.window.driver.position",
+      vssPath: "Vehicle.Cabin.Door.Row1.DriverSide.Window.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "主驾车窗",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 4e3,
+      initial: 0
+    },
+    {
+      alias: "cabin.window.passenger.position",
+      vssPath: "Vehicle.Cabin.Door.Row1.PassengerSide.Window.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "副驾车窗",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 4e3,
+      initial: 0
+    },
+    {
+      alias: "cabin.window.rearLeft.position",
+      vssPath: "Vehicle.Cabin.Door.Row2.DriverSide.Window.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "左后车窗",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 4e3,
+      initial: 0
+    },
+    {
+      alias: "cabin.window.rearRight.position",
+      vssPath: "Vehicle.Cabin.Door.Row2.PassengerSide.Window.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "右后车窗",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 4e3,
+      initial: 0
+    },
+    /* ── 车门（用于不变量断言与后续 Demo） ── */
+    {
+      alias: "cabin.door.driver.isOpen",
+      vssPath: "Vehicle.Cabin.Door.Row1.DriverSide.IsOpen",
+      type: "boolean",
+      label: "主驾车门",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "灰",
+      initial: false
+    },
+    {
+      alias: "cabin.childLock",
+      vssPath: "Vehicle.Cabin.Door.Row2.DriverSide.IsChildLockActive",
+      type: "boolean",
+      label: "儿童锁",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    /* ── 未选装：反幻觉验证用（Golden Case 9） ── */
+    {
+      alias: "cabin.sunroof.glass.position",
+      vssPath: "Vehicle.Cabin.Sunroof.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "全景天窗",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 6e3,
+      initial: 0,
+      equipped: false
+    },
+    /* ── 环境 ── */
+    {
+      alias: "cabin.temperature.outside",
+      vssPath: "Vehicle.Exterior.AirTemperature",
+      type: "number",
+      range: [-40, 60],
+      unit: "°C",
+      label: "车外温度",
+      access: "READ",
+      changeMode: "CONTINUOUS",
+      initial: 3
+    },
+    {
+      alias: "env.weather",
+      vssPath: "Vehicle.Exterior.WeatherCondition",
+      type: "enum",
+      values: ["clear", "cloudy", "rain", "heavyRain", "snow", "fog"],
+      label: "天气",
+      access: "READ",
+      changeMode: "ONCHANGE",
+      initial: "cloudy"
+    },
+    /* ── 感知（非 VSS 标准域，标注为扩展） ── */
+    {
+      alias: "perception.voiceSource",
+      vssPath: "Vehicle.Cabin.X-Ext.VoiceSourceSeat",
+      type: "enum",
+      values: ["driver", "passenger", "rearLeft", "rearRight"],
+      label: "说话人位置",
+      access: "READ",
+      changeMode: "ONCHANGE",
+      initial: "driver"
+    },
+    {
+      alias: "perception.occupancy.rearLeft",
+      vssPath: "Vehicle.Cabin.Seat.Row2.DriverSide.IsOccupied",
+      type: "boolean",
+      label: "左后有人",
+      access: "READ",
+      changeMode: "ONCHANGE",
+      initial: false
+    }
+  ];
+
+  // src/config/cards.ts
+  var CARD_TEMPLATES = [
+    {
+      id: "control",
+      label: "车控卡",
+      sizes: ["1/6", "1/3"],
+      desc: "通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。"
+    },
+    {
+      id: "confirm",
+      label: "确认卡",
+      sizes: ["1/6", "1/3"],
+      desc: "二次确认。data: {title, question, options:[string]}"
+    },
+    {
+      id: "feedback",
+      label: "反馈卡",
+      sizes: ["1/6"],
+      desc: "执行结果摘要。data: {title, text}"
+    },
+    {
+      id: "notice",
+      label: "提示/拒绝卡",
+      sizes: ["1/6", "1/3"],
+      desc: "拒绝原因与替代方案。data: {title, text, suggestion}"
+    },
+    {
+      id: "list",
+      label: "列表卡",
+      sizes: ["1/3", "1/2"],
+      desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}"
+    },
+    {
+      id: "info",
+      label: "信息卡",
+      sizes: ["1/6", "1/3"],
+      desc: "只读信息，如天气、车况、日程。data: {title, text}"
+    },
+    {
+      id: "media",
+      label: "媒体卡",
+      sizes: ["1/6", "1/3", "1/2"],
+      desc: "播放中的内容。data: {title, artist, progress}"
+    },
+    {
+      id: "nav",
+      label: "导航卡",
+      sizes: ["1/3", "1/2", "full"],
+      desc: "导航状态。data: {title, eta, distance}"
+    },
+    {
+      id: "capability",
+      label: "能力目录卡",
+      sizes: ["full"],
+      desc: "本车全部可用能力，由 Tool Registry 自动生成，不要手工填内容。"
+    },
+    {
+      id: "generic",
+      label: "通用卡",
+      sizes: ["1/6", "1/3", "1/2", "full"],
+      desc: "兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}"
+    }
+  ];
+  var TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id);
+
+  // src/config/tools.ts
+  var TOOLS = [
+    /* ── 读取 ── */
+    {
+      name: "vehicle.getState",
+      desc: "读取车辆当前状态。不传参返回全部状态；传 paths 只读取指定信号。",
+      permission: "彩",
+      params: {
+        paths: { type: "array", items: "string", desc: '要读取的信号路径列表，如 ["vehicle.speed"]' }
+      },
+      handler: "getState"
+    },
+    /* ── 车窗（零 handler） ── */
+    {
+      name: "window.set",
+      desc: "控制车窗开度。position 为百分比，0 表示完全关闭，100 表示完全打开。window 传 all 可一次控制四扇窗。",
+      permission: "彩",
+      params: {
+        window: {
+          type: "enum",
+          values: ["driver", "passenger", "rearLeft", "rearRight", "all"],
+          required: true,
+          desc: "目标车窗：driver 主驾 / passenger 副驾 / rearLeft 左后 / rearRight 右后 / all 全部"
+        },
+        position: { type: "number", range: [0, 100], required: true, desc: "开度百分比 0-100" }
+      },
+      writes: { path: "cabin.window.{window}.position", from: "position" },
+      expand: { window: { all: ["driver", "passenger", "rearLeft", "rearRight"] } },
+      escalate: [{ when: ["vehicle.speed", ">", 5], to: "灰" }],
+      confirmPrompt: "车辆正在行驶，确认要调整车窗吗？"
+    },
+    /* ── 天窗：未选装，用于反幻觉验证 ── */
+    {
+      name: "sunroof.set",
+      desc: "控制全景天窗开度。",
+      permission: "彩",
+      params: { position: { type: "number", range: [0, 100], required: true, desc: "开度百分比 0-100" } },
+      writes: { path: "cabin.sunroof.glass.position", from: "position" }
+    },
+    /* ── 车门：灰级，需二次确认 ── */
+    {
+      name: "door.set",
+      desc: "开关车门。open 打开，close 关闭。",
+      permission: "灰",
+      params: {
+        door: { type: "enum", values: ["driver"], required: true, desc: "目标车门" },
+        action: { type: "enum", values: ["open", "close"], required: true, desc: "动作" }
+      },
+      writes: { path: "cabin.door.{door}.isOpen", from: "action", map: { open: true, close: false } },
+      confirmPrompt: "即将打开车门，确认吗？"
+    },
+    /* ── 儿童锁 ── */
+    {
+      name: "childLock.set",
+      desc: "开关后排儿童锁。开启后后排车窗与车门将无法控制。",
+      permission: "彩",
+      params: { enabled: { type: "boolean", required: true, desc: "是否开启" } },
+      writes: { path: "cabin.childLock", from: "enabled" }
+    },
+    /* ── 语音 ── */
+    {
+      name: "voice.speak",
+      desc: "通过车内音响向用户播报一段话。用于解释、确认、反馈。",
+      permission: "彩",
+      params: {
+        text: { type: "string", required: true, desc: "要播报的内容，口语化、简短" },
+        tone: { type: "enum", values: ["neutral", "warm", "urgent"], desc: "语气" }
+      },
+      handler: "speak"
+    },
+    /* ── 卡片调度（无APP化核心） ── */
+    {
+      name: "card.show",
+      desc: "在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。",
+      permission: "彩",
+      params: {
+        template: { type: "enum", values: TEMPLATE_IDS, required: true, desc: "卡片模板" },
+        size: { type: "enum", values: ["1/6", "1/3", "1/2", "full"], required: true, desc: "尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / full 全屏（临时征用，关闭后自动还原）" },
+        ttl: { type: "string", required: true, desc: "生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数" },
+        key: { type: "string", desc: "逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建" },
+        data: { type: "object", desc: "卡片内容，字段取决于模板" },
+        kind: { type: "enum", values: ["task", "system"], desc: "卡片类别，默认 task" }
+      },
+      handler: "cardShow"
+    },
+    {
+      name: "card.update",
+      desc: "更新已有卡片的内容。桌面上已有对应卡片时优先用这个，不要重复新建。",
+      permission: "彩",
+      params: {
+        cardId: { type: "string", required: true, desc: "卡片 id" },
+        data: { type: "object", required: true, desc: "要更新的字段" }
+      },
+      handler: "cardUpdate"
+    },
+    {
+      name: "card.resize",
+      desc: "改变卡片尺寸。空间不够时系统会自动腾位。",
+      permission: "彩",
+      params: {
+        cardId: { type: "string", required: true, desc: "卡片 id" },
+        size: { type: "enum", values: ["1/6", "1/3", "1/2"], required: true, desc: "目标尺寸" }
+      },
+      handler: "cardResize"
+    },
+    {
+      name: "card.dismiss",
+      desc: "移除一张卡片。",
+      permission: "彩",
+      params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
+      handler: "cardDismiss"
+    },
+    {
+      name: "card.focus",
+      desc: "把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。",
+      permission: "彩",
+      params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
+      handler: "cardFocus"
+    },
+    {
+      name: "desktop.getLayout",
+      desc: "读取当前桌面布局：有哪些卡片、在哪个区、多大、还剩几格。编排卡片前先看这个。",
+      permission: "彩",
+      params: {},
+      handler: "deskLayout"
+    },
+    {
+      name: "desktop.pin",
+      desc: "把卡片固定到桌面下方的固定区。固定区归用户所有，需要用户同意。",
+      permission: "灰",
+      params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
+      confirmPrompt: "要把这张卡片固定到桌面上吗？",
+      handler: "deskPin"
+    },
+    {
+      name: "desktop.unpin",
+      desc: "把卡片移出固定区。",
+      permission: "灰",
+      params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
+      confirmPrompt: "要把这张卡片从桌面上取下吗？",
+      handler: "deskUnpin"
+    },
+    /* ── 黑级：永久禁区，配置里存在但永不暴露给 Agent ── */
+    {
+      name: "brake.apply",
+      desc: "施加制动力。",
+      permission: "黑",
+      params: { force: { type: "number", range: [0, 1], required: true, desc: "制动力度" } }
+    }
+  ];
+
+  // agents/main-agent/manifest.ts
+  var MAIN_AGENT = {
+    id: "main-agent",
+    name: "主Agent",
+    version: "0.1.0",
+    tools: ["*"],
+    context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
+    maxRounds: 6,
+    persona: `你是这台车的车载助手，能直接操作车辆功能。
+说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。
+
+行为准则：
+1. 用户意图明确就直接调用工具，不要反问确认显而易见的事。
+2. 一次意图可能需要多个工具，一起调用，不要分多轮。
+3. 结合当前车辆状态和说话人位置判断。后排的人说"开窗"，指的是他自己那扇。
+4. 工具返回 rejected 时，用 message 说明原因，并把 suggestion 作为替代方案提出来。
+5. 工具返回 unavailable 时，直接承认这台车做不到，不要假装成功，也不要编造结果。
+6. 工具返回 CONFIRM_REQUIRED 时，用它的 message 问用户；用户明确同意后，带上返回的 token 重新调用同一工具。
+7. 只使用工具列表里存在的能力。列表里没有的，就说没有。
+8. 执行成功后简短确认，不要复述参数。
+9. 这台车没有 App，所有信息都以桌面卡片呈现。先看桌面：已有对应卡片就 card.update，尺寸不够就 card.resize，都不行才 card.show 新建。
+10. 卡片被挤掉时工具会返回一句话，把它顺带告诉用户，不要让卡片悄悄消失。`
+  };
+
+  // src/director/main.ts
+  var $ = (id) => document.getElementById(id);
+  var POS = ["driver", "passenger", "rearLeft", "rearRight"];
+  var store = createStore(SIGNALS, CONSTRAINTS);
+  var desk = createDesk();
+  var registry = createRegistry(store, TOOLS, Date.now, { desk });
+  var apiKey = "";
+  var modelId = "";
+  var llm = createOpenRouter(() => apiKey, () => modelId);
+  var agent = createAgent({
+    manifest: MAIN_AGENT,
+    registry,
+    store,
+    llm,
+    desktopSummary: () => desk.summary()
+  });
+  var WIN_LABEL = { driver: "主驾", passenger: "副驾", rearLeft: "左后", rearRight: "右后" };
+  var winItems = () => POS.map((k) => ({
+    key: k,
+    label: WIN_LABEL[k],
+    unit: "%",
+    value: store.getTarget(`cabin.window.${k}.position`)
+  }));
+  var seedDesk = () => {
+    const w = desk.render({
+      key: "windows",
+      template: "control",
+      size: "1/6",
+      ttl: "persistent",
+      kind: "persistent",
+      data: { title: "车窗", items: winItems() }
+    });
+    desk.pin(w.cardId);
+    const v = desk.show({
+      key: "vehicle",
+      template: "vehicle",
+      size: "1/6",
+      ttl: "persistent",
+      kind: "persistent",
+      data: { title: "车辆" }
+    });
+    desk.pin(v.cardId);
+    const i = desk.show({
+      key: "info",
+      template: "info",
+      size: "1/6",
+      ttl: "persistent",
+      kind: "persistent",
+      data: { title: "车况", text: "一切正常" }
+    });
+    desk.pin(i.cardId);
+  };
+  seedDesk();
+  var brief = (c) => ({
+    id: c.id,
+    template: c.template,
+    size: c.size,
+    kind: c.kind,
+    title: c.data?.title ?? c.template,
+    data: c.data
+  });
+  function pushDesk() {
+    const l = desk.layout();
+    bus.send({ type: "cards", desk: {
+      agent: l.agent.map(brief),
+      fixed: l.fixed.map(brief),
+      overlay: l.overlay ? brief(l.overlay) : void 0,
+      agentFree: l.agentFree
+    } });
+  }
+  desk.subscribe(pushDesk);
+  setInterval(() => desk.tick(), 500);
+  store.subscribe("cabin.window.*.position", () => {
+    const r = desk.render({
+      key: "windows",
+      template: "control",
+      size: "1/6",
+      ttl: 30,
+      kind: "task",
+      data: { title: "车窗", items: winItems() }
+    });
+    if (r.level && r.level !== lastLevel) {
+      lastLevel = r.level;
+      const how = { L1: "L1 复用桌面已有卡片，不新建", L2: "L2 放大已有卡片", L3: "L3 新建卡片" }[r.level];
+      log("p", `  ▪ 反馈 ${how}`);
+    }
+    if (r.note) log("r", "  ▪ " + r.note);
+  });
+  var lastLevel = "";
+  $("toolCount").textContent = `${registry.list(MAIN_AGENT.tools).length} tools`;
+  var bus = createBus((m) => {
+    if (m.type === "hello") setConn(true);
+  });
+  var setConn = (ok) => {
+    $("dot").classList.toggle("on", ok);
+    $("connTxt").textContent = ok ? "车机屏已连接" : "车机屏未连接";
+  };
+  $("openScreen").onclick = () => {
+    const w = open(new URL("screen.html", location.href).href, "cockpitScreen", "width=1440,height=880");
+    bus.setPeer(w);
+    log("p", "已打开车机屏 · 拖到外接屏后按 F 全屏");
+  };
+  function push() {
+    const target = {};
+    for (const k of POS) target[k] = store.getTarget(`cabin.window.${k}.position`);
+    bus.send({
+      type: "state",
+      target,
+      meta: {
+        speed: store.get("vehicle.speed"),
+        childLock: store.get("cabin.childLock"),
+        weather: store.get("env.weather"),
+        outTemp: store.get("cabin.temperature.outside"),
+        soc: store.get("powertrain.soc")
+      }
+    });
+    for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`)));
+    const v = store.checkInvariants();
+    $("invar").innerHTML = v.length ? `<span style="color:#FF5C5C">⚠ 不变量违规：${v.join("；")}</span>` : "状态不变量：正常";
+  }
+  setInterval(() => {
+    store.tick(200);
+    push();
+  }, 200);
+  pushDesk();
+  var traceEl = $("trace");
+  function log(cls, text) {
+    const div = document.createElement("div");
+    div.className = cls;
+    div.textContent = text;
+    traceEl.appendChild(div);
+    traceEl.scrollTop = traceEl.scrollHeight;
+  }
+  $("clr").onclick = () => traceEl.innerHTML = "";
+  $("resetSess").onclick = () => {
+    agent.reset();
+    log("p", "── 会话已重置 ──");
+  };
+  agent.on((e) => {
+    switch (e.type) {
+      case "thinking":
+        bus.send({ type: "voice", s: "thinking", text: null });
+        break;
+      case "executing":
+        bus.send({ type: "voice", s: "executing" });
+        break;
+      case "speaking":
+        bus.send({ type: "voice", s: "speaking", text: e.text, who: "agent" });
+        break;
+      case "confirming":
+        bus.send({ type: "voice", s: "confirming", text: e.text, who: "agent" });
+        bus.send({ type: "card", action: "show", id: "confirm", title: "需要确认", body: e.text });
+        break;
+      case "rejected":
+        bus.send({ type: "voice", s: "rejected" });
+        bus.send({ type: "reject", on: true, title: "已拒绝执行", desc: e.text });
+        break;
+      case "done":
+        setTimeout(() => bus.send({ type: "voice", s: "idle", text: "" }), 3e3);
+        break;
+      case "error":
+        log("e", "✗ " + e.message);
+        bus.send({ type: "voice", s: "rejected", text: "出错了：" + e.message, who: "agent" });
+        break;
+    }
+  });
+  var busy = false;
+  async function ask(text) {
+    if (busy) return;
+    if (!apiKey) {
+      log("e", "✗ 请先填入 OpenRouter API Key");
+      return;
+    }
+    if (!modelId) {
+      log("e", "✗ 请先选择模型");
+      return;
+    }
+    busy = true;
+    $("busy").textContent = "思考中…";
+    bus.send({ type: "reject", on: false });
+    bus.send({ type: "card", action: "dismiss", id: "confirm" });
+    bus.send({ type: "voice", s: "listening", text, who: "user" });
+    log("u", `
+▸ ${text}`);
+    const t0 = performance.now();
+    const r = await agent.run(text);
+    for (const s of r.trace) {
+      if (s.type === "prompt") log("p", `  · 注入 ${s.system.length} 字符 / ${s.toolCount} 个工具`);
+      if (s.type === "toolCall") log("t", `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission}]`);
+      if (s.type === "toolResult") {
+        const res = s.result;
+        const cls = res.status === "ok" ? "k" : res.status === "inputRequired" ? "r" : res.status === "failed" ? "e" : "r";
+        log(cls, `  ← ${res.status}${res.code ? " · " + res.code : ""}${res.message ? " · " + res.message : ""}  (${s.ms}ms)`);
+        if (res.status === "ok" && res.changed?.length) {
+          const ids = res.changed.filter((p) => p.startsWith("cabin.window.")).map((p) => p.split(".")[2]);
+          if (ids.length) bus.send({ type: "highlight", ids });
+          if (res.code === "SPEED_LIMITED") bus.send({ type: "reject", on: true, title: "已限位", desc: `${res.message} · <code>${res.code}</code>` });
+          const cid = res.data?.cardId;
+          if (cid) bus.send({ type: "highlight", ids: [], cards: [cid] });
+        }
+      }
+    }
+    log("a", `  ⟵ ${r.reply || "(无话术)"}`);
+    log("p", `  ${r.rounds} 轮 · ${Math.round(performance.now() - t0)}ms · ${r.stopReason}`);
+    push();
+    busy = false;
+    $("busy").textContent = "";
+  }
+  $("send").onclick = () => {
+    const v = $("say").value.trim();
+    if (v) {
+      $("say").value = "";
+      ask(v);
+    }
+  };
+  $("say").onkeydown = (e) => {
+    if (e.key === "Enter") $("send").click();
+  };
+  var CASES = [
+    { n: 1, g: 1, t: "打开主驾车窗", m: "基础链路 State→Tool→UI" },
+    { n: 2, g: 1, t: "开一半", m: "参数化 + 多轮承接（承接上一条）" },
+    { n: 3, g: 1, t: "把窗户都关了", m: "all 枚举 + 并行调用" },
+    { n: 4, g: 2, t: "开个窗", m: "说话人指代消解（先把说话人切到左后）", pre: () => setSrc("rearLeft") },
+    { n: 5, g: 2, t: "算了关上", m: "中间态打断反向（趁动画未完成时点）" },
+    { n: 6, g: 2, t: "开窗", m: "情境注入（先切雨天，看模型会不会先问）", pre: () => setRain(true) },
+    { n: 7, g: 3, t: "窗户开到底", m: "约束引擎 SPEED_LIMITED", pre: () => setSpeed(120) },
+    { n: 8, g: 3, t: "把后窗打开", m: "拒绝契约 CHILD_LOCK_ON", pre: () => setLock(true) },
+    { n: 9, g: 3, t: "开一下天窗", m: "NOT_EQUIPPED · 反幻觉必测" },
+    {
+      n: 10,
+      g: 4,
+      t: "开窗",
+      m: "桌面已有车窗卡 → 走 L1 复用，不新建",
+      pre: () => {
+        if (!desk.findByKey("windows")) seedWindowCard();
+      }
+    },
+    {
+      n: 11,
+      g: 4,
+      t: "开窗",
+      m: "桌面无车窗卡 → 走 L3 新建，ttl 到期自动消失",
+      pre: () => {
+        const c = desk.findByKey("windows");
+        if (c) {
+          desk.unpin(c.id);
+          desk.dismiss(c.id);
+        }
+      }
+    },
+    {
+      n: 12,
+      g: 4,
+      t: "帮我找个充电桩，再放首歌",
+      m: "Agent 区满载 → 降尺寸/挤出并告知用户",
+      pre: () => fillAgentZone()
+    },
+    { n: 13, g: 4, t: "（模拟来电）", m: "系统卡抢占，任务卡让位", pre: () => incomingCall(), noAsk: true }
+  ];
+  for (const g of [1, 2, 3, 4]) {
+    $(`g${g}`).innerHTML = CASES.filter((c) => c.g === g).map((c) => `<button class="case" data-c="${c.n}"><span class="no">${c.n}</span>
+      <span><b>${c.t}</b><span class="m">${c.m}</span></span></button>`).join("");
+  }
+  document.querySelectorAll("[data-c]").forEach((b) => b.onclick = () => {
+    const c = CASES.find((x) => x.n === Number(b.dataset.c));
+    c.pre?.();
+    if (!c.noAsk) ask(c.t);
+  });
+  function seedWindowCard() {
+    const w = desk.render({
+      key: "windows",
+      template: "control",
+      size: "1/6",
+      ttl: "persistent",
+      kind: "persistent",
+      data: { title: "车窗", items: winItems() }
+    });
+    desk.pin(w.cardId);
+  }
+  function fillAgentZone() {
+    desk.show({ template: "list", size: "1/2", ttl: 60, data: { title: "附近餐厅", items: [{ label: "示例结果" }] } });
+    log("p", "Agent 区已被一张 1/2 卡占满，下一张卡会触发降尺寸");
+  }
+  function incomingCall() {
+    const r = desk.show({
+      template: "notice",
+      size: "1/3",
+      ttl: 20,
+      kind: "system",
+      data: { title: "来电", text: "张伟 · 手机", suggestion: "接听 / 挂断" }
+    });
+    log("r", `系统卡抢占 → ${r.status}${r.note ? " · " + r.note : ""}`);
+  }
+  var setSpeed = (v) => {
+    store.setDirect("vehicle.speed", v);
+    $("spd").value = String(v);
+    $("spdV").textContent = `${v} km/h`;
+    push();
+  };
+  var setSrc = (v) => {
+    store.setDirect("perception.voiceSource", v);
+    $("vsrc").value = v;
+  };
+  var setLock = (v) => {
+    store.setDirect("cabin.childLock", v);
+    const b = $("bLock");
+    b.textContent = "儿童锁 " + (v ? "开" : "关");
+    b.classList.toggle("on", v);
+    push();
+  };
+  var setRain = (v) => {
+    store.setDirect("env.weather", v ? "rain" : "cloudy");
+    const b = $("bRain");
+    b.textContent = "天气 " + (v ? "小雨" : "多云");
+    b.classList.toggle("on", v);
+    push();
+  };
+  $("spd").oninput = (e) => setSpeed(Number(e.target.value));
+  $("tmp").oninput = (e) => {
+    const v = Number(e.target.value);
+    store.setDirect("cabin.temperature.outside", v);
+    $("tmpV").textContent = `${v} °C`;
+    push();
+  };
+  $("soc").oninput = (e) => {
+    const v = Number(e.target.value);
+    store.setDirect("powertrain.soc", v);
+    $("socV").textContent = `${v} %`;
+    push();
+  };
+  $("vsrc").onchange = (e) => setSrc(e.target.value);
+  $("bLock").onclick = () => setLock(!store.get("cabin.childLock"));
+  $("bRain").onclick = () => setRain(store.get("env.weather") !== "rain");
+  var SCENES = {
+    park: () => {
+      setSpeed(0);
+      setRain(false);
+      setLock(false);
+    },
+    highway: () => {
+      setSpeed(120);
+      setRain(false);
+      setLock(false);
+    },
+    rain: () => {
+      setSpeed(45);
+      setRain(true);
+      setLock(false);
+    },
+    kids: () => {
+      setSpeed(30);
+      setRain(false);
+      setLock(true);
+    }
+  };
+  document.querySelectorAll("[data-sc]").forEach((b) => b.onclick = () => {
+    SCENES[b.dataset.sc]();
+    log("p", `场景切换 → ${b.textContent}`);
+  });
+  var allModels = [];
+  var fastOnly = true;
+  function renderModels() {
+    const list = fastOnly ? pickFastModels(allModels) : allModels.slice().sort((a, b) => (a.promptPrice ?? 0) - (b.promptPrice ?? 0));
+    const sel = $("model");
+    sel.innerHTML = list.map((m) => `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ""}</option>`).join("");
+    $("modelCount").textContent = `${list.length} / ${allModels.length}`;
+    if (list.length) {
+      modelId = list[0].id;
+      sel.value = modelId;
+    }
+  }
+  $("model").onchange = (e) => {
+    modelId = e.target.value;
+    log("p", `模型切换 → ${modelId}`);
+  };
+  $("fastOnly").onclick = () => {
+    fastOnly = !fastOnly;
+    $("fastOnly").classList.toggle("on", fastOnly);
+    renderModels();
+  };
+  async function loadModels() {
+    if (!apiKey) {
+      allModels = FALLBACK_MODELS;
+      renderModels();
+      return;
+    }
+    try {
+      allModels = await llm.models();
+      log("k", `✓ 已加载 ${allModels.length} 个支持 function calling 的模型`);
+    } catch (err) {
+      allModels = FALLBACK_MODELS;
+      log("e", `✗ 模型列表拉取失败，使用兜底列表：${err}`);
+    }
+    renderModels();
+  }
+  $("reload").onclick = loadModels;
+  $("key").oninput = (e) => {
+    apiKey = e.target.value.trim();
+  };
+  $("key").onchange = loadModels;
+  if (apiKey) {
+    $("key").value = apiKey;
+  }
+  loadModels();
+  push();
+  log("p", "控制面板就绪 · 先「打开车机屏」，选好模型后即可对话");
+})();
+
+</script>
+</body>
+</html>

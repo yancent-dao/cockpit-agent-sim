@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>座舱模拟环境 · 车机屏</title>
+<style>
+:root{
+  --bg-base:#0B0E14;--bg-surface:#151A23;--bg-elevated:#1E2530;
+  --text-primary:#F2F5FA;--text-secondary:#8A94A6;
+  --brand:#4DA3FF;--success:#3ED598;--warning:#FFB84D;--danger:#FF5C5C;
+  --r-sm:12px;--r-md:20px;--r-lg:32px;--ease:cubic-bezier(.4,0,.2,1);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#000;overflow:hidden;cursor:none;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  color:var(--text-primary);-webkit-font-smoothing:antialiased}
+#vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+#stage{width:2560px;height:1440px;flex:none;transform-origin:center;
+  background:var(--bg-base);position:relative;overflow:hidden}
+
+#statusbar{height:96px;padding:0 60px;display:flex;align-items:center;gap:56px;
+  border-bottom:1px solid rgba(255,255,255,.06);font-size:30px;color:var(--text-secondary)}
+#statusbar .clock{font-size:36px;color:var(--text-primary);font-weight:500}
+#statusbar .sp{flex:1}#statusbar b{color:var(--text-primary);font-weight:500}
+.chip{padding:8px 22px;border-radius:999px;background:var(--bg-surface);font-size:26px;transition:.24s var(--ease)}
+.chip.warn{background:rgba(255,184,77,.14);color:var(--warning)}
+
+/* 3列×2行栅格：上行 Agent 区，下行固定区 */
+#desk{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:24px}
+.zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
+  writing-mode:vertical-rl;font-size:18px;color:#242C38;letter-spacing:6px}
+.card{background:var(--bg-surface);border-radius:var(--r-lg);padding:28px 32px;overflow:hidden;
+  display:flex;flex-direction:column;transition:box-shadow .24s var(--ease),background .24s var(--ease);
+  animation:cardIn .32s var(--ease)}
+@keyframes cardIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.card.hot{background:var(--bg-elevated);box-shadow:0 0 0 3px var(--brand)}
+.card h3{font-size:30px;font-weight:600;margin-bottom:16px;color:var(--text-primary)}
+.card .sub{font-size:26px;color:var(--text-secondary);line-height:1.5}
+.slot{border:2px dashed rgba(255,255,255,.05);border-radius:var(--r-lg)}
+.card .rowline{display:flex;justify-content:space-between;align-items:baseline;font-size:26px;margin-bottom:6px}
+.card .rowline span{color:var(--text-secondary)}
+.card .rowline em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
+.card.hot .rowline em{color:var(--brand)}
+.card .opt{display:inline-block;padding:10px 24px;margin:8px 12px 0 0;border-radius:999px;
+  background:var(--bg-elevated);font-size:26px;color:var(--text-primary)}
+.card .sug{margin-top:12px;font-size:24px;color:var(--brand)}
+.card.kind-system{box-shadow:0 0 0 3px rgba(255,184,77,.5)}
+.card.tpl-notice{background:rgba(255,184,77,.10)}
+.card.tpl-notice h3{color:var(--warning)}
+.card.tpl-confirm{background:rgba(77,163,255,.10)}
+#overlay{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;display:none;z-index:6}
+#overlay.on{display:block;animation:cardIn .32s var(--ease)}
+#overlay .card{height:100%}
+.cap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px;overflow:auto}
+.cap div{background:var(--bg-elevated);border-radius:14px;padding:14px 18px;font-size:24px}
+.cap div small{display:block;color:var(--text-secondary);font-size:20px;margin-top:4px}
+.cap div.off{opacity:.35;text-decoration:line-through}
+
+.win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
+.win .top span{color:var(--text-secondary)}
+.win .top em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
+.track{height:18px;border-radius:999px;background:#0B0E14;overflow:hidden}
+.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2E7FD6,var(--brand))}
+.win.hot .top em{color:var(--brand)}
+
+#carWrap{display:flex;align-items:center;justify-content:center}
+#carWrap svg{height:100%;max-height:400px}
+
+#voice{position:absolute;left:0;right:0;bottom:0;height:300px;display:flex;align-items:center;
+  gap:44px;padding:0 80px;border-top:1px solid rgba(255,255,255,.06);
+  background:linear-gradient(180deg,rgba(11,14,20,0),rgba(11,14,20,.9))}
+#orbBox{width:180px;height:180px;flex:none;position:relative;display:flex;align-items:center;
+  justify-content:center;transition:transform .32s var(--ease),opacity .32s var(--ease)}
+#orb{width:132px;height:132px;border-radius:50%;position:relative;
+  background:radial-gradient(circle at 35% 32%,#8FCBFF,var(--brand) 55%,#1E5FA8);
+  box-shadow:0 0 60px rgba(77,163,255,.5),inset 0 0 30px rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;gap:7px;transition:.3s var(--ease)}
+#ring{position:absolute;inset:-16px;border-radius:50%;border:3px solid transparent;opacity:0;
+  border-top-color:var(--brand);border-right-color:rgba(77,163,255,.3)}
+.bar{width:9px;height:20px;border-radius:99px;background:rgba(255,255,255,.92);opacity:0}
+[data-s=idle] #orb{animation:breathe 3.4s ease-in-out infinite;filter:brightness(.55)}
+@keyframes breathe{0%,100%{transform:scale(.92)}50%{transform:scale(1)}}
+[data-s=wakeup] #orb{animation:pop .5s var(--ease)}
+@keyframes pop{0%{transform:scale(.9)}45%{transform:scale(1.16)}100%{transform:scale(1.04)}}
+[data-s=listening] #orb,[data-s=speaking] #orb{transform:scale(1.04)}
+[data-s=listening] .bar,[data-s=speaking] .bar{opacity:1;animation:wave .85s ease-in-out infinite}
+[data-s=speaking] .bar{animation-duration:.55s}
+.bar:nth-child(2){animation-delay:.12s}.bar:nth-child(3){animation-delay:.24s}
+.bar:nth-child(4){animation-delay:.36s}.bar:nth-child(5){animation-delay:.48s}
+@keyframes wave{0%,100%{height:16px}50%{height:52px}}
+[data-s=thinking] #ring{opacity:1;animation:spin 1.05s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+[data-s=thinking] #orb{filter:brightness(.8)}
+[data-s=executing] #orbBox{transform:scale(.55) translateX(-120px);opacity:.75}
+[data-s=confirming] #orb{animation:pulse 1.1s ease-in-out infinite;
+  background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
+  box-shadow:0 0 60px rgba(255,184,77,.5),inset 0 0 30px rgba(255,255,255,.25)}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+[data-s=rejected] #orb{background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
+  box-shadow:0 0 50px rgba(255,184,77,.45);transform:scale(.94)}
+#sub{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px}
+#subTag{font-size:26px;color:var(--text-secondary);letter-spacing:2px}
+#subText{font-size:44px;line-height:1.42;font-weight:500;min-height:64px}
+#subText.user{color:var(--text-secondary)}
+.cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
+  animation:blink .9s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+#reject{position:absolute;left:80px;right:80px;bottom:328px;background:rgba(255,184,77,.12);
+  border:2px solid rgba(255,184,77,.45);border-radius:var(--r-md);padding:26px 34px;
+  display:none;gap:20px;align-items:flex-start;z-index:5}
+#reject.on{display:flex;animation:rise .32s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+#reject .tt{font-size:32px;color:var(--warning);font-weight:600;margin-bottom:8px}
+#reject .ds{font-size:28px;color:var(--text-secondary);line-height:1.5}
+#reject code{background:rgba(0,0,0,.35);padding:3px 12px;border-radius:8px;font-size:24px;color:var(--warning)}
+#conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#39414F;transition:opacity .6s}
+</style>
+</head>
+<body>
+<div id="vp"><div id="stage">
+  <div id="statusbar">
+    <span class="clock" id="clock">--:--</span>
+    <span>车外 <b id="tOut">3</b>°C</span>
+    <span id="wx">☁ 多云</span>
+    <span class="sp"></span>
+    <span class="chip" id="chipSpd">静止 · P 挡</span>
+    <span class="chip" id="chipLock" style="display:none">🔒 儿童锁开启</span>
+    <span>电量 <b id="soc">68</b>%</span>
+  </div>
+
+  <div id="desk"></div>
+  <div id="overlay"></div>
+
+  <div id="reject"><div style="font-size:34px">⚠️</div>
+    <div><div class="tt" id="rjT"></div><div class="ds" id="rjD"></div></div></div>
+
+  <div id="voice" data-s="idle">
+    <div id="orbBox"><div id="ring"></div>
+      <div id="orb"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+    </div>
+    <div id="sub"><div id="subTag">待机</div><div id="subText"></div></div>
+  </div>
+</div></div>
+<div id="conn">等待控制面板连接…（按 F 全屏）</div>
+<script type="module" src="/src/screen/main.ts"></script>
+</body>
+</html>

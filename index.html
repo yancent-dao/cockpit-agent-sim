@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>座舱模拟环境 · Demo Director</title>
+<style>
+:root{--bg:#0B0E14;--sf:#151A23;--el:#1E2530;--tx:#F2F5FA;--t2:#8A94A6;--t3:#5C6675;
+  --brand:#4DA3FF;--ok:#3ED598;--warn:#FFB84D;--dg:#FF5C5C}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);min-height:100vh;font-size:14px;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:9;background:rgba(11,14,20,.94);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(255,255,255,.08);padding:14px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{font-size:16px;font-weight:600}header .sub{font-size:12px;color:var(--t3)}
+.sp{flex:1}
+#dot{width:9px;height:9px;border-radius:50%;background:#3A4250;transition:.3s}
+#dot.on{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+#connTxt{font-size:12px;color:var(--t2)}
+.wrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 22px 60px;max-width:1500px;margin:0 auto}
+@media(max-width:1000px){.wrap{grid-template-columns:1fr}}
+section{background:var(--sf);border-radius:16px;padding:16px 18px;margin-bottom:18px}
+h2{font-size:11px;letter-spacing:1.8px;color:var(--t3);text-transform:uppercase;margin-bottom:12px;
+  display:flex;align-items:center;gap:8px}
+h2 .n{background:var(--el);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0}
+button{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);border-radius:10px;
+  padding:9px 12px;font-size:13px;cursor:pointer;transition:.16s;font-family:inherit}
+button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
+button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
+button:disabled{opacity:.4;cursor:not-allowed}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+input,select{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);
+  border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;width:100%}
+input::placeholder{color:#4A5462}
+.fld{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.fld label{width:70px;color:var(--t2);font-size:12px;flex:none}
+.fld input[type=range]{accent-color:var(--brand);padding:0}
+.fld .v{width:64px;text-align:right;color:#C9D2E0;font-variant-numeric:tabular-nums;font-size:12px;flex:none}
+.row{display:flex;gap:8px;align-items:center}
+.note{color:var(--t3);font-size:11.5px;line-height:1.65;margin-top:9px}
+.case{width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;line-height:1.45;display:flex;gap:9px}
+.case .no{color:var(--brand);font-weight:700;width:15px;flex:none}
+.case .m{color:var(--t3);font-size:11px;display:block;margin-top:2px}
+.case:hover .no,.case:hover .m{color:#06121F}
+.grp{font-size:11px;color:var(--t3);margin:12px 0 7px;border-left:2px solid var(--brand);padding-left:8px;line-height:1.5}
+.grp b{color:var(--t2)}
+#trace{background:#080B10;border-radius:10px;padding:11px;font-family:ui-monospace,Menlo,monospace;
+  font-size:11px;line-height:1.7;color:#7A8494;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+#trace .u{color:#fff}#trace .p{color:#4A5462}#trace .t{color:var(--brand)}
+#trace .k{color:var(--ok)}#trace .r{color:var(--warn)}#trace .e{color:var(--dg)}
+#trace .a{color:#C9D2E0}
+.mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.mini div{background:var(--el);border-radius:9px;padding:8px;text-align:center}
+.mini span{display:block;font-size:10.5px;color:var(--t3)}
+.mini b{font-size:18px;font-variant-numeric:tabular-nums}
+.perm i{font-style:normal;padding:3px 9px;border-radius:6px;background:var(--el);font-size:11px;margin-right:6px}
+.perm i.b{background:rgba(255,92,92,.14);color:var(--dg)}
+.perm i.h{background:rgba(255,184,77,.14);color:var(--warn)}
+.perm i.c{background:rgba(62,213,152,.14);color:var(--ok)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Demo Director</h1><span class="sub">座舱 Agent 模拟环境 v0.1</span>
+  <span class="sp"></span>
+  <span id="dot"></span><span id="connTxt">车机屏未连接</span>
+  <button class="pri" id="openScreen">打开车机屏</button>
+</header>
+
+<div class="wrap">
+ <div>
+  <section>
+    <h2>模型 <span class="n" id="modelCount">—</span></h2>
+    <div class="fld"><label>API Key</label><input id="key" type="password" placeholder="sk-or-v1-…"></div>
+    <div class="fld"><label>模型</label><select id="model"></select></div>
+    <div class="row">
+      <button id="reload">刷新模型列表</button>
+      <button id="fastOnly" class="on">只看快速模型</button>
+    </div>
+    <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
+  </section>
+
+  <section>
+    <h2>对话</h2>
+    <div class="row"><input id="say" placeholder="对主 Agent 说点什么，例如：把后排窗户开一半"><button class="pri" id="send">发送</button></div>
+    <div class="note" id="busy"></div>
+  </section>
+
+  <section>
+    <h2>Golden Case · 真实模型跑 <span class="n">13</span></h2>
+    <div class="grp"><b>Base · 正常路径</b>　验证链路本身是否成立</div><div id="g1"></div>
+    <div class="grp"><b>Disambiguation · 歧义消解</b>　验证上下文与说话人信息是否真被用上</div><div id="g2"></div>
+    <div class="grp"><b>Guardrail · 边界与拒绝</b>　CAR-bench 结论：模型倾向"宁可编造也不认怂"，这几条是必测项</div><div id="g3"></div>
+    <div class="grp"><b>Orchestration · 卡片编排</b>　无APP化独有：优先复用 → 放大 → 新建</div><div id="g4"></div>
+  </section>
+ </div>
+
+ <div>
+  <section>
+    <h2>车辆状态</h2>
+    <div class="fld"><label>车速</label><input type="range" id="spd" min="0" max="140" value="0"><span class="v" id="spdV">0 km/h</span></div>
+    <div class="fld"><label>车外温</label><input type="range" id="tmp" min="-10" max="40" value="3"><span class="v" id="tmpV">3 °C</span></div>
+    <div class="fld"><label>电量</label><input type="range" id="soc" min="0" max="100" value="68"><span class="v" id="socV">68 %</span></div>
+    <div class="fld"><label>说话人</label><select id="vsrc">
+      <option value="driver">主驾</option><option value="passenger">副驾</option>
+      <option value="rearLeft">左后</option><option value="rearRight">右后</option></select></div>
+    <div class="g2"><button id="bLock">儿童锁 关</button><button id="bRain">天气 多云</button></div>
+    <div class="mini">
+      <div><span>主驾</span><b id="m-driver">0</b></div><div><span>副驾</span><b id="m-passenger">0</b></div>
+      <div><span>左后</span><b id="m-rearLeft">0</b></div><div><span>右后</span><b id="m-rearRight">0</b></div>
+    </div>
+    <div class="note" id="invar"></div>
+  </section>
+
+  <section>
+    <h2>场景预设</h2>
+    <div class="g2">
+      <button data-sc="park">静止 · 地库</button><button data-sc="highway">高速巡航 120</button>
+      <button data-sc="rain">雨天市区</button><button data-sc="kids">带孩子 · 儿童锁</button>
+    </div>
+    <div class="perm" style="margin-top:12px">
+      <i class="c">彩 可直接执行</i><i class="h">灰 需确认</i><i class="b">黑 AI 禁区</i>
+    </div>
+  </section>
+
+  <section>
+    <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
+    <div id="trace"></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
+  </section>
+ </div>
+</div>
+<script type="module" src="/src/director/main.ts"></script>
+</body>
+</html>

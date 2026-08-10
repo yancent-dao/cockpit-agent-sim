@@ -1,0 +1,120 @@
+export interface Msg {
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
+  tool_call_id?: string
+}
+
+export interface LLMRequest {
+  system: string
+  messages: Msg[]
+  tools: any[]
+}
+
+export interface LLMReply {
+  text?: string
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, any> }>
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+  /** 是否支持 function calling */
+  tools: boolean
+  contextLength?: number
+  promptPrice?: number
+}
+
+export interface LLM {
+  chat(req: LLMRequest): Promise<LLMReply>
+  models(): Promise<ModelInfo[]>
+}
+
+/** 名称含这些特征的视为快模型 */
+const FAST_NAME = /flash|mini|haiku|lite|turbo|small|nano|instant|fast/i
+/**
+ * 必须排除的变体后缀：
+ * - :batch   批处理端点是**异步**的，是最慢的一档（实测 OpenRouter 上有 60 个）
+ * - :free    免费额度限流排队
+ * - :thinking / :extended  推理档，首字延迟高
+ */
+const SLOW_VARIANT = /:(batch|free|thinking|extended)\b/
+
+/** 快速模型筛选。纯函数，可单测 */
+export function pickFastModels(models: ModelInfo[]): ModelInfo[] {
+  return models
+    .filter(m => !SLOW_VARIANT.test(m.id))
+    .filter(m => FAST_NAME.test(m.id) || FAST_NAME.test(m.name))
+    .slice()
+    .sort((a, b) => (a.promptPrice ?? 0) - (b.promptPrice ?? 0))
+}
+
+/**
+ * 拉取失败时的兜底候选 —— 仅作下拉框初始项，真实列表运行时从 OpenRouter 拉取。
+ * 2026-08 在 OpenRouter 上实测存活且支持 function calling。
+ */
+export const FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'qwen/qwen3.7-flash', name: 'Qwen3.7 Flash（最快）', tools: true, promptPrice: 3e-8 },
+  { id: 'z-ai/glm-4.7-flash', name: 'GLM-4.7 Flash（快）', tools: true, promptPrice: 6e-8 },
+  { id: 'openai/gpt-5-nano', name: 'GPT-5 nano（快）', tools: true, promptPrice: 5e-8 },
+  { id: 'google/gemini-3.6-flash', name: 'Gemini 3.6 Flash（稳）', tools: true, promptPrice: 3e-7 },
+]
+
+/**
+ * OpenRouter 适配器。零后端：直接从浏览器调用。
+ * Key 由控制面板注入，不写入任何交付文件。
+ */
+export function createOpenRouter(getKey: () => string, getModel: () => string): LLM {
+  const base = 'https://openrouter.ai/api/v1'
+
+  return {
+    async models(): Promise<ModelInfo[]> {
+      const res = await fetch(`${base}/models`, {
+        headers: { Authorization: `Bearer ${getKey()}` },
+      })
+      if (!res.ok) throw new Error(`模型列表拉取失败 ${res.status}`)
+      const json = await res.json()
+      return (json.data ?? [])
+        .filter((m: any) => (m.supported_parameters ?? []).includes('tools'))
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name ?? m.id,
+          tools: true,
+          contextLength: m.context_length,
+          promptPrice: parseFloat(m.pricing?.prompt ?? '0'),
+        }))
+    },
+
+    async chat(req: LLMRequest): Promise<LLMReply> {
+      const res = await fetch(`${base}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getKey()}`,
+          'Content-Type': 'application/json',
+          'X-Title': 'Cockpit Agent Sim',
+        },
+        body: JSON.stringify({
+          model: getModel(),
+          messages: [{ role: 'system', content: req.system }, ...req.messages],
+          tools: req.tools,
+          tool_choice: 'auto',
+          temperature: 0.3,
+        }),
+      })
+      if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`)
+      const json = await res.json()
+      const m = json.choices?.[0]?.message
+      if (!m) throw new Error('模型返回为空')
+      return {
+        text: m.content || undefined,
+        toolCalls: (m.tool_calls ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.function.name,
+          args: safeParse(c.function.arguments),
+        })),
+      }
+    },
+  }
+}
+
+const safeParse = (s: string) => { try { return JSON.parse(s || '{}') } catch { return {} } }

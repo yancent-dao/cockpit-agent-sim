@@ -4,7 +4,7 @@ import { createRegistry } from '../../src/tools/registry'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
-import { createAmapClient, type Fetcher } from '../../src/tools/amap'
+import { createAmapClient, type Fetcher } from '../../src/integrations/amap'
 import { createDesk } from '../../src/cards/desk'
 
 const createDeskForTest = () => createDesk(() => now)
@@ -532,6 +532,31 @@ describe('navigation.search', () => {
     await r.invoke('navigation.search', { query: 'x' })
     desk.endTask()
     expect(desk.findByKey('nav-candidates')).toBeTruthy()
+  })
+
+  // 比完路线说明目的地已经定了，那张"你要去哪个"就翻篇了。
+  // 实测它跟路线卡并排挂着，两张 1/2 把桌面占满，导航卡再来就没地方了
+  it('比完路线也算目的地定了，候选卡撤掉', async () => {
+    const desk = createDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v5/place/text': { status: '1', pois: [
+          { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+          { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+        ] },
+        '/v5/place/detail': { status: '1', pois: [{ id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [
+          { distance: '9000', cost: { duration: '1200', tolls: '2' }, steps: [] },
+          { distance: '9500', cost: { duration: '1300', tolls: '0' }, steps: [] },
+        ] } },
+      }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    await r.invoke('navigation.compareRoutes', { poiId: 'B1' })
+    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+    expect(desk.findByKey('routes')).toBeTruthy() // 但路线卡自己得留着
   })
 
   // 但事情办完了就得撤。之前只在设目的地时撤，存常用地址这条路径漏了，

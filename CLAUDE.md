@@ -44,16 +44,22 @@
 
 ```
 src/config/    signals · constraints · tools · cards —— 数据，越多越好
-src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 237）
-src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 629：registry.ts 337 + amap.ts 182 + navHandlers.ts 110。已按"有真实逻辑的 handler 单独成文件"拆分，registry.ts 本身很干净；总数超预算是因为真实三方 API 集成本来就需要比声明式 Tool 更多代码，Tier 3 继续加会更超，到时候再看是继续拆文件还是正式抬预算）
-src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 363：desk 294 + orchestrator 69）
-src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 304）
+src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 242）
+src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 375）
+src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 723）
+src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 382）
+src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
 agents/        Agent 实例：manifest + 人设
 ```
 
 超预算时不要提高预算，先检查是不是有逻辑漏进了 UI 层。
+
+`src/integrations/` 是后加的一档，不是给 `src/tools/` 抬预算。原来那 600 行只算平台机制
+（注册表、授权、契约、MRTR），写下它时"接三方"这件事整个不在设计里。高德接进来之后
+`src/tools/` 一度到 1098 行，拆开才看清超的全是协议适配——registry.ts 本身 375 行，
+一直在预算内。分开记也逼出一条边界：**平台不该认识高德**，就像它不认识任何具体 Agent。
 
 ## 复杂度的三个落点，各有上限
 

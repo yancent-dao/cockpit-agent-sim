@@ -1,8 +1,8 @@
 import type { Op, Value } from '../core/types'
 import type { Size } from '../cards/desk'
 import type { Store } from '../core/store'
-import type { AmapClient } from '../tools/amap'
-import { buildMapUrl } from '../tools/navHandlers'
+import type { AmapClient } from '../integrations/amap'
+import { buildMapUrl } from '../integrations/navHandlers'
 
 /**
  * 卡片规则 —— 状态→卡片的声明式映射（设计见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md）

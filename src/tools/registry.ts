@@ -4,8 +4,8 @@ import type { ToolDef, ParamDef } from '../config/tools'
 import { globMatch } from '../core/glob'
 import type { Desk } from '../cards/desk'
 import { CARD_TEMPLATES, type CardTemplate } from '../config/cards'
-import type { AmapClient } from './amap'
-import { createNavHandlers } from './navHandlers'
+import type { AmapClient } from '../integrations/amap'
+import { createNavHandlers } from '../integrations/navHandlers'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createAmapClient, AmapError, thinPolyline, type Fetcher } from '../../src/tools/amap'
+import { createAmapClient, AmapError, thinPolyline, type Fetcher } from '../../src/integrations/amap'
 
 /** 假 fetch：按 URL 里的路径返回预设的高德响应，不打真实网络 */
 function fakeFetcher(routes: Record<string, any>): Fetcher {

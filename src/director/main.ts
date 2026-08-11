@@ -1,6 +1,6 @@
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
-import { createAmapClient } from '../tools/amap'
+import { createAmapClient } from '../integrations/amap'
 import { createAgent } from '../agent/runtime'
 import { createOpenRouter, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'

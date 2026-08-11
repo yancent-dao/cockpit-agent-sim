@@ -5,7 +5,7 @@ import { createOrchestrator } from '../../src/cards/orchestrator'
 import { CARD_RULES, DATA_BUILDERS } from '../../src/config/cardRules'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
-import { createAmapClient, type Fetcher } from '../../src/tools/amap'
+import { createAmapClient, type Fetcher } from '../../src/integrations/amap'
 
 let now = 1000
 let store: ReturnType<typeof createStore>

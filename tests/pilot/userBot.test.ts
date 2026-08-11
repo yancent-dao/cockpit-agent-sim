@@ -24,6 +24,16 @@ describe('用户机器人：解析', () => {
   it('完全不像 JSON 就整段当话术', () => {
     expect(parseTurn('帮我开窗').say).toBe('帮我开窗')
   })
+
+  // 历史是用"我说：…／助手说：…"喂给机器人的，它学着学着把署名也带进了话术
+  it('剥掉从历史格式里学去的署名前缀', () => {
+    expect(parseTurn('{"say":"我说：就是刚才那个出口","done":false}').say).toBe('就是刚才那个出口')
+    expect(parseTurn('{"say":"用户：帮我开窗","done":false}').say).toBe('帮我开窗')
+  })
+
+  it('话本身以"我说"开头但不是署名的，别误伤', () => {
+    expect(parseTurn('{"say":"我说过了，去机场","done":false}').say).toBe('我说过了，去机场')
+  })
 })
 
 /**

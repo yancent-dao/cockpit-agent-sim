@@ -18,6 +18,7 @@ export interface Scenario {
   maxTurns: number
 }
 
+/** 跑批器默认就把车放在成都，这里显式写出来只是为了让场景读起来更清楚 */
 const CHENGDU = { 'vehicle.location': '104.065861,30.657401' }
 
 export const SCENARIOS: Scenario[] = [

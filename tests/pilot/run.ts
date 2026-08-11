@@ -52,8 +52,17 @@ async function botChat(system: string, messages: Array<{ role: 'user' | 'assista
       headers: { Authorization: `Bearer ${OPENROUTER_KEY}`, 'Content-Type': 'application/json', 'X-Title': 'Cockpit Pilot Bot' },
       body: JSON.stringify({ model: BOT_MODEL, messages: [{ role: 'system', content: system }, ...messages], temperature: 0.8 }),
     })
-    if (res.ok) return (await res.json()).choices?.[0]?.message?.content ?? ''
-    if (res.status === 429 && attempt < 4) { await sleep(2000 * (attempt + 1)); continue }
+    if (res.ok) {
+      // 偶尔回 200 但 body 是空的，直接 res.json() 会抛 SyntaxError 把整个场景搞挂
+      const text = await res.text()
+      if (text.trim()) {
+        try { return JSON.parse(text).choices?.[0]?.message?.content ?? '' }
+        catch { /* 当成空响应重试 */ }
+      }
+      if (attempt < 4) { await sleep(1000 * (attempt + 1)); continue }
+      return ''
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < 4) { await sleep(2000 * (attempt + 1)); continue }
     throw new Error(`用户机器人调用失败 ${res.status}: ${await res.text()}`)
   }
 }
@@ -119,10 +128,11 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   if (reply.length > 100)
     out.push(`提示 · 话术 ${reply.length} 字，语音播报偏长：「${reply.slice(0, 40)}…」`)
   // 屏幕上已经摆出对比列表，话术再把每条的数字念一遍就是重复劳动。
-  // 只认 list 模板：车控卡的 items 是四个座位/车窗，那种场景下报数字是在解释边界，不是复述
+  // 只认 list 模板：车控卡的 items 是四个座位/车窗，那种场景下报数字是在解释边界，不是复述。
+  // 即便如此也只提示不判死——屏上是航站楼候选、话术在说电量续航，这种同框不算复述
   if (layout.cards.some((c: any) => c.template === 'list' && (c.data?.items?.length ?? 0) >= 3)
       && (reply.match(/\d+/g) ?? []).length >= 5)
-    out.push(`屏幕已有列表卡，话术还逐条复述了数字：「${reply.slice(0, 40)}…」`)
+    out.push(`提示 · 屏幕已有列表卡，话术里数字偏多，看看是不是在复述：「${reply.slice(0, 40)}…」`)
   return out
 }
 
@@ -133,7 +143,10 @@ async function runScenario(s: Scenario) {
   const registry = createRegistry(store, TOOLS, Date.now, { desk, amap })
   createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()
 
-  for (const [path, value] of Object.entries(s.initial ?? {})) store.setDirect(path, value as any)
+  // 兜底给个车位置。忘了设的场景会用信号默认值（北京），于是"导航去双流机场"
+  // 规划出 1800 公里，看起来像产品 bug 其实是场景没写全。场景自己写了就覆盖掉
+  const initial = { 'vehicle.location': '104.065861,30.657401', ...s.initial }
+  for (const [path, value] of Object.entries(initial)) store.setDirect(path, value as any)
 
   const llm = createOpenRouter(() => OPENROUTER_KEY, () => AGENT_MODEL)
   const agent = createAgent({ manifest: MAIN_AGENT, registry, store, llm,
@@ -222,7 +235,8 @@ async function main() {
   const file = `${outDir}${stamp}.json`
   writeFileSync(file, JSON.stringify(results, null, 2))
   const all = results.flatMap((r: any) => (r.turns ?? []).flatMap((t: any) => t.issues.map((i: string) => `${r.scenario} T${t.turn}: ${i}`)))
-  const hard = all.filter((i: string) => !i.includes('提示 · '))
+  const crashed = results.filter((r: any) => r.error).map((r: any) => `${r.scenario}: 跑挂了 ${r.error}`)
+  const hard = [...crashed, ...all.filter((i: string) => !i.includes('提示 · '))]
   const soft = all.filter((i: string) => i.includes('提示 · '))
   console.log(`\n快照已写入 ${file}`)
   console.log(hard.length ? `\n硬伤 ${hard.length} 条：\n${hard.map(i => '  · ' + i).join('\n')}` : '\n自动检测：无硬伤')

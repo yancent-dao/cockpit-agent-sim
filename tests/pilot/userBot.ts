@@ -82,6 +82,9 @@ export function createUserBot({ chat }: UserBotDeps) {
   }
 }
 
+/** 历史是用"我说：…"喂进去的，机器人学着学着把署名也带进了话术，得剥掉 */
+const clean0 = (v: string) => stripThinking(v).replace(/^\s*(我说|用户|乘客|车主)\s*[：:]\s*/, '').trim()
+
 /** 模型偶尔会用 ```json 包裹、混进思考标签或多说两句，这里做容错解析 */
 export function parseTurn(raw: string): BotTurn {
   const clean = stripThinking(raw)
@@ -89,7 +92,7 @@ export function parseTurn(raw: string): BotTurn {
   if (json) {
     try {
       const o = JSON.parse(json)
-      if (typeof o.say === 'string') return { say: stripThinking(o.say), done: Boolean(o.done) }
+      if (typeof o.say === 'string') return { say: clean0(o.say), done: Boolean(o.done) }
     } catch { /* 落到下面的正则捞 */ }
   }
   // JSON 不合法（少个括号、用了单引号、键没加引号）时把 say 的值捞出来。
@@ -103,7 +106,7 @@ export function parseTurn(raw: string): BotTurn {
         .sort((a, b) => b.length - a.length)[0]
     : undefined
   const salvaged = byKey ?? longest
-  if (salvaged) return { say: stripThinking(salvaged), done: /["']?done["']?\s*:\s*true/.test(clean) }
+  if (salvaged) return { say: clean0(salvaged), done: /["']?done["']?\s*:\s*true/.test(clean) }
 
   // 完全不像 JSON，整段就是用户说的话
   return { say: clean.slice(0, 200), done: false }

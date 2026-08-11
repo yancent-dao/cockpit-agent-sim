@@ -1,4 +1,5 @@
 import { createBus, type BusMsg } from '../bus'
+import { parseTurn, dayLabel } from './turn'
 import { showRoute } from './mapView'
 
 const $ = (id: string) => document.getElementById(id)!
@@ -75,20 +76,6 @@ const WIN = [
  * 距离 + 动作 + 箭头，好让转向条像真车导航那样一眼可读。
  * 纯展示层的文本解析，不是业务逻辑。
  */
-const TURN_ICONS: Array<[RegExp, string]> = [
-  [/左转|向左/, '↰'], [/右转|向右/, '↱'],
-  [/掉头/, '⤺'], [/环岛/, '⟳'],
-  [/靠左|左前/, '↖'], [/靠右|右前/, '↗'],
-  [/到达|终点/, '◎'],
-]
-function parseTurn(instruction: string) {
-  const dist = instruction.match(/(\d+(?:\.\d+)?)\s*(米|公里|千米)/)
-  const icon = TURN_ICONS.find(([re]) => re.test(instruction))?.[1] ?? '↑'
-  // 动作取最后一个动词短语，前面的路名信息在小屏上属于噪音
-  const action = instruction.replace(/^.*?(\d+(?:\.\d+)?)\s*(米|公里|千米)/, '').trim() || instruction
-  return { dist: dist ? `${dist[1]}${dist[2]}` : '', action, icon }
-}
-
 /**
  * 导航卡单独渲染：地图容器建一次就长在那儿，之后只更新转向条与底部数字。
  * 整块 innerHTML 重刷会把活地图实例冲掉（闪屏、丢视角），所以这里必须分开处理。
@@ -107,7 +94,8 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
   const bar = node.querySelector('.turnbar') as HTMLElement
   bar.style.display = turn ? '' : 'none'
   if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
-    <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>`
+    <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
+    ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ''}`
 
   node.querySelector('.navfoot')!.innerHTML = `
     <div class="navbig"><b>${d.eta ?? '--'}</b><span>分钟</span></div>
@@ -155,10 +143,11 @@ function body(c: CardView): string {
       return `<div class="cap">${(d.items ?? []).map((i: any) =>
         `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
     case 'weather':
+      // 风力和湿度任一缺失都不该留下孤零零一个分隔点
       return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
-        <div class="sub">${esc(d.now.wind ?? '')}${d.now.humidity !== undefined ? ` · 湿度${d.now.humidity}%` : ''}</div>` : ''}
+        <div class="sub">${esc([d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · '))}</div>` : ''}
         ${(d.forecast ?? []).slice(0, 3).map((f: any) => `
-        <div class="rowline"><span>${esc(f.date)}</span><em>${esc(f.dayWeather)} ${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</em></div>`).join('')}`
+        <div class="rowline"><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)} ${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</em></div>`).join('')}`
     case 'nav':
       // 导航卡由 renderNavCard 单独处理——活地图有状态，不能跟着文字一起重绘
       return ''
@@ -276,7 +265,12 @@ const TAG: Record<string, string> = {
   speaking: '播报中', executing: '执行中 · 形象缩小让位', confirming: '待确认',
   rejected: '已拒绝 · 说明原因与替代方案',
 }
-const setVoice = (s: string) => { $('voice').dataset.s = s; $('subTag').textContent = TAG[s] ?? s }
+// data-s 同时打在 #stage 上：待机时桌面要往下长，占掉语音区让出来的高度
+const setVoice = (s: string) => {
+  $('voice').dataset.s = s
+  $('stage').dataset.s = s
+  $('subTag').textContent = TAG[s] ?? s
+}
 function setSub(text: string | null | undefined, who?: string) {
   const el = $('subText')
   if (text === null) { el.innerHTML = '<span class="cursor"></span>'; return }

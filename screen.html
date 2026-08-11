@@ -28,8 +28,12 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
 
 /* 3列×2行栅格：上行 Agent 区，下行固定区 */
-#desk{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;
-  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:24px}
+/* 待机时语音区让出高度给桌面：一个球加两个字占掉整屏 21% 是浪费 */
+#stage{--voiceH:300px}
+#stage[data-s=idle]{--voiceH:148px}
+#desk{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
+  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:24px;
+  transition:bottom .32s var(--ease)}
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
   writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
 .card{background:var(--bg-surface);border-radius:var(--r-lg);padding:28px 32px;overflow:hidden;
@@ -67,6 +71,9 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .turntext{display:flex;align-items:baseline;gap:16px;min-width:0}
 .turntext b{font-size:52px;font-weight:700;font-variant-numeric:tabular-nums}
 .turntext span{font-size:30px;opacity:.92;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 要进的路名右对齐单独占一栏——它是用户确认没走错的依据，不能跟动作挤在一起被省略号吃掉 */
+.turnroad{margin-left:auto;font-size:28px;opacity:.82;max-width:44%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mapbox{flex:1;min-height:0;background:var(--bg-elevated);position:relative;overflow:hidden}
 .mapimg{width:100%;height:100%;object-fit:cover;display:block}
 /* 高德 JS API 的版权条在车机上是噪音 */
@@ -100,8 +107,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}
 
-#voice{position:absolute;left:0;right:0;bottom:0;height:300px;display:flex;align-items:center;
-  gap:44px;padding:0 80px;border-top:1px solid var(--hairline);
+#voice{position:absolute;left:0;right:0;bottom:0;height:var(--voiceH);display:flex;align-items:center;
+  gap:44px;padding:0 80px;border-top:1px solid var(--hairline);transition:height .32s var(--ease);
   background:linear-gradient(180deg,rgba(238,241,246,0),rgba(238,241,246,.92))}
 #orbBox{width:180px;height:180px;flex:none;position:relative;display:flex;align-items:center;
   justify-content:center;transition:transform .32s var(--ease),opacity .32s var(--ease)}
@@ -112,6 +119,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 #ring{position:absolute;inset:-16px;border-radius:50%;border:3px solid transparent;opacity:0;
   border-top-color:var(--brand);border-right-color:rgba(77,163,255,.3)}
 .bar{width:9px;height:20px;border-radius:99px;background:rgba(255,255,255,.92);opacity:0}
+[data-s=idle] #orbBox{transform:scale(.62)}
 [data-s=idle] #orb{animation:breathe 3.4s ease-in-out infinite;filter:brightness(.55)}
 @keyframes breathe{0%,100%{transform:scale(.92)}50%{transform:scale(1)}}
 [data-s=wakeup] #orb{animation:pop .5s var(--ease)}
@@ -151,7 +159,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 </style>
 </head>
 <body>
-<div id="vp"><div id="stage">
+<div id="vp"><div id="stage" data-s="idle">
   <div id="statusbar">
     <span class="clock" id="clock">--:--</span>
     <span>车外 <b id="tOut">3</b>°C</span>

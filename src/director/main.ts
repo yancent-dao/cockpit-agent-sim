@@ -1,12 +1,16 @@
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
+import { createAmapClient } from '../tools/amap'
 import { createAgent } from '../agent/runtime'
 import { createOpenRouter, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
 import { createDesk } from '../cards/desk'
+import { createOrchestrator } from '../cards/orchestrator'
 import { SIGNALS } from '../config/signals'
 import { CONSTRAINTS } from '../config/constraints'
 import { TOOLS } from '../config/tools'
+import { CARD_TEMPLATES } from '../config/cards'
+import { CARD_RULES, DATA_BUILDERS } from '../config/cardRules'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
@@ -15,7 +19,13 @@ const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
 /* ══════════ 底层装配 ══════════ */
 const store = createStore(SIGNALS, CONSTRAINTS)
 const desk = createDesk()
-const registry = createRegistry(store, TOOLS, Date.now, { desk })
+const amapWebKey: string = (import.meta as any).env?.VITE_AMAP_WEB_KEY || ''
+const amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : undefined
+if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable')
+const registry = createRegistry(store, TOOLS, Date.now, { desk, amap })
+
+// 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
+createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()
 
 let apiKey: string = (import.meta as any).env?.VITE_OPENROUTER_KEY || ''
 let modelId = ''
@@ -23,57 +33,22 @@ const llm = createOpenRouter(() => apiKey, () => modelId)
 const agent = createAgent({
   manifest: MAIN_AGENT, registry, store, llm,
   desktopSummary: () => desk.summary(),
+  onTurnStart: () => desk.endTask(),
 })
 
-/* ══════════ 桌面：固定区两张常驻卡（用户配置的） ══════════ */
-const WIN_LABEL: Record<string, string> = { driver: '主驾', passenger: '副驾', rearLeft: '左后', rearRight: '右后' }
-const winItems = () => POS.map(k => ({
-  key: k, label: WIN_LABEL[k], unit: '%',
-  value: store.getTarget(`cabin.window.${k}.position`) as number,
-}))
-
-const seedDesk = () => {
-  const w = desk.render({ key: 'windows', template: 'control', size: '1/6',
-    ttl: 'persistent', kind: 'persistent', data: { title: '车窗', items: winItems() } })
-  desk.pin(w.cardId!)
-  const v = desk.show({ key: 'vehicle', template: 'vehicle', size: '1/6',
-    ttl: 'persistent', kind: 'persistent', data: { title: '车辆' } })
-  desk.pin(v.cardId!)
-  const i = desk.show({ key: 'info', template: 'info', size: '1/6',
-    ttl: 'persistent', kind: 'persistent', data: { title: '车况', text: '一切正常' } })
-  desk.pin(i.cardId!)
-}
-seedDesk()
-
+/* ══════════ 桌面 → 车机屏：位置由 desk 统一计算，车机屏只管画 ══════════ */
 const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind: c.kind,
-  title: c.data?.title ?? c.template, data: c.data })
+  row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan,
+  title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template, data: c.data })
 function pushDesk() {
   const l = desk.layout()
   bus.send({ type: 'cards', desk: {
-    agent: l.agent.map(brief), fixed: l.fixed.map(brief),
-    overlay: l.overlay ? brief(l.overlay) : undefined, agentFree: l.agentFree,
+    cards: l.cards.map(brief),
+    overlay: l.overlay ? brief(l.overlay) : undefined, free: l.free,
   } } as any)
 }
 desk.subscribe(pushDesk)
 setInterval(() => desk.tick(), 500)
-
-/**
- * 四级反馈由 state.changed 自动驱动，Agent 不需要为基础反馈额外调 Tool。
- * 规则：优先复用桌面上已有的卡 → 其次放大 → 最后才新建。
- */
-store.subscribe('cabin.window.*.position', () => {
-  const r = desk.render({
-    key: 'windows', template: 'control', size: '1/6', ttl: 30, kind: 'task',
-    data: { title: '车窗', items: winItems() },
-  })
-  if (r.level && r.level !== lastLevel) {
-    lastLevel = r.level
-    const how = { L1: 'L1 复用桌面已有卡片，不新建', L2: 'L2 放大已有卡片', L3: 'L3 新建卡片' }[r.level]
-    log('p', `  ▪ 反馈 ${how}`)
-  }
-  if (r.note) log('r', '  ▪ ' + r.note)
-})
-let lastLevel = ''
 
 $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
 
@@ -187,51 +162,6 @@ async function ask(text: string) {
 $('send').onclick = () => { const v = $<HTMLInputElement>('say').value.trim(); if (v) { $<HTMLInputElement>('say').value = ''; ask(v) } }
 $<HTMLInputElement>('say').onkeydown = e => { if (e.key === 'Enter') $('send').click() }
 
-/* ══════════ Golden Case ══════════ */
-const CASES = [
-  { n: 1, g: 1, t: '打开主驾车窗', m: '基础链路 State→Tool→UI' },
-  { n: 2, g: 1, t: '开一半', m: '参数化 + 多轮承接（承接上一条）' },
-  { n: 3, g: 1, t: '把窗户都关了', m: 'all 枚举 + 并行调用' },
-  { n: 4, g: 2, t: '开个窗', m: '说话人指代消解（先把说话人切到左后）', pre: () => setSrc('rearLeft') },
-  { n: 5, g: 2, t: '算了关上', m: '中间态打断反向（趁动画未完成时点）' },
-  { n: 6, g: 2, t: '开窗', m: '情境注入（先切雨天，看模型会不会先问）', pre: () => setRain(true) },
-  { n: 7, g: 3, t: '窗户开到底', m: '约束引擎 SPEED_LIMITED', pre: () => setSpeed(120) },
-  { n: 8, g: 3, t: '把后窗打开', m: '拒绝契约 CHILD_LOCK_ON', pre: () => setLock(true) },
-  { n: 9, g: 3, t: '开一下天窗', m: 'NOT_EQUIPPED · 反幻觉必测' },
-  { n: 10, g: 4, t: '开窗', m: '桌面已有车窗卡 → 走 L1 复用，不新建',
-    pre: () => { if (!desk.findByKey('windows')) seedWindowCard() } },
-  { n: 11, g: 4, t: '开窗', m: '桌面无车窗卡 → 走 L3 新建，ttl 到期自动消失',
-    pre: () => { const c = desk.findByKey('windows'); if (c) { desk.unpin(c.id); desk.dismiss(c.id) } } },
-  { n: 12, g: 4, t: '帮我找个充电桩，再放首歌', m: 'Agent 区满载 → 降尺寸/挤出并告知用户',
-    pre: () => fillAgentZone() },
-  { n: 13, g: 4, t: '（模拟来电）', m: '系统卡抢占，任务卡让位', pre: () => incomingCall(), noAsk: true },
-]
-for (const g of [1, 2, 3, 4]) {
-  $(`g${g}`).innerHTML = CASES.filter(c => c.g === g).map(c =>
-    `<button class="case" data-c="${c.n}"><span class="no">${c.n}</span>
-      <span><b>${c.t}</b><span class="m">${c.m}</span></span></button>`).join('')
-}
-document.querySelectorAll('[data-c]').forEach(b => (b as HTMLElement).onclick = () => {
-  const c: any = CASES.find(x => x.n === Number((b as HTMLElement).dataset.c))!
-  c.pre?.()
-  if (!c.noAsk) ask(c.t)
-})
-
-function seedWindowCard() {
-  const w = desk.render({ key: 'windows', template: 'control', size: '1/6',
-    ttl: 'persistent', kind: 'persistent', data: { title: '车窗', items: winItems() } })
-  desk.pin(w.cardId!)
-}
-function fillAgentZone() {
-  desk.show({ template: 'list', size: '1/2', ttl: 60, data: { title: '附近餐厅', items: [{ label: '示例结果' }] } })
-  log('p', 'Agent 区已被一张 1/2 卡占满，下一张卡会触发降尺寸')
-}
-function incomingCall() {
-  const r = desk.show({ template: 'notice', size: '1/3', ttl: 20, kind: 'system',
-    data: { title: '来电', text: '张伟 · 手机', suggestion: '接听 / 挂断' } })
-  log('r', `系统卡抢占 → ${r.status}${r.note ? ' · ' + r.note : ''}`)
-}
-
 /* ══════════ 车辆状态控件 ══════════ */
 const setSpeed = (v: number) => { store.setDirect('vehicle.speed', v); $<HTMLInputElement>('spd').value = String(v); $('spdV').textContent = `${v} km/h`; push() }
 const setSrc = (v: string) => { store.setDirect('perception.voiceSource', v); $<HTMLSelectElement>('vsrc').value = v }
@@ -244,6 +174,21 @@ $<HTMLInputElement>('soc').oninput = e => { const v = Number((e.target as HTMLIn
 $<HTMLSelectElement>('vsrc').onchange = e => setSrc((e.target as HTMLSelectElement).value)
 $('bLock').onclick = () => setLock(!store.get('cabin.childLock'))
 $('bRain').onclick = () => setRain(store.get('env.weather') !== 'rain')
+const CITY_KEY = 'cockpit-sim:city'
+const citySelect = $<HTMLSelectElement>('city')
+const setCity = (value: string, announce: boolean) => {
+  citySelect.value = value
+  store.setDirect('vehicle.location', value)
+  if (announce) log('p', `当前城市 → ${citySelect.selectedOptions[0].textContent}`)
+}
+citySelect.onchange = e => {
+  const v = (e.target as HTMLSelectElement).value
+  localStorage.setItem(CITY_KEY, v)
+  setCity(v, true)
+}
+// 刷新页面后记住上次选的城市——不然默认回北京，演示场景在别的城市就会出现离谱的导航距离
+const savedCity = localStorage.getItem(CITY_KEY)
+if (savedCity) setCity(savedCity, false)
 
 const SCENES: Record<string, () => void> = {
   park: () => { setSpeed(0); setRain(false); setLock(false) },
@@ -259,6 +204,8 @@ document.querySelectorAll('[data-sc]').forEach(b => (b as HTMLElement).onclick =
 /* ══════════ 模型选择 ══════════ */
 let allModels: ModelInfo[] = []
 let fastOnly = true
+/** 默认选中的模型——便宜模型工具调用纪律差（会瞎重复调 Tool），这个稳一些 */
+const DEFAULT_MODEL_ID = 'minimax/minimax-m3'
 
 function renderModels() {
   const list = fastOnly
@@ -268,7 +215,10 @@ function renderModels() {
   sel.innerHTML = list.map(m =>
     `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ''}</option>`).join('')
   $('modelCount').textContent = `${list.length} / ${allModels.length}`
-  if (list.length) { modelId = list[0].id; sel.value = modelId }
+  if (list.length) {
+    modelId = list.find(m => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id
+    sel.value = modelId
+  }
 }
 $<HTMLSelectElement>('model').onchange = e => { modelId = (e.target as HTMLSelectElement).value; log('p', `模型切换 → ${modelId}`) }
 $('fastOnly').onclick = () => { fastOnly = !fastOnly; $('fastOnly').classList.toggle('on', fastOnly); renderModels() }

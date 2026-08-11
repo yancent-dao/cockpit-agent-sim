@@ -2,13 +2,11 @@ import type { Store } from '../core/store'
 import type { Registry } from '../tools/registry'
 import type { AgentManifest } from '../../agents/main-agent/manifest'
 
-const SEAT_CN: Record<string, string> = {
-  driver: '主驾', passenger: '副驾', rearLeft: '左后', rearRight: '右后',
+/** 枚举值的中文说法一律来自信号定义的 valueLabels，这里不留硬编码表 */
+const cn = (store: Store, alias: string) => {
+  const v = store.get(alias)
+  return store.signals.find(s => s.alias === alias)?.valueLabels?.[String(v)] ?? v
 }
-const WEATHER_CN: Record<string, string> = {
-  clear: '晴', cloudy: '多云', rain: '小雨', heavyRain: '大雨', snow: '雪', fog: '雾',
-}
-const GEAR_CN: Record<string, string> = { p: 'P', r: 'R', n: 'N', d: 'D' }
 
 /**
  * 上下文注入。
@@ -32,19 +30,18 @@ export function buildSystemPrompt(
       let v = g(sig.alias)
       if (sig.changeMode === 'CONTINUOUS' && typeof v === 'number') v = Math.round(v)
       if (typeof v === 'number') v = Math.round(v as number)
-      if (sig.alias === 'vehicle.gear') v = GEAR_CN[v as string] ?? v
+      if (sig.valueLabels) v = sig.valueLabels[String(v)] ?? v
       lines.push(`- ${sig.label ?? sig.alias}: ${v}${sig.unit ?? ''}  (${sig.alias})`)
     }
     parts.push(`\n## 当前车辆状态\n${lines.join('\n')}`)
   }
 
   if (want.has('environment')) {
-    const w = WEATHER_CN[g('env.weather') as string] ?? g('env.weather')
-    parts.push(`\n## 环境\n- 天气: ${w}\n- 车外温度: ${Math.round(g('cabin.temperature.outside') as number)}°C`)
+    parts.push(`\n## 环境\n- 天气: ${cn(store, 'env.weather')}\n- 车外温度: ${Math.round(g('cabin.temperature.outside') as number)}°C`)
   }
 
   if (want.has('speaker')) {
-    const seat = SEAT_CN[g('perception.voiceSource') as string] ?? '主驾'
+    const seat = cn(store, 'perception.voiceSource')
     parts.push(`\n## 说话人\n当前说话的人坐在 **${seat}**。当他说"开窗""我这边"这类没有指明位置的话时，默认指他自己所在的位置。`)
   }
 

@@ -29,7 +29,6 @@ button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
 button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
 button:disabled{opacity:.4;cursor:not-allowed}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 input,select{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);
   border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;width:100%}
 input::placeholder{color:#4A5462}
@@ -39,12 +38,7 @@ input::placeholder{color:#4A5462}
 .fld .v{width:64px;text-align:right;color:#C9D2E0;font-variant-numeric:tabular-nums;font-size:12px;flex:none}
 .row{display:flex;gap:8px;align-items:center}
 .note{color:var(--t3);font-size:11.5px;line-height:1.65;margin-top:9px}
-.case{width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;line-height:1.45;display:flex;gap:9px}
-.case .no{color:var(--brand);font-weight:700;width:15px;flex:none}
-.case .m{color:var(--t3);font-size:11px;display:block;margin-top:2px}
-.case:hover .no,.case:hover .m{color:#06121F}
-.grp{font-size:11px;color:var(--t3);margin:12px 0 7px;border-left:2px solid var(--brand);padding-left:8px;line-height:1.5}
-.grp b{color:var(--t2)}
+.hr{border-top:1px solid rgba(255,255,255,.08);margin:14px 0}
 #trace{background:#080B10;border-radius:10px;padding:11px;font-family:ui-monospace,Menlo,monospace;
   font-size:11px;line-height:1.7;color:#7A8494;height:420px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
 #trace .u{color:#fff}#trace .p{color:#4A5462}#trace .t{color:var(--brand)}
@@ -88,17 +82,29 @@ input::placeholder{color:#4A5462}
   </section>
 
   <section>
-    <h2>Golden Case · 真实模型跑 <span class="n">13</span></h2>
-    <div class="grp"><b>Base · 正常路径</b>　验证链路本身是否成立</div><div id="g1"></div>
-    <div class="grp"><b>Disambiguation · 歧义消解</b>　验证上下文与说话人信息是否真被用上</div><div id="g2"></div>
-    <div class="grp"><b>Guardrail · 边界与拒绝</b>　CAR-bench 结论：模型倾向"宁可编造也不认怂"，这几条是必测项</div><div id="g3"></div>
-    <div class="grp"><b>Orchestration · 卡片编排</b>　无APP化独有：优先复用 → 放大 → 新建</div><div id="g4"></div>
+    <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
+    <div id="trace"></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
   </section>
  </div>
 
  <div>
   <section>
-    <h2>车辆状态</h2>
+    <h2>车辆状态与场景</h2>
+    <div class="g2">
+      <button data-sc="park">静止 · 地库</button><button data-sc="highway">高速巡航 120</button>
+      <button data-sc="rain">雨天市区</button><button data-sc="kids">带孩子 · 儿童锁</button>
+    </div>
+    <div class="hr"></div>
+    <div class="fld"><label>当前城市</label><select id="city">
+      <option value="116.397428,39.90923">北京</option>
+      <option value="121.473701,31.230416">上海</option>
+      <option value="104.065861,30.657401">成都</option>
+      <option value="113.264385,23.129112">广州</option>
+      <option value="114.057868,22.543099">深圳</option>
+    </select></div>
+    <div class="note">导航算的距离/时长以这个为起点——不选对，异地导航会出现"1786km"这种离谱数字，不是 Bug。</div>
+    <div class="hr"></div>
     <div class="fld"><label>车速</label><input type="range" id="spd" min="0" max="140" value="0"><span class="v" id="spdV">0 km/h</span></div>
     <div class="fld"><label>车外温</label><input type="range" id="tmp" min="-10" max="40" value="3"><span class="v" id="tmpV">3 °C</span></div>
     <div class="fld"><label>电量</label><input type="range" id="soc" min="0" max="100" value="68"><span class="v" id="socV">68 %</span></div>
@@ -111,23 +117,9 @@ input::placeholder{color:#4A5462}
       <div><span>左后</span><b id="m-rearLeft">0</b></div><div><span>右后</span><b id="m-rearRight">0</b></div>
     </div>
     <div class="note" id="invar"></div>
-  </section>
-
-  <section>
-    <h2>场景预设</h2>
-    <div class="g2">
-      <button data-sc="park">静止 · 地库</button><button data-sc="highway">高速巡航 120</button>
-      <button data-sc="rain">雨天市区</button><button data-sc="kids">带孩子 · 儿童锁</button>
-    </div>
     <div class="perm" style="margin-top:12px">
       <i class="c">彩 可直接执行</i><i class="h">灰 需确认</i><i class="b">黑 AI 禁区</i>
     </div>
-  </section>
-
-  <section>
-    <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
-    <div id="trace"></div>
-    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
   </section>
  </div>
 </div>

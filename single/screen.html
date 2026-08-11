@@ -5,13 +5,15 @@
 <title>座舱模拟环境 · 车机屏</title>
 <style>
 :root{
-  --bg-base:#0B0E14;--bg-surface:#151A23;--bg-elevated:#1E2530;
-  --text-primary:#F2F5FA;--text-secondary:#8A94A6;
-  --brand:#4DA3FF;--success:#3ED598;--warning:#FFB84D;--danger:#FF5C5C;
+  /* 日间配色：v0.1 单一浅色主题，不做日夜切换 */
+  --bg-base:#EEF1F6;--bg-surface:#FFFFFF;--bg-elevated:#E4E9F0;
+  --text-primary:#1B2430;--text-secondary:#5C6675;
+  --brand:#1E6FD9;--success:#1B9E68;--warning:#C97A16;--danger:#DB4045;
+  --hairline:rgba(20,30,45,.09);--track:#E1E6ED;
   --r-sm:12px;--r-md:20px;--r-lg:32px;--ease:cubic-bezier(.4,0,.2,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#000;overflow:hidden;cursor:none;
+html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
 #vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
@@ -19,17 +21,17 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
   background:var(--bg-base);position:relative;overflow:hidden}
 
 #statusbar{height:96px;padding:0 60px;display:flex;align-items:center;gap:56px;
-  border-bottom:1px solid rgba(255,255,255,.06);font-size:30px;color:var(--text-secondary)}
+  border-bottom:1px solid var(--hairline);font-size:30px;color:var(--text-secondary)}
 #statusbar .clock{font-size:36px;color:var(--text-primary);font-weight:500}
 #statusbar .sp{flex:1}#statusbar b{color:var(--text-primary);font-weight:500}
-.chip{padding:8px 22px;border-radius:999px;background:var(--bg-surface);font-size:26px;transition:.24s var(--ease)}
-.chip.warn{background:rgba(255,184,77,.14);color:var(--warning)}
+.chip{padding:8px 22px;border-radius:999px;background:var(--bg-elevated);font-size:26px;transition:.24s var(--ease)}
+.chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
 
 /* 3列×2行栅格：上行 Agent 区，下行固定区 */
 #desk{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;
   display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:24px}
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
-  writing-mode:vertical-rl;font-size:18px;color:#242C38;letter-spacing:6px}
+  writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
 .card{background:var(--bg-surface);border-radius:var(--r-lg);padding:28px 32px;overflow:hidden;
   display:flex;flex-direction:column;transition:box-shadow .24s var(--ease),background .24s var(--ease);
   animation:cardIn .32s var(--ease)}
@@ -37,7 +39,7 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
 .card.hot{background:var(--bg-elevated);box-shadow:0 0 0 3px var(--brand)}
 .card h3{font-size:30px;font-weight:600;margin-bottom:16px;color:var(--text-primary)}
 .card .sub{font-size:26px;color:var(--text-secondary);line-height:1.5}
-.slot{border:2px dashed rgba(255,255,255,.05);border-radius:var(--r-lg)}
+.slot{border:2px dashed var(--hairline);border-radius:var(--r-lg)}
 .card .rowline{display:flex;justify-content:space-between;align-items:baseline;font-size:26px;margin-bottom:6px}
 .card .rowline span{color:var(--text-secondary)}
 .card .rowline em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -45,10 +47,40 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
 .card .opt{display:inline-block;padding:10px 24px;margin:8px 12px 0 0;border-radius:999px;
   background:var(--bg-elevated);font-size:26px;color:var(--text-primary)}
 .card .sug{margin-top:12px;font-size:24px;color:var(--brand)}
-.card.kind-system{box-shadow:0 0 0 3px rgba(255,184,77,.5)}
-.card.tpl-notice{background:rgba(255,184,77,.10)}
+/* 候选列表：序号让语音选择("第一个")和屏幕对得上号 */
+.listcard{list-style:none;counter-reset:pick;margin:0;padding:0;overflow:auto}
+.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:14px;
+  padding:12px 0;border-bottom:1px solid var(--hairline)}
+.listcard li:last-child{border-bottom:none}
+.listcard li::before{content:counter(pick);flex:none;width:40px;height:40px;border-radius:50%;
+  background:var(--brand);color:#fff;font-size:24px;font-weight:600;
+  display:flex;align-items:center;justify-content:center}
+.listcard li b{font-size:28px;font-weight:600;color:var(--text-primary)}
+.listcard li small{font-size:22px;color:var(--text-secondary)}
+/* ── 导航卡：转向条在上、地图居中、关键数字在下 ── */
+.tpl-nav{overflow:hidden;padding:0}
+.tpl-nav h3{display:none} /* 目的地已在底部呈现，标题重复了 */
+.navwrap{display:flex;flex-direction:column;height:100%;gap:0}
+.turnbar{flex:none;display:flex;align-items:center;gap:24px;padding:22px 32px;
+  background:var(--brand);color:#fff}
+.turnbar .arrow{font-size:64px;line-height:1;flex:none}
+.turntext{display:flex;align-items:baseline;gap:16px;min-width:0}
+.turntext b{font-size:52px;font-weight:700;font-variant-numeric:tabular-nums}
+.turntext span{font-size:30px;opacity:.92;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mapbox{flex:1;min-height:0;background:var(--bg-elevated);position:relative;overflow:hidden}
+.mapimg{width:100%;height:100%;object-fit:cover;display:block}
+/* 高德 JS API 的版权条在车机上是噪音 */
+.mapbox .amap-logo,.mapbox .amap-copyright{display:none!important}
+.navfoot{flex:none;display:flex;align-items:baseline;gap:40px;padding:20px 32px}
+.navbig{display:flex;align-items:baseline;gap:8px}
+.navbig b{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-primary)}
+.navbig span{font-size:26px;color:var(--text-secondary)}
+.navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
+.card.kind-system{box-shadow:0 0 0 3px rgba(201,122,22,.5)}
+.card.tpl-notice{background:rgba(201,122,22,.10)}
 .card.tpl-notice h3{color:var(--warning)}
-.card.tpl-confirm{background:rgba(77,163,255,.10)}
+.card.tpl-confirm{background:rgba(30,111,217,.08)}
 #overlay{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;display:none;z-index:6}
 #overlay.on{display:block;animation:cardIn .32s var(--ease)}
 #overlay .card{height:100%}
@@ -61,7 +93,7 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
 .win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
 .win .top span{color:var(--text-secondary)}
 .win .top em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
-.track{height:18px;border-radius:999px;background:#0B0E14;overflow:hidden}
+.track{height:18px;border-radius:999px;background:var(--track);overflow:hidden}
 .fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2E7FD6,var(--brand))}
 .win.hot .top em{color:var(--brand)}
 
@@ -69,8 +101,8 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
 #carWrap svg{height:100%;max-height:400px}
 
 #voice{position:absolute;left:0;right:0;bottom:0;height:300px;display:flex;align-items:center;
-  gap:44px;padding:0 80px;border-top:1px solid rgba(255,255,255,.06);
-  background:linear-gradient(180deg,rgba(11,14,20,0),rgba(11,14,20,.9))}
+  gap:44px;padding:0 80px;border-top:1px solid var(--hairline);
+  background:linear-gradient(180deg,rgba(238,241,246,0),rgba(238,241,246,.92))}
 #orbBox{width:180px;height:180px;flex:none;position:relative;display:flex;align-items:center;
   justify-content:center;transition:transform .32s var(--ease),opacity .32s var(--ease)}
 #orb{width:132px;height:132px;border-radius:50%;position:relative;
@@ -107,15 +139,15 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
 .cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
-#reject{position:absolute;left:80px;right:80px;bottom:328px;background:rgba(255,184,77,.12);
-  border:2px solid rgba(255,184,77,.45);border-radius:var(--r-md);padding:26px 34px;
+#reject{position:absolute;left:80px;right:80px;bottom:328px;background:rgba(201,122,22,.12);
+  border:2px solid rgba(201,122,22,.4);border-radius:var(--r-md);padding:26px 34px;
   display:none;gap:20px;align-items:flex-start;z-index:5}
 #reject.on{display:flex;animation:rise .32s var(--ease)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 #reject .tt{font-size:32px;color:var(--warning);font-weight:600;margin-bottom:8px}
 #reject .ds{font-size:28px;color:var(--text-secondary);line-height:1.5}
-#reject code{background:rgba(0,0,0,.35);padding:3px 12px;border-radius:8px;font-size:24px;color:var(--warning)}
-#conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#39414F;transition:opacity .6s}
+#reject code{background:rgba(0,0,0,.06);padding:3px 12px;border-radius:8px;font-size:24px;color:var(--warning)}
+#conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>
 </head>
 <body>
@@ -184,6 +216,92 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
     };
   }
 
+  // src/screen/mapView.ts
+  var import_meta = {};
+  var JS_KEY = import_meta.env?.VITE_AMAP_JS_KEY || "";
+  var JS_SECRET = import_meta.env?.VITE_AMAP_JS_SECRET || "";
+  var RENDER_TIMEOUT = 6e3;
+  var loading = null;
+  function loadAMap() {
+    if (loading) return loading;
+    if (!JS_KEY) return loading = Promise.resolve(false);
+    loading = new Promise((resolve) => {
+      if (JS_SECRET) window._AMapSecurityConfig = { securityJsCode: JS_SECRET };
+      const s = document.createElement("script");
+      s.src = `https://webapi.amap.com/maps?v=2.0&key=${JS_KEY}`;
+      s.onload = () => resolve(Boolean(window.AMap));
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+  var parse = (loc) => {
+    const [lng, lat] = (loc ?? "").split(",").map(Number);
+    return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
+  };
+  var live = /* @__PURE__ */ new WeakMap();
+  async function showRoute(box, v) {
+    const ok2 = await loadAMap();
+    if (!ok2) return false;
+    const AMap = window.AMap;
+    const path = (v.polyline ?? "").split(";").map(parse).filter(Boolean);
+    const origin = parse(v.originLoc);
+    const dest = parse(v.destLoc);
+    if (!dest && !path.length) return false;
+    const sig = `${v.originLoc}|${v.destLoc}|${v.waypoints ?? ""}|${path.length}`;
+    const existing = live.get(box);
+    if (existing?.sig === sig) return true;
+    let map = existing?.map;
+    if (!map) {
+      map = new AMap.Map(box, {
+        zoom: 13,
+        center: dest ?? origin ?? void 0,
+        // 车机上不需要用户操作地图，关掉交互省得误触；也更像真车的导航视图
+        dragEnable: false,
+        zoomEnable: false,
+        doubleClickZoom: false
+      });
+      const painted = await new Promise((resolve) => {
+        const done = () => resolve(true);
+        map.on("complete", done);
+        setTimeout(() => resolve(false), RENDER_TIMEOUT);
+      });
+      if (!painted) {
+        map.destroy?.();
+        box.innerHTML = "";
+        return false;
+      }
+    }
+    existing?.overlays.forEach((o) => map.remove(o));
+    const overlays = [];
+    if (path.length > 1) {
+      overlays.push(new AMap.Polyline({
+        path,
+        strokeColor: "#1E6FD9",
+        strokeWeight: 8,
+        strokeOpacity: 0.95,
+        lineJoin: "round",
+        showDir: true
+      }));
+    }
+    const pin = (pos, color, radius = 9) => new AMap.CircleMarker({
+      center: pos,
+      radius,
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 3
+    });
+    if (origin) overlays.push(pin(origin, "#2E7FD6"));
+    for (const w of (v.waypoints ?? "").split(";").map(parse).filter(Boolean))
+      overlays.push(pin(w, "#C97A16", 8));
+    if (dest) overlays.push(pin(dest, "#DB4045"));
+    overlays.forEach((o) => map.add(o));
+    live.set(box, { map, overlays, sig });
+    map.setFitView(overlays, false, [40, 40, 40, 40]);
+    return true;
+  }
+
   // src/screen/main.ts
   var $ = (id) => document.getElementById(id);
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
@@ -203,19 +321,40 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
   var meta = { speed: 0, childLock: false, weather: "cloudy", outTemp: 3, soc: 68 };
   var hotWindows = [];
   var TRANSIT = 4e3;
-  var deskState = { agent: [], fixed: [], agentFree: 3 };
+  var deskState = { cards: [], free: 6 };
   var hotCards = /* @__PURE__ */ new Set();
-  var WIDTH = { "1/6": 1, "1/3": 2, "1/2": 3 };
   var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
-  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#232B38"/><stop offset="1" stop-color="#151A23"/></linearGradient></defs>
-  <rect x="60" y="30" width="400" height="840" rx="96" fill="url(#bg)" stroke="#333D4D" stroke-width="3"/>
-  <path d="M118 268 L402 268 L372 196 Q260 172 148 196 Z" fill="#0E141D" stroke="#2C3644" stroke-width="2"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FBFCFE"/><stop offset=".5" stop-color="#E7ECF2"/><stop offset="1" stop-color="#D3DAE3"/>
+    </linearGradient>
+    <linearGradient id="tire" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3A3F47"/><stop offset="1" stop-color="#1B1E23"/>
+    </linearGradient>
+  </defs>
+  <!-- 轮胎：四角外露，俯视图最能辨认"这是一辆车"的细节 -->
+  <rect x="46" y="214" width="30" height="128" rx="14" fill="url(#tire)"/>
+  <rect x="444" y="214" width="30" height="128" rx="14" fill="url(#tire)"/>
+  <rect x="46" y="592" width="30" height="128" rx="14" fill="url(#tire)"/>
+  <rect x="444" y="592" width="30" height="128" rx="14" fill="url(#tire)"/>
+  <!-- 车身：浅色烤漆，前后保险杠收圆 -->
+  <rect x="60" y="30" width="400" height="840" rx="96" fill="url(#bg)" stroke="#B7C1CE" stroke-width="3"/>
+  <!-- 引擎盖 / 后备箱棱线，车身细节 -->
+  <path d="M170 60 L350 60" stroke="#C6CFD9" stroke-width="4" stroke-linecap="round"/>
+  <path d="M170 838 L350 838" stroke="#C6CFD9" stroke-width="4" stroke-linecap="round"/>
+  <!-- 后视镜 -->
+  <rect x="52" y="248" width="18" height="34" rx="7" fill="#C6CFD9" stroke="#AEB9C6" stroke-width="1.5"/>
+  <rect x="450" y="248" width="18" height="34" rx="7" fill="#C6CFD9" stroke="#AEB9C6" stroke-width="1.5"/>
+  <!-- 前挡风玻璃（深色隔热玻璃，白天也是暗色） -->
+  <path d="M118 268 L402 268 L372 196 Q260 172 148 196 Z" fill="#141B24" stroke="#2C3644" stroke-width="2"/>
+  <!-- 车顶：包住四扇侧窗 -->
   <rect x="118" y="272" width="284" height="368" rx="34" fill="#1A212B" stroke="#2C3644" stroke-width="2"/>
-  <path d="M126 644 L394 644 L366 716 Q260 738 154 716 Z" fill="#0E141D" stroke="#2C3644" stroke-width="2"/>
-  <rect x="96" y="842" width="106" height="16" rx="8" fill="#7A3038"/>
-  <rect x="318" y="842" width="106" height="16" rx="8" fill="#7A3038"/>
+  <!-- 后挡风玻璃 -->
+  <path d="M126 644 L394 644 L366 716 Q260 738 154 716 Z" fill="#141B24" stroke="#2C3644" stroke-width="2"/>
+  <!-- 尾灯 -->
+  <rect x="96" y="842" width="106" height="16" rx="8" fill="#C0392B"/>
+  <rect x="318" y="842" width="106" height="16" rx="8" fill="#C0392B"/>
   <g id="wins"></g></svg>`;
   var WIN = [
     { id: "driver", x: 104, y: 290, w: 26, h: 158 },
@@ -223,47 +362,125 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
     { id: "passenger", x: 390, y: 290, w: 26, h: 158 },
     { id: "rearRight", x: 390, y: 462, w: 26, h: 158 }
   ];
+  var TURN_ICONS = [
+    [/左转|向左/, "↰"],
+    [/右转|向右/, "↱"],
+    [/掉头/, "⤺"],
+    [/环岛/, "⟳"],
+    [/靠左|左前/, "↖"],
+    [/靠右|右前/, "↗"],
+    [/到达|终点/, "◎"]
+  ];
+  function parseTurn(instruction) {
+    const dist = instruction.match(/(\d+(?:\.\d+)?)\s*(米|公里|千米)/);
+    const icon = TURN_ICONS.find(([re]) => re.test(instruction))?.[1] ?? "↑";
+    const action = instruction.replace(/^.*?(\d+(?:\.\d+)?)\s*(米|公里|千米)/, "").trim() || instruction;
+    return { dist: dist ? `${dist[1]}${dist[2]}` : "", action, icon };
+  }
+  function renderNavCard(node, c) {
+    const d = c.data ?? {};
+    if (!node.querySelector(".navwrap")) {
+      node.innerHTML = `<div class="navwrap">
+      <div class="turnbar"></div>
+      <div class="mapbox"></div>
+      <div class="navfoot"></div>
+    </div>`;
+    }
+    const step = d.steps?.[0]?.instruction;
+    const turn = step ? parseTurn(step) : void 0;
+    const bar = node.querySelector(".turnbar");
+    bar.style.display = turn ? "" : "none";
+    if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
+    <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>`;
+    node.querySelector(".navfoot").innerHTML = `
+    <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
+    <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
+    <div class="navdest">${esc(d.destination ?? "")}</div>`;
+    const box = node.querySelector(".mapbox");
+    showRoute(box, { originLoc: d.originLoc, destLoc: d.destLoc, polyline: d.polyline, waypoints: d.waypoints }).then((ok2) => {
+      if (ok2 || !d.mapUrl) return;
+      const img = box.querySelector("img");
+      if (img) {
+        if (img.src !== d.mapUrl) img.src = d.mapUrl;
+      } else box.innerHTML = `<img class="mapimg" src="${esc(d.mapUrl)}" alt="路线地图">`;
+    });
+  }
   function body(c) {
     const d = c.data ?? {};
     switch (c.template) {
       case "vehicle":
         return `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${CAR_SVG}</div>`;
       case "control":
-        return (d.items ?? []).map((it) => `
+        return (d.items ?? []).map((it) => {
+          const isPct = typeof it.value === "number" && it.unit === "%";
+          const shown = typeof it.value === "boolean" ? it.value ? "开" : "关" : typeof it.value === "number" ? `${Math.round(it.value)}${esc(it.unit ?? "")}` : esc(String(it.value ?? "--"));
+          return `
         <div class="win${hotWindows.includes(it.key) ? " hot" : ""}">
-          <div class="top"><span>${esc(it.label)}</span><em>${Math.round(it.value)}${esc(it.unit ?? "")}</em></div>
-          <div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>
-        </div>`).join("");
+          <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
+          ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ""}
+        </div>`;
+        }).join("");
       case "confirm":
         return `<div class="sub">${esc(d.question ?? d.text)}</div>
         <div>${(d.options ?? ["确认", "取消"]).map((o) => `<span class="opt">${esc(o)}</span>`).join("")}</div>`;
       case "notice":
         return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
       case "list":
-        return `<div class="sub">${(d.items ?? []).map((i) => `<div style="margin-bottom:10px">${esc(i.label)}${i.sub ? ` <small style="opacity:.6">${esc(i.sub)}</small>` : ""}</div>`).join("")}</div>`;
+        return `<ol class="listcard">${(d.items ?? []).map((i) => `<li><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}</li>`).join("")}</ol>`;
       case "capability":
         return `<div class="cap">${(d.items ?? []).map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
+      case "weather":
+        return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
+        <div class="sub">${esc(d.now.wind ?? "")}${d.now.humidity !== void 0 ? ` · 湿度${d.now.humidity}%` : ""}</div>` : ""}
+        ${(d.forecast ?? []).slice(0, 3).map((f) => `
+        <div class="rowline"><span>${esc(f.date)}</span><em>${esc(f.dayWeather)} ${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</em></div>`).join("")}`;
+      case "nav":
+        return "";
       default:
         return `<div class="sub">${esc(d.text ?? "")}</div>`;
     }
   }
+  var cardNodes = /* @__PURE__ */ new Map();
+  var cardSig = (c) => `${c.template}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`;
   function renderDesk() {
     const desk = $("desk");
-    const html = [];
-    const rowOf = (list, row, free) => {
-      let col = 1;
-      for (const c of list) {
-        const w = WIDTH[c.size] ?? 1;
-        html.push(`<div class="card tpl-${c.template} kind-${c.kind}${hotCards.has(c.id) ? " hot" : ""}"
-        style="grid-row:${row};grid-column:${col} / span ${w}">
-        <h3>${esc(c.title)}</h3>${body(c)}</div>`);
-        col += w;
+    const seen = /* @__PURE__ */ new Set();
+    desk.querySelectorAll(".slot").forEach((el) => el.remove());
+    const occupied = [[false, false, false], [false, false, false]];
+    for (const c of deskState.cards) {
+      seen.add(c.id);
+      for (let dr = 0; dr < c.rowSpan; dr++)
+        for (let dc = 0; dc < c.colSpan; dc++) occupied[c.row + dr]?.splice(c.col + dc, 1, true);
+      let node = cardNodes.get(c.id);
+      if (!node) {
+        node = document.createElement("div");
+        cardNodes.set(c.id, node);
+        desk.appendChild(node);
       }
-      for (let i = 0; i < free; i++) html.push(`<div class="slot" style="grid-row:${row};grid-column:${col + i}"></div>`);
-    };
-    rowOf(deskState.agent, 1, deskState.agentFree);
-    rowOf(deskState.fixed, 2, 3 - deskState.fixed.reduce((n, c) => n + (WIDTH[c.size] ?? 1), 0));
-    desk.innerHTML = html.join("");
+      node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
+      node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
+      node.className = `card tpl-${c.template} kind-${c.kind}${hotCards.has(c.id) ? " hot" : ""}`;
+      const sig = cardSig(c);
+      if (node.dataset.sig !== sig) {
+        if (c.template === "nav") renderNavCard(node, c);
+        else node.innerHTML = `<h3>${esc(c.title)}</h3>${body(c)}`;
+        node.dataset.sig = sig;
+      }
+    }
+    for (let r = 0; r < 2; r++) for (let col = 0; col < 3; col++) {
+      if (occupied[r][col]) continue;
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      slot.style.gridRow = String(r + 1);
+      slot.style.gridColumn = String(col + 1);
+      desk.appendChild(slot);
+    }
+    for (const [id, node] of cardNodes) {
+      if (!seen.has(id)) {
+        node.remove();
+        cardNodes.delete(id);
+      }
+    }
     const ov = $("overlay");
     if (deskState.overlay) {
       ov.className = "on";
@@ -306,11 +523,10 @@ html,body{height:100%;background:#000;overflow:hidden;cursor:none;
       } else cur[k] = g;
     }
     if (moved) {
-      for (const list of [deskState.agent, deskState.fixed])
-        for (const card of list)
-          if (card.template === "control" && card.data?.items) {
-            for (const it of card.data.items) if (it.key in cur) it.value = cur[it.key];
-          }
+      for (const card of deskState.cards)
+        if (card.template === "control" && card.data?.items) {
+          for (const it of card.data.items) if (it.key in cur) it.value = cur[it.key];
+        }
       renderDesk();
     }
     requestAnimationFrame(loop);

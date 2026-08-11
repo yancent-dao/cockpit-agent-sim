@@ -1,263 +1,260 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createDesk } from '../../src/cards/desk'
+import { CARD_TEMPLATES } from '../../src/config/cards'
 
 let now = 1000
 let desk: ReturnType<typeof createDesk>
-const mk = (o: any = {}) => desk.show({ template: 'control', size: '1/6', ttl: 'untilDismissed', ...o })
+const mk = (o: any = {}) => desk.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
 
 beforeEach(() => { now = 1000; desk = createDesk(() => now) })
 
-/* ══════════════ 栅格与尺寸 ══════════════ */
-describe('栅格：3 列 × 2 行，每个尺寸只允许一种形状', () => {
-  it('1/6 占 1 格，1/3 占 2 格，1/2 占整行 3 格', () => {
-    expect(desk.widthOf('1/6')).toBe(1)
-    expect(desk.widthOf('1/3')).toBe(2)
-    expect(desk.widthOf('1/2')).toBe(3)
+/* ══════════════ 栅格：统一 6 格，无分区 ══════════════ */
+describe('栅格：3列×2行统一画布，每个尺寸只允许一种形状', () => {
+  it('1/6 占 1 格，1/3 占 2 格，1/2 占 3 格，2/3 占 4 格', () => {
+    expect(desk.cellsOf('1/6')).toBe(1)
+    expect(desk.cellsOf('1/3')).toBe(2)
+    expect(desk.cellsOf('1/2')).toBe(3)
+    expect(desk.cellsOf('2/3')).toBe(4)
   })
 
-  it('Agent 区容量为 3 格：可放 3 张 1/6', () => {
-    mk(); mk(); mk()
-    expect(desk.layout().agent).toHaveLength(3)
-    expect(desk.layout().agentFree).toBe(0)
+  it('默认桌面为空——没有常驻卡，一切按需出现', () => {
+    expect(desk.layout().cards).toHaveLength(0)
+    expect(desk.layout().free).toBe(6)
   })
 
-  it('一张 1/3 + 一张 1/6 正好占满 Agent 区', () => {
-    mk({ size: '1/3' }); mk({ size: '1/6' })
-    expect(desk.layout().agentFree).toBe(0)
+  it('六张 1/6 填满整个桌面', () => {
+    for (let i = 0; i < 6; i++) { mk(); now += 10 }
+    expect(desk.layout().cards).toHaveLength(6)
+    expect(desk.layout().free).toBe(0)
   })
 
-  it('卡片按插入顺序左对齐排布，不产生碎片（可预测优先于最优）', () => {
-    const a = mk({ size: '1/6' }), b = mk({ size: '1/6' })
-    desk.dismiss(a.cardId!)
-    const c = mk({ size: '1/3' })
-    expect(c.status).toBe('ok')
-    expect(desk.layout().agent.map(x => x.id)).toEqual([b.cardId, c.cardId])
-  })
-})
-
-/* ══════════════ 分区 ══════════════ */
-describe('分区：上行 Agent 区，下行固定区', () => {
-  it('Agent 卡默认进 Agent 区', () => {
-    const r = mk()
-    expect(desk.layout().agent.map(x => x.id)).toContain(r.cardId)
+  it('layout 给出每张卡的行列位置与跨度', () => {
+    mk({ size: '1/3', data: { title: 'A' } })
+    const c = desk.layout().cards[0]
+    expect(c.row).toBe(0)
+    expect(c.col).toBe(0)
+    expect(c.rowSpan).toBe(1)
+    expect(c.colSpan).toBe(2)
   })
 
-  it('Agent 不能直接往固定区放卡 —— 固定区归用户', () => {
-    const r = desk.show({ template: 'control', size: '1/6', ttl: 'persistent', zone: 'fixed' })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('FIXED_ZONE_READONLY')
-  })
-
-  it('固定区通过 pin 入驻，且不受 Agent 区满载影响', () => {
-    const r = mk()
-    expect(desk.pin(r.cardId!).status).toBe('ok')
-    mk(); mk(); mk()   // Agent 区塞满
-    expect(desk.layout().fixed.map(x => x.id)).toContain(r.cardId)
-  })
-
-  it('固定区满（3 格）时 pin 失败', () => {
-    for (let i = 0; i < 3; i++) desk.pin(mk().cardId!)
-    const r = desk.pin(mk().cardId!)
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('FIXED_ZONE_FULL')
-  })
-
-  it('unpin 把卡移回 Agent 区', () => {
-    const r = mk(); desk.pin(r.cardId!)
-    desk.unpin(r.cardId!)
-    expect(desk.layout().agent.map(x => x.id)).toContain(r.cardId)
+  it('1/2 整行卡占整行，高优先级先占位，低优先级卡挪到下行', () => {
+    mk(); now += 10; mk({ size: '1/2', kind: 'system' }); now += 10
+    // system 优先级高先占上行整行，1/6 task 卡挪去下行
+    const cards = desk.layout().cards
+    const half = cards.find(c => c.size === '1/2')!
+    const small = cards.find(c => c.size === '1/6')!
+    expect(half.row).toBe(0)
+    expect(half.col).toBe(0)
+    expect(small.row).toBe(1)
   })
 })
 
-/* ══════════════ Agent 区满载策略 ══════════════ */
-describe('满载：降尺寸优先 → 降无可降再挤出 → 必须告知', () => {
-  it('一张 1/2 占满整行时，新卡先把它降到 1/3 腾位', () => {
-    const big = mk({ size: '1/2' })
-    now += 10
-    const r = mk({ size: '1/6' })
+/* ══════════════ 2/3 导航形状 ══════════════ */
+describe('2/3：左锚定 2×2，唯一合法位置是左两列', () => {
+  it('2/3 卡占据左两列整块', () => {
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { destination: 'x' } })
     expect(r.status).toBe('ok')
-    expect(r.shrunk).toContain(big.cardId)
-    expect(desk.layout().agent.find(c => c.id === big.cardId)!.size).toBe('1/3')
+    const c = desk.layout().cards[0]
+    expect(c.row).toBe(0)
+    expect(c.col).toBe(0)
+    expect(c.rowSpan).toBe(2)
+    expect(c.colSpan).toBe(2)
   })
 
-  it('降尺寸能腾出空间时不挤卡', () => {
-    const big = mk({ size: '1/2' })
-    now += 10
-    const r = mk({ size: '1/6' })
-    expect(r.evicted).toBeUndefined()
-    expect(desk.layout().agent).toHaveLength(2)
+  it('有 2/3 卡时剩余空间是右列两格，只容得下 1/6', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
+    expect(desk.layout().free).toBe(2)
+    const a = mk(); now += 10
+    const b = mk(); now += 10
+    expect(a.status).toBe('ok')
+    expect(b.status).toBe('ok')
+    const cells = desk.layout().cards.filter(c => c.size === '1/6').map(c => [c.row, c.col])
+    expect(cells).toEqual([[0, 2], [1, 2]])
   })
 
-  it('三张 1/6 已无可降 → 挤出最久未交互的，并返回 evicted', () => {
-    const a = mk(); now += 10; mk(); now += 10; mk(); now += 10
-    const r = mk()
+  it('2/3 在场时 1/3 横卡放不下（右列上下两格不相邻）→ 自动降为 1/6', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
+    const r = mk({ size: '1/3', data: { title: '天气' } })
     expect(r.status).toBe('ok')
-    expect(r.evicted).toEqual([a.cardId])
-    expect(desk.layout().agent.map(x => x.id)).not.toContain(a.cardId)
+    const placed = desk.layout().cards.find(c => c.data?.title === '天气')!
+    expect(placed.size).toBe('1/6')
+    expect(r.shrunk).toBeTruthy()
   })
 
-  it('挤出必须可被告知用户 —— 结果带人话 note', () => {
-    mk({ data: { title: '搜索结果' } }); now += 10; mk(); now += 10; mk(); now += 10
-    const r = mk()
-    expect(r.note).toBeTruthy()
-    expect(r.note).toContain('搜索结果')
-  })
-
-  it('update / focus 会刷新 LRU，避免刚用过的卡被挤掉', () => {
-    const a = mk(); now += 10; const b = mk(); now += 10; mk(); now += 10
-    desk.focus(a.cardId!)          // a 变成最近交互
-    now += 10
-    const r = mk()
-    expect(r.evicted).toEqual([b.cardId])   // 挤掉的是 b 而不是 a
-  })
-
-  it('preemptable:false 的卡不会被挤出', () => {
-    const keep = mk({ preemptable: false }); now += 10
-    mk(); now += 10; mk(); now += 10
-    const r = mk()
-    expect(r.evicted).not.toContain(keep.cardId)
-  })
-
-  it('全部不可挤且无可降时，明确拒绝而不是静默丢弃', () => {
-    for (let i = 0; i < 3; i++) { mk({ preemptable: false }); now += 10 }
-    const r = mk()
+  it('同一时刻最多一张 2/3——第二张放不下且第一张不可挤则拒绝', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DESKTOP_FULL')
   })
 })
 
+/* ══════════════ 优先级仲裁 ══════════════ */
+describe('优先级：system > rule > task，同级按创建时间', () => {
+  it('kind 决定优先级数值', () => {
+    expect(desk.priorityOf('system')).toBeGreaterThan(desk.priorityOf('rule'))
+    expect(desk.priorityOf('rule')).toBeGreaterThan(desk.priorityOf('task'))
+  })
+
+  it('高优先级卡先占位：system 卡排在 task 卡前面', () => {
+    mk({ data: { title: '任务卡' } }); now += 10
+    mk({ kind: 'system', data: { title: '来电' } }); now += 10
+    const cards = desk.layout().cards
+    expect(cards[0].data.title).toBe('来电')
+    expect(cards[0].col).toBe(0)
+  })
+
+  it('空间不够时挤出的是低优先级卡，不是最旧的高优先级卡', () => {
+    mk({ kind: 'system', size: '1/2', data: { title: '告警' } }); now += 10
+    mk({ data: { title: '旧任务' } }); now += 10
+    mk({ data: { title: '新任务' } }); now += 10
+    mk(); now += 10
+    const r = mk({ kind: 'rule', size: '1/3', data: { title: '导航提示' } })
+    expect(r.status).toBe('ok')
+    const titles = desk.layout().cards.map(c => c.data?.title)
+    expect(titles).toContain('告警')
+    expect(titles).not.toContain('旧任务') // LRU：同为 task 时最旧的先走
+  })
+
+  it('evictable:false 的卡任何情况不被挤——导航中来电，来电降级挤入右列，导航岿然不动', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    mk(); now += 10; mk(); now += 10
+    const r = mk({ kind: 'system', size: '1/2', data: { title: '来电' } })
+    expect(r.status).toBe('ok')
+    const titles = desk.layout().cards.map(c => c.data?.title)
+    expect(titles).toContain('导航')
+    const call = desk.layout().cards.find(c => c.data?.title === '来电')!
+    expect(call.size).toBe('1/6') // 1/2 放不下，自动降级
+  })
+
+  it('几何死局的最后手段：高优先级卡可被降尺寸（但绝不被挤出）——导航到来时 system 1/3 问题卡降为 1/6', () => {
+    mk({ kind: 'system', size: '1/3', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
+    expect(r.status).toBe('ok') // 之前这里会被 DESKTOP_FULL 拒绝，导航卡整个出不来
+    const titles = desk.layout().cards.map(c => c.data?.title)
+    expect(titles).toContain('导航')
+    expect(titles).toContain('请选择') // 没被挤出，只是变小了
+    expect(desk.layout().cards.find(c => c.data?.title === '请选择')!.size).toBe('1/6')
+  })
+
+  // 列表卡缩到 1/6 就只剩个标题，选项全没了，等于白占一格。
+  // 模板已经声明了 sizes: ['1/3','1/2']，仲裁必须认这个下限
+  it('缩尺寸不能缩出模板允许的范围，宁可挤掉别人', () => {
+    mk({ template: 'list', size: '1/2', kind: 'task', minSize: '1/3',
+      data: { title: '候选', items: [{ label: 'a' }] } }); now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
+    expect(r.status).toBe('ok')
+    const list = desk.layout().cards.find(c => c.template === 'list')
+    // 要么降到下限 1/3，要么被挤掉；绝不能出现 1/6 的列表卡
+    if (list) expect(list.size).not.toBe('1/6')
+  })
+
+  it('挤出必须告知——note 带被挤卡片的标题', () => {
+    for (let i = 0; i < 6; i++) { mk({ data: { title: `卡${i}` } }); now += 10 }
+    const r = mk({ kind: 'system', data: { title: '来电' } })
+    expect(r.status).toBe('ok')
+    expect(r.note).toContain('卡0')
+  })
+
+  it('没给 title 时兜底用模板的人话 label，不是裸模板 id', () => {
+    desk.show({ template: 'nav', size: '2/3', kind: 'rule', ttl: 'untilDismissed' })
+    now += 10
+    for (let i = 0; i < 2; i++) { mk(); now += 10 } // 无 title 的 feedback 模板 task 卡
+    const r = mk({ kind: 'system' })
+    expect(r.status).toBe('ok')
+    // 被挤的是低优先级 task 卡；note 里显示模板 label「反馈卡」而不是裸 id「feedback」
+    const fbLabel = CARD_TEMPLATES.find(t => t.id === 'feedback')!.label
+    expect(r.note).toContain(fbLabel)
+    expect(r.note).not.toContain('「feedback」')
+  })
+})
+
 /* ══════════════ 生命周期 ══════════════ */
-describe('生命周期：ttl 为必填', () => {
-  it('缺少 ttl 直接拒绝 —— 防止卡片堆积', () => {
-    const r = desk.show({ template: 'control', size: '1/6' } as any)
+describe('生命周期：ttl 必填，到期自动退场', () => {
+  it('缺 ttl 拒绝——防卡片堆积', () => {
+    const r = desk.show({ template: 'feedback', size: '1/6' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('TTL_REQUIRED')
   })
 
-  it('秒数型 ttl 到期后自动移除', () => {
-    const r = desk.show({ template: 'feedback', size: '1/6', ttl: 8 })
-    now += 7000; desk.tick()
-    expect(desk.layout().agent).toHaveLength(1)
-    now += 2000; desk.tick()
-    expect(desk.layout().agent).toHaveLength(0)
+  it('数字 ttl 到秒数自动消失', () => {
+    mk({ ttl: 30 })
+    now += 29_000; desk.tick()
+    expect(desk.layout().cards).toHaveLength(1)
+    now += 2_000; desk.tick()
+    expect(desk.layout().cards).toHaveLength(0)
   })
 
-  it('persistent 与 untilDismissed 不会过期', () => {
-    desk.show({ template: 'control', size: '1/6', ttl: 'persistent' })
-    desk.show({ template: 'control', size: '1/6', ttl: 'untilDismissed' })
-    now += 3_600_000; desk.tick()
-    expect(desk.layout().agent).toHaveLength(2)
-  })
-
-  it('untilTaskEnd 在任务结束时统一清理', () => {
-    desk.show({ template: 'list', size: '1/3', ttl: 'untilTaskEnd' })
-    desk.show({ template: 'control', size: '1/6', ttl: 'persistent' })
+  it('untilTaskEnd 在任务结束时清场', () => {
+    mk({ ttl: 'untilTaskEnd' }); mk({ ttl: 'untilDismissed' })
     desk.endTask()
-    expect(desk.layout().agent).toHaveLength(1)
+    expect(desk.layout().cards).toHaveLength(1)
   })
 })
 
-/* ══════════════ 优先级与抢占 ══════════════ */
-describe('优先级与抢占', () => {
-  it('系统卡（来电/告警）可以抢占任务卡', () => {
-    const t = mk({ kind: 'task' }); now += 10
-    mk({ kind: 'task' }); now += 10; mk({ kind: 'task' }); now += 10
-    const sys = desk.show({ template: 'notice', size: '1/6', ttl: 20, kind: 'system' })
-    expect(sys.status).toBe('ok')
-    expect(sys.evicted).toEqual([t.cardId])
+/* ══════════════ full 整屏覆盖 ══════════════ */
+describe('full：整屏覆盖，退出自动还原', () => {
+  it('full 卡进 overlay，不占栅格', () => {
+    mk({ data: { title: '底下的卡' } }); now += 10
+    desk.show({ template: 'capability', size: 'full', ttl: 'untilDismissed', data: { items: [] } })
+    const l = desk.layout()
+    expect(l.overlay).toBeTruthy()
+    expect(l.cards).toHaveLength(1) // 底下的卡还在
   })
 
-  it('任务卡不能抢占系统卡', () => {
-    for (let i = 0; i < 3; i++) { desk.show({ template: 'notice', size: '1/6', ttl: 20, kind: 'system' }); now += 10 }
-    const r = mk({ kind: 'task' })
-    expect(r.status).toBe('rejected')
-  })
-
-  it('full 尺寸临时征用整屏，dismiss 后固定区自动还原', () => {
-    const pinned = mk(); desk.pin(pinned.cardId!)
-    const a = mk()
-    const full = desk.show({ template: 'capability', size: 'full', ttl: 'untilDismissed' })
-    expect(desk.layout().overlay?.id).toBe(full.cardId)
-    desk.dismiss(full.cardId!)
-    expect(desk.layout().overlay).toBeUndefined()
-    expect(desk.layout().fixed.map(x => x.id)).toContain(pinned.cardId)
-    expect(desk.layout().agent.map(x => x.id)).toContain(a.cardId)
+  it('关闭 full 后桌面原样', () => {
+    mk({ data: { title: 'A' } }); now += 10
+    const f = desk.show({ template: 'capability', size: 'full', ttl: 'untilDismissed', data: { items: [] } })
+    desk.dismiss(f.cardId!)
+    const l = desk.layout()
+    expect(l.overlay).toBeUndefined()
+    expect(l.cards[0].data.title).toBe('A')
   })
 })
 
-/* ══════════════ 反馈四级：复用 → 放大 → 新建 ══════════════ */
-describe('render()：优先复用已有卡 → 其次放大 → 最后新建', () => {
-  it('桌面已有对应卡且尺寸够 → L1 卡内更新，不新建', () => {
-    const first = desk.render({ key: 'windows', template: 'control', size: '1/6', ttl: 'persistent', data: { v: 1 } })
-    expect(first.level).toBe('L3')
-    const again = desk.render({ key: 'windows', template: 'control', size: '1/6', ttl: 'persistent', data: { v: 2 } })
-    expect(again.level).toBe('L1')
-    expect(again.cardId).toBe(first.cardId)
-    expect(desk.layout().agent).toHaveLength(1)
-    expect(desk.get(first.cardId!)!.data.v).toBe(2)
+/* ══════════════ 复用：L1/L2/L3 ══════════════ */
+describe('render：优先复用已有卡 → 放大 → 最后才新建', () => {
+  it('无对应卡时新建（L3）', () => {
+    const r = desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗' } })
+    expect(r.level).toBe('L3')
   })
 
-  it('已有卡但尺寸不足 → L2 放大一级，仍不新建', () => {
-    const first = desk.render({ key: 'nav', template: 'nav', size: '1/6', ttl: 'persistent' })
-    const bigger = desk.render({ key: 'nav', template: 'nav', size: '1/3', ttl: 'persistent' })
-    expect(bigger.level).toBe('L2')
-    expect(bigger.cardId).toBe(first.cardId)
-    expect(desk.get(first.cardId!)!.size).toBe('1/3')
+  it('已有同 key 卡时更新内容不新建（L1）', () => {
+    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗', v: 1 } })
+    const r = desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗', v: 2 } })
+    expect(r.level).toBe('L1')
+    expect(desk.layout().cards).toHaveLength(1)
+    expect(desk.layout().cards[0].data.v).toBe(2)
   })
 
-  it('桌面无对应卡 → L3 新建', () => {
-    expect(desk.render({ key: 'media', template: 'media', size: '1/6', ttl: 30 }).level).toBe('L3')
+  it('已有卡但要求更大尺寸时放大（L2）', () => {
+    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30 })
+    const r = desk.render({ key: 'w', template: 'control', size: '1/3', ttl: 30 })
+    expect(r.level).toBe('L2')
+    expect(desk.layout().cards[0].size).toBe('1/3')
   })
 
-  it('固定区里的卡也算"已在桌面"，同样走 L1 而不是新建', () => {
-    const c = desk.render({ key: 'windows', template: 'control', size: '1/6', ttl: 'persistent' })
-    desk.pin(c.cardId!)
-    const again = desk.render({ key: 'windows', template: 'control', size: '1/6', ttl: 'persistent', data: { v: 9 } })
-    expect(again.level).toBe('L1')
-    expect(desk.layout().agent).toHaveLength(0)
-    expect(desk.get(c.cardId!)!.data.v).toBe(9)
-  })
-})
-
-/* ══════════════ 交互 ══════════════ */
-describe('交互：点击逐级放大', () => {
-  it('1/6 → 1/3 → 1/2，到顶不再放大', () => {
-    const c = mk()
-    desk.enlarge(c.cardId!); expect(desk.get(c.cardId!)!.size).toBe('1/3')
-    desk.enlarge(c.cardId!); expect(desk.get(c.cardId!)!.size).toBe('1/2')
-    desk.enlarge(c.cardId!); expect(desk.get(c.cardId!)!.size).toBe('1/2')
-  })
-
-  it('放大导致空间不足时会自动腾位', () => {
-    const a = mk(); now += 10; const b = mk(); now += 10
-    const r = desk.enlarge(b.cardId!)
-    expect(desk.get(b.cardId!)!.size).toBe('1/3')
-    expect(r.status).toBe('ok')
-    expect(desk.layout().agentFree).toBe(0)
-    expect(a.cardId).toBeTruthy()
+  it('refreshTtl 让事件卡在活动期间不过期', () => {
+    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30 })
+    now += 25_000
+    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, refreshTtl: true })
+    now += 25_000; desk.tick()
+    expect(desk.layout().cards).toHaveLength(1) // 第二次 render 重置了寿命
   })
 })
 
 /* ══════════════ 上下文注入 ══════════════ */
 describe('桌面摘要（注入 system prompt）', () => {
-  it('列出当前卡片、尺寸、区域与剩余容量', () => {
-    const c = desk.render({ key: 'windows', template: 'control', size: '1/6', ttl: 'persistent', data: { title: '车窗' } })
-    desk.pin(c.cardId!)
-    desk.render({ key: 'nav', template: 'nav', size: '1/3', ttl: 30, data: { title: '导航' } })
+  it('列出卡片、尺寸与剩余格数，不再提分区', () => {
+    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule', ttl: 'untilDismissed', data: { title: '导航' } })
     const s = desk.summary()
-    expect(s).toContain('车窗')
-    expect(s).toContain('固定区')
-    expect(s).toContain('Agent 区')
-    expect(s).toContain('1/3')
-    expect(s).toMatch(/剩余\s*1\s*格/)
+    expect(s).toContain('导航')
+    expect(s).toContain('2/3')
+    expect(s).toMatch(/剩余\s*2\s*格/)
+    expect(s).not.toContain('固定区')
   })
 
-  it('摘要保持紧凑，不超过 8 行', () => {
-    mk(); mk(); mk()
-    expect(desk.summary().split('\n').length).toBeLessThanOrEqual(8)
-  })
-
-  it('空桌面也给出明确描述', () => {
-    expect(desk.summary()).toContain('剩余 3 格')
+  it('空桌面明确说明', () => {
+    expect(desk.summary()).toContain('剩余 6 格')
   })
 })

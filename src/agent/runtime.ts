@@ -25,7 +25,7 @@ export interface RunResult {
   reply: string
   trace: TraceStep[]
   rounds: number
-  stopReason: 'reply' | 'maxRounds' | 'error'
+  stopReason: 'reply' | 'maxRounds' | 'error' | 'empty'
 }
 
 export interface AgentDeps {
@@ -35,9 +35,15 @@ export interface AgentDeps {
   llm: LLM
   clock?: () => number
   desktopSummary?: () => string
+  /**
+   * 每轮用户真正开口时回调。用来清理上一轮遗留的临时卡——
+   * 上一轮问"你要哪个"，用户这轮一开口就等于回答了或换了话题，那张问题卡该走了。
+   * Runtime 不认识卡片，具体清理什么由装配方决定。
+   */
+  onTurnStart?: () => void
 }
 
-export function createAgent({ manifest, registry, store, llm, clock = Date.now, desktopSummary }: AgentDeps) {
+export function createAgent({ manifest, registry, store, llm, clock = Date.now, desktopSummary, onTurnStart }: AgentDeps) {
   const listeners: Array<(e: AgentEvent) => void> = []
   const emit = (e: AgentEvent) => listeners.forEach(l => l(e))
   const on = (cb: (e: AgentEvent) => void) => {
@@ -52,6 +58,11 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
   async function run(userText: string): Promise<RunResult> {
     const trace: TraceStep[] = []
     const t0 = clock()
+    // 空输入直接返回：送进模型它会凭空发挥（实测会无端开窗、查天气），
+    // 也别把空话塞进历史污染后续多轮
+    if (!userText.trim()) return { reply: '', trace, rounds: 0, stopReason: 'empty' }
+
+    onTurnStart?.()
     trace.push({ type: 'userInput', at: t0, text: userText })
     history.push({ role: 'user', content: userText })
 
@@ -65,7 +76,10 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
         trace.push({ type: 'prompt', at: clock(), system, toolCount: tools.length })
         emit({ type: 'thinking' })
 
-        const reply = await llm.chat({ system, messages: history, tools })
+        // 最后一轮撤掉工具：语音场景没有"静默"这个选项，模型把轮次全用在
+        // 调工具上会让用户说完话什么也没听到。没工具可用它只能出话术。
+        const last = rounds === manifest.maxRounds
+        const reply = await llm.chat({ system, messages: history, tools: last ? [] : tools })
 
         // ── 无工具调用：出话术，结束 ──
         if (!reply.toolCalls?.length) {
@@ -88,14 +102,17 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
         })
 
         const results = await Promise.all(reply.toolCalls.map(async c => {
+          // provider（如 Anthropic）不接受点号，模型可能回传 window_set 这种 wire 形式；
+          // 追踪面板统一显示回内部点号命名，不然同一个 Tool 换个模型名字就变了
+          const name = registry.canonicalName(c.name)
           trace.push({
-            type: 'toolCall', at: clock(), name: c.name, args: c.args,
+            type: 'toolCall', at: clock(), name, args: c.args,
             permission: registry.permissionOf(c.name),
           })
-          emit({ type: 'executing', name: c.name })
+          emit({ type: 'executing', name })
           const s = clock()
-          const result = registry.invoke(c.name, c.args, { allow: manifest.tools })
-          trace.push({ type: 'toolResult', at: clock(), name: c.name, result, ms: clock() - s })
+          const result = await registry.invoke(c.name, c.args, { allow: manifest.tools })
+          trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
           if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
           if (result.status === 'rejected' || result.status === 'unavailable')
             emit({ type: 'rejected', text: result.message ?? '无法执行' })

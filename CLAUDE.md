@@ -6,8 +6,9 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 132 个，必须全绿才算完成）
+- 测试：`npm test`（当前 221 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
+- 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173
 - 构建：`npm run build`
 - 类型检查：`npx tsc --noEmit`
@@ -37,15 +38,16 @@
 - **加能力 = 加数据，不加代码。** 新增信号/约束/Tool 只改 `src/config/*.ts`。如果需要动 `src/core/`，说明抽象错了。
 - **代码里不许出现意图分支。** 出现 `if (intent === ...)`、关键词匹配、意图枚举即违规。Agent 表现不好就改 Prompt 或改 Tool 描述，**不要在代码里兜底**——兜了就分不清是模型聪明还是代码作弊。
 - **运行时依赖为零。** 只有 vite / vitest / typescript 三个 devDependency。加新依赖前先问："不加它要多写多少行？"少于 200 行就自己写。
+  > 2026-08-10 限定例外：导航卡要接高德地图 JS SDK 画真实地图瓦片，产品决策明确要接受这个代价。**只对导航卡这一个功能生效**，其它地方新加依赖仍然按这条硬约束卡。落地方式：运行时用 `<script>` 动态加载高德 JS API（不装 `@amap/amap-jsapi-loader` 之类 npm 包），package.json 的 devDependencies 保持不变，代价体现在"运行时需要联网加载第三方脚本"而不是"构建时多一个包"。
 
 ## 结构与规模预算
 
 ```
 src/config/    signals · constraints · tools · cards —— 数据，越多越好
-src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 195）
-src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 204）
-src/cards/     卡片桌面 · 栅格 · 分区 · 生命周期 · 抢占          < 700 行（现 265）
-src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 251）
+src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 237）
+src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 629：registry.ts 337 + amap.ts 182 + navHandlers.ts 110。已按"有真实逻辑的 handler 单独成文件"拆分，registry.ts 本身很干净；总数超预算是因为真实三方 API 集成本来就需要比声明式 Tool 更多代码，Tier 3 继续加会更超，到时候再看是继续拆文件还是正式抬预算）
+src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 363：desk 294 + orchestrator 69）
+src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 304）
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
 agents/        Agent 实例：manifest + 人设
@@ -56,8 +58,15 @@ agents/        Agent 实例：manifest + 人设
 ## 复杂度的三个落点，各有上限
 
 - **约束引擎**：只支持 `[path, op, value]` 三元组，不支持嵌套逻辑。复杂场景写具名谓词函数登记白名单。**绝不引入 eval 或表达式引擎。**
-- **卡片布局**：因为每个尺寸只允许一种形状，退化为一维排布。**不追求最优解，追求可预测解**——演示者能预判结果比空间利用率重要。
+- **卡片布局**：每个尺寸只允许一种形状（2/3 只允许左锚定），位置可枚举。**不追求最优解，追求可预测解**——演示者能预判结果比空间利用率重要。
 - **Agent 编排**：全部在 Prompt 里。代码只做四件事：上下文拼装、并行调用、结果回填、确认流转。
+
+## 卡片编排（2026-08-10 重设计，详见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md）
+
+- **桌面 = f(车辆状态)**：基础卡片（导航、车窗反馈）由 `src/config/cardRules.ts` 的声明式规则驱动，`src/cards/orchestrator.ts` 调和，**模型零参与**。加场景 = 加规则 + data builder，不改编排器
+- 桌面统一 6 格无分区、无常驻卡、默认为空；导航中导航卡 2/3 左锚定且不可被挤，导航结束自动退场
+- Agent 只为规则覆盖不到的临场内容建卡（候选列表、临时提醒），走同一布局仲裁
+- 业界对标：Generative UI 的 Static 模式 + CarPlay/Android Auto 模板方法论
 
 ## 权限分级：黑 / 灰 / 彩
 
@@ -69,20 +78,39 @@ agents/        Agent 实例：manifest + 人设
 
 ## 明确不做
 
-后端 · 数据库 · 多屏 · 日间模式 · 完整设计系统 · Tool 路由（14 个直接全量挂载）· CAN 时延与报文级仿真 · monorepo
+后端 · 数据库 · 多屏 · 日夜切换（`screen.setTheme` 这类运行时主题切换）· 完整设计系统 · Tool 路由（14 个直接全量挂载）· CAN 时延与报文级仿真 · monorepo
+
+> 2026-08-10：车机屏已改为单一**日间**配色（之前是单一夜间配色），这是一次性重绘 Design Token，不是加了主题切换能力——「不做日夜切换」这条约束本身没变。
 
 ## 已知待办
 
 - `src/config/signals.ts` 的 `vssPath` 是**待核验的推定路径**，VSS v6.0 有破坏性变更（座椅信号重构、Left/Right → DriverSide/PassengerSide、单位大小写），冻结前必须对着官方 catalog 逐条核对
-- 能力目录卡模板已就位，尚未接 Tool Registry 自动生成
 - 主动式触发、长期记忆、能力曝光度统计未做
 
-## Golden Case
+## Golden Case（已移除）
 
-13 条，在控制面板里点按钮跑真实模型。分四组：Base（链路）· Disambiguation（歧义消解）· Guardrail（边界与拒绝）· Orchestration（卡片编排）。
+> 2026-08-10：控制面板里的 Golden Case 按钮与相关代码已按产品决策彻底删除，不再是必测项。历史设计记录见需求规格书 §8.2/§8.3（已标注过期）。真实模型验证目前靠手动在对话框里输入话术。
 
-CAR-bench 的结论是前沿模型倾向"宁可编造工具输出也不承认能力缺失"，所以 Guardrail 组是必测项，不是锦上添花。
+## Pilot：用户机器人自动化闭环
+
+`npm run pilot [场景id...]` —— 用一个独立的 LLM 扮"坐在车里的真人"，跟真实 Agent 跑多轮对话，
+落盘结构化快照（用户说了什么 / 调了哪些 Tool / 桌面最终有哪些卡 / 话术）到 `tests/pilot/runs/`。
+
+- **机器人只负责说人话，不做判断**。好不好、对不对由人对着 `tests/pilot/RUBRIC.md` 四维清单评审：
+  产品设计 · 用户交互 · 架构 · 界面
+- `tests/pilot/scenarios.ts` 是纯数据，加场景 = 加一条
+- run.ts 里有**确定性硬伤检测**（DESKTOP_FULL、导航中无导航卡、话术声称"屏幕上有"但桌面空、
+  thinking 标签泄漏、话术让用户"点"屏幕……）——这些不靠模型判断，直接标红
+- 会消耗真实 OpenRouter/高德额度，所以**不进 `npm test`**
+
+已用它抓到并修掉的真问题：两张选择卡并存、几何死局导致导航卡整个出不来、
+`</mm:think>` 泄漏进播报、空输入时 Agent 凭空发挥、话术让用户点不可交互的屏幕。
 
 ## Key 处理
 
 OpenRouter Key 放 `.env.local`（已 gitignore）或直接在控制面板里填。**不要写进任何提交的文件。**
+
+高德地图接入后会用到**两个不同的 Key**（容易搞混）：
+- **Web 服务 Key**：`navigation.search`/`setDestination` 这类 REST 调用用，走 `src/tools/amap.ts`
+- **Web端(JS API) Key** + 安全密钥（jscode）：车机屏加载地图组件用，走 `<script>` 标签
+两个都放 `.env.local`（`VITE_AMAP_WEB_KEY` / `VITE_AMAP_JS_KEY` / `VITE_AMAP_JS_SECRET`），且要在高德控制台把域名加进白名单（本地开发通常要加 `localhost`）。

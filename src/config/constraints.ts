@@ -29,6 +29,30 @@ export const CONSTRAINTS: Constraint[] = [
     message: '当前车速 {vehicle.speed}km/h，行驶中无法开启车门',
     suggestion: '停稳后我可以帮你打开',
   },
+  {
+    id: 'CHILD_LOCK_ON',
+    when: ['cabin.childLock', '==', true],
+    target: 'cabin.door.rear*.isOpen',
+    action: 'reject',
+    message: '儿童锁已开启，后门当前不可开启',
+    suggestion: '可以先关闭儿童锁，或请前排乘客帮忙开门',
+  },
+  {
+    id: 'GEAR_NOT_PARK',
+    when: ['vehicle.gear', '!=', 'p'],
+    target: 'cabin.trunk.isOpen',
+    action: 'reject',
+    message: '当前不是 P 挡，无法打开后备箱',
+    suggestion: '挂入 P 挡后我可以帮你打开',
+  },
+  {
+    id: 'LOW_BATTERY_LIMIT',
+    when: ['powertrain.soc', '<', 10],
+    target: 'cabin.climate.fanSpeed',
+    action: 'clamp',
+    value: 3,
+    message: '电量较低（{powertrain.soc}%），风量已限制在 {value} 档',
+  },
 ]
 
 /** 状态不变量：运行时持续校验，违反即在控制面板报警 */

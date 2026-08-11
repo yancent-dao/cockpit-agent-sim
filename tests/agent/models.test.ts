@@ -1,4 +1,53 @@
 import { describe, it, expect } from 'vitest'
+import { stripThinking, toSpeech } from '../../src/agent/llm'
+
+/* 话术是拿去念的，Markdown 念出来是噪音。模型屡教不改，只能在机制层清掉 */
+describe('toSpeech：把模型话术清理成能念的样子', () => {
+  it('去掉加粗标记但保留文字', () => {
+    expect(toSpeech('途经点是 **小桔充电**，往西走 290 米')).toBe('途经点是 小桔充电，往西走 290 米')
+  })
+
+  it('去掉列表符号与标题井号', () => {
+    expect(toSpeech('- 空调已开\n- 座椅加热已开')).toBe('空调已开 座椅加热已开')
+    expect(toSpeech('## 天气\n晴 25 度')).toBe('天气 晴 25 度')
+  })
+
+  it('多行折成一行——语音没有换行这回事', () => {
+    expect(toSpeech('路线定好了。\n\n全程12公里。')).toBe('路线定好了。 全程12公里。')
+  })
+
+  it('顺手清掉思考标签', () => {
+    expect(toSpeech('</mm:think>好嘞')).toBe('好嘞')
+  })
+
+  it('正常话术原样不动', () => {
+    expect(toSpeech('空调开了，24度')).toBe('空调开了，24度')
+  })
+})
+
+/* 思考标签会漏进话术直接念给用户听——实测 MiniMax M3 会吐 </mm:think> */
+describe('stripThinking：清理各家模型的思考标签', () => {
+  it('清掉成对的 think 块', () => {
+    expect(stripThinking('<think>盘算一下</think>空调开好了')).toBe('空调开好了')
+  })
+
+  it('清掉只剩尾标签的残留（实测 MiniMax M3）', () => {
+    expect(stripThinking('</mm:think>儿童锁关了。')).toBe('儿童锁关了。')
+  })
+
+  it('清掉带命名空间的成对标签', () => {
+    expect(stripThinking('<mm:think>x</mm:think>好的')).toBe('好的')
+  })
+
+  it('顺手去掉首尾空白，正常话术不受影响', () => {
+    expect(stripThinking('\n\n都安排上了\n')).toBe('都安排上了')
+    expect(stripThinking('空调开了，24度')).toBe('空调开了，24度')
+  })
+
+  it('空内容返回空串，不炸', () => {
+    expect(stripThinking(undefined)).toBe('')
+  })
+})
 import { pickFastModels, FALLBACK_MODELS } from '../../src/agent/llm'
 import type { ModelInfo } from '../../src/agent/llm'
 

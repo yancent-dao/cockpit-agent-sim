@@ -106,7 +106,7 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
       const m = json.choices?.[0]?.message
       if (!m) throw new Error('模型返回为空')
       return {
-        text: m.content || undefined,
+        text: toSpeech(m.content) || undefined,
         toolCalls: (m.tool_calls ?? []).map((c: any) => ({
           id: c.id,
           name: c.function.name,
@@ -118,3 +118,29 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
 }
 
 const safeParse = (s: string) => { try { return JSON.parse(s || '{}') } catch { return {} } }
+
+/**
+ * 清掉思考标签。推理模型有时会把思考内容（或只剩一个尾标签）混进 content，
+ * 这段文字会直接被念给用户听——实测 MiniMax M3 会吐 `</mm:think>`。
+ * 各家标签名不一，统一按 `<[前缀:]think>` 处理，成对与单个残留都清。
+ */
+export function stripThinking(text?: string): string {
+  return (text ?? '')
+    .replace(/<(\w+:)?think>[\s\S]*?<\/(\w+:)?think>/g, '')
+    .replace(/<\/?(\w+:)?think>/g, '')
+    .trim()
+}
+
+/**
+ * 把模型话术清理成"能念出来的样子"。
+ * 话术会直接进 TTS，Markdown 星号井号念出来全是噪音；换行在语音里也不存在。
+ * Prompt 里反复交代过不要用 Markdown，模型照样用——这类硬性要求靠机制兜底更省心。
+ */
+export function toSpeech(text?: string): string {
+  return stripThinking(text)
+    .replace(/\*\*|__|`/g, '')            // 加粗与代码标记
+    .replace(/^\s*#{1,6}\s*/gm, '')        // 标题井号
+    .replace(/^\s*[-*+]\s+/gm, '')         // 列表符号
+    .replace(/\s*\n+\s*/g, ' ')            // 多行折一行
+    .trim()
+}

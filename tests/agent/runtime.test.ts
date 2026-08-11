@@ -23,8 +23,8 @@ function fakeLLM(script: LLMReply[]): LLM & { seen: any[] } {
   }
 }
 
-const mkAgent = (llm: LLM) =>
-  createAgent({ manifest: MAIN_AGENT, registry: reg, store, llm })
+const mkAgent = (llm: LLM, extra: Record<string, unknown> = {}) =>
+  createAgent({ manifest: MAIN_AGENT, registry: reg, store, llm, ...extra })
 
 beforeEach(() => {
   store = createStore(SIGNALS, CONSTRAINTS)
@@ -43,6 +43,19 @@ describe('上下文注入', () => {
   it('包含说话人位置，用于指代消解（Golden Case 4）', () => {
     store.setDirect('perception.voiceSource', 'rearLeft')
     expect(buildSystemPrompt(MAIN_AGENT, store, reg)).toContain('左后')
+  })
+
+  // 裸英文枚举值（"香型: none"）逼着模型自己现编中文说法，实测编出了枚举里
+  // 根本没有的"清香"。中文名是数据，跟着信号定义走
+  it('枚举值按信号自带的中文标签注入', () => {
+    const p = buildSystemPrompt(MAIN_AGENT, store, reg)
+    expect(p).toContain('香型: 无')
+    expect(p).not.toContain('香型: none')
+  })
+
+  it('没配中文标签的枚举值原样注入', () => {
+    store.setDirect('vehicle.carType', 'ev')
+    expect(buildSystemPrompt(MAIN_AGENT, store, reg)).toContain('ev')
   })
 
   it('CONTINUOUS 信号取整注入，不带无意义小数', () => {
@@ -79,6 +92,34 @@ describe('上下文注入', () => {
 
 /* ────────────────────────── 执行循环 ────────────────────────── */
 describe('执行循环', () => {
+  // 实测：用户输入为空时若照样送进模型，模型会凭空发挥（无端开窗、查天气）
+  it('空输入不调模型，也不污染会话历史', async () => {
+    const llm = fakeLLM([{ text: '不该被调用' }])
+    const a = mkAgent(llm)
+    const r = await a.run('   ')
+    expect(r.stopReason).toBe('empty')
+    expect(r.reply).toBe('')
+    expect(llm.seen).toHaveLength(0)
+    expect(a.history).toHaveLength(0)
+  })
+
+  // 上一轮问"你要哪个"，用户这一轮开口就等于回答了（或换了话题），
+  // 那张问题卡再挂着就是垃圾
+  it('每轮开始时通知外部清理上一轮的临时卡', async () => {
+    const cleaned: number[] = []
+    const a = mkAgent(fakeLLM([{ text: '好' }]), { onTurnStart: () => cleaned.push(1) })
+    await a.run('第一句')
+    await a.run('第二句')
+    expect(cleaned).toHaveLength(2)
+  })
+
+  it('空输入不触发清理——用户根本没说话', async () => {
+    const cleaned: number[] = []
+    const a = mkAgent(fakeLLM([{ text: '好' }]), { onTurnStart: () => cleaned.push(1) })
+    await a.run('  ')
+    expect(cleaned).toHaveLength(0)
+  })
+
   it('模型直接回话，不调工具', async () => {
     const a = mkAgent(fakeLLM([{ text: '你好' }]))
     const r = await a.run('你好')
@@ -155,6 +196,16 @@ describe('执行循环', () => {
     expect(r.stopReason).toBe('maxRounds')
   })
 
+  // 实测模型把 6 轮全用在工具调用上，用户说了话助手一声不吭。
+  // 语音场景下没有"静默"这个选项——最后一轮不给工具，逼它出话
+  it('最后一轮不给工具，保证用户至少听到一句', async () => {
+    const loop = { toolCalls: [{ id: 'x', name: 'vehicle.getState', args: {} }] }
+    const llm = fakeLLM([...Array(5).fill(loop), { text: '查完了，都正常' }])
+    const r = await mkAgent(llm).run('查状态')
+    expect(r.reply).toBe('查完了，都正常')
+    expect(llm.seen.at(-1)!.tools).toHaveLength(0)
+  })
+
   it('能力授权：manifest 白名单外的调用被拒', async () => {
     const limited = createAgent({
       manifest: { ...MAIN_AGENT, tools: ['vehicle.getState'] },
@@ -173,7 +224,7 @@ describe('执行循环', () => {
       manifest: { ...MAIN_AGENT, tools: ['window.*'] }, registry: reg, store, llm,
     }).run('hi')
     const names = llm.seen[0].tools.map((t: any) => t.function.name)
-    expect(names).toEqual(['window.set'])
+    expect(names).toEqual(['window_set'])
   })
 })
 
@@ -211,7 +262,7 @@ describe('二次确认 · 端到端', () => {
   })
 
   it('灰级工具的 schema 里必须带 confirmToken 参数', () => {
-    const s = reg.schemas('openai').find(x => x.function.name === 'door.set')!
+    const s = reg.schemas('openai').find(x => x.function.name === 'door_set')!
     expect(s.function.properties ?? s.function.parameters.properties).toHaveProperty('confirmToken')
   })
 })

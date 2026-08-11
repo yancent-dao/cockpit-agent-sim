@@ -11,9 +11,14 @@ export interface Signal {
   alias: string
   /** COVESA VSS v6.0 路径 —— 必填，构建期校验 */
   vssPath: string
-  type: 'number' | 'boolean' | 'enum'
+  type: 'number' | 'boolean' | 'enum' | 'string'
   range?: [number, number]
   values?: string[]
+  /**
+   * 枚举值的中文说法。裸英文标识符注入上下文会逼模型自己现编——
+   * 实测 scent=none 被说成了枚举里根本没有的"清香"。
+   */
+  valueLabels?: Record<string, string>
   access: Access
   changeMode: ChangeMode
   permission?: Permission

@@ -18,107 +18,126 @@ beforeEach(() => {
   reg = createRegistry(store, TOOLS, () => now, { desk })
 })
 
-const show = (o: any = {}) =>
-  reg.invoke('card.show', { template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
+const show = async (o: any = {}) =>
+  await reg.invoke('card.show', { template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
 
 describe('卡片调度 Tool', () => {
-  it('card.show 创建卡片并返回 cardId', () => {
-    const r = show({ data: { title: '车窗' } })
+  it('card.show 创建卡片并返回 cardId', async () => {
+    const r = await show({ data: { title: '临时提醒', text: 'x' } })
     expect(r.status).toBe('ok')
     expect((r.data as any).cardId).toBeTruthy()
-    expect(desk.layout().agent).toHaveLength(1)
+    expect(desk.layout().cards).toHaveLength(1)
   })
 
-  it('card.show 缺 ttl 被拒 —— 防卡片堆积', () => {
-    const r = reg.invoke('card.show', { template: 'feedback', size: '1/6' })
+  it('card.show 缺 ttl 被拒 —— 防卡片堆积', async () => {
+    const r = await reg.invoke('card.show', { template: 'feedback', size: '1/6' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('INVALID_PARAMS')
   })
 
-  it('card.show 模板必须在白名单内', () => {
-    expect(show({ template: 'whatever' }).code).toBe('INVALID_PARAMS')
+  it('card.show 模板必须在白名单内', async () => {
+    expect((await show({ template: 'whatever' })).code).toBe('INVALID_PARAMS')
   })
 
-  it('挤出时把 note 透传给 Agent，让它能告诉用户', () => {
-    show({ data: { title: '搜索结果' } }); now += 10
-    show(); now += 10; show(); now += 10
-    const r = show()
+  it('card.show 尺寸必须是该模板支持的形状之一', async () => {
+    const r = await show({ template: 'capability', size: '1/2', data: {} })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+  })
+
+  it('Agent 无法手动创建导航卡——nav 模板只接受 2/3，而 card.show 的尺寸枚举里没有 2/3', async () => {
+    for (const size of ['1/6', '1/3', '1/2', 'full', '2/3']) {
+      const r = await show({ template: 'nav', size, data: { destination: 'x' } })
+      expect(r.status).toBe('rejected')
+    }
+  })
+
+  it('data 缺少模板必填字段时拒绝，不是静默渲染空白', async () => {
+    const r = await show({ template: 'capability', size: 'full', data: {} })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('DATA_SHAPE_MISMATCH')
+    expect(r.message).toContain('items')
+  })
+
+  it('天气卡缺 now 字段时拒绝', async () => {
+    const r = await show({ template: 'weather', size: '1/3', data: { forecast: [] } })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('DATA_SHAPE_MISMATCH')
+  })
+
+  it('天气卡字段齐全时正常创建', async () => {
+    const r = await show({ template: 'weather', size: '1/3', data: { now: { weather: '晴', temperature: 25 } } })
+    expect(r.status).toBe('ok')
+  })
+
+  it('通用兜底卡不做形状校验——它本来就是给"没有合适模板"用的逃生舱', async () => {
+    const r = await show({ template: 'generic', size: '1/6', data: { whatever: 123 } })
+    expect(r.status).toBe('ok')
+  })
+
+  it('card.update 只校验实际传入字段的类型（局部更新语义）', async () => {
+    const id = ((await show({ template: 'weather', size: '1/3', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
+    const r = await reg.invoke('card.update', { cardId: id, data: { now: 'not-an-object' } })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('DATA_SHAPE_MISMATCH')
+  })
+
+  it('挤出时把 note 透传给 Agent，让它能告诉用户', async () => {
+    await show({ data: { title: '搜索结果' } }); now += 10
+    for (let i = 0; i < 5; i++) { await show(); now += 10 }
+    const r = await show({ kind: 'system', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     expect(r.message).toContain('搜索结果')
   })
 
-  // 注意：Tool 层不给 Agent「这张卡不许被挤掉」的开关 —— 那是 desktop.pin（灰级、需用户确认）的职责。
-  // 能否让位由卡片 kind 的优先级决定，避免 Agent 把自己的卡全部标成不可挤。
-  it('桌面满且无可让位时返回 rejected + 可读原因', () => {
-    for (let i = 0; i < 3; i++) { show({ kind: 'system' }); now += 10 }
-    const r = show({ kind: 'task' })
+  it('桌面满且无可让位时返回 rejected + 可读原因', async () => {
+    for (let i = 0; i < 6; i++) { await show({ kind: 'system' }); now += 10 }
+    const r = await show({ kind: 'task' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DESKTOP_FULL')
     expect(r.message).toBeTruthy()
   })
 
-  it('card.update / card.resize / card.focus / card.dismiss', () => {
-    const id = (show().data as any).cardId
-    expect(reg.invoke('card.update', { cardId: id, data: { title: '新标题' } }).status).toBe('ok')
+  it('card.update / card.resize / card.focus / card.dismiss', async () => {
+    const id = ((await show()).data as any).cardId
+    expect((await reg.invoke('card.update', { cardId: id, data: { title: '新标题' } })).status).toBe('ok')
     expect(desk.get(id)!.data.title).toBe('新标题')
-    expect(reg.invoke('card.resize', { cardId: id, size: '1/3' }).status).toBe('ok')
+    expect((await reg.invoke('card.resize', { cardId: id, size: '1/3' })).status).toBe('ok')
     expect(desk.get(id)!.size).toBe('1/3')
-    expect(reg.invoke('card.focus', { cardId: id }).status).toBe('ok')
-    expect(reg.invoke('card.dismiss', { cardId: id }).status).toBe('ok')
-    expect(desk.layout().agent).toHaveLength(0)
+    expect((await reg.invoke('card.focus', { cardId: id })).status).toBe('ok')
+    expect((await reg.invoke('card.dismiss', { cardId: id })).status).toBe('ok')
+    expect(desk.layout().cards).toHaveLength(0)
   })
 
-  it('操作不存在的卡片返回可读错误，不抛异常', () => {
-    expect(reg.invoke('card.dismiss', { cardId: 'nope' }).code).toBe('NO_SUCH_CARD')
+  it('操作不存在的卡片返回可读错误，不抛异常', async () => {
+    expect((await reg.invoke('card.dismiss', { cardId: 'nope' })).code).toBe('NO_SUCH_CARD')
   })
 })
 
 describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => {
-  it('返回各区卡片与剩余容量', () => {
-    show({ data: { title: 'A' }, size: '1/3' })
-    const r = reg.invoke('desktop.getLayout', {})
+  it('返回卡片列表与剩余格数（统一画布，无分区）', async () => {
+    await show({ data: { title: 'A', items: [] }, size: '1/3', template: 'control' })
+    const r = await reg.invoke('desktop.getLayout', {})
     expect(r.status).toBe('ok')
     const d = r.data as any
-    expect(d.agent[0].title).toBe('A')
-    expect(d.agent[0].size).toBe('1/3')
-    expect(d.agentFree).toBe(1)
-    expect(d.fixed).toEqual([])
+    expect(d.cards[0].title).toBe('A')
+    expect(d.cards[0].size).toBe('1/3')
+    expect(d.free).toBe(4)
   })
 
-  it('空桌面也返回结构完整的结果', () => {
-    const d = reg.invoke('desktop.getLayout', {}).data as any
-    expect(d.agentFree).toBe(3)
-    expect(d.fixedFree).toBe(3)
-  })
-})
-
-describe('desktop.pin 是灰级 —— 固定区归用户，入驻需确认', () => {
-  it('首次调用返回 CONFIRM_REQUIRED，且未入驻', () => {
-    const id = (show().data as any).cardId
-    const r = reg.invoke('desktop.pin', { cardId: id })
-    expect(r.status).toBe('inputRequired')
-    expect(desk.layout().fixed).toHaveLength(0)
-  })
-
-  it('带 token 重调后入驻固定区', () => {
-    const id = (show().data as any).cardId
-    const first = reg.invoke('desktop.pin', { cardId: id })
-    const r = reg.invoke('desktop.pin', { cardId: id, confirmToken: first.token })
-    expect(r.status).toBe('ok')
-    expect(desk.layout().fixed.map(c => c.id)).toContain(id)
-  })
-
-  it('desktop.unpin 同样是灰级', () => {
-    expect(reg.permissionOf('desktop.unpin')).toBe('灰')
+  it('空桌面也返回结构完整的结果', async () => {
+    const d = (await reg.invoke('desktop.getLayout', {})).data as any
+    expect(d.cards).toEqual([])
+    expect(d.free).toBe(6)
   })
 })
 
-describe('已作废的 App 类 Tool 不应存在', () => {
-  it('无APP化后 app.launch / app.close / screen.setLayout 全部移除', () => {
+describe('已作废的 Tool 不应存在', () => {
+  it('无APP化后 app.* 移除；无常驻卡后 desktop.pin/unpin 移除', async () => {
     const names = reg.list().map(t => t.name)
     expect(names).not.toContain('app.launch')
-    expect(names).not.toContain('app.close')
     expect(names).not.toContain('screen.setLayout')
-    expect(names).not.toContain('screen.showCard')
+    expect(names).not.toContain('desktop.pin')
+    expect(names).not.toContain('desktop.unpin')
   })
 })

@@ -4,6 +4,23 @@ import { createRegistry } from '../../src/tools/registry'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
+import { createAmapClient, type Fetcher } from '../../src/tools/amap'
+import { createDesk } from '../../src/cards/desk'
+
+const createDeskForTest = () => createDesk(() => now)
+
+/** 假高德：按路径返回预设响应，不打真实网络。复用真实 createAmapClient，测的是真实拼装链路 */
+const fakeAmap = (routes: Record<string, any>) => createAmapClient(
+  (async (url: string) => {
+    const path = new URL(url).pathname
+    const r = routes[path]
+    if (!r) throw new Error(`没有为 ${path} 配置假响应`)
+    // 函数式：同一个接口连着调多次要能返回不同结果（并行查多地天气）
+    const body = typeof r === 'function' ? r() : r
+    return { ok: true, json: async () => body }
+  }) as Fetcher,
+  { webKey: 'test-key' },
+)
 
 let store: ReturnType<typeof createStore>
 let reg: ReturnType<typeof createRegistry>
@@ -17,20 +34,20 @@ beforeEach(() => {
 
 /* ────────────────────────── 注册表与 Schema ────────────────────────── */
 describe('注册表', () => {
-  it('「黑」级 Tool 永不暴露给 Agent —— 永久禁区', () => {
+  it('「黑」级 Tool 永不暴露给 Agent —— 永久禁区', async () => {
     const names = reg.list().map(t => t.name)
     expect(names).not.toContain('brake.apply')
     expect(TOOLS.some(t => t.name === 'brake.apply')).toBe(true) // 配置里有，但不暴露
   })
 
-  it('调用「黑」级 Tool 直接 unavailable / BLOCKED', () => {
-    const r = reg.invoke('brake.apply', { force: 1 })
+  it('调用「黑」级 Tool 直接 unavailable / BLOCKED', async () => {
+    const r = await reg.invoke('brake.apply', { force: 1 })
     expect(r.status).toBe('unavailable')
     expect(r.code).toBe('BLOCKED')
   })
 
-  it('导出 OpenAI function calling 格式', () => {
-    const s = reg.schemas('openai').find(x => x.function.name === 'window.set')!
+  it('导出 OpenAI function calling 格式', async () => {
+    const s = reg.schemas('openai').find(x => x.function.name === 'window_set')!
     expect(s.type).toBe('function')
     expect(s.function.description).toBeTruthy()
     expect(s.function.parameters.type).toBe('object')
@@ -39,74 +56,74 @@ describe('注册表', () => {
     expect(s.function.parameters.required).toContain('window')
   })
 
-  it('能力授权：白名单外的 Tool 不暴露且不可调用', () => {
+  it('能力授权：白名单外的 Tool 不暴露且不可调用', async () => {
     const names = reg.list(['window.*', 'vehicle.getState']).map(t => t.name)
     expect(names).toContain('window.set')
     expect(names).not.toContain('door.set')
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open' }, { allow: ['window.*'] })
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open' }, { allow: ['window.*'] })
     expect(r.status).toBe('unavailable')
     expect(r.code).toBe('NOT_AUTHORIZED')
   })
 
-  it('未知 Tool 返回 unavailable / UNKNOWN_TOOL', () => {
-    expect(reg.invoke('teleport.now', {}).code).toBe('UNKNOWN_TOOL')
+  it('未知 Tool 返回 unavailable / UNKNOWN_TOOL', async () => {
+    expect((await reg.invoke('teleport.now', {})).code).toBe('UNKNOWN_TOOL')
   })
 })
 
 /* ────────────────────────── 零代码 handler ────────────────────────── */
 describe('由 writes 声明自动生成的 handler', () => {
-  it('彩级直接执行并写入 store', () => {
-    const r = reg.invoke('window.set', { window: 'driver', position: 60 })
+  it('彩级直接执行并写入 store', async () => {
+    const r = await reg.invoke('window.set', { window: 'driver', position: 60 })
     expect(r.status).toBe('ok')
     expect(store.getTarget('cabin.window.driver.position')).toBe(60)
     expect(r.changed).toEqual(['cabin.window.driver.position'])
   })
 
-  it('all 自动展开为四扇窗，一次调用四条 changed', () => {
-    const r = reg.invoke('window.set', { window: 'all', position: 100 })
+  it('all 自动展开为四扇窗，一次调用四条 changed', async () => {
+    const r = await reg.invoke('window.set', { window: 'all', position: 100 })
     expect(r.status).toBe('ok')
     expect(r.changed).toHaveLength(4)
     expect(store.getTarget('cabin.window.rearRight.position')).toBe(100)
   })
 
-  it('参数缺失返回 rejected / INVALID_PARAMS', () => {
-    expect(reg.invoke('window.set', { window: 'driver' }).code).toBe('INVALID_PARAMS')
+  it('参数缺失返回 rejected / INVALID_PARAMS', async () => {
+    expect((await reg.invoke('window.set', { window: 'driver' })).code).toBe('INVALID_PARAMS')
   })
 
-  it('参数越界返回 rejected / INVALID_PARAMS', () => {
-    expect(reg.invoke('window.set', { window: 'driver', position: 300 }).code).toBe('INVALID_PARAMS')
-    expect(reg.invoke('window.set', { window: 'roof', position: 10 }).code).toBe('INVALID_PARAMS')
+  it('参数越界返回 rejected / INVALID_PARAMS', async () => {
+    expect((await reg.invoke('window.set', { window: 'driver', position: 300 })).code).toBe('INVALID_PARAMS')
+    expect((await reg.invoke('window.set', { window: 'roof', position: 10 })).code).toBe('INVALID_PARAMS')
   })
 })
 
 /* ────────────────────────── 约束透传 ────────────────────────── */
 describe('约束结果透传到 ToolResult', () => {
-  it('限位场景：ok + code + 人话 message（Golden Case 7）', () => {
+  it('限位场景：ok + code + 人话 message（Golden Case 7）', async () => {
     store.setDirect('vehicle.speed', 120)
-    const r = reg.invoke('window.set', { window: 'driver', position: 100 }, { confirmToken: undefined, force: true })
+    const r = await reg.invoke('window.set', { window: 'driver', position: 100 }, { confirmToken: undefined, force: true })
     expect(r.status).toBe('ok')
     expect(r.code).toBe('SPEED_LIMITED')
     expect(r.message).toContain('120')
   })
 
-  it('儿童锁场景：rejected + suggestion（Golden Case 8）', () => {
+  it('儿童锁场景：rejected + suggestion（Golden Case 8）', async () => {
     store.set('cabin.childLock', true)
-    const r = reg.invoke('window.set', { window: 'rearLeft', position: 100 })
+    const r = await reg.invoke('window.set', { window: 'rearLeft', position: 100 })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('CHILD_LOCK_ON')
     expect(r.suggestion).toBeTruthy()
   })
 
-  it('未选装：unavailable / NOT_EQUIPPED，绝不假装成功（Golden Case 9）', () => {
-    const r = reg.invoke('sunroof.set', { position: 100 })
+  it('未选装：unavailable / NOT_EQUIPPED，绝不假装成功（Golden Case 9）', async () => {
+    const r = await reg.invoke('sunroof.set', { position: 100 })
     expect(r.status).toBe('unavailable')
     expect(r.code).toBe('NOT_EQUIPPED')
   })
 
-  it('批量展开中任一被拒 → 整体 rejected，不做部分写入', () => {
+  it('批量展开中任一被拒 → 整体 rejected，不做部分写入', async () => {
     store.set('cabin.childLock', true)
     const before = store.getTarget('cabin.window.driver.position')
-    const r = reg.invoke('window.set', { window: 'all', position: 100 })
+    const r = await reg.invoke('window.set', { window: 'all', position: 100 })
     expect(r.status).toBe('rejected')
     expect(store.getTarget('cabin.window.driver.position')).toBe(before)
   })
@@ -114,8 +131,8 @@ describe('约束结果透传到 ToolResult', () => {
 
 /* ────────────────────────── MRTR 二次确认（对齐 MCP 2026-07-28） ────────────────────────── */
 describe('二次确认 · MCP MRTR inputRequired', () => {
-  it('灰级 Tool 首次调用返回 inputRequired + token，且不执行', () => {
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open' })
+  it('灰级 Tool 首次调用返回 inputRequired + token，且不执行', async () => {
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open' })
     expect(r.status).toBe('inputRequired')
     expect(r.code).toBe('CONFIRM_REQUIRED')
     expect(r.token).toBeTruthy()
@@ -123,61 +140,61 @@ describe('二次确认 · MCP MRTR inputRequired', () => {
     expect(store.getTarget('cabin.door.driver.isOpen')).toBe(false)
   })
 
-  it('带正确 token 重调则真正执行', () => {
-    const first = reg.invoke('door.set', { door: 'driver', action: 'open' })
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
+  it('带正确 token 重调则真正执行', async () => {
+    const first = await reg.invoke('door.set', { door: 'driver', action: 'open' })
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
     expect(r.status).toBe('ok')
     expect(store.getTarget('cabin.door.driver.isOpen')).toBe(true)
   })
 
-  it('token 一次性，第二次使用失效', () => {
-    const first = reg.invoke('door.set', { door: 'driver', action: 'open' })
-    reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
-    const again = reg.invoke('door.set', { door: 'driver', action: 'close' }, { confirmToken: first.token })
+  it('token 一次性，第二次使用失效', async () => {
+    const first = await reg.invoke('door.set', { door: 'driver', action: 'open' })
+    await reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
+    const again = await reg.invoke('door.set', { door: 'driver', action: 'close' }, { confirmToken: first.token })
     expect(again.status).toBe('inputRequired') // 需要重新确认
   })
 
-  it('token 60s 后过期', () => {
-    const first = reg.invoke('door.set', { door: 'driver', action: 'open' })
+  it('token 60s 后过期', async () => {
+    const first = await reg.invoke('door.set', { door: 'driver', action: 'open' })
     now += 61_000
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
     expect(r.status).toBe('inputRequired')
   })
 
-  it('空字符串 token 视为未提供（gpt-5-nano 实测会主动传 confirmToken:""）', () => {
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open', confirmToken: '' })
+  it('空字符串 token 视为未提供（gpt-5-nano 实测会主动传 confirmToken:""）', async () => {
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open', confirmToken: '' })
     expect(r.status).toBe('inputRequired')
     expect(r.token).toBeTruthy()
     expect(store.getTarget('cabin.door.driver.isOpen')).toBe(false)
   })
 
-  it('伪造 token 无效', () => {
-    const r = reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: 'ct_fake' })
+  it('伪造 token 无效', async () => {
+    const r = await reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: 'ct_fake' })
     expect(r.status).toBe('inputRequired')
   })
 
-  it('token 与 Tool 名绑定，不能跨 Tool 复用', () => {
-    const first = reg.invoke('door.set', { door: 'driver', action: 'open' })
-    const r = reg.invoke('window.set', { window: 'driver', position: 50 }, { confirmToken: first.token })
+  it('token 与 Tool 名绑定，不能跨 Tool 复用', async () => {
+    const first = await reg.invoke('door.set', { door: 'driver', action: 'open' })
+    const r = await reg.invoke('window.set', { window: 'driver', position: 50 }, { confirmToken: first.token })
     expect(r.status).toBe('ok') // 彩级本就不需要 token，但不应因此消耗它
-    const reuse = reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
+    const reuse = await reg.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
     expect(reuse.status).toBe('ok')
   })
 })
 
 /* ────────────────────────── 动态权限升级 ────────────────────────── */
 describe('动态权限：行驶中彩→灰', () => {
-  it('静止时 window.set 为彩级，直接执行', () => {
-    expect(reg.invoke('window.set', { window: 'driver', position: 50 }).status).toBe('ok')
+  it('静止时 window.set 为彩级，直接执行', async () => {
+    expect((await reg.invoke('window.set', { window: 'driver', position: 50 })).status).toBe('ok')
   })
 
-  it('行驶中 window.set 升级为灰级，需要确认', () => {
+  it('行驶中 window.set 升级为灰级，需要确认', async () => {
     store.setDirect('vehicle.speed', 60)
-    const r = reg.invoke('window.set', { window: 'driver', position: 50 })
+    const r = await reg.invoke('window.set', { window: 'driver', position: 50 })
     expect(r.status).toBe('inputRequired')
   })
 
-  it('permissionOf 反映当前动态等级', () => {
+  it('permissionOf 反映当前动态等级', async () => {
     expect(reg.permissionOf('window.set')).toBe('彩')
     store.setDirect('vehicle.speed', 60)
     expect(reg.permissionOf('window.set')).toBe('灰')
@@ -186,31 +203,957 @@ describe('动态权限：行驶中彩→灰', () => {
 
 /* ────────────────────────── 读取类 Tool ────────────────────────── */
 describe('vehicle.getState', () => {
-  it('按 paths 精确读取', () => {
-    const r = reg.invoke('vehicle.getState', { paths: ['vehicle.speed', 'cabin.childLock'] })
+  it('按 paths 精确读取', async () => {
+    const r = await reg.invoke('vehicle.getState', { paths: ['vehicle.speed', 'cabin.childLock'] })
     expect(r.status).toBe('ok')
     expect(r.data).toEqual({ 'vehicle.speed': 0, 'cabin.childLock': false })
   })
 
-  it('不传参返回全量快照', () => {
-    const r = reg.invoke('vehicle.getState', {})
+  it('不传参返回全量快照', async () => {
+    const r = await reg.invoke('vehicle.getState', {})
     expect(Object.keys(r.data as object).length).toBe(SIGNALS.length)
   })
 
-  it('未知 path 被忽略而非报错', () => {
-    const r = reg.invoke('vehicle.getState', { paths: ['nope.nope'] })
+  it('未知 path 被忽略而非报错', async () => {
+    const r = await reg.invoke('vehicle.getState', { paths: ['nope.nope'] })
     expect(r.status).toBe('ok')
     expect(r.data).toEqual({})
   })
 })
 
+/* ────────────────────────── 能力目录（供能力目录卡渲染） ────────────────────────── */
+describe('capability.list', () => {
+  it('由 Tool Registry 生成，不包含黑级 Tool', async () => {
+    const r = await reg.invoke('capability.list', {})
+    expect(r.status).toBe('ok')
+    const labels = (r.data as any).items.map((i: any) => i.label)
+    expect(labels).not.toContain('brake.apply')
+    expect(labels).toContain('window.set')
+  })
+
+  it('依赖未选装信号的 Tool 标记 off:true', async () => {
+    const r = await reg.invoke('capability.list', {})
+    const sunroof = (r.data as any).items.find((i: any) => i.label === 'sunroof.set')
+    expect(sunroof.off).toBe(true)
+  })
+
+  it('已选装的 Tool 不标记 off', async () => {
+    const r = await reg.invoke('capability.list', {})
+    const win = (r.data as any).items.find((i: any) => i.label === 'window.set')
+    expect(win.off).toBeFalsy()
+  })
+
+  it('domain 按 Tool 名前缀过滤', async () => {
+    const r = await reg.invoke('capability.list', { domain: 'window' })
+    const labels = (r.data as any).items.map((i: any) => i.label)
+    expect(labels).toEqual(['window.set'])
+  })
+})
+
+/* ────────────────────────── Tool 名 wire 格式（Anthropic 等 provider 不接受点号） ────────────────────────── */
+describe('Tool 名 sanitize', () => {
+  it('schemas() 导出的 name 不含点号，供严格校验的 provider 使用', async () => {
+    for (const format of ['openai', 'anthropic', 'mcp'] as const) {
+      for (const s of reg.schemas(format)) {
+        const name = format === 'openai' ? s.function.name : s.name
+        expect(name).toMatch(/^[a-zA-Z0-9_-]{1,128}$/)
+      }
+    }
+  })
+
+  it('window.set 导出为 window_set', async () => {
+    const s = reg.schemas('anthropic').find(x => x.name === 'window_set')
+    expect(s).toBeTruthy()
+  })
+
+  it('invoke 接受 provider 返回的下划线形式并正确路由到同一个 Tool', async () => {
+    const viaDot = await reg.invoke('window.set', { window: 'driver', position: 60 })
+    store = createStore(SIGNALS, CONSTRAINTS) // 重置
+    reg = createRegistry(store, TOOLS, () => now)
+    const viaUnderscore = await reg.invoke('window_set', { window: 'driver', position: 60 })
+    expect(viaUnderscore.status).toBe(viaDot.status)
+    expect(viaUnderscore.changed).toEqual(viaDot.changed)
+  })
+
+  it('白名单鉴权对下划线形式同样按点号语义生效', async () => {
+    const r = await reg.invoke('door_set', { door: 'driver', action: 'open' }, { allow: ['window.*'] })
+    expect(r.status).toBe('unavailable')
+    expect(r.code).toBe('NOT_AUTHORIZED')
+  })
+
+  it('permissionOf 对下划线形式同样返回正确权限', async () => {
+    expect(reg.permissionOf('door_set')).toBe('灰')
+  })
+})
+
+/* ────────────────────────── 补齐的 L1 Tool ────────────────────────── */
+describe('climate.set —— 一次调用写多个字段', () => {
+  it('一次传 power + targetTemp + fanSpeed，三个信号都要生效', async () => {
+    const r = await reg.invoke('climate.set', { power: true, targetTemp: 24, fanSpeed: 5 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.climate.power')).toBe(true)
+    expect(store.get('cabin.climate.targetTemp')).toBe(24)
+    expect(store.get('cabin.climate.fanSpeed')).toBe(5)
+  })
+
+  it('只传其中一个字段，其余字段不受影响', async () => {
+    await reg.invoke('climate.set', { targetTemp: 26 })
+    expect(store.get('cabin.climate.targetTemp')).toBe(26)
+    expect(store.get('cabin.climate.power')).toBe(false)
+  })
+
+  it('一个字段越界，整体拒绝且不写入其它字段（杜绝部分提交）', async () => {
+    const r = await reg.invoke('climate.set', { power: true, targetTemp: 99 })
+    expect(r.status).toBe('rejected')
+    expect(store.get('cabin.climate.power')).toBe(false)
+  })
+
+  it('低电量限制风量上限 3 档', async () => {
+    store.setDirect('powertrain.soc', 5)
+    const r = await reg.invoke('climate.set', { fanSpeed: 7 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.climate.fanSpeed')).toBe(3)
+    expect(r.code).toBe('LOW_BATTERY_LIMIT')
+  })
+
+  it('什么字段都不传时拒绝', async () => {
+    expect((await reg.invoke('climate.set', {})).status).toBe('rejected')
+  })
+})
+
+describe('seat.set', () => {
+  it('按位置设置加热档位', async () => {
+    const r = await reg.invoke('seat.set', { seat: 'driver', heating: 2 })
+    expect(r.status).toBe('ok')
+    expect(store.get('seat.driver.heating')).toBe(2)
+  })
+
+  it('seat=all 展开到四个座椅', async () => {
+    const r = await reg.invoke('seat.set', { seat: 'all', ventilation: 1 })
+    expect(r.status).toBe('ok')
+    expect(store.get('seat.rearRight.ventilation')).toBe(1)
+  })
+
+  it('后排没有滑动功能，返回 NOT_EQUIPPED 而不是裸错误', async () => {
+    const r = await reg.invoke('seat.set', { seat: 'rearLeft', slide: 60 })
+    expect(r.status).toBe('unavailable')
+    expect(r.code).toBe('NOT_EQUIPPED')
+  })
+})
+
+describe('steeringWheel.set', () => {
+  it('设置方向盘加热档位', async () => {
+    const r = await reg.invoke('steeringWheel.set', { heating: 3 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.steeringWheel.heating')).toBe(3)
+  })
+})
+
+describe('trunk.set', () => {
+  it('P 挡可以打开后备箱', async () => {
+    const r = await reg.invoke('trunk.set', { target: 'trunk', action: 'open' }, { force: true })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.trunk.isOpen')).toBe(true)
+  })
+
+  it('非 P 挡禁止打开后备箱', async () => {
+    store.setDirect('vehicle.gear', 'd')
+    const r = await reg.invoke('trunk.set', { target: 'trunk', action: 'open' }, { force: true })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('GEAR_NOT_PARK')
+  })
+})
+
+describe('chargePort.set', () => {
+  it('打开充电口', async () => {
+    const r = await reg.invoke('chargePort.set', { action: 'open' })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.chargePort.isOpen')).toBe(true)
+  })
+})
+
+describe('ambientLight.set / fragrance.set / light.set', () => {
+  it('氛围灯一次设置颜色和亮度', async () => {
+    const r = await reg.invoke('ambientLight.set', { power: true, color: 'blue', brightness: 80 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.ambientLight.color')).toBe('blue')
+    expect(store.get('cabin.ambientLight.brightness')).toBe(80)
+  })
+
+  it('香氛设置香型和强度', async () => {
+    const r = await reg.invoke('fragrance.set', { power: true, scent: 'citrus', intensity: 2 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.fragrance.scent')).toBe('citrus')
+  })
+
+  it('大灯开关', async () => {
+    const r = await reg.invoke('light.set', { light: 'headlight', state: 'on' })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.light.headlight.state')).toBe('on')
+  })
+})
+
+describe('driveSetting.set —— 行驶中降灰', () => {
+  it('静止时彩级直接执行', async () => {
+    const r = await reg.invoke('driveSetting.set', { driveMode: 'sport' })
+    expect(r.status).toBe('ok')
+    expect(store.get('vehicle.driveMode')).toBe('sport')
+  })
+
+  it('行驶中需要二次确认', async () => {
+    store.setDirect('vehicle.speed', 80)
+    const r = await reg.invoke('driveSetting.set', { driveMode: 'sport' })
+    expect(r.status).toBe('inputRequired')
+  })
+})
+
+describe('door.set 已扩展到四门 + 儿童锁联动后门', () => {
+  it('可以开副驾车门', async () => {
+    const r = await reg.invoke('door.set', { door: 'passenger', action: 'open' }, { force: true })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.door.passenger.isOpen')).toBe(true)
+  })
+
+  it('儿童锁开启时后门也不可开', async () => {
+    store.setDirect('cabin.childLock', true)
+    const r = await reg.invoke('door.set', { door: 'rearLeft', action: 'open' }, { force: true })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('CHILD_LOCK_ON')
+  })
+})
+
+describe('voice.ask', () => {
+  it('返回问题与选项，供 Agent 播报与确认卡渲染', async () => {
+    const r = await reg.invoke('voice.ask', { question: '要不要顺路充电？', options: ['好', '不用'] })
+    expect(r.status).toBe('ok')
+    expect((r.data as any).options).toEqual(['好', '不用'])
+  })
+})
+
+/* ────────────────────────── 高德导航（真实三方 API，接口对齐已核对） ────────────────────────── */
+describe('navigation.search', () => {
+  it('搜到候选点', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [{ id: 'B1', name: '望京 SOHO', address: '望京街10号', location: '116.48,39.99' }] } }),
+    })
+    const res = await r.invoke('navigation.search', { query: '望京 SOHO' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).pois[0].name).toBe('望京 SOHO')
+  })
+
+  it('高德服务失败时返回 unavailable，不编造结果（CAR-bench 反幻觉）', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v5/place/text': { status: '0', info: 'INVALID_USER_KEY' } }),
+    })
+    const res = await r.invoke('navigation.search', { query: 'x' })
+    expect(res.status).toBe('unavailable')
+    expect(res.message).toBeTruthy()
+  })
+
+  it('搜出多个候选时，候选列表卡自动上屏——不指望模型自觉建卡', async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    const desk = createDesk(() => now)
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [
+        { id: 'B1', name: '春熙路步行街', address: '锦江区', location: '104.07,30.65' },
+        { id: 'B2', name: '春熙路地铁站', address: '锦江区', location: '104.08,30.66' },
+      ] } }),
+    })
+    const res = await r.invoke('navigation.search', { query: '春熙路' })
+    expect(res.status).toBe('ok')
+    const card = desk.findByKey('nav-candidates')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('list')
+    expect(card.data.items).toHaveLength(2)
+    expect(card.data.items[0].label).toBe('春熙路步行街')
+  })
+
+  it('只有一个候选时不打扰桌面', async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    const desk = createDesk(() => now)
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [
+        { id: 'B1', name: '春熙路步行街', address: '锦江区', location: '104.07,30.65' },
+      ] } }),
+    })
+    await r.invoke('navigation.search', { query: '春熙路步行街' })
+    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+  })
+
+  it('setDestination 定下来后候选列表卡自动撤掉——任务闭环', async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    const desk = createDesk(() => now)
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v5/place/text': { status: '1', pois: [
+          { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+          { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+        ] },
+        '/v5/place/detail': { status: '1', pois: [{ id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [] }] } },
+      }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    await r.invoke('navigation.setDestination', { poiId: 'B1' })
+    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+  })
+
+  // 模板已经声明了自己支持哪些尺寸，仲裁该认这个下限，不该让每个建卡处手写
+  it('自动上屏的卡从模板 sizes 继承最小尺寸', async () => {
+    const desk = createDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [
+        { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+        { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+      ] } }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    expect(desk.findByKey('nav-candidates')!.minSize).toBe('1/3') // list 模板 sizes: ['1/3','1/2']
+  })
+
+  // 候选卡不能像问题卡那样"用户一开口就撤"——实测用户的下一句往往就是冲着
+  // 屏幕上这张卡问的（"上面那个离这儿多远？"），撤了他就没东西可指了
+  it('用户就着候选卡追问时，卡片还在', async () => {
+    const desk = createDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v5/place/text': { status: '1', pois: [
+          { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+          { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+        ] },
+      }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    desk.endTask()
+    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+  })
+
+  // 但事情办完了就得撤。之前只在设目的地时撤，存常用地址这条路径漏了，
+  // 实测那张卡挂了 6 轮不散
+  it('存成常用地址也算办完了，候选卡撤掉', async () => {
+    const desk = createDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v5/place/text': { status: '1', pois: [
+          { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+          { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+        ] },
+        '/v5/place/detail': { status: '1', pois: [{ id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' }] },
+      }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    await r.invoke('places.save', { alias: '家', address: 'a', location: '104.07,30.65' })
+    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+  })
+
+  it('type=bus 时搜公交线路，city 用 near 传', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v3/bus/linename': { status: '1', buslines: [{ id: 'L1', type: '地铁线路', name: '10号线', start_stop: '角门西', end_stop: '首都机场' }] } }),
+    })
+    const res = await r.invoke('navigation.search', { query: '10号线', type: 'bus', near: '北京' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).buslines[0].name).toBe('10号线')
+  })
+
+  it('type=bus 但没传 near（城市）：拒绝，高德这个接口本来就要求必填', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.search', { query: '10号线', type: 'bus' })
+    expect(res.status).toBe('rejected')
+  })
+})
+
+describe('navigation.setDestination', () => {
+  it('传 address：地理编码 + 路径规划成功后写入导航状态', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '116.48,39.99', formatted_address: '北京市朝阳区望京', adcode: '110105' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [{ instruction: '直行', step_distance: '9000' }] }] } },
+      }),
+    })
+    const res = await r.invoke('navigation.setDestination', { address: '望京' })
+    expect(res.status).toBe('ok')
+    expect(store.get('navigation.active')).toBe(true)
+    expect(store.get('navigation.destination')).toBe('北京市朝阳区望京')
+    expect(store.get('navigation.eta')).toBe(20)
+    expect(store.get('navigation.distanceRemaining')).toBe(9)
+    expect((res.data as any).mapUrl).toContain('/v3/staticmap?')
+    expect((res.data as any).mapUrl).toContain('markers=')
+    expect(store.get('navigation.destinationLocation')).toBe('116.48,39.99') // 存下来，供 getStatus 以后重建地图
+  })
+
+  it('途经点在地图上要有独立标注，不能只标起终点', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [] }] } },
+      }),
+    })
+    const res = await r.invoke('navigation.setDestination', {
+      address: '目的地', waypoints: ['104.05,30.65', '104.08,30.62'],
+    })
+    const mapUrl = decodeURIComponent((res.data as any).mapUrl)
+    expect(mapUrl).toContain('104.05,30.65') // 途经点 1
+    expect(mapUrl).toContain('104.08,30.62') // 途经点 2
+    // 起点 A、终点 B、途经点用数字标号区分
+    expect(mapUrl).toMatch(/,1:104\.05,30\.65/)
+    expect(mapUrl).toMatch(/,2:104\.08,30\.62/)
+  })
+
+  it('途经点存进信号，导航卡刷新时地图上依然有标注', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [] }] } },
+      }),
+    })
+    await r.invoke('navigation.setDestination', { address: '目的地', waypoints: ['104.05,30.65'] })
+    expect(store.get('navigation.waypoints')).toBe('104.05,30.65')
+  })
+
+  it('支持途经点：先去 A 再去 B（市场车机的核心能力）', async () => {
+    let drivingUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      const path = new URL(url).pathname
+      if (path === '/v5/direction/driving') drivingUrl = url
+      const body = path === '/v3/geocode/geo'
+        ? { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地', adcode: '510100' }] }
+        : { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [] }] } }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('navigation.setDestination', { address: '目的地', waypoints: ['104.05,30.65'] })
+    expect(res.status).toBe('ok')
+    expect(decodeURIComponent(drivingUrl)).toContain('waypoints=104.05,30.65')
+  })
+
+  it('自动带上车牌与车型——限行规避不该让用户每次说一遍', async () => {
+    let drivingUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      const path = new URL(url).pathname
+      if (path === '/v5/direction/driving') drivingUrl = url
+      const body = path === '/v3/geocode/geo'
+        ? { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] }
+        : { status: '1', route: { paths: [{ distance: '9000', cost: { duration: '1200' }, steps: [] }] } }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.setDestination', { address: '目的地' })
+    const url = decodeURIComponent(drivingUrl)
+    expect(url).toContain('plate=川A88888')  // 来自 vehicle.plate 信号
+    expect(url).toContain('cartype=1')       // vehicle.carType=ev
+  })
+
+  it('返回过路费、收费里程、限行、红绿灯——用户关心的账要算清楚', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{
+          distance: '30000', restriction: '0', traffic_lights: '12',
+          cost: { duration: '2400', tolls: '25', toll_distance: '20000' }, steps: [],
+        }] } },
+      }),
+    })
+    const res = await r.invoke('navigation.setDestination', { address: '目的地' })
+    const d = res.data as any
+    expect(d.tolls).toBe(25)
+    expect(d.tollDistance).toBe(20)
+    expect(d.restricted).toBe(false)
+    expect(d.trafficLights).toBe(12)
+  })
+
+  it('既不传 poiId 也不传 address：拒绝', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.setDestination', {})
+    expect(res.status).toBe('rejected')
+  })
+
+  it('地址查不到坐标：unavailable', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v3/geocode/geo': { status: '1', geocodes: [] } }),
+    })
+    const res = await r.invoke('navigation.setDestination', { address: '火星' })
+    expect(res.status).toBe('unavailable')
+  })
+})
+
+describe('navigation.compareRoutes —— 多方案对比', () => {
+  const routesAmap = () => fakeAmap({
+    '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] },
+    '/v5/direction/driving': { status: '1', route: { paths: [
+      { distance: '30000', traffic_lights: '10', cost: { duration: '1800', tolls: '25' }, steps: [] },
+      { distance: '35000', traffic_lights: '20', cost: { duration: '2400', tolls: '0' }, steps: [] },
+    ] } },
+  })
+
+  it('给出多条方案，每条带耗时/里程/过路费', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: routesAmap() })
+    const res = await r.invoke('navigation.compareRoutes', { address: '目的地' })
+    expect(res.status).toBe('ok')
+    const routes = (res.data as any).routes
+    expect(routes).toHaveLength(2)
+    expect(routes[0]).toMatchObject({ eta: 30, distance: 30, tolls: 25 })
+    expect(routes[1]).toMatchObject({ eta: 40, distance: 35, tolls: 0 })
+  })
+
+  it('自动给每条方案打人话标签，方便 Agent 直接念', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: routesAmap() })
+    const res = await r.invoke('navigation.compareRoutes', { address: '目的地' })
+    const labels = (res.data as any).routes.map((x: any) => x.label)
+    expect(labels[0]).toContain('最快')
+    expect(labels[1]).toContain('免费') // 不花过路费的那条
+  })
+
+  it('方案列表自动上屏，供用户对着屏幕语音选', async () => {
+    const desk = createDeskForTest()
+    const r = createRegistry(store, TOOLS, () => now, { desk, amap: routesAmap() })
+    await r.invoke('navigation.compareRoutes', { address: '目的地' })
+    const card = desk.findByKey('routes')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('list')
+    expect(card.data.items).toHaveLength(2)
+  })
+
+  it('选定某条方案后按它的偏好真正设目的地，方案卡撤掉', async () => {
+    const desk = createDeskForTest()
+    const r = createRegistry(store, TOOLS, () => now, { desk, amap: routesAmap() })
+    await r.invoke('navigation.compareRoutes', { address: '目的地' })
+    const res = await r.invoke('navigation.setDestination', { address: '目的地', preference: 'avoidToll' })
+    expect(res.status).toBe('ok')
+    expect(store.get('navigation.active')).toBe(true)
+    expect(desk.findByKey('routes')).toBeUndefined()
+  })
+})
+
+describe('navigation.searchAlong —— 沿途/周边搜索', () => {
+  const poiAmap = () => fakeAmap({
+    '/v5/place/around': { status: '1', pois: [
+      { id: 'P1', name: '国家电网充电站', address: '天府大道', location: '104.07,30.60', distance: '1200' },
+      { id: 'P2', name: '特来电充电站', address: '天府三街', location: '104.08,30.61', distance: '2400' },
+    ] },
+  })
+
+  it('电车默认找充电站，油车默认找加油站——车型决定推荐什么', async () => {
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.searchAlong', {}) // 什么都不传，靠车型推断（默认 ev）
+    expect(decodeURIComponent(seenUrl)).toContain('充电站')
+
+    store.setDirect('vehicle.carType', 'fuel')
+    await r.invoke('navigation.searchAlong', {})
+    expect(decodeURIComponent(seenUrl)).toContain('加油站')
+  })
+
+  it('导航中沿路线找，不是绕着车打转', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.routePolyline', '104.07,30.60;104.09,30.62;104.11,30.64')
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.searchAlong', { keyword: '服务区' })
+    // 搜索中心点应取路线前方的点，而不是当前车位置
+    expect(decodeURIComponent(seenUrl)).not.toContain('location=116.397428,39.90923')
+  })
+
+  it('可以指定搜索中心——"找周围有饺子馆的充电站"这类复合需求靠它组合出来', async () => {
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    // 第一步拿到充电站坐标后，Agent 应能以该坐标为中心再搜一次
+    const res = await r.invoke('navigation.searchAlong', { keyword: '饺子', near: '104.07,30.60' })
+    expect(res.status).toBe('ok')
+    expect(decodeURIComponent(seenUrl)).toContain('location=104.07,30.60')
+  })
+
+  it('指定中心时可以缩小半径——"周围"是步行距离，不是五公里', async () => {
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.searchAlong', { keyword: '饺子', near: '104.07,30.60', radius: 800 })
+    expect(decodeURIComponent(seenUrl)).toContain('radius=800')
+  })
+
+  it('结果自动上屏，带距离', async () => {
+    const desk = createDeskForTest()
+    const r = createRegistry(store, TOOLS, () => now, { desk, amap: poiAmap() })
+    const res = await r.invoke('navigation.searchAlong', { keyword: '充电站' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).pois).toHaveLength(2)
+    const card = desk.findByKey('along')!
+    expect(card).toBeTruthy()
+    expect(card.data.items[0].sub).toContain('1.2') // 1200米 → 1.2公里
+  })
+
+  it('搜到的地点可以直接设成途经点——"顺路充个电"闭环', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: poiAmap() })
+    const res = await r.invoke('navigation.searchAlong', { keyword: '充电站' })
+    const first = (res.data as any).pois[0]
+    expect(first.location).toBe('104.07,30.60') // 有坐标才能当途经点传回 setDestination
+  })
+})
+
+describe('region.districts —— 周边区县查询', () => {
+  it('列出成都下辖区县，供"附近哪个县在下雨"这类需求逐个查', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/config/district': { status: '1', districts: [{
+          name: '成都市', level: 'city', districts: [
+            { name: '双流区', adcode: '510116', level: 'district', center: '103.92,30.57' },
+            { name: '都江堰市', adcode: '510181', level: 'district', center: '103.62,30.99' },
+          ],
+        }] },
+      }),
+    })
+    const res = await r.invoke('region.districts', { area: '成都' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).districts).toHaveLength(2)
+    expect((res.data as any).districts[0].name).toBe('双流区')
+  })
+
+  it('不传 area 时用当前城市——用户说"附近"时不用他报地名', async () => {
+    let seen = ''
+    const amap = createAmapClient((async (url: string) => {
+      seen = url
+      const p = new URL(url).pathname
+      const body = p === '/v3/geocode/regeo'
+        ? { status: '1', regeocode: { addressComponent: { city: '成都市' } } }
+        : { status: '1', districts: [] }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('region.districts', {})
+    expect(res.status).toBe('ok')
+    expect(decodeURIComponent(seen)).toContain('keywords=成都市')
+  })
+})
+
+describe('多出行方式与常用地址', () => {
+  it('setDestination 支持 mode=walking，走步行接口', async () => {
+    let seenPath = ''
+    const amap = createAmapClient((async (url: string) => {
+      const p = new URL(url).pathname
+      if (p.startsWith('/v5/direction')) seenPath = p
+      const body = p === '/v3/geocode/geo'
+        ? { status: '1', geocodes: [{ location: '104.1,30.6', formatted_address: '目的地' }] }
+        : { status: '1', route: { paths: [{ distance: '800', cost: { duration: '600' }, steps: [] }] } }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('navigation.setDestination', { address: '目的地', mode: 'walking' })
+    expect(res.status).toBe('ok')
+    expect(seenPath).toBe('/v5/direction/walking')
+  })
+
+  it('places.save 存常用地址，places.list 读回来', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    const saved = await r.invoke('places.save', { alias: '家', address: '成都市天府三街', location: '104.06,30.57' })
+    expect(saved.status).toBe('ok')
+    const listed = await r.invoke('places.list', {})
+    expect((listed.data as any).places).toEqual([
+      { alias: '家', address: '成都市天府三街', location: '104.06,30.57' },
+    ])
+  })
+
+  it('setDestination 直接用别名导航——"回家"不用每次搜', async () => {
+    let drivingUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      if (new URL(url).pathname === '/v5/direction/driving') drivingUrl = url
+      return { ok: true, json: async () => ({ status: '1', route: { paths: [{ distance: '5000', cost: { duration: '900' }, steps: [] }] } }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('places.save', { alias: '家', address: '成都市天府三街', location: '104.06,30.57' })
+    const res = await r.invoke('navigation.setDestination', { alias: '家' })
+    expect(res.status).toBe('ok')
+    expect(store.get('navigation.destination')).toBe('家')
+    // 用存下来的坐标直接算路，不再走一次地理编码
+    expect(decodeURIComponent(drivingUrl)).toContain('destination=104.06,30.57')
+  })
+
+  it('别名不存在时明确告知，不瞎猜', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.setDestination', { alias: '老家' })
+    expect(res.status).toBe('unavailable')
+    expect(res.code).toBe('PLACE_NOT_FOUND')
+  })
+})
+
+describe('navigation.control', () => {
+  it('没有目的地时 start 被拒', async () => {
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.control', { action: 'start' })
+    expect(res.status).toBe('rejected')
+  })
+
+  it('cancel 清空导航状态', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    store.setDirect('navigation.eta', 20)
+    store.setDirect('navigation.destinationLocation', '116.48,39.99')
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.control', { action: 'cancel' })
+    expect(res.status).toBe('ok')
+    expect(store.get('navigation.active')).toBe(false)
+    expect(store.get('navigation.destination')).toBe('')
+    expect(store.get('navigation.destinationLocation')).toBe('')
+  })
+
+  it('pause 只暂停，不清空目的地', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    await r.invoke('navigation.control', { action: 'pause' })
+    expect(store.get('navigation.active')).toBe(false)
+    expect(store.get('navigation.destination')).toBe('望京')
+  })
+})
+
+describe('navigation.getStatus', () => {
+  it('读取当前导航状态', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    store.setDirect('navigation.eta', 20)
+    store.setDirect('navigation.distanceRemaining', 9)
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).destination).toBe('望京')
+    expect((res.data as any).eta).toBe(20)
+    expect((res.data as any).distance).toBe(9) // 跟 setDestination 的字段名对齐，两边共用同一张 nav 卡
+  })
+
+  it('导航中时顺带查实时路况', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v3/traffic/status/circle': { status: '1', trafficinfo: { status: '2', expedite: '30', congested: '50', blocked: '20' } } }),
+    })
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).traffic.status).toBe('slow')
+  })
+
+  it('查路况失败不拖累整体状态查询——路况是锦上添花，不是核心', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) }) // 没配路况的假响应，会抛错
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).traffic).toBeUndefined()
+  })
+
+  it('导航中且有目的地坐标时，getStatus 也能重建地图（不是只有 setDestination 那一下才有图）', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    store.setDirect('navigation.destinationLocation', '116.48,39.99')
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).mapUrl).toContain('/v3/staticmap?')
+  })
+
+  it('没有目的地坐标时不生成 mapUrl，不报错', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).mapUrl).toBeUndefined()
+  })
+
+  it('amap 完全没装配时依然返回 ok，只是没有 traffic/mapUrl 这些附加字段', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '望京')
+    store.setDirect('navigation.destinationLocation', '116.48,39.99')
+    const r = createRegistry(store, TOOLS, () => now) // 完全不传 amap
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).mapUrl).toBeUndefined()
+    expect((res.data as any).traffic).toBeUndefined()
+  })
+
+  it('没有导航中就不查路况（省一次不必要的网络请求）', async () => {
+    store.setDirect('navigation.active', false)
+    const r = createRegistry(store, TOOLS, () => now, { amap: fakeAmap({}) })
+    const res = await r.invoke('navigation.getStatus', {})
+    expect(res.status).toBe('ok')
+    expect((res.data as any).traffic).toBeUndefined()
+  })
+})
+
+describe('weather.query', () => {
+  it('查到城市天气，实况与预报都给', async () => {
+    // weatherInfo 被调两次（base 和 all），假 fetch 按路径分发，一个响应体里同时给两种字段即可
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '116.4,39.9', formatted_address: '北京市', adcode: '110000' }] },
+        '/v3/weather/weatherInfo': {
+          status: '1',
+          lives: [{ city: '北京市', weather: '晴', temperature: '25', winddirection: '北', windpower: '3', humidity: '40', reporttime: '2026-08-10 12:00' }],
+          forecasts: [{ casts: [{ date: '2026-08-11', dayweather: '多云', nightweather: '晴', daytemp: '30', nighttemp: '20' }] }],
+        },
+      }),
+    })
+    const res = await r.invoke('weather.query', { location: '北京' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).now.weather).toBe('晴')
+    expect((res.data as any).forecast[0].dayWeather).toBe('多云')
+  })
+
+  it('查不到这个地方：unavailable', async () => {
+    const r = createRegistry(store, TOOLS, () => now, {
+      amap: fakeAmap({ '/v3/geocode/geo': { status: '1', geocodes: [] } }),
+    })
+    const res = await r.invoke('weather.query', { location: '火星' })
+    expect(res.status).toBe('unavailable')
+  })
+})
+
+/* ────────────────────────── 查询结果自动上屏：显示是机制，不指望模型自觉 ────────────────────────── */
+describe('查询/交互结果自动上屏', () => {
+  const mkDesk = async () => createDeskForTest()
+
+  it('weather.query 成功 → 天气卡自动上屏', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.06,30.65', formatted_address: '成都市', adcode: '510100' }] },
+        '/v3/weather/weatherInfo': {
+          status: '1',
+          lives: [{ city: '成都市', weather: '晴', temperature: '30', winddirection: '东', windpower: '3', humidity: '50', reporttime: 't' }],
+          forecasts: [{ casts: [{ date: '2026-08-11', dayweather: '晴', nightweather: '晴', daytemp: '33', nighttemp: '24' }] }],
+        },
+      }),
+    })
+    await r.invoke('weather.query', { location: '成都' })
+    const card = desk.layout().cards.find(c => c.template === 'weather')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('weather')
+    expect(card.data.now.weather).toBe('晴')
+    expect(card.data.title).toContain('成都')
+  })
+
+  // "找周边最凉快的县城"会并行查一串地方，key 写死会让后一个盖掉前一个——
+  // 用户听到的是七个地方的对比，屏幕上只剩最后那个
+  it('查多个地方 → 一地一张卡，不互相覆盖', async () => {
+    const desk = await mkDesk()
+    const live = (city: string, temp: string) => ({
+      status: '1',
+      lives: [{ city, weather: '晴', temperature: temp, winddirection: '东', windpower: '3', humidity: '50', reporttime: 't' }],
+      forecasts: [{ casts: [{ date: '2026-08-11', dayweather: '晴', nightweather: '晴', daytemp: temp, nighttemp: '24' }] }],
+    })
+    let geo = 0, wx = 0
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v3/geocode/geo': () => ({ status: '1', geocodes: [
+          { location: '1,1', formatted_address: ['延庆区', '怀柔区'][geo], adcode: ['110119', '110116'][geo++] },
+        ] }),
+        '/v3/weather/weatherInfo': () => live(['延庆区', '怀柔区'][Math.floor(wx++ / 2)], '25'),
+      }),
+    })
+    await r.invoke('weather.query', { location: '延庆' })
+    await r.invoke('weather.query', { location: '怀柔' })
+    const titles = desk.layout().cards.filter(c => c.template === 'weather').map(c => c.data.title)
+    expect(titles).toHaveLength(2)
+    expect(titles.join()).toContain('延庆')
+    expect(titles.join()).toContain('怀柔')
+  })
+
+  it('capability.list 成功 → 能力目录卡自动上屏（full）', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, { desk })
+    await r.invoke('capability.list', {})
+    const card = desk.findByKey('capabilities')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('capability')
+    expect(card.size).toBe('full')
+    expect(card.data.items.length).toBeGreaterThan(0)
+  })
+
+  it('voice.ask → 问题与选项自动出确认卡', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, { desk })
+    await r.invoke('voice.ask', { question: '你要去哪个？', options: ['步行街', '地铁站'] })
+    const card = desk.findByKey('ask')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('confirm')
+    expect(card.data.question).toBe('你要去哪个？')
+    expect(card.data.options).toEqual(['步行街', '地铁站'])
+  })
+
+  // 模型的问句往往是一整段（"春熙路有好几个，你说去哪个？第一个是…第二个是…"），
+  // 拿它当卡片标题会挤掉下面的列表，而且选项在列表里已经有了
+  it('voice.ask 时桌面已有候选列表卡 → 什么都不动，屏幕上已经在展示候选了', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [
+        { id: 'B1', name: '甲', address: 'a', location: '1,1' },
+        { id: 'B2', name: '乙', address: 'b', location: '2,2' },
+      ] } }),
+    })
+    await r.invoke('navigation.search', { query: 'x' })
+    await r.invoke('voice.ask', { question: '春熙路有好几个，你说去哪个？第一个是步行街，第二个是地铁站。', options: ['甲', '乙'] })
+    expect(desk.findByKey('ask')).toBeUndefined() // 不开第二张
+    expect(desk.findByKey('nav-candidates')!.data.title).toBe('你要去哪个？') // 列表卡自己的短标题，没被长问句覆盖
+  })
+
+  it('灰级 MRTR 拦截 → 确认卡自动上屏，带确认问句', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, { desk })
+    const first = await r.invoke('door.set', { door: 'driver', action: 'open' })
+    expect(first.status).toBe('inputRequired')
+    const card = desk.findByKey('confirm')!
+    expect(card).toBeTruthy()
+    expect(card.template).toBe('confirm')
+    expect(card.data.question).toContain('车门')
+  })
+
+  it('带 token 确认执行成功 → 确认卡自动撤掉', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, { desk })
+    const first = await r.invoke('door.set', { door: 'driver', action: 'open' })
+    expect(desk.findByKey('confirm')).toBeTruthy()
+    const second = await r.invoke('door.set', { door: 'driver', action: 'open' }, { confirmToken: first.token })
+    expect(second.status).toBe('ok')
+    expect(desk.findByKey('confirm')).toBeUndefined()
+  })
+
+  it('没装配 desk 时这些 Tool 照常工作，只是不显示', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    const res = await r.invoke('voice.ask', { question: 'q', options: [] })
+    expect(res.status).toBe('ok')
+  })
+})
+
 /* ────────────────────────── 契约完整性 ────────────────────────── */
 describe('Tool 契约完整性', () => {
-  it('每个暴露的 Tool 都有非空 description（模型选型依据）', () => {
+  it('每个暴露的 Tool 都有非空 description（模型选型依据）', async () => {
     for (const t of reg.list()) expect(t.desc, `${t.name} 缺少 desc`).toBeTruthy()
   })
 
-  it('每个 Tool 都声明了 permission', () => {
+  it('每个 Tool 都声明了 permission', async () => {
     for (const t of TOOLS) expect(t.permission, `${t.name} 缺少 permission`).toBeTruthy()
   })
 })

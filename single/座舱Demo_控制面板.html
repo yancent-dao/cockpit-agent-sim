@@ -359,6 +359,9 @@ input::placeholder{color:#4A5462}
       desc: "通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。",
       fields: { items: { type: "array", required: true } }
     },
+    // 必须保留 1/6：导航卡 2/3 占掉左两列后，右列只有 1 格宽，横向的 1/3 塞不进去。
+    // 拿掉 1/6 就成死锁——用户听到了问题，屏幕上什么都没有。1/6 在 2560 屏上
+    // 仍有约 800×460，放得下两三个选项
     {
       id: "confirm",
       label: "确认卡",
@@ -430,7 +433,7 @@ input::placeholder{color:#4A5462}
   ];
   var TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id);
 
-  // src/tools/amap.ts
+  // src/integrations/amap.ts
   var BASE = "https://restapi.amap.com";
   var AmapError = class extends Error {
     constructor(message, code) {
@@ -675,7 +678,7 @@ input::placeholder{color:#4A5462}
     };
   }
 
-  // src/tools/navHandlers.ts
+  // src/integrations/navHandlers.ts
   var amapFail = (e, what) => ({
     status: "unavailable",
     code: e instanceof AmapError ? e.code ?? "AMAP_ERROR" : "AMAP_ERROR",
@@ -729,9 +732,9 @@ input::placeholder{color:#4A5462}
         data: { title: "你要去哪个？", items: pois.map((p) => ({ label: p.name, sub: p.address })) }
       });
     };
-    const dismissCandidates = () => {
+    const dismissCandidates = (keys = ["nav-candidates", "routes"]) => {
       const d = desk2?.();
-      for (const key of ["nav-candidates", "routes"]) {
+      for (const key of keys) {
         const c = d?.findByKey(key);
         if (c) d.dismiss(c.id);
       }
@@ -844,6 +847,7 @@ input::placeholder{color:#4A5462}
             if ((r.tolls ?? 0) === cheapest) tags.push((r.tolls ?? 0) === 0 ? "免费" : "最省钱");
             return { ...r, label: tags.join("·") || "备选" };
           });
+          dismissCandidates(["nav-candidates"]);
           desk2?.()?.render({
             key: "routes",
             template: "list",
@@ -2933,7 +2937,7 @@ ${extras.desktop}`);
     },
     {
       name: "voice.ask",
-      desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题得由你在这一轮的回复里亲口问出来（实测有模型调完它就回一句"问题已经念给你了"，结果用户什么也没听到）。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
+      desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
       permission: "彩",
       params: {
         question: { type: "string", required: true, desc: "问题内容，口语化" },
@@ -3236,11 +3240,11 @@ ${extras.desktop}`);
 1. 意图明确就直接调工具，别反问显而易见的事；一次意图要多个工具就一起调，别分多轮。
 2. 结合车辆状态与说话人位置判断：后排的人说"开窗"，指的是他自己那扇。
 3. rejected → 用 message 说原因，把 suggestion 作为替代方案给出来。
-4. unavailable → 坦白这台车做不到，绝不假装成功或编造结果。
+4. unavailable → 坦白这台车做不到，绝不假装成功或编造结果。也别许做不到的诺——
+   你只在用户开口时才醒着，没法"等会儿自动帮他"，该说"你降下来喊我一声"。
 5. CONFIRM_REQUIRED → 用它的 message 问用户，同意后带 token 重调同一工具。
-6. 只用工具列表里有的能力。但**说"做不到"之前先想想能不能组合**——
-   "找个周围有饺子馆的充电站"单个工具办不到，分两步就成：先搜充电站拿坐标，
-   再以那坐标为中心搜饺子馆。同一工具换参数多调几次也是组合。真组合不出来再坦白。
+6. 只用工具列表里有的能力。但**说"做不到"之前先想想能不能组合**——"找个周围有饺子馆的
+   充电站"分两步就成：先搜充电站拿坐标，再以那坐标搜饺子馆。同一工具换参数多调也是组合。
 7. **安全红线**：刹车、转向、油门这类直接关系行车安全的操作永不介入。这是设计上定死的，
    不是"这次做不到"，也别拿"我够不着"搪塞——直说只能由驾驶员自己来，AI 不替他做。
 8. 执行成功后简短确认，别复述参数。**屏幕上已经摆出来的也别逐条念**——多个候选、

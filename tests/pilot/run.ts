@@ -103,6 +103,11 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   // "随你点"（点播）不算，只抓真正指向屏幕操作的说法
   if (/点一下|点击|点选|按一下|点[这那]个|在屏幕上[点按选]/.test(reply))
     out.push(`话术让用户点屏幕，但车机屏不可交互：「${reply.slice(0, 40)}」`)
+  // 说"你说第几个"就得真有编号可数。实测出现过问是非题却让用户报序号
+  if (/第几个|说编号|报个号/.test(reply)
+      && !layout.cards.some((c: any) => (c.data?.items?.length ?? c.data?.options?.length ?? 0) >= 2)
+      && !((layout.overlay?.data?.items?.length ?? 0) >= 2))
+    out.push(`话术让用户"说第几个"，但屏幕上没有可数的编号项：「${reply.slice(0, 40)}」`)
   // 车载产品不该报底层模型身份
   if (/我是\s*(MiniMax|GPT|Claude|Gemini|Qwen|通义|文心|豆包|DeepSeek)/i.test(reply))
     out.push(`话术泄漏底层模型身份：「${reply.slice(0, 40)}」`)
@@ -113,8 +118,9 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   // 只提示不判死：复杂问题的诚实回答本来就长
   if (reply.length > 100)
     out.push(`提示 · 话术 ${reply.length} 字，语音播报偏长：「${reply.slice(0, 40)}…」`)
-  // 屏幕上已经摆出对比列表，话术再把每条的数字念一遍就是重复劳动
-  if (layout.cards.some((c: any) => Array.isArray(c.data?.items) && c.data.items.length >= 3)
+  // 屏幕上已经摆出对比列表，话术再把每条的数字念一遍就是重复劳动。
+  // 只认 list 模板：车控卡的 items 是四个座位/车窗，那种场景下报数字是在解释边界，不是复述
+  if (layout.cards.some((c: any) => c.template === 'list' && (c.data?.items?.length ?? 0) >= 3)
       && (reply.match(/\d+/g) ?? []).length >= 5)
     out.push(`屏幕已有列表卡，话术还逐条复述了数字：「${reply.slice(0, 40)}…」`)
   return out
@@ -178,7 +184,12 @@ async function runScenario(s: Scenario) {
 
     console.log(`  [${i}] 用户：${say}`)
     console.log(`      Agent：${(r.reply || '(无话术)').slice(0, 80)}`)
-    console.log(`      卡片：${layout.cards.map((c: any) => `${c.data?.title ?? c.template}(${c.size})`).join('、') || '空'}`)
+    // overlay（full 尺寸的卡，如能力目录）不在 cards 里，漏打会让人误判成"屏幕空的"
+    const shown = [
+      ...layout.cards.map((c: any) => `${c.data?.title ?? c.template}(${c.size})`),
+      ...(layout.overlay ? [`${layout.overlay.data?.title ?? layout.overlay.template}(全屏)`] : []),
+    ]
+    console.log(`      卡片：${shown.join('、') || '空'}`)
     const iss = turns.at(-1)!.issues
     if (iss.length) console.log(`      ⚠ ${iss.join(' / ')}`)
 

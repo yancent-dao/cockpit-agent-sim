@@ -265,7 +265,7 @@ export const TOOLS: ToolDef[] = [
   /* ── L2 应用级：导航（真实接高德，失败一律 unavailable，不冒充 rejected） ── */
   {
     name: 'navigation.search',
-    desc: '搜索地点或公交线路。去一个地方前先用这个搜，不要凭地名直接设目的地——同名地点很多。type 传 poi（默认）返回候选 POI 列表；type 传 bus 返回公交线路，这时 near 必须传城市名。搜到多个候选时候选列表会自动显示在屏幕上，你用 voice.ask 把候选念出来问用户选哪个即可，不要自己建卡；只有一个候选时直接进 navigation.setDestination，不用多此一举地问。',
+    desc: '搜索地点或公交线路。去一个地方前先用这个搜，不要凭地名直接设目的地——同名地点很多。type 传 poi（默认）返回候选 POI 列表；type 传 bus 返回公交线路，这时 near 必须传城市名。搜到多个候选时列表会自动上屏，**带编号**。你只说一句"搜到几个，你说第几个"就行，别把候选逐条念一遍——屏幕上摆着呢，念了是重复劳动，语音还长。只有一个候选时直接进 navigation.setDestination，不用多此一举地问。',
     permission: '彩',
     params: {
       query: { type: 'string', required: true, desc: '搜索关键字，如"望京 SOHO" 或公交线路名"10号线"' },
@@ -323,7 +323,8 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.searchAlong',
-    desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏。
+    desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
+      口头只说"找到几个，最近的是XX"这种一句话结论，别把每个的名字、距离逐条念——屏幕上有。
 不传 near 时：导航中沿路线前方找，没导航就找车辆附近；不传 keyword 时按车型自动选（电车找充电站、油车找加油站）。
 **可以多次调用来组合出复杂需求**——传 near 就能以任意坐标为中心再搜一圈。
 例："找个周围有饺子馆的充电站" = 先调一次拿到几个充电站及其 location，
@@ -339,7 +340,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.compareRoutes',
-    desc: '对比去同一个目的地的几条路线（耗时/里程/过路费/红绿灯数），方案列表会自动显示在屏幕上。用户问"走哪条快""要不要走高速""过路费多少"时用。用户选定后再调 navigation.setDestination 并传对应的 preference。',
+    desc: '对比去同一个目的地的几条路线（耗时/里程/过路费/红绿灯数），方案列表会自动上屏，带编号。口头只说关键差别和你的建议（"最快那条要两块过路费，另外两条免费"），别把三条的耗时里程逐条念一遍。用户问"走哪条快""要不要走高速""过路费多少"时用。用户选定后再调 navigation.setDestination 并传对应的 preference。',
     permission: '彩',
     params: {
       poiId: { type: 'string', desc: 'navigation.search 返回的 POI id' },

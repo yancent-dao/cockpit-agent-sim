@@ -265,6 +265,12 @@ export const SIGNALS: Signal[] = [
     type: 'string', label: '途经点坐标串（分号分隔）——用于地图标注',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
 
+  // 坐标能在地图上打点，但卡片上得说人话。没这个的话话术说"先去充电站再去太古里"，
+  // 屏幕上只有"去成都太古里"，用户不知道要绕路
+  { alias: 'navigation.waypointNames', vssPath: 'Vehicle.X-Ext.Navigation.WaypointNames',
+    type: 'string', label: '途经点名称（分号分隔）',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
+
   { alias: 'navigation.eta', vssPath: 'Vehicle.X-Ext.Navigation.ETA',
     type: 'number', range: [0, 999], unit: '分钟', label: '预计到达时间',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },

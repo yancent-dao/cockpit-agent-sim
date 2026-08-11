@@ -97,10 +97,12 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ''}`
 
+  // 途经点要写出来：语音说了"先去充电站再去太古里"，屏幕只写终点的话用户不知道要绕路
+  const via = (d.via ?? []).length ? `<em>经 ${esc((d.via as string[]).join('、'))}</em>` : ''
   node.querySelector('.navfoot')!.innerHTML = `
     <div class="navbig"><b>${d.eta ?? '--'}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? '--'}</b><span>公里</span></div>
-    <div class="navdest">${esc(d.destination ?? '')}</div>`
+    <div class="navdest">${via}${esc(d.destination ?? '')}</div>`
 
   // 活地图优先；跑不了（无 Key / 环境不支持 WebGL2 / 加载失败）就退回静态图，绝不白屏
   const box = node.querySelector('.mapbox') as HTMLElement

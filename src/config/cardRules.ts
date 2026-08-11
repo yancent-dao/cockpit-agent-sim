@@ -41,7 +41,7 @@ export const CARD_RULES: CardRule[] = [
     when: [['navigation.active', '==', true]],
     watch: [
       'navigation.eta', 'navigation.distanceRemaining', 'navigation.destination',
-      'navigation.nextInstruction', 'navigation.destinationLocation',
+      'navigation.nextInstruction', 'navigation.destinationLocation','navigation.waypointNames',
       'navigation.routePolyline', 'vehicle.location',
     ],
     card: { key: 'nav', template: 'nav', size: '2/3', evictable: false, data: 'navCard' },
@@ -97,6 +97,7 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
       // 活地图（JS SDK）要的原始坐标
       originLoc, destLoc, polyline,
       waypoints: store.get('navigation.waypoints') as string,
+      via: ((store.get('navigation.waypointNames') as string) || '').split(';').filter(Boolean),
       // 静态图仍然给：JS 地图没加载出来时的兜底
       ...(amap && destLoc && {
         mapUrl: buildMapUrl(amap, originLoc, destLoc, polyline,

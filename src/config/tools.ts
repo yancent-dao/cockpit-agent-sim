@@ -288,6 +288,10 @@ export const TOOLS: ToolDef[] = [
         type: 'array', items: 'string',
         desc: '途经点坐标（"经度,纬度"），按先后顺序，最多 16 个。用户说"先去A再去B"或"顺路充个电"时用——坐标来自 navigation.search / navigation.searchAlong 结果里的 location。传了途经点就是一条完整路线，会依次经过再到终点，**不需要用户中途做任何操作**，不要说"到了要手动切换下一站"这种话。',
       },
+      waypointNames: {
+        type: 'array', items: 'string',
+        desc: '途经点的名字，跟 waypoints 一一对应，比如["特来电中环广场"]。坐标只能在地图上打点，导航卡要靠这个写出"经 XX"——不传的话用户看屏幕不知道要绕路。',
+      },
     },
     handler: 'navSetDestination',
   },

@@ -84,6 +84,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .navbig span{font-size:26px;color:var(--text-secondary)}
 .navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
+/* 途经点比终点次一级，但不能小到看不见 */
+.navdest em{font-style:normal;display:block;font-size:.72em;opacity:.6;margin-bottom:2px}
 .card.kind-system{box-shadow:0 0 0 3px rgba(201,122,22,.5)}
 .card.tpl-notice{background:rgba(201,122,22,.10)}
 .card.tpl-notice h3{color:var(--warning)}

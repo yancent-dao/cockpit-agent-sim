@@ -383,10 +383,12 @@ input::placeholder{color:#4A5462}
       desc: "拒绝原因与替代方案。data: {title, text, suggestion}",
       fields: { text: { type: "string", required: true } }
     },
+    // 含 1/6：导航卡 2/3 在场时右列只有 1 格宽，没有这一档候选卡就整个进不来——
+    // 用户听着"你说第几个"，屏幕上却只有旧的导航卡。实测 1/6 放得下四个带地址的候选
     {
       id: "list",
       label: "列表卡",
-      sizes: ["1/3", "1/2"],
+      sizes: ["1/6", "1/3", "1/2"],
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
       fields: { items: { type: "array", required: true } }
     },
@@ -722,7 +724,7 @@ input::placeholder{color:#4A5462}
   function createNavHandlers(store2, needAmap, desk2) {
     const places = [];
     const showCandidates = (pois) => {
-      desk2?.()?.render({
+      const r = desk2?.()?.render({
         key: "nav-candidates",
         template: "list",
         size: "1/2",
@@ -731,6 +733,7 @@ input::placeholder{color:#4A5462}
         refreshTtl: true,
         data: { title: "你要去哪个？", items: pois.map((p) => ({ label: p.name, sub: p.address })) }
       });
+      return r && r.status !== "ok";
     };
     const dismissCandidates = (keys = ["nav-candidates", "routes"]) => {
       const d = desk2?.();
@@ -756,8 +759,15 @@ input::placeholder{color:#4A5462}
           const amap2 = needAmap();
           const region = args.near || await amap2.cityOf(store2.get("vehicle.location")).catch(() => null);
           const pois = await amap2.placeSearch(args.query, region ?? void 0);
-          if (pois.length >= 2) showCandidates(pois);
-          return { status: "ok", data: { pois } };
+          const notShown = pois.length >= 2 && showCandidates(pois);
+          return {
+            status: "ok",
+            data: { pois },
+            ...notShown && {
+              code: "CARD_NOT_SHOWN",
+              message: "候选列表没能显示到屏幕上（桌面满了），播报时把候选念出来，别让用户去屏幕上找"
+            }
+          };
         } catch (e) {
           return amapFail(e, "地点搜索");
         }
@@ -900,6 +910,7 @@ input::placeholder{color:#4A5462}
           store2.set("navigation.nextInstruction", route.steps[0]?.instruction ?? "");
           store2.set("navigation.routePolyline", route.polyline ?? "");
           store2.set("navigation.waypoints", (args.waypoints ?? []).join(";"));
+          store2.set("navigation.waypointNames", (args.waypointNames ?? []).join(";"));
           store2.set("navigation.active", true);
           dismissCandidates();
           const mapUrl = buildMapUrl(amap2, origin, resolved.location, route.polyline, args.waypoints);
@@ -2548,6 +2559,18 @@ ${extras.desktop}`);
       permission: "彩",
       initial: ""
     },
+    // 坐标能在地图上打点，但卡片上得说人话。没这个的话话术说"先去充电站再去太古里"，
+    // 屏幕上只有"去成都太古里"，用户不知道要绕路
+    {
+      alias: "navigation.waypointNames",
+      vssPath: "Vehicle.X-Ext.Navigation.WaypointNames",
+      type: "string",
+      label: "途经点名称（分号分隔）",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: ""
+    },
     {
       alias: "navigation.eta",
       vssPath: "Vehicle.X-Ext.Navigation.ETA",
@@ -2838,6 +2861,11 @@ ${extras.desktop}`);
           type: "array",
           items: "string",
           desc: '途经点坐标（"经度,纬度"），按先后顺序，最多 16 个。用户说"先去A再去B"或"顺路充个电"时用——坐标来自 navigation.search / navigation.searchAlong 结果里的 location。传了途经点就是一条完整路线，会依次经过再到终点，**不需要用户中途做任何操作**，不要说"到了要手动切换下一站"这种话。'
+        },
+        waypointNames: {
+          type: "array",
+          items: "string",
+          desc: '途经点的名字，跟 waypoints 一一对应，比如["特来电中环广场"]。坐标只能在地图上打点，导航卡要靠这个写出"经 XX"——不传的话用户看屏幕不知道要绕路。'
         }
       },
       handler: "navSetDestination"
@@ -3025,6 +3053,7 @@ ${extras.desktop}`);
         "navigation.destination",
         "navigation.nextInstruction",
         "navigation.destinationLocation",
+        "navigation.waypointNames",
         "navigation.routePolyline",
         "vehicle.location"
       ],
@@ -3132,6 +3161,7 @@ ${extras.desktop}`);
         destLoc,
         polyline,
         waypoints: store2.get("navigation.waypoints"),
+        via: (store2.get("navigation.waypointNames") || "").split(";").filter(Boolean),
         // 静态图仍然给：JS 地图没加载出来时的兜底
         ...amap2 && destLoc && {
           mapUrl: buildMapUrl(

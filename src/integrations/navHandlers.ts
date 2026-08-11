@@ -275,6 +275,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         store.set('navigation.nextInstruction', route.steps[0]?.instruction ?? '')
         store.set('navigation.routePolyline', route.polyline ?? '')
         store.set('navigation.waypoints', (args.waypoints ?? []).join(';'))
+        store.set('navigation.waypointNames', (args.waypointNames ?? []).join(';'))
         store.set('navigation.active', true) // 最后置 active：编排器一看到它就要建卡，此时其它信号必须已就绪
         dismissCandidates() // 目的地定了，候选列表使命完成
 

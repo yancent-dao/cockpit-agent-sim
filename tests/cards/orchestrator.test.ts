@@ -47,6 +47,25 @@ describe('导航状态卡：navigation.active 驱动，模型零参与', () => {
     expect(nav.data.mapUrl).toContain('/v3/staticmap?')
   })
 
+  // 实测："先去充电站再去太古里"——话术说了，导航卡标题只有"去成都太古里"，
+  // 看屏幕根本不知道要绕路
+  it('有途经点时导航卡说得出经过哪儿', () => {
+    boot()
+    store.setDirect('navigation.destination', '成都太古里')
+    store.setDirect('navigation.destinationLocation', '104.10,30.60')
+    store.setDirect('navigation.waypointNames', '特来电中环广场')
+    store.setDirect('navigation.active', true)
+    expect(desk.findByKey('nav')!.data.via).toEqual(['特来电中环广场'])
+  })
+
+  it('没有途经点时 via 为空，不占位置', () => {
+    boot()
+    store.setDirect('navigation.destination', '春熙路')
+    store.setDirect('navigation.destinationLocation', '104.07,30.65')
+    store.setDirect('navigation.active', true)
+    expect(desk.findByKey('nav')!.data.via).toEqual([])
+  })
+
   it('导航卡带上画活地图需要的坐标：起点/终点/路线', () => {
     boot()
     store.setDirect('vehicle.location', '104.06,30.65')

@@ -131,8 +131,12 @@ function body(c: CardView): string {
         </div>`
       }).join('')
     case 'confirm':
-      return `<div class="sub">${esc(d.question ?? d.text)}</div>
-        <div>${(d.options ?? ['确认', '取消']).map((o: string) => `<span class="opt">${esc(o)}</span>`).join('')}</div>`
+      // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。
+      // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
+      return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (
+        d.options?.length
+          ? `<ol class="listcard opts">${d.options.map((o: string) => `<li><b>${esc(o)}</b></li>`).join('')}</ol>`
+          : `<div>${['确认', '取消'].map(o => `<span class="opt">${o}</span>`).join('')}</div>`)
     case 'notice':
       return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ''}`
     case 'list':

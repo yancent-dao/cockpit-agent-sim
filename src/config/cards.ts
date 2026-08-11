@@ -26,6 +26,9 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'control', label: '车控卡', sizes: ['1/6', '1/3'],
     desc: '通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。',
     fields: { items: { type: 'array', required: true } } },
+  // 必须保留 1/6：导航卡 2/3 占掉左两列后，右列只有 1 格宽，横向的 1/3 塞不进去。
+  // 拿掉 1/6 就成死锁——用户听到了问题，屏幕上什么都没有。1/6 在 2560 屏上
+  // 仍有约 800×460，放得下两三个选项
   { id: 'confirm', label: '确认卡', sizes: ['1/6', '1/3'],
     desc: '二次确认。data: {title, question, options:[string]}',
     fields: { question: { type: 'string', required: true } } },

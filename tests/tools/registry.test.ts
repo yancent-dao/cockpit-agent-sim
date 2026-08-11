@@ -6,6 +6,7 @@ import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
 import { createAmapClient, type Fetcher } from '../../src/integrations/amap'
 import { createDesk } from '../../src/cards/desk'
+import { CARD_TEMPLATES } from '../../src/config/cards'
 
 const createDeskForTest = () => createDesk(() => now)
 

@@ -258,3 +258,21 @@ describe('桌面摘要（注入 system prompt）', () => {
     expect(desk.summary()).toContain('剩余 6 格')
   })
 })
+
+/**
+ * 导航卡 2/3 占掉左两列，右列只剩 1 格宽。1/3 是横向 2×1 的形状，
+ * 塞不进 1 格宽的右列——如果选择卡又不许缩到 1/6，就是死锁：
+ * 用户听到了问题，屏幕上什么都没有。
+ */
+describe('导航 2/3 在场时，选择卡还进不进得来', () => {
+  it('进得来，且不会被拒', () => {
+    desk.show({ template: 'nav', size: '2/3', kind: 'rule', evictable: false,
+      ttl: 'untilDismissed', data: { title: '导航' } })
+    now += 10
+    // minSize 跟着 confirm 模板走（含 1/6），所以缩得下去、进得来
+    const r = desk.show({ template: 'confirm', size: '1/3', kind: 'system', minSize: '1/6',
+      ttl: 'untilTaskEnd', data: { title: '请选择', question: '去哪个充电站？' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.map(c => c.data?.title)).toContain('请选择')
+  })
+})

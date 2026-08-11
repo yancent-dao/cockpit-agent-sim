@@ -69,7 +69,12 @@ const digest = (c: any) => {
   return keep
 }
 
-/** 确定性硬伤检测——不靠模型判断，规则见 RUBRIC.md 第 3 维 */
+/**
+ * 确定性检测——不靠模型判断，规则见 RUBRIC.md 第 3 维。
+ * 分两级：硬伤是"一定错了"，提示是"值得我人工看一眼"。
+ * 混在一起报会让真问题被淹掉——比如话术长，多半是用户问了个复杂问题，
+ * 模型在老实解释不确定性，那不是缺陷。
+ */
 function detectIssues(store: any, desk: any, calls: any[], reply: string): string[] {
   const out: string[] = []
   const layout = desk.layout()
@@ -104,9 +109,10 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   // 经纬度念出来是噪音
   if (/东经|北纬|\d{2,3}\.\d{4,}/.test(reply))
     out.push(`话术念了坐标数字（语音场景是噪音）：「${reply.slice(0, 40)}」`)
-  // 语音播报念一百字要二十多秒，人设写的是"一般不超过两句"
+  // 语音播报念一百字要二十多秒，人设写的是"一般不超过两句"。
+  // 只提示不判死：复杂问题的诚实回答本来就长
   if (reply.length > 100)
-    out.push(`话术 ${reply.length} 字，语音播报太长：「${reply.slice(0, 40)}…」`)
+    out.push(`提示 · 话术 ${reply.length} 字，语音播报偏长：「${reply.slice(0, 40)}…」`)
   // 屏幕上已经摆出对比列表，话术再把每条的数字念一遍就是重复劳动
   if (layout.cards.some((c: any) => Array.isArray(c.data?.items) && c.data.items.length >= 3)
       && (reply.match(/\d+/g) ?? []).length >= 5)
@@ -204,9 +210,12 @@ async function main() {
 
   const file = `${outDir}${stamp}.json`
   writeFileSync(file, JSON.stringify(results, null, 2))
-  const allIssues = results.flatMap((r: any) => (r.turns ?? []).flatMap((t: any) => t.issues.map((i: string) => `${r.scenario} T${t.turn}: ${i}`)))
+  const all = results.flatMap((r: any) => (r.turns ?? []).flatMap((t: any) => t.issues.map((i: string) => `${r.scenario} T${t.turn}: ${i}`)))
+  const hard = all.filter((i: string) => !i.includes('提示 · '))
+  const soft = all.filter((i: string) => i.includes('提示 · '))
   console.log(`\n快照已写入 ${file}`)
-  console.log(allIssues.length ? `\n自动检出硬伤 ${allIssues.length} 条：\n${allIssues.map(i => '  · ' + i).join('\n')}` : '\n自动检测：无硬伤')
+  console.log(hard.length ? `\n硬伤 ${hard.length} 条：\n${hard.map(i => '  · ' + i).join('\n')}` : '\n自动检测：无硬伤')
+  if (soft.length) console.log(`\n值得看一眼 ${soft.length} 条：\n${soft.map(i => '  · ' + i).join('\n')}`)
 }
 
 main()

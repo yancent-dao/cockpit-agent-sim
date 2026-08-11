@@ -514,7 +514,7 @@ describe('navigation.search', () => {
       ] } }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('nav-candidates')!.minSize).toBe('1/3') // list 模板 sizes: ['1/3','1/2']
+    expect(desk.findByKey('nav-candidates')!.minSize).toBe('1/6') // list 模板最小的那档
   })
 
   // 候选卡不能像问题卡那样"用户一开口就撤"——实测用户的下一句往往就是冲着
@@ -533,6 +533,27 @@ describe('navigation.search', () => {
     await r.invoke('navigation.search', { query: 'x' })
     desk.endTask()
     expect(desk.findByKey('nav-candidates')).toBeTruthy()
+  })
+
+  // 卡片没上屏而 Tool 说 ok，Agent 就会照常说"你说第几个"，用户对着空屏幕懵。
+  // 桌面确实可能满，但那时候必须让 Agent 知道
+  it('候选卡上不了屏时，Tool 结果里要带得出这件事', async () => {
+    const desk = createDesk()
+    // 先用一张挤不走的 2/3 导航卡 + 两张 1/6 把桌面占死
+    desk.show({ template: 'nav', size: '2/3', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    desk.show({ template: 'feedback', size: '1/6', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    desk.show({ template: 'feedback', size: '1/6', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [
+        { id: 'B1', name: '甲', address: 'a', location: '104.07,30.65' },
+        { id: 'B2', name: '乙', address: 'b', location: '104.08,30.66' },
+      ] } }),
+    })
+    const res = await r.invoke('navigation.search', { query: 'x' })
+    expect(res.status).toBe('ok')            // 搜索本身是成功的
+    expect(res.code).toBe('CARD_NOT_SHOWN')  // 但得让 Agent 知道屏幕上没东西
+    expect(res.message).toBeTruthy()
   })
 
   // 实测用户在成都说"临平出口"，全国搜命中了杭州临平区，规划出 1800 公里。

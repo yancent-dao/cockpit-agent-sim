@@ -38,7 +38,9 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'notice', label: '提示/拒绝卡', sizes: ['1/6', '1/3'],
     desc: '拒绝原因与替代方案。data: {title, text, suggestion}',
     fields: { text: { type: 'string', required: true } } },
-  { id: 'list', label: '列表卡', sizes: ['1/3', '1/2'],
+  // 含 1/6：导航卡 2/3 在场时右列只有 1 格宽，没有这一档候选卡就整个进不来——
+  // 用户听着"你说第几个"，屏幕上却只有旧的导航卡。实测 1/6 放得下四个带地址的候选
+  { id: 'list', label: '列表卡', sizes: ['1/6', '1/3', '1/2'],
     desc: '搜索结果或候选项。data: {title, items:[{label, sub}]}',
     fields: { items: { type: 'array', required: true } } },
   { id: 'info', label: '信息卡', sizes: ['1/6', '1/3'],

@@ -87,10 +87,13 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
    * （"上面那个离这儿多远？"），撤了他就没东西可指。撤销点放在"这件事翻篇"上。
    */
   const showCandidates = (pois: Array<{ name: string; address: string }>) => {
-    desk?.()?.render({
+    const r = desk?.()?.render({
       key: 'nav-candidates', template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
       data: { title: '你要去哪个？', items: pois.map(p => ({ label: p.name, sub: p.address })) },
     })
+    // 桌面满到连 1/6 都塞不下时，得让 Agent 知道——不然它照常说"你说第几个"，
+    // 用户对着空屏幕不知道该数什么
+    return r && r.status !== 'ok'
   }
   /** 目的地定了，候选列表与方案对比都完成使命。比路线时只撤候选、留下路线卡 */
   const dismissCandidates = (keys = ['nav-candidates', 'routes']) => {
@@ -120,8 +123,14 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 实测用户在成都说"临平出口"，搜到了杭州临平区，规划出 1800 公里
         const region = args.near || await amap.cityOf(store.get('vehicle.location') as string).catch(() => null)
         const pois = await amap.placeSearch(args.query, region ?? undefined)
-        if (pois.length >= 2) showCandidates(pois)
-        return { status: 'ok', data: { pois } }
+        const notShown = pois.length >= 2 && showCandidates(pois)
+        return {
+          status: 'ok', data: { pois },
+          ...(notShown && {
+            code: 'CARD_NOT_SHOWN',
+            message: '候选列表没能显示到屏幕上（桌面满了），播报时把候选念出来，别让用户去屏幕上找',
+          }),
+        }
       } catch (e) {
         return amapFail(e, '地点搜索')
       }

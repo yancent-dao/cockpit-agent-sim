@@ -263,8 +263,22 @@ describe('桌面摘要（注入 system prompt）', () => {
  * 导航卡 2/3 占掉左两列，右列只剩 1 格宽。1/3 是横向 2×1 的形状，
  * 塞不进 1 格宽的右列——如果选择卡又不许缩到 1/6，就是死锁：
  * 用户听到了问题，屏幕上什么都没有。
+ *
+ * 候选列表卡踩过同一个坑：导航中用户说"换成太古里"，Agent 念了四个候选让他
+ * 选第几个，卡片却因为 minSize=1/3 进不来，屏幕上只有旧的导航卡。
+ * 1/6 实测放得下四个带地址的候选，那个下限是凭想象设的。
  */
 describe('导航 2/3 在场时，选择卡还进不进得来', () => {
+  it('候选列表卡进得来', () => {
+    desk.show({ template: 'nav', size: '2/3', kind: 'rule', evictable: false,
+      ttl: 'untilDismissed', data: { title: '导航' } })
+    now += 10
+    const r = desk.show({ template: 'list', size: '1/2', kind: 'task', minSize: '1/6',
+      ttl: 120, data: { title: '你要去哪个？', items: [{ label: '太古里' }, { label: '美食街' }] } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.some(c => c.template === 'list')).toBe(true)
+  })
+
   it('进得来，且不会被拒', () => {
     desk.show({ template: 'nav', size: '2/3', kind: 'rule', evictable: false,
       ttl: 'untilDismissed', data: { title: '导航' } })

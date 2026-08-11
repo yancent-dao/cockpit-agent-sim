@@ -45,11 +45,12 @@
 ```
 src/config/    signals · constraints · tools · cards —— 数据，越多越好
 src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 242）
-src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 375）
-src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 723）
+src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 377）
+src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 727）
 src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 382）
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
+               展示逻辑（转向条文案、日期人性化）可以放这，抽成纯函数配测试
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
 agents/        Agent 实例：manifest + 人设
 ```
@@ -91,7 +92,13 @@ agents/        Agent 实例：manifest + 人设
 ## 已知待办
 
 - `src/config/signals.ts` 的 `vssPath` 是**待核验的推定路径**，VSS v6.0 有破坏性变更（座椅信号重构、Left/Right → DriverSide/PassengerSide、单位大小写），冻结前必须对着官方 catalog 逐条核对
-- 主动式触发、长期记忆、能力曝光度统计未做
+- 主动式触发、长期记忆、能力曝光度统计未做。**这两条会被用户直接撞上**：
+  他说"等我降下速你就给我开窗"、"以后别对着脸吹你记住"，Agent 只能老实说
+  "你降下来喊我一声""这车不会自己记"。人设里已经写死不许打包票，但能力缺口还在
+- 单文件版（`node build-single.mjs`）读不到 `import.meta.env`——esbuild 打成 iife 后它恒为空。
+  高德和 OpenRouter 的 Key 全部拿不到，导航/天气/地图在双击打开的那个版本里等于没有。
+  修法是控制面板加输入框 + localStorage，**不能靠 build 时 define 注入**（产物要提交，
+  Key 不许进提交的文件）
 
 ## Golden Case（已移除）
 

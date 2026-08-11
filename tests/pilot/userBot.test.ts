@@ -9,6 +9,21 @@ describe('用户机器人：解析', () => {
   it('模型多说两句时容错取 JSON', () => {
     expect(parseTurn('好的：\n```json\n{"say":"去机场","done":true}\n```').say).toBe('去机场')
   })
+
+  // 实测跑批里冒出过 `": "帮我导航到霍格沃茨。", "done": false}` 这种用户话术——
+  // JSON 没解析成功，兜底把残骸整个当成了用户说的话
+  it('JSON 半残时也要把 say 的内容捞出来，不能把残骸当话术', () => {
+    expect(parseTurn('": "帮我导航到霍格沃茨。", "done": false}').say).toBe('帮我导航到霍格沃茨。')
+    expect(parseTurn('{"say": "开窗", "done"').say).toBe('开窗')
+  })
+
+  it('单引号、键没加引号这类不合法 JSON 也捞得出来', () => {
+    expect(parseTurn("{say: '开空调', done: false}").say).toBe('开空调')
+  })
+
+  it('完全不像 JSON 就整段当话术', () => {
+    expect(parseTurn('帮我开窗').say).toBe('帮我开窗')
+  })
 })
 
 /**

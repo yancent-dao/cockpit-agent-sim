@@ -90,8 +90,21 @@ export function parseTurn(raw: string): BotTurn {
     try {
       const o = JSON.parse(json)
       if (typeof o.say === 'string') return { say: stripThinking(o.say), done: Boolean(o.done) }
-    } catch { /* 落到下面兜底 */ }
+    } catch { /* 落到下面的正则捞 */ }
   }
-  // 兜底：整段当成用户说的话，不结束
+  // JSON 不合法（少个括号、用了单引号、键没加引号）时把 say 的值捞出来。
+  // 直接把残骸当话术会让"用户"说出 `": "帮我导航…", "done": false}` 这种东西——实测发生过
+  const byKey = clean.match(/["']?say["']?\s*:\s*["']([^"']+)["']/)?.[1]
+  // 连 say 这个键都被截掉时，按引号切开取最长的一段——分隔符碎片（": "、", "）总是短的。
+  // 不能用配对正则：开头那个孤儿引号会跟后面的配错对，把真正的话术夹在中间跳过去
+  const longest = /["']?done["']?\s*:/.test(clean)
+    ? clean.split(/["']/).map(v => v.trim())
+        .filter(v => v.length > 1 && /[\u4e00-\u9fa5a-z]/i.test(v) && !/^(say|done|true|false)$/i.test(v))
+        .sort((a, b) => b.length - a.length)[0]
+    : undefined
+  const salvaged = byKey ?? longest
+  if (salvaged) return { say: stripThinking(salvaged), done: /["']?done["']?\s*:\s*true/.test(clean) }
+
+  // 完全不像 JSON，整段就是用户说的话
   return { say: clean.slice(0, 200), done: false }
 }

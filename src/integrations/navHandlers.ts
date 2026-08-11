@@ -115,7 +115,11 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         }
       }
       try {
-        const pois = await needAmap().placeSearch(args.query, args.near)
+        const amap = needAmap()
+        // 没指定城市就限定在车所在的城市。全国搜会命中千里之外的同名地点——
+        // 实测用户在成都说"临平出口"，搜到了杭州临平区，规划出 1800 公里
+        const region = args.near || await amap.cityOf(store.get('vehicle.location') as string).catch(() => null)
+        const pois = await amap.placeSearch(args.query, region ?? undefined)
         if (pois.length >= 2) showCandidates(pois)
         return { status: 'ok', data: { pois } }
       } catch (e) {

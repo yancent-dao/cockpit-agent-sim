@@ -314,9 +314,11 @@ export function createRegistry(
         const token = `ct_${(++seq).toString(36)}_${clock().toString(36)}`
         tokens.set(token, { tool: name, expires: clock() + CONFIRM_TTL })
         const message = t.confirmPrompt ?? `即将执行 ${name}，确认吗？`
-        // 确认卡自动上屏（需求书 §4.5 P0 模板）——用户在屏上能看到自己在确认什么
+        // 确认卡自动上屏（需求书 §4.5 P0 模板）——用户在屏上能看到自己在确认什么。
+        // ttl 用 untilTaskEnd：Agent 可能看完 message 直接决定拒绝（行驶中开门就是），
+        // 那这张卡就是孤儿，语音在说"不行"、屏幕在问"确认吗"。用户下一句一开口就该散
         autoCard({ key: 'confirm', template: 'confirm', size: '1/3', kind: 'system',
-          ttl: Math.round(CONFIRM_TTL / 1000), refreshTtl: true,
+          ttl: 'untilTaskEnd',
           data: { title: '需要确认', question: message, options: ['确认', '取消'] } })
         return { status: 'inputRequired', code: 'CONFIRM_REQUIRED', message, token }
       }

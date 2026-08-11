@@ -535,6 +535,37 @@ describe('navigation.search', () => {
     expect(desk.findByKey('nav-candidates')).toBeTruthy()
   })
 
+  // 实测用户在成都说"临平出口"，全国搜命中了杭州临平区，规划出 1800 公里。
+  // 没指定城市时就该在当前城市里找——这是车机导航的常识
+  it('没传 near 时按车辆当前城市搜，不满世界找同名地点', async () => {
+    const calls: string[] = []
+    const amap = createAmapClient((async (url: string) => {
+      calls.push(url)
+      const path = new URL(url).pathname
+      const body = path === '/v3/geocode/regeo'
+        ? { status: '1', regeocode: { addressComponent: { city: '成都市', province: '四川省' } } }
+        : { status: '1', pois: [{ id: 'B1', name: '临平', address: 'a', location: '104.07,30.65' }] }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'test-key' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.search', { query: '临平出口' })
+    const search = calls.find(u => u.includes('/v5/place/text'))!
+    expect(new URL(search).searchParams.get('region')).toBe('成都市')
+  })
+
+  it('用户明说了城市就听用户的', async () => {
+    const calls: string[] = []
+    const amap = createAmapClient((async (url: string) => {
+      calls.push(url)
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'test-key' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.search', { query: '临平', near: '杭州' })
+    const search = calls.find(u => u.includes('/v5/place/text'))!
+    expect(new URL(search).searchParams.get('region')).toBe('杭州')
+    expect(calls.some(u => u.includes('regeo'))).toBe(false) // 不用白查一次当前城市
+  })
+
   // 比完路线说明目的地已经定了，那张"你要去哪个"就翻篇了。
   // 实测它跟路线卡并排挂着，两张 1/2 把桌面占满，导航卡再来就没地方了
   it('比完路线也算目的地定了，候选卡撤掉', async () => {
@@ -1154,6 +1185,17 @@ describe('查询/交互结果自动上屏', () => {
     expect(card).toBeTruthy()
     expect(card.template).toBe('confirm')
     expect(card.data.question).toContain('车门')
+  })
+
+  // 实测：行驶中要求开门，MRTR 弹了确认卡，但 Agent 判断"太危险"直接拒绝了，
+  // 于是语音在说"停稳了再说"、屏幕在问"确认吗"。这张卡成了孤儿，还挂了两轮
+  it('用户下一句一开口，没走完的确认卡就散了', async () => {
+    const desk = await mkDesk()
+    const r = createRegistry(store, TOOLS, () => now, { desk })
+    await r.invoke('door.set', { door: 'driver', action: 'open' })
+    expect(desk.findByKey('confirm')).toBeTruthy()
+    desk.endTask()
+    expect(desk.findByKey('confirm')).toBeUndefined()
   })
 
   it('带 token 确认执行成功 → 确认卡自动撤掉', async () => {

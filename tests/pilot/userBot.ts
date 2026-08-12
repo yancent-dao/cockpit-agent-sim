@@ -108,6 +108,7 @@ export function parseTurn(raw: string): BotTurn {
   const salvaged = byKey ?? longest
   if (salvaged) return { say: clean0(salvaged), done: /["']?done["']?\s*:\s*true/.test(clean) }
 
-  // 完全不像 JSON，整段就是用户说的话
-  return { say: clean.slice(0, 200), done: false }
+  // 完全不像 JSON，整段就是用户说的话。注意也要走 clean0——
+  // 这条兜底路径一开始漏了剥前缀，跑批里真冒出过"我说：就是腾讯那个"
+  return { say: clean0(clean).slice(0, 200), done: false }
 }

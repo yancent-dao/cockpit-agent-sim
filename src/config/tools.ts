@@ -148,6 +148,14 @@ export const TOOLS: ToolDef[] = [
     requires: 'cabin.sunroof.glass.position',
   },
 
+  {
+    name: 'wiper.set',
+    desc: '雨刷。auto 是自动感应雨量，下雨天用户说"开雨刷"一般给 auto 最省心；雨大就 high。',
+    permission: '彩',
+    params: { mode: { type: 'enum', values: ['off', 'auto', 'slow', 'medium', 'high'], required: true, desc: '档位' } },
+    writes: [{ path: 'cabin.wiper.mode', from: 'mode' }],
+  },
+
   /* ── 车门：灰级，需二次确认 ── */
   {
     name: 'door.set',

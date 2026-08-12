@@ -1246,3 +1246,24 @@ describe('Tool 契约完整性', () => {
     for (const t of TOOLS) expect(t.permission, `${t.name} 缺少 permission`).toBeTruthy()
   })
 })
+
+/**
+ * 雨刷。暴雨场景里用户一定会提，而真车这是基础能力——
+ * 之前一直没有，属于 L1 车控的遗漏
+ */
+describe('wiper.set', () => {
+  it('按档位设置', async () => {
+    const r = await reg.invoke('wiper.set', { mode: 'high' })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.wiper.mode')).toBe('high')
+  })
+
+  it('自动感应雨量也是一档', async () => {
+    await reg.invoke('wiper.set', { mode: 'auto' })
+    expect(store.get('cabin.wiper.mode')).toBe('auto')
+  })
+
+  it('不认识的档位被拒', async () => {
+    expect((await reg.invoke('wiper.set', { mode: 'turbo' })).code).toBe('INVALID_PARAMS')
+  })
+})

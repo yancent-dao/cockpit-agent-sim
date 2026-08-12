@@ -276,6 +276,11 @@ export const SIGNALS: Signal[] = [
    * 每秒重评一遍卡片规则、约束引擎为一个没人约束的值做无谓计算。
    * 进度是遥测不是状态，由车机屏本地渲染。Agent 需要知道在放什么，
    * 不需要知道播到 1 分 23 秒；真问起来现查。 */
+  { alias: 'cabin.wiper.mode', vssPath: 'Vehicle.Body.Windshield.Front.Wiping.Mode',
+    type: 'enum', values: ['off', 'auto', 'slow', 'medium', 'high'], label: '雨刷',
+    valueLabels: { off: '关', auto: '自动感应', slow: '慢', medium: '中', high: '快' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+
   { alias: 'media.source', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.Source',
     type: 'enum', values: ['none', 'music', 'radio', 'video'], label: '媒体来源',
     valueLabels: { none: '无', music: '音乐', radio: '电台', video: '视频' },

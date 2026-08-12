@@ -31,6 +31,11 @@ describe('用户机器人：解析', () => {
     expect(parseTurn('{"say":"用户：帮我开窗","done":false}').say).toBe('帮我开窗')
   })
 
+  // 模型不输出 JSON、整段就是话术时，走的是最后的兜底分支——那条一开始漏了剥前缀
+  it('兜底分支也要剥署名前缀', () => {
+    expect(parseTurn('我说：就是腾讯那个，腾讯成都大楼').say).toBe('就是腾讯那个，腾讯成都大楼')
+  })
+
   it('话本身以"我说"开头但不是署名的，别误伤', () => {
     expect(parseTurn('{"say":"我说过了，去机场","done":false}').say).toBe('我说过了，去机场')
   })

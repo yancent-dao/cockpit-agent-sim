@@ -93,7 +93,7 @@ interface Queue {
 ```
 
 - **入队**：`music.play` 命中某首时，把**同一批**搜索结果全部入队，cursor 指向命中项。
-  `video.play` 同理。radio 是直播，无队列（next/prev 对电台仍是"换台"语义，现状保留）。
+  `video.play` 同理。radio 是直播，无队列（next/prev 保持现状：拒绝并建议「直接说换哪个台」）。
 - **续播是机制**：director 收到 `mediaEvent:'ended'` → `queue.next()` → 直接写媒体信号组
   开播下一首。**不叫醒模型**。尊重 `media.mode`（顺序/单曲/随机），到尾且非循环 → 停，
   播放器卡显示"播完了"。产品收益：iTunes 只给 30 秒试听，自动续播让歌单像电台一样流动，
@@ -265,7 +265,7 @@ pilot「让用户点屏幕」硬伤反转；CLAUDE.md「明确不做」删触控
 ## 5. Agent 维度（它的世界因此变大了什么）
 
 **看见的更多**：summary（几何 + 截断 + 家族实体标注"这张天气是成都的"）+
-会话摘要（最近发生）+ 偏好注入。**手更多**：队列/记忆六个新 Tool 语义落地。
+会话摘要（最近发生）+ 偏好注入。**手更多**：记忆三个新 Tool + 队列相关既有 Tool（control 的 next/prev、queue）从残端变为真语义。
 **打扰更少**：续播、恢复、操控触控都不过它。
 
 **机制侵蚀防线**（写给未来的自己）：以下永远不进模型——
@@ -314,10 +314,10 @@ pilot「让用户点屏幕」硬伤反转；CLAUDE.md「明确不做」删触控
 2. B  校验闸下沉 + 归一化 + canvas 白名单             ← 修契约打架
 3. C  reconcile（位置粘性 + 尺寸回落 + 规则卡补回）
 4. D  域仓：队列 + 续播 + 历史 + 收藏持久化
-5. E  家族机制 + ttl 补漏                            ← 依赖 D 的轮次管道
+5. E  家族机制 + ttl 补漏                            ← 含 runtime 轮次 id 的透传管道
 6. F  mount/fill 渲染统一                            ← G、I 的共同地基
 7. G  canvas 动态尺寸闭环 + canvas-app + 流光边框
-8. H  记忆 Tools + prompt 注入 + 人设改口
+8. H  记忆 Tools + 偏好/会话注入 + 人设改口
 9. 小收敛（truncate/esc/几何注入/channelOf/diff 高亮）
 10. I 触控：userAction + 手势层 + 交互声明 + pilot/人设/CLAUDE.md 反转
 ```

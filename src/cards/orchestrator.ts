@@ -43,6 +43,19 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
     })
   }
 
+  /**
+   * 补回通道（reconcile 第一步）：规则条件仍成立但卡不在场（被挤掉了）→ 补回。
+   * 这修的是核心不变量：桌面 = f(车辆状态)，不是 f(状态, 历史路径)——
+   * 播放器被挤掉后歌还在放，屏上就该有它。
+   * 用户亲手关掉的跳过（isSuppressed），直到 watch 信号变化让规则重新断言。
+   * 补回失败（还是放不下）不重试，等下一次 desk 变化。
+   */
+  const refill = () => {
+    for (const r of rules)
+      if (r.when && isActive(r) && !desk.findByKey(r.card.key) && !desk.isSuppressed(r.card.key))
+        apply(r)
+  }
+
   const retire = (r: CardRule) => {
     const c = desk.findByKey(r.card.key)
     if (c) desk.dismiss(c.id)
@@ -54,6 +67,8 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
   }
 
   function start() {
+    // 补回订阅：desk 每次变化都看一眼有没有"该在场却缺席"的规则卡
+    unsubs.push(desk.subscribe(refill))
     for (const r of rules) {
       for (const path of new Set((r.when ?? []).map(w => w[0])))
         unsubs.push(store.subscribe(path, () => evaluate(r)))

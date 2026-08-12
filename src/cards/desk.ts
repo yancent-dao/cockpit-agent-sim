@@ -99,6 +99,16 @@ export interface Card {
    * 优先级：物理（仲裁缩放）> 意愿（这个锁）> 建议（模板默认值）
    */
   sizeLocked?: boolean
+  /**
+   * 该有的大小（恢复目标）。仲裁压缩只改 size 不改它——
+   * 压力消失后 reconcile 照着它回落。用户显式 resize 会更新它（意愿层）。
+   */
+  desiredSize?: Size
+  /**
+   * 上次真实落位。tryPlace 先试记忆位，占不了才重排 ——
+   * 布局对时间序列稳定，不再"一张卡进出、全桌重新发牌"。
+   */
+  prevPos?: { row: number; col: number }
   createdAt: number
   touchedAt: number
 }
@@ -173,6 +183,10 @@ export function createDesk(clock: () => number = Date.now) {
    * 静默消失不可接受：用户刚看的天气卡没了得有个交代。
    */
   const noticeListeners: Array<(n: { note: string; titles: string[] }) => void> = []
+  /** 用户亲手关掉的规则卡 key——补回通道跳过它们，直到规则重新断言 */
+  const suppressed = new Set<string>()
+  /** 最近一次空间释放的时刻。尺寸回落带 2 秒迟滞：候选卡进进出出时天气不能跟着缩-涨-缩 */
+  let releasedAt: number | undefined
 
   /** 确定性放置：2/3 最先，然后优先级降序、创建时间升序，行优先扫第一个合法位置 */
   function tryPlace(list: Card[]): PlacedCard[] | null {
@@ -187,22 +201,34 @@ export function createDesk(clock: () => number = Date.now) {
     })
     const grid: boolean[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(false))
     const out: PlacedCard[] = []
+    const fits = (r: number, c0: number, shape: { w: number; h: number }) => {
+      if (r + shape.h > ROWS || c0 + shape.w > COLS) return false
+      for (let dr = 0; dr < shape.h; dr++)
+        for (let dc = 0; dc < shape.w; dc++) if (grid[r + dr][c0 + dc]) return false
+      return true
+    }
+    const occupy = (r: number, c0: number, shape: { w: number; h: number }) => {
+      for (let dr = 0; dr < shape.h; dr++)
+        for (let dc = 0; dc < shape.w; dc++) grid[r + dr][c0 + dc] = true
+    }
     for (const c of order) {
       const shape = shapeOf(c.size)
       let placed: PlacedCard | null = null
+      // 位置粘性：先试上次落位（缩小后原点依然合法——偶数列起点不因变小而失效）。
+      // 布局要对时间序列稳定，"我的天气卡为什么自己跑了"是反直觉的
+      if (c.prevPos && fits(c.prevPos.row, c.prevPos.col, shape)) {
+        occupy(c.prevPos.row, c.prevPos.col, shape)
+        placed = { ...c, row: c.prevPos.row, col: c.prevPos.col, rowSpan: shape.h, colSpan: shape.w }
+      }
       // 列起点只取偶数 —— 配合「档位宽度一律偶数」，空隙必为偶数宽，chip 永远填得上
       const cols: number[] = []
       for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i)
       // 行起点按自身高度对齐：半高档只落 0/2，不会错位出一条高 1 的横缝
       const rowStep = shape.h >= 2 ? 2 : 1
-      outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
+      if (!placed) outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
         for (const c0 of cols) {
-          let free = true
-          for (let dr = 0; dr < shape.h; dr++)
-            for (let dc = 0; dc < shape.w; dc++) if (grid[r + dr][c0 + dc]) { free = false; break }
-          if (!free) continue
-          for (let dr = 0; dr < shape.h; dr++)
-            for (let dc = 0; dc < shape.w; dc++) grid[r + dr][c0 + dc] = true
+          if (!fits(r, c0, shape)) continue
+          occupy(r, c0, shape)
           placed = { ...c, row: r, col: c0, rowSpan: shape.h, colSpan: shape.w }
           break outer
         }
@@ -298,6 +324,7 @@ export function createDesk(clock: () => number = Date.now) {
     const id = input.id ?? `card_${++seq}`
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
+      desiredSize: size,   // 仲裁自降只改 size；这里记住"本来该多大"
       urgency: normalizeUrgency(input.urgency),
       data: input.data ?? {}, ttl: input.ttl, evictable: input.evictable ?? true,
       minSize: input.minSize,
@@ -364,15 +391,21 @@ export function createDesk(clock: () => number = Date.now) {
       return { status: 'rejected', code: 'NO_ROOM', message: '这个尺寸放不下了' }
     }
     if (byUser) c.sizeLocked = true
+    c.desiredSize = size   // 无论谁改的，新尺寸就是新的恢复目标
     c.touchedAt = clock()
     emit()
     return { status: 'ok', cardId: id }
   }
 
-  function dismiss(id: string): DeskResult {
-    if (!cards.has(id)) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+  function dismiss(id: string, opts?: { byUser?: boolean }): DeskResult {
+    const c = cards.get(id)
+    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    // 用户亲手关的规则卡不许被 reconcile 立刻补回（诈尸）——
+    // 抑制到 watch 信号下次变化（render 会清除抑制，规则重新断言）
+    if (opts?.byUser && c.key) suppressed.add(c.key)
     cards.delete(id)
     if (overlay === id) overlay = undefined
+    releasedAt = clock()   // 空间释放：2 秒迟滞后尺寸回落（tick 里做）
     emit()
     return { status: 'ok', cardId: id }
   }
@@ -387,6 +420,7 @@ export function createDesk(clock: () => number = Date.now) {
 
   /** 反馈级联核心：优先复用已有卡(L1) → 放大(L2) → 最后才新建(L3) */
   function render(i: ShowInput & { key: string }): DeskResult {
+    suppressed.delete(i.key)   // 规则/handler 重新断言这张卡 → 抑制解除
     const exist = [...cards.values()].find(c => c.key === i.key)
     // 刷新成空列表 = 这批内容没了，撤卡而不是留个空壳在那儿
     if (isEmptyList(i.template, i.data)) {
@@ -416,11 +450,20 @@ export function createDesk(clock: () => number = Date.now) {
     return r.status === 'ok' ? { ...r, level: 'L3' } : r
   }
 
-  /** ttl 到期清理 */
+  /** ttl 到期清理 + 尺寸回落 */
   function tick() {
     const t = clock()
     for (const c of [...cards.values()])
       if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) dismiss(c.id)
+    // 尺寸回落：空间释放满 2 秒才动手（防抖——候选卡进进出出时天气不能跟着抖），
+    // 静默进行：挤出打扰了用户所以要告知，恢复不是打扰
+    if (releasedAt !== undefined && t - releasedAt >= 2000) {
+      releasedAt = undefined
+      const pressed = [...cards.values()]
+        .filter(c => c.desiredSize && cellsOfTier(c.size) < cellsOfTier(c.desiredSize))
+        .sort((a, b) => PRIO(b) - PRIO(a))
+      for (const c of pressed) resize(c.id, c.desiredSize!, false)   // 失败就留在原档，下次释放再试
+    }
   }
 
   function endTask() {
@@ -429,6 +472,9 @@ export function createDesk(clock: () => number = Date.now) {
 
   function layout() {
     const placed = tryPlace(others()) ?? []
+    // 落位写回记忆——下次布局先试这里。只在真实布局（layout()）写，
+    // 仲裁过程中的试算（fit 里的 tryPlace）不算数
+    for (const pc of placed) { const c = cards.get(pc.id); if (c) c.prevPos = { row: pc.row, col: pc.col } }
     return {
       cards: placed,
       free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
@@ -466,6 +512,7 @@ export function createDesk(clock: () => number = Date.now) {
     show, update, resize, dismiss, focus, render, tick, endTask, layout, summary,
     get: (id: string) => cards.get(id),
     findByKey: (key: string) => [...cards.values()].find(c => c.key === key),
+    isSuppressed: (key: string) => suppressed.has(key),
     cellsOf: (s: Size) => cellsOfTier(s),
     ladder: () => [...LADDER],
     priorityOf: (k: Kind, u?: Urgency) => prioOf(k, u),

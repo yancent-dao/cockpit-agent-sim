@@ -124,7 +124,9 @@ export function createRegistry(
       const tmpl = card && CARD_TEMPLATES.find(t => t.id === card.template)
       return toResult(need().resize(args.cardId, args.size))
     },
-    cardDismiss: args => toResult(need().dismiss(args.cardId)),
+    // byUser：模型撤卡是在替用户执行"把它收起来"——规则卡被抑制，
+    // 不许下一秒被 reconcile 补回（诈尸），直到 watch 信号重新断言
+    cardDismiss: args => toResult(need().dismiss(args.cardId, { byUser: true })),
     cardFocus: args => toResult(need().focus(args.cardId)),
     deskLayout: () => {
       const l = need().layout()

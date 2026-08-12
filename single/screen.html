@@ -45,20 +45,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
-/* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
-.card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
-  border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
+/* 语义身份靠序号圆点、进度轨、标题色表达就够了。
+   右上角那团色晕试过，产品判定是噪音——远看像卡片没渲染完 */
 /* 进场：从下方抬起并放大到位。车机 HMI 一律 ≤400ms */
 @keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:none}}
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
-/* 多张卡同时进场时错峰 45ms，一起弹出来像抽搐 */
-.card:nth-child(2){animation-delay:45ms}
-.card:nth-child(3){animation-delay:90ms}
-.card:nth-child(4){animation-delay:135ms}
-.card:nth-child(5){animation-delay:180ms}
-.card:nth-child(6){animation-delay:225ms}
+/* 错峰 45ms 由 JS 按「这一批第几张新卡」设 style.animationDelay。
+   用 nth-child 不行：桌面里卡片和占位块（.slot）混在一起，
+   序号对不上，而且节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
 .card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
@@ -822,6 +818,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     for (const { m, d } of deltas) {
       if (!d.dx && !d.dy && d.sx === 1 && d.sy === 1) continue;
       m.node.style.transition = "none";
+      m.node.style.transformOrigin = "top left";
       m.node.style.transform = `translate(${d.dx}px,${d.dy}px) scale(${d.sx},${d.sy})`;
     }
     requestAnimationFrame(() => {
@@ -829,6 +826,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         if (!m.node.style.transform) continue;
         m.node.style.transition = `transform ${duration}ms ${ease}`;
         m.node.style.transform = "";
+        m.node.addEventListener("transitionend", () => {
+          m.node.style.transformOrigin = "";
+        }, { once: true });
       }
     });
   }
@@ -1471,6 +1471,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     sub.style.display = form.blocks.includes("sub") ? "" : "none";
     const barEl = node.querySelector(".plbar");
     barEl.style.display = form.blocks.includes("bar") ? "" : "none";
+    barEl.classList.toggle("live", d.source === "radio");
     const hint = node.querySelector(".pl-hint");
     hint.style.display = form.blocks.includes("hint") ? "" : "none";
     hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`;
@@ -1511,10 +1512,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     svg{max-height:100%}
   </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${String(d.text ?? "").replace(/[<>&]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[ch])}</div>` : r.html}`;
     requestAnimationFrame(() => {
-      const el = root.firstElementChild?.nextElementSibling;
-      const over = host.scrollHeight > host.clientHeight + 2;
-      if (over) bus.send({ type: "canvasNote", cardId: c.id, overflow: true });
-      void el;
+      if (host.scrollHeight > host.clientHeight + 2)
+        bus.send({ type: "canvasNote", cardId: c.id, overflow: true });
     });
   }
   function renderNavCard(node, c) {
@@ -1567,6 +1566,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     desk.querySelectorAll(".slot").forEach((el) => el.remove());
     const occupied = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false));
     const moves = [];
+    let fresh = 0;
     for (const c of deskState.cards) {
       seen.add(c.id);
       for (let dr = 0; dr < c.rowSpan; dr++)
@@ -1574,6 +1574,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       let node = cardNodes.get(c.id);
       if (!node) {
         node = document.createElement("div");
+        node.style.animationDelay = `${fresh++ * 45}ms`;
         cardNodes.set(c.id, node);
         desk.appendChild(node);
       }
@@ -1718,15 +1719,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   setInterval(() => banners.tick(), 200);
   function tickProgress() {
     requestAnimationFrame(tickProgress);
-    const meta2 = document.querySelector(".tpl-media .plbar");
-    if (!meta2 || meta2.style.display === "none") return;
     const { current, duration } = player.progress();
     const pct = progressPct(current, duration);
-    const fl = meta2.querySelector(".plfl");
-    const t = meta2.querySelector(".pltime");
-    meta2.classList.toggle("live", pct === null);
-    fl.style.width = pct === null ? "100%" : `${pct}%`;
-    t.textContent = pct === null ? `● 直播中 · 已收听 ${fmtTime(current)}` : `${fmtTime(current)} / ${fmtTime(duration)}`;
+    for (const meta2 of Array.from(document.querySelectorAll(".tpl-media .plbar"))) {
+      if (meta2.style.display === "none") continue;
+      const fl = meta2.querySelector(".plfl");
+      const t = meta2.querySelector(".pltime");
+      const live2 = meta2.classList.contains("live");
+      fl.style.width = live2 ? "100%" : `${pct ?? 0}%`;
+      t.textContent = live2 ? `● 直播中 · 已收听 ${fmtTime(current)}` : pct === null ? "" : `${fmtTime(current)} / ${fmtTime(duration)}`;
+    }
   }
   requestAnimationFrame(tickProgress);
   var bus = createBus((m) => {

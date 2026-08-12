@@ -45,9 +45,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
-/* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
-.card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
-  border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
+/* 语义身份靠序号圆点、进度轨、标题色表达就够了。
+   右上角那团色晕试过，产品判定是噪音——远看像卡片没渲染完 */
 /* 进场：从下方抬起并放大到位。车机 HMI 一律 ≤400ms */
 @keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:none}}
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */

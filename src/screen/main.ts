@@ -2,6 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm, mediaForm } from './layout'
+import { createBannerQueue, toneOf } from './banner'
 import { dimsOf, GRID, TIERS } from '../config/grid'
 import { cardBody, tierClass, accentClass } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
@@ -225,8 +226,11 @@ function renderDesk() {
     node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
     // 档位类给 --u（字号 = 字阶 × --u），语义色类给 --ac 一族。
     // sz-* 那 22 条硬怼 font-size 的规则被这一个类取代了
+    // picking：等着用户开口选。用户是用语音选的（"第二个"），
+    // 屏上必须让他知道现在轮到他说话了
+    const picking = c.template === 'confirm' || (c.template === 'list' && c.data?.picking)
     node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
-      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}`
+      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}`
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
@@ -338,6 +342,24 @@ function setSub(text: string | null | undefined, who?: string) {
   el.textContent = text ?? ''
 }
 
+/**
+ * 横幅队列。三条提示同时来时只显示一条、其余排队 —— 队列逻辑在 banner.ts（可测），
+ * 这里只负责把它接到 DOM 上。
+ */
+const BAN_ICON: Record<string, string> = { danger: '⨯', warn: '!', info: 'i', ok: '✓' }
+const banners = createBannerQueue({
+  show: b => {
+    const el = $('banner')
+    $('bnT').textContent = b.title ?? ''
+    // desc 里允许 <code> 标记错误码——这段由平台自己拼，不是模型输出
+    $('bnD').innerHTML = b.text
+    $('bnI').textContent = BAN_ICON[b.tone ?? 'info'] ?? 'i'
+    el.className = `a-${b.tone ?? 'info'} on`
+  },
+  hide: () => { $('banner').classList.remove('on') },
+})
+setInterval(() => banners.tick(), 200)
+
 /* ── 消息处理 ── */
 const bus = createBus((m: BusMsg | any) => {
   connected()
@@ -354,12 +376,10 @@ const bus = createBus((m: BusMsg | any) => {
       renderDesk()
       setTimeout(() => { hotWindows = []; hotCards = new Set(); renderDesk() }, 2000)
       break
-    case 'reject': {
-      const el = $('reject')
-      if (!m.on) { el.classList.remove('on'); break }
-      $('rjT').textContent = m.title ?? ''; $('rjD').innerHTML = m.desc ?? ''
-      el.classList.add('on'); break
-    }
+    case 'banner':
+      if (!m.on) { banners.clear(); break }
+      banners.push({ title: m.title, text: m.desc ?? '', tone: toneOf(m.reason), ttl: m.ttl, jump: m.jump })
+      break
   }
 })
 

@@ -589,6 +589,10 @@ export const TOOLS: ToolDef[] = [
       key: { type: 'string', desc: '逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建' },
       data: { type: 'object', desc: '卡片内容，字段取决于模板' },
       kind: { type: 'enum', values: ['task', 'system'], desc: '卡片类别，默认 task' },
+      urgency: {
+        type: 'enum', values: ['ambient', 'normal', 'urgent', 'critical'],
+        desc: '这事有多急，默认 normal。ambient 背景信息（可以被挤掉）/ normal 常规 / urgent 等着用户回应（不会被挤掉）/ critical 安全相关（不会被挤掉，也不会被缩小，会盖住整屏）。别为了让卡活得久就往高了报——真出安全事件时就没有更高一档了。',
+      },
     },
     handler: 'cardShow',
   },

@@ -36,7 +36,7 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
     const size = r.card.size ?? CARD_TEMPLATES.find(t => t.id === r.card.template)?.defaultSize as any
     desk.render({
       key: r.card.key, template: r.card.template, size,
-      kind: 'rule', evictable: r.card.evictable,
+      kind: 'rule', evictable: r.card.evictable, urgency: r.card.urgency,
       ttl: r.card.ttl ?? 'untilDismissed',
       refreshTtl: r.card.ttl !== undefined,
       data: build ? build(deps) : {},

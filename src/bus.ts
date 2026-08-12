@@ -3,7 +3,13 @@ export type BusMsg =
   | { type: 'hello' }
   | { type: 'state'; target: Record<string, number>; meta: Record<string, any> }
   | { type: 'voice'; s?: string; text?: string | null; who?: 'user' | 'agent' }
-  | { type: 'reject'; on: boolean; title?: string; desc?: string }
+  /**
+   * 横幅通道（第二条显示通道）。拒绝原因、约束不满足、能力缺失、
+   * 卡片被挤出的告知都走它 —— 这些是**对某个动作的解释**，不是内容本身，
+   * 塞进桌面会占掉 1/6 格子还跟内容卡长得一样。
+   * reason 决定语义色（rejected 红 / constraint 橙 / evicted 蓝 / done 绿）。
+   */
+  | { type: 'banner'; on: boolean; title?: string; desc?: string; reason?: string; ttl?: number; jump?: boolean }
   | { type: 'highlight'; ids: string[] }
   | { type: 'card'; action: 'show' | 'dismiss'; id: string; zone?: string; size?: string; title?: string; body?: string }
   /**

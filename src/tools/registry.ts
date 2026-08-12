@@ -106,7 +106,7 @@ export function createRegistry(
       if (shapeErr) return shapeErr
       return toResult(need().show({
         template: args.template, size: args.size, ttl: parseTtl(args.ttl),
-        key: args.key, data: args.data, kind: args.kind,
+        key: args.key, data: args.data, kind: args.kind, urgency: args.urgency,
       }))
     },
     cardUpdate: args => {

@@ -376,3 +376,41 @@ describe('尺寸粘性：显式改过就听用户的', () => {
     expect(r.status).toBe('ok')
   })
 })
+
+/* ══════════════ urgency：正交于 kind 的紧急度 ══════════════ */
+/**
+ * 之前 PRIORITY 只看 kind，描述的是「谁建的卡」。
+ * 后果：车门没关且已起步的安全告警，跟天气卡同为 rule，抢位时按 LRU 决定谁活。
+ */
+describe('urgency 参与仲裁', () => {
+  it('critical 卡不会被挤出，哪怕它是最旧的 task', () => {
+    mk({ urgency: 'critical', size: '1/3', data: { title: '车门未关' } }); now += 10
+    for (let i = 0; i < 6; i++) { mk({ kind: 'system', data: { title: '卡' + i } }); now += 10 }
+    expect(desk.layout().cards.map(c => c.data?.title)).toContain('车门未关')
+  })
+
+  it('ambient 卡先于 normal 卡被挤 —— 天气让位给车控反馈', () => {
+    mk({ urgency: 'ambient', data: { title: '天气' } }); now += 10
+    for (let i = 0; i < 5; i++) { mk({ data: { title: '常规' + i } }); now += 10 }
+    // 桌面已满，再来一张
+    mk({ data: { title: '新反馈' } }); now += 10
+    const titles = desk.layout().cards.map(c => c.data?.title)
+    expect(titles).not.toContain('天气')
+    expect(titles).toContain('新反馈')
+  })
+
+  // 缩到 chip 只剩一个标题，安全告警缩成那样等于没显示
+  it('critical 卡不会被缩到 panel 以下', () => {
+    const r = mk({ urgency: 'critical', size: '1/2', data: { title: '胎压过低' } }); now += 10
+    expect(r.status).toBe('ok')
+    for (let i = 0; i < 4; i++) { mk({ kind: 'system', size: '1/3' }); now += 10 }
+    const c = desk.layout().cards.find(x => x.data?.title === '胎压过低')!
+    expect(desk.cellsOf(c.size)).toBeGreaterThanOrEqual(desk.cellsOf('1/3'))
+  })
+
+  it('没声明 urgency 的卡行为跟以前一模一样', () => {
+    mk({ data: { title: 'A' } }); now += 10
+    mk({ kind: 'system', data: { title: 'B' } }); now += 10
+    expect(desk.layout().cards[0].data.title).toBe('B')
+  })
+})

@@ -53,7 +53,7 @@ const agent = createAgent({
 })
 
 /* ══════════ 桌面 → 车机屏：位置由 desk 统一计算，车机屏只管画 ══════════ */
-const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind: c.kind,
+const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind: c.kind, urgency: c.urgency,
   row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan,
   title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template, data: c.data })
 function pushDesk() {
@@ -64,6 +64,11 @@ function pushDesk() {
   } } as any)
 }
 desk.subscribe(pushDesk)
+// 卡片被挤出必须告诉用户 —— 静默消失不可接受。走横幅而不是塞一张卡：
+// 「我把天气收起来了」是对刚才那个动作的解释，不是内容
+desk.onNotice(n => bus.send({
+  type: 'banner', on: true, reason: 'evicted', title: '腾了个位置', desc: n.note, ttl: 5000,
+}))
 setInterval(() => desk.tick(), 500)
 
 $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
@@ -133,7 +138,7 @@ agent.on(e => {
       break
     case 'rejected':
       bus.send({ type: 'voice', s: 'rejected' })
-      bus.send({ type: 'reject', on: true, title: '已拒绝执行', desc: e.text })
+      bus.send({ type: 'banner', on: true, reason: 'rejected', title: '已拒绝执行', desc: e.text, ttl: 6000 })
       break
     case 'done':
       setTimeout(() => bus.send({ type: 'voice', s: 'idle', text: '' }), 3000); break
@@ -151,7 +156,7 @@ async function ask(text: string) {
   if (!apiKey) { log('e', '✗ 请先填入 OpenRouter API Key'); return }
   if (!modelId) { log('e', '✗ 请先选择模型'); return }
   busy = true; $('busy').textContent = '思考中…'
-  bus.send({ type: 'reject', on: false })
+  bus.send({ type: 'banner', on: false })
   bus.send({ type: 'card', action: 'dismiss', id: 'confirm' })
   bus.send({ type: 'voice', s: 'listening', text, who: 'user' })
   log('u', `\n▸ ${text}`)
@@ -171,7 +176,7 @@ async function ask(text: string) {
           .filter((p: string) => p.startsWith('cabin.window.'))
           .map((p: string) => p.split('.')[2])
         if (ids.length) bus.send({ type: 'highlight', ids })
-        if (res.code === 'SPEED_LIMITED') bus.send({ type: 'reject', on: true, title: '已限位', desc: `${res.message} · <code>${res.code}</code>` })
+        if (res.code === 'SPEED_LIMITED') bus.send({ type: 'banner', on: true, reason: 'constraint', title: '已限位', desc: `${res.message} · <code>${res.code}</code>`, ttl: 6000 })
         const cid = (res.data as any)?.cardId
         if (cid) bus.send({ type: 'highlight', ids: [], cards: [cid] } as any)
       }

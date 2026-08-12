@@ -31,6 +31,11 @@ export interface CardRule {
     /** 事件卡的寿命（秒）。状态卡不填——退场由条件决定 */
     ttl?: number
     evictable?: boolean
+    /**
+     * 这事有多急。正交于 kind —— 规则建的卡全是 rule，但天气和"车门没关且已起步"
+     * 显然不该有同样的命运。不写就是 normal。
+     */
+    urgency?: 'ambient' | 'normal' | 'urgent' | 'critical'
     /** data builder 名，登记在 DATA_BUILDERS 白名单 */
     data: string
   }
@@ -57,7 +62,7 @@ export const CARD_RULES: CardRule[] = [
     id: 'media-playing',
     when: [['media.playing', '==', true], ['media.source', '!=', 'video']],
     watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode'],
-    card: { key: 'player', template: 'media', evictable: true, data: 'playerCard' },
+    card: { key: 'player', template: 'media', evictable: true, urgency: 'ambient', data: 'playerCard' },
   },
   {
     id: 'media-playing-video',
@@ -83,7 +88,7 @@ export const CARD_RULES: CardRule[] = [
   { id: 'drive-feedback', watch: ['vehicle.driveMode', 'vehicle.regenLevel', 'vehicle.suspensionHeight'],
     card: { key: 'drive', template: 'control', ttl: 30, data: 'driveCard' } },
   { id: 'opening-feedback', watch: ['cabin.door.*.isOpen', 'cabin.trunk.isOpen', 'cabin.chargePort.isOpen'],
-    card: { key: 'openings', template: 'control', ttl: 30, data: 'openingCard' } },
+    card: { key: 'openings', template: 'control', ttl: 30, urgency: 'urgent', data: 'openingCard' } },
 ]
 
 const WIN_POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const

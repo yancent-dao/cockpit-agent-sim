@@ -67,6 +67,19 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .bd>.wxnow:only-child b{font-size:calc(var(--t-mega)*var(--u))}
 .slot{border:2px dashed var(--hair,var(--hairline));border-radius:var(--r-m)}
 
+/* ── 待选态：整卡描边呼吸 ──
+   用户是用语音选的（"第二个"），屏上必须让他知道**现在轮到他说话了**。
+   描边而不是底色：底色会跟语义色晕打架 */
+.card.picking{box-shadow:0 0 0 3px var(--ac),var(--sh-1);animation:breathe 2.2s var(--ez,ease-in-out) infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 3px var(--ac),var(--sh-1)}
+  50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--ac) 35%,transparent),var(--sh-2)}}
+/* 倒计时：voice.ask 有超时时底部走条。数字倒数会让人紧张，走条只让人知道"要抓紧" */
+.card .cd{position:absolute;left:0;bottom:0;height:5px;background:var(--acgr);
+  animation:cdrun linear forwards}
+@keyframes cdrun{from{width:100%}to{width:0}}
+/* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
+#overlay.alert .card{border:3px solid var(--danger-bd);box-shadow:0 0 0 6px rgba(239,68,68,.12),var(--sh-2)}
+
 /* ── 语义身份：八类各四件套 ──
    诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
    身份由「模板 + 紧急度」定，不由 kind 定 —— kind 是编排优先级，不是外观。 */
@@ -311,14 +324,25 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
-#reject{position:absolute;left:80px;right:80px;bottom:328px;background:rgba(201,122,22,.12);
-  border:2px solid rgba(201,122,22,.4);border-radius:var(--r-md);padding:26px 34px;
-  display:none;gap:20px;align-items:flex-start;z-index:5}
-#reject.on{display:flex;animation:rise .32s var(--ease)}
+/* ══════════ 横幅：第二条通道 ══════════
+   锚定桌面区顶部（跟着状态栏走，不浮在语音区上方空着一块）。
+   一次一条排队，按语义色分色 —— 之前拒绝、条件不满足、系统提示、执行完成
+   全是同一个橙色，用户分不出「不让做」和「做完了」。 */
+#banner{position:absolute;left:60px;right:60px;top:120px;z-index:5;display:none;
+  gap:calc(18px*var(--u,1));align-items:flex-start;
+  background:var(--acbg);border:2px solid var(--acbd);border-radius:var(--r-m);
+  padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06}
+#banner.on{display:flex;animation:bannerIn var(--d3,.34s) var(--ez-pop,var(--ease))}
+@keyframes bannerIn{from{opacity:0;transform:translateY(-24px)}to{opacity:1;transform:none}}
+#banner .bico{flex:none;width:calc(44px*var(--u));height:calc(44px*var(--u));
+  border-radius:calc(12px*var(--u));background:var(--acgr);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:calc(24px*var(--u))}
+#banner .tt{font-size:calc(var(--t-body)*var(--u));color:var(--ac);font-weight:600;
+  margin-bottom:calc(4px*var(--u))}
+#banner .ds{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));line-height:1.5}
+#banner code{background:var(--acbg);border:1px solid var(--acbd);padding:2px 10px;
+  border-radius:8px;font-size:.86em;color:var(--ac)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-#reject .tt{font-size:32px;color:var(--warning);font-weight:600;margin-bottom:8px}
-#reject .ds{font-size:28px;color:var(--text-secondary);line-height:1.5}
-#reject code{background:rgba(0,0,0,.06);padding:3px 12px;border-radius:8px;font-size:24px;color:var(--warning)}
 #conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>
 </head>
@@ -337,8 +361,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   <div id="desk"></div>
   <div id="overlay"></div>
 
-  <div id="reject"><div style="font-size:34px">⚠️</div>
-    <div><div class="tt" id="rjT"></div><div class="ds" id="rjD"></div></div></div>
+  <div id="banner"><div class="bico" id="bnI">!</div>
+    <div><div class="tt" id="bnT"></div><div class="ds" id="bnD"></div></div></div>
 
   <div id="voice" data-s="idle">
     <div id="orbBox"><div id="ring"></div>

@@ -1,5 +1,6 @@
 import { CARD_TEMPLATES } from '../config/cards'
-import { GRID, TIERS, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
+import { GRID, listCapacity, dimsOf, cellsOfTier } from '../config/grid'
+import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency } from '../config/priority'
 
 /**
  * 卡片桌面（无APP化）—— 2026-08-10 重设计，见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md
@@ -29,9 +30,24 @@ const shapeOf = (size: string) => { const [w, h] = dimsOf(size); return { w, h }
 /** 阶梯降尺寸。2/3 不参与——只有规则导航卡用它且不可挤 */
 const LADDER: Size[] = ['1/6', '1/3', '1/2']
 /** 卡片能缩到的最低档；没声明 minSize 就一路缩到 1/6 */
-const floorIdx = (c: { minSize?: Size }) => Math.max(0, LADDER.indexOf(c.minSize ?? '1/6'))
-const canShrink = (c: { size: Size; minSize?: Size }) => LADDER.indexOf(c.size) > floorIdx(c)
-const PRIORITY: Record<Kind, number> = { task: 2, rule: 3, system: 4 }
+/**
+ * 能缩到的最低档。显式 minSize 优先；没写就按 urgency 兜底 ——
+ * critical 缩到只剩一个标题等于没显示。
+ */
+const floorIdx = (c: { minSize?: Size; urgency?: Urgency }) => {
+  if (c.minSize) return Math.max(0, LADDER.indexOf(c.minSize))
+  const floor = minTierFor(c.urgency)
+  const bySize = LADDER.findIndex(s => cellsOfTier(s) >= cellsOfTier(floor))
+  return Math.max(0, bySize)
+}
+const canShrink = (c: { size: Size; minSize?: Size; urgency?: Urgency }) => LADDER.indexOf(c.size) > floorIdx(c)
+/**
+ * 优先级 = kind 权重 + urgency 权重，表在 src/config/priority.ts。
+ * kind 描述「谁建的卡」，urgency 描述「这事有多急」—— 两个维度正交。
+ * 只看 kind 的话，车门没关且已起步的安全告警跟天气卡同为 rule，
+ * 抢位时按 LRU 决定谁活。
+ */
+const PRIO = (c: { kind: Kind; urgency?: Urgency }) => prioOf(c.kind, c.urgency)
 
 export interface Card {
   id: string
@@ -39,6 +55,11 @@ export interface Card {
   template: string
   size: Size
   kind: Kind
+  /**
+   * 这事有多急。正交于 kind —— kind 说「谁建的」，urgency 说「有多急」。
+   * 影响三件事：抢位优先级、能不能被挤、能缩到多小。默认 normal。
+   */
+  urgency?: Urgency
   data: any
   ttl: Ttl
   evictable: boolean
@@ -67,6 +88,7 @@ export interface ShowInput {
   template: string
   size?: Size
   kind?: Kind
+  urgency?: Urgency
   data?: any
   ttl?: Ttl
   evictable?: boolean
@@ -102,6 +124,12 @@ export function createDesk(clock: () => number = Date.now) {
   let seq = 0
   const listeners: Array<() => void> = []
   const emit = () => listeners.forEach(l => l())
+  /**
+   * 挤出告知。desk 只发**事实**（这几张卡被收起来了、人话怎么说），
+   * 怎么显示由 UI 决定 —— 走横幅还是走播报不是桌面该管的事。
+   * 静默消失不可接受：用户刚看的天气卡没了得有个交代。
+   */
+  const noticeListeners: Array<(n: { note: string; titles: string[] }) => void> = []
 
   /** 确定性放置：2/3 最先，然后优先级降序、创建时间升序，行优先扫第一个合法位置 */
   function tryPlace(list: Card[]): PlacedCard[] | null {
@@ -110,7 +138,7 @@ export function createDesk(clock: () => number = Date.now) {
       // 一张 4×2 的卡明明有地方却因为上下都被单行档占了半格而放不下
       const ha = shapeOf(a.size).h, hb = shapeOf(b.size).h
       if (ha !== hb) return hb - ha
-      const pa = PRIORITY[a.kind], pb = PRIORITY[b.kind]
+      const pa = PRIO(a), pb = PRIO(b)
       if (pa !== pb) return pb - pa
       return a.createdAt - b.createdAt
     })
@@ -156,10 +184,12 @@ export function createDesk(clock: () => number = Date.now) {
     const existing = others()
     let size = candidate.size
 
-    const alive = () => existing.filter(c => c.evictable && !shrunkOut.has(c.id))
-    const byPriorityLRU = (a: Card, b: Card) => PRIORITY[a.kind] - PRIORITY[b.kind] || a.touchedAt - b.touchedAt
+    // urgent 以上不可挤 —— 安全告警被 LRU 挤掉是事故，等着用户回应的问题卡也一样。
+    // 显式 evictable:false 仍然优先（导航中的导航卡）
+    const alive = () => existing.filter(c => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id))
+    const byPriorityLRU = (a: Card, b: Card) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt
     const victims = () => alive()
-      .filter(c => PRIORITY[c.kind] <= PRIORITY[candidate.kind])
+      .filter(c => PRIO(c) <= PRIO(candidate))
       .sort(byPriorityLRU)
     const shrunkOut = new Set<string>() // 已挤出的不再参与
 
@@ -172,6 +202,7 @@ export function createDesk(clock: () => number = Date.now) {
         for (const id of evicted) cards.delete(id)
         cards.set(candidate.id, candidate)
         const note = titles.length ? `我把${titles.map(t => `「${t}」`).join('、')}收起来了` : undefined
+        if (note) noticeListeners.forEach(l => l({ note, titles: [...titles] }))
         emit()
         return {
           status: 'ok', cardId: candidate.id,
@@ -213,6 +244,7 @@ export function createDesk(clock: () => number = Date.now) {
     const id = input.id ?? `card_${++seq}`
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
+      urgency: normalizeUrgency(input.urgency),
       data: input.data ?? {}, ttl: input.ttl, evictable: input.evictable ?? true,
       minSize: input.minSize,
       createdAt: clock(), touchedAt: clock(),
@@ -340,8 +372,11 @@ export function createDesk(clock: () => number = Date.now) {
     get: (id: string) => cards.get(id),
     findByKey: (key: string) => [...cards.values()].find(c => c.key === key),
     cellsOf: (s: Size) => cellsOfTier(s),
-    priorityOf: (k: Kind) => PRIORITY[k],
+    priorityOf: (k: Kind, u?: Urgency) => prioOf(k, u),
     subscribe: (cb: () => void) => { listeners.push(cb); return () => listeners.splice(listeners.indexOf(cb), 1) },
+    onNotice: (cb: (n: { note: string; titles: string[] }) => void) => {
+      noticeListeners.push(cb); return () => noticeListeners.splice(noticeListeners.indexOf(cb), 1)
+    },
   }
 }
 

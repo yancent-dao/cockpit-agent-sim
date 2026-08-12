@@ -89,7 +89,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
    */
   const showCandidates = (pois: Array<{ name: string; address: string }>) => {
     const r = desk?.()?.render({
-      key: CANDIDATES, template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
+      key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,   // 尺寸交给内容建议：3 条小卡、10 条大卡
       data: { title: '你要去哪个？', items: pois.map(p => ({ label: p.name, sub: p.address })) },
     })
     // 桌面满到连 1/6 都塞不下时，得让 Agent 知道——不然它照常说"你说第几个"，
@@ -180,7 +180,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         const center = args.near || searchCenter(store)
         const pois = await amap.placeAround(center, keyword, args.radius)
         desk?.()?.render({
-          key: 'along', template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
+          key: 'along', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
           data: {
             title: `附近的${keyword}`,
             items: pois.map(p => ({
@@ -228,7 +228,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
 
         dismissCandidates([CANDIDATES]) // 能比路线说明目的地已经定了
         desk?.()?.render({
-          key: 'routes', template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
+          key: 'routes', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
           data: {
             title: `去${resolved.name}，几条路线`,
             items: labeled.map(r => ({

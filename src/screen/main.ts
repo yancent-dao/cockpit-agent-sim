@@ -1,7 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { navForm, mediaForm } from './layout'
+import { navForm, mediaForm } from '../config/forms'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { sanitize } from './sanitize'

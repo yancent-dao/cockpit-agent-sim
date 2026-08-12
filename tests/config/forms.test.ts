@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { CARD_FORMS, navForm, capForm, weatherForm, listForm } from '../../src/screen/layout'
+import { CARD_FORMS, navForm, capForm, weatherForm, listForm } from '../../src/config/forms'
 
 /**
  * 形态函数 = 「这个模板在这个大小下显示哪些块」。

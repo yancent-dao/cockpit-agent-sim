@@ -1,4 +1,5 @@
 import { CARD_TEMPLATES } from '../config/cards'
+import { formOf, suggestSize } from '../config/forms'
 import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency } from '../config/priority'
 
@@ -283,7 +284,14 @@ export function createDesk(clock: () => number = Date.now) {
     if (input.ttl === undefined || input.ttl === null)
       return { status: 'rejected', code: 'TTL_REQUIRED', message: '卡片必须声明 ttl，否则会在桌面堆积' }
 
-    const size = input.size ?? '1/6'
+    // 尺寸三级：显式（调用方）> 建议（内容反查）> 模板默认。
+    // 有 items 的卡按条数挑最小能装下的档——3 条候选不该占半屏空一半
+    const tmplDefault = CARD_TEMPLATES.find(t => t.id === input.template)?.defaultSize as Size | undefined
+    const size = input.size
+      ?? (Array.isArray(input.data?.items) && input.data.items.length
+            ? suggestSize(input.template, input.data.items.length) as Size
+            : undefined)
+      ?? tmplDefault ?? '1/6'
     const id = input.id ?? `card_${++seq}`
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
@@ -373,7 +381,12 @@ export function createDesk(clock: () => number = Date.now) {
       if (exist) dismiss(exist.id)
       return { status: 'rejected', code: 'EMPTY_CARD', message: '一条都没有，卡撤了' }
     }
-    const want = i.size ?? '1/6'
+    // 刷新时的期望尺寸：显式 > 内容建议 > 维持现状。
+    // 候选从 3 条刷成 10 条时要能长大，反过来（10→3）也能在 reconcile 时缩回
+    const want = (i.size
+      ?? (Array.isArray(i.data?.items) && i.data.items.length
+            ? suggestSize(i.template, i.data.items.length) as Size : undefined)
+      ?? exist?.size ?? '1/6') as Size
     if (exist) {
       if (i.refreshTtl) exist.createdAt = clock()
       // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
@@ -426,9 +439,12 @@ export function createDesk(clock: () => number = Date.now) {
     // 截断信息必须回给 Agent。只做 UI 的话模型以为屏上有 12 条、
     // 张口就说"第 10 个"，而用户根本看不到第 5 条之后的东西
     for (const c of l.cards) {
-      // 优先用卡片自己声明的 moreCount；没声明就按档位容量算
+      // 可见条数由**形态函数**给——跟车机屏画的是同一个数（公理 2：
+      // 世界观由结构保证）。之前这里用 listCapacity 自己重算，
+      // 能力目录 @1/2 出过 summary 说 12、屏幕画 4 的分裂
       const total = Array.isArray(c.data?.items) ? c.data.items.length : 0
-      const n = Number(c.data?.moreCount ?? Math.max(0, total - listCapacity(...dimsOf(c.size))))
+      const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total
+      const n = Number(c.data?.moreCount ?? Math.max(0, total - visible))
       if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`)
     }
     return lines.join('\n')

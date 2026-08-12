@@ -1,4 +1,4 @@
-import { listCapacity, contentCols } from '../config/grid'
+import { listCapacity, contentCols } from './grid'
 /**
  * 尺寸 → 形态。卡片尺寸放开之后，"支持某个尺寸"要落到"在那个尺寸下能看"。
  *
@@ -35,7 +35,7 @@ export interface Form {
 
 export type FormFn = (cols: number, rows: number) => Form
 
-export { listCapacity, contentCols } from '../config/grid'
+export { listCapacity, contentCols } from './grid'
 
 /** 一屏 12×4 = 48 单元。12 单元 ≈ 屏幕 1/4，是"放得下一段解释"的分界 */
 const area = (c: number, r: number) => c * r
@@ -154,3 +154,27 @@ export const CARD_FORMS: Record<string, FormFn> = {
 /** 查不到就按 generic 走——白卡比不显示更糟 */
 export const formOf = (template: string, c: number, r: number): Form =>
   (CARD_FORMS[template] ?? genericForm)(c, r)
+
+import { CARD_TEMPLATES, COMMON_SIZES } from './cards'
+import { dimsOf, cellsOfTier } from './grid'
+
+/**
+ * 内容 → 建议尺寸（形态表的**反查**，不是第二套公式）。
+ *
+ * 给定条数，在模板允许的档位里按面积从小到大找第一个装得下的；
+ * 全装不下就取最大档（截断策略接手）。3 条候选不再占半屏空一半，
+ * 12 条不再默认被截 4 条。
+ *
+ * 这是"建议"层（物理 > 意愿 > 建议里最弱的一级）：
+ * 调用方显式给了尺寸就轮不到它，仲裁要压缩也拦不住。
+ */
+export function suggestSize(templateId: string, count: number): string {
+  const tmpl = CARD_TEMPLATES.find(t => t.id === templateId)
+  const allowed = [...(tmpl?.sizes ?? COMMON_SIZES)]
+    .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+  for (const z of allowed) {
+    const max = formOf(templateId, ...dimsOf(z)).maxItems
+    if (max !== undefined && max >= count) return z
+  }
+  return allowed[allowed.length - 1]
+}

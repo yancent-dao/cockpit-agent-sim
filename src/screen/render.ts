@@ -6,7 +6,7 @@
  * "模板声明了 items 却静默不画"的 bug 只能靠肉眼发现。
  */
 import { dayLabel } from './turn'
-import { capForm, weatherForm, formOf } from './layout'
+import { capForm, weatherForm, formOf } from '../config/forms'
 import { dimsOf, normalizeTier } from '../config/grid'
 
 export const esc = (s: any) =>

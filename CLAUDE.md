@@ -196,7 +196,8 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 - `tests/pilot/scenarios.ts` 是纯数据，加场景 = 加一条。55 条分 nav/ctrl/chat/media 四组，
   可以按组跑（`npm run pilot -- nav`）也可以按 id 跑。四组：nav / ctrl / chat / media
 - run.ts 的检测分两级：**硬伤**（DESKTOP_FULL、导航中无导航卡、话术声称"屏幕上有"但桌面空、
-  thinking 标签泄漏、让用户"点"屏幕、泄漏模型身份、说"第几个"但屏上没编号……）
+  thinking 标签泄漏、泄漏模型身份、说"第几个"但屏上没编号……触控落地后
+  "让用户点屏幕"从硬伤降为提示，只抓**催促**点击）
   和**提示**（话术偏长这类，需要人看一眼再判断）。混在一起报会让真问题被淹掉
 - 会消耗真实 OpenRouter/高德额度，所以**不进 `npm test`**
 

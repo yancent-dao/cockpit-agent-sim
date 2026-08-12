@@ -216,7 +216,9 @@ describe('生命周期：ttl 必填，到期自动退场', () => {
 describe('full：整屏覆盖，退出自动还原', () => {
   it('full 卡进 overlay，不占栅格', () => {
     mk({ data: { title: '底下的卡' } }); now += 10
-    desk.show({ template: 'capability', size: 'full', ttl: 'untilDismissed', data: { items: [] } })
+    // 能力目录空着不是合法状态（这车总会点什么），给两条真实的
+    desk.show({ template: 'capability', size: 'full', ttl: 'untilDismissed',
+      data: { items: [{ label: '开窗' }, { label: '导航' }] } })
     const l = desk.layout()
     expect(l.overlay).toBeTruthy()
     expect(l.cards).toHaveLength(1) // 底下的卡还在

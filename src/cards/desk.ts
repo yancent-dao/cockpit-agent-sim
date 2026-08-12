@@ -115,6 +115,21 @@ export interface DeskResult {
   level?: 'L1' | 'L2' | 'L3'
 }
 
+
+/**
+ * 列表类卡片一条内容都没有 —— **空卡比不显示更糟**。
+ *
+ * 跑批（nav-cross-province）撞出来的：川藏线上搜服务区返回 0 条，
+ * handler 照样建卡，屏上留着一张「附近的服务区」标题下面什么都没有的空壳。
+ * 用户看到标题会以为在加载；Agent 那边还占着一个格子。
+ *
+ * 这不是"贴心逻辑"（那是 Tool 内不许有的东西），是**卡片契约**：
+ * 一张列表卡的意思就是"这里有几条东西"，0 条时这句话是假的。
+ */
+const isEmptyList = (template: string, data: any) =>
+  (template === 'list' || template === 'capability')
+  && Array.isArray(data?.items) && data.items.length === 0
+
 const titleOf = (c: Card) =>
   c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template
 
@@ -250,6 +265,11 @@ export function createDesk(clock: () => number = Date.now) {
       createdAt: clock(), touchedAt: clock(),
     }
 
+    if (isEmptyList(input.template, input.data)) return {
+      status: 'rejected', code: 'EMPTY_CARD',
+      message: '一条都没搜到，这张卡是空的，没往屏上放——直接开口告诉用户没找到',
+    }
+
     const toOverlay = (): DeskResult => { // 整屏覆盖：不占栅格，退出还原
       cards.set(id, card)
       overlay = id
@@ -320,6 +340,11 @@ export function createDesk(clock: () => number = Date.now) {
   /** 反馈级联核心：优先复用已有卡(L1) → 放大(L2) → 最后才新建(L3) */
   function render(i: ShowInput & { key: string }): DeskResult {
     const exist = [...cards.values()].find(c => c.key === i.key)
+    // 刷新成空列表 = 这批内容没了，撤卡而不是留个空壳在那儿
+    if (isEmptyList(i.template, i.data)) {
+      if (exist) dismiss(exist.id)
+      return { status: 'rejected', code: 'EMPTY_CARD', message: '一条都没有，卡撤了' }
+    }
     const want = i.size ?? '1/6'
     if (exist) {
       if (i.refreshTtl) exist.createdAt = clock()

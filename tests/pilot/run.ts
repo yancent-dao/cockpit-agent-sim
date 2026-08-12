@@ -131,6 +131,17 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   // 经纬度念出来是噪音
   if (/东经|北纬|\d{2,3}\.\d{4,}/.test(reply))
     out.push(`话术念了坐标数字（语音场景是噪音）：「${reply.slice(0, 40)}」`)
+  /**
+   * 空壳卡。跑批（nav-cross-province T3）撞出来的：搜服务区返回 0 条，
+   * 屏上留着一张「附近的服务区」标题下面什么都没有的卡。
+   * 用户看到标题会以为在加载，或者以为真的一个都没有。
+   * desk 层已经拦了，这条是防它从别的路径漏回来。
+   */
+  for (const c of layout.cards) {
+    if (['list', 'capability'].includes(c.template) && (c.data?.items?.length ?? 0) === 0)
+      out.push(`「${c.data?.title ?? c.template}」是张空壳卡，一条内容都没有`)
+  }
+
   /* ── 生成式卡（2026-08-12 HMI 重设计新增）── */
   for (const c of layout.cards) {
     if (c.template !== 'canvas') continue

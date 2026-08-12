@@ -8,6 +8,7 @@ import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
 import type { Track, ItunesClient } from './itunes'
 import type { Station, RadioClient } from './radio'
+import type { Article, NewsClient } from './news'
 
 export interface Favorite {
   source: string
@@ -33,6 +34,7 @@ const radioNo = (what: string): ToolResult => ({
 export interface MediaDeps {
   itunes?: () => ItunesClient
   radio?: () => RadioClient
+  news?: () => NewsClient
 }
 
 export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
@@ -42,6 +44,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   /** 上一次搜索结果，用来把"第二个"翻译成具体条目 */
   let lastResults: Track[] = []
   let lastStations: Station[] = []
+  let lastArticles: Article[] = []
 
   const need = <K extends keyof MediaDeps>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
     const f = deps[k]
@@ -71,6 +74,22 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
    * 搜不到台的原因常常不是"没这个台"，而是筛掉 http 流之后一个不剩。
    * 这个区别要说出来，否则用户以为是搜索不好使
    */
+  const aBrief = (a: Article) => ({ title: a.title, source: a.source, publishedAt: a.publishedAt })
+
+  const noNews = (q?: string): ToolResult => ({
+    status: 'unavailable', code: 'NO_RESULT',
+    message: q ? `没搜到关于「${q}」的新闻` : '这会儿没拿到新闻',
+    suggestion: '换个说法或者换个话题试试',
+  })
+
+  const showNews = (articles: Article[], title: string) => {
+    lastArticles = articles
+    desk?.()?.render({
+      key: 'news', template: 'list', kind: 'task', ttl: 180, refreshTtl: true,
+      data: { title, items: articles.map(a => ({ label: a.title, sub: a.source })) },
+    })
+  }
+
   const noStation = (q: string): ToolResult => ({
     status: 'unavailable', code: 'NO_RESULT',
     message: `没找到能放的「${q}」。有些台只提供不加密的流，车机放不了`,
@@ -258,6 +277,59 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         dismissKey('radio-candidates')
         return { status: 'ok', data: { playing: sBrief(st) }, message: `在放 ${st.name}` }
       } catch (e) { return cpFail(e, '电台播放') }
+    },
+
+    /* ══════════ 新闻（NewsAPI） ══════════ */
+
+    newsHeadlines: async (args: any): Promise<ToolResult> => {
+      try {
+        const lang = args.language ?? 'zh'
+        const { articles, real } = await need('news').headlines(args.category ?? 'general', lang)
+        if (!articles.length) return noNews()
+        showNews(articles, real ? '今日头条' : '今天的新闻')
+        return {
+          status: 'ok',
+          data: { real, articles: articles.map(aBrief) },
+          // real=false 时必须说清楚，否则 Agent 会张口就是"这是今天的头条"
+          message: real
+            ? undefined
+            : '这不是编辑推荐的头条，是按关键词搜出来、按时间排的最新几条，播报时别说"头条"',
+        }
+      } catch (e) { return cpFail(e, '新闻') }
+    },
+
+    newsSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const articles = await need('news').search(args.query, args.language ?? 'zh')
+        if (!articles.length) return noNews(args.query)
+        showNews(articles, `关于「${args.query}」`)
+        return { status: 'ok', data: { articles: articles.map(aBrief) } }
+      } catch (e) { return cpFail(e, '新闻搜索') }
+    },
+
+    newsRead: (args: any): ToolResult => {
+      if (!lastArticles.length)
+        return {
+          status: 'rejected', code: 'NO_LIST',
+          message: '还没列过新闻',
+          suggestion: '先说想看哪方面的新闻，我列出来再读给你听',
+        }
+      const i = Number(args.index ?? 1)
+      const a = lastArticles[i - 1]
+      if (!a)
+        return {
+          status: 'rejected', code: 'OUT_OF_RANGE',
+          message: `只有 ${lastArticles.length} 条`,
+          suggestion: `说 1 到 ${lastArticles.length} 之间的序号`,
+        }
+      return {
+        status: 'ok',
+        data: {
+          title: a.title, source: a.source,
+          // NewsAPI 免费层只给 200 字正文，摘要往往比它完整，两个都给
+          text: [a.description, a.content].filter(Boolean).join(' '),
+        },
+      }
     },
 
     mediaFavorites: (): ToolResult => {

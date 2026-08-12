@@ -508,6 +508,35 @@ export const TOOLS: ToolDef[] = [
     handler: 'radioPlay',
   },
 
+  /* ══════════ 新闻（NewsAPI） ══════════ */
+  {
+    name: 'news.headlines',
+    desc: '看某个领域的最新新闻。**中文拿不到编辑推荐的头条**（数据源限制），返回的是按关键词搜、按时间排的最新几条，返回里的 real=false 就是这个意思——播报时说"我给你找了今天的科技新闻"，**不要说"这是今天的头条"**。列表自动上屏带编号，你说一句有几条就行，别逐条念标题。',
+    permission: '彩',
+    params: {
+      category: { type: 'enum', values: ['general', 'technology', 'business', 'sports', 'entertainment', 'health', 'science'], desc: '领域，默认 general' },
+      language: { type: 'enum', values: ['zh', 'en'], desc: '语言，默认 zh' },
+    },
+    handler: 'newsHeadlines',
+  },
+  {
+    name: 'news.search',
+    desc: '按关键词搜新闻。列表自动上屏带编号。',
+    permission: '彩',
+    params: {
+      query: { type: 'string', required: true, desc: '关键词' },
+      language: { type: 'enum', values: ['zh', 'en'], desc: '语言，默认 zh' },
+    },
+    handler: 'newsSearch',
+  },
+  {
+    name: 'news.read',
+    desc: '把列表里第几条的正文取出来念给用户听——车机场景是听不是看，用户说"读第二条"就用这个。要先调过 headlines 或 search 才有列表。',
+    permission: '彩',
+    params: { index: { type: 'number', range: [1, 20], required: true, desc: '第几条，从 1 开始' } },
+    handler: 'newsRead',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

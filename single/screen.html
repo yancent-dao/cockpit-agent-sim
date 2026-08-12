@@ -32,114 +32,215 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 #stage{--voiceH:300px}
 #stage[data-s=idle]{--voiceH:148px}
 #desk{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
-  display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:24px;
+  display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,1fr);gap:24px;
   transition:bottom .32s var(--ease)}
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
   writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
-.card{background:var(--bg-surface);border-radius:var(--r-lg);padding:28px 32px;overflow:hidden;
-  display:flex;flex-direction:column;transition:box-shadow .24s var(--ease),background .24s var(--ease);
-  animation:cardIn .32s var(--ease)}
+/* ══════════ 卡片基座 ══════════
+   字号一律 = 字阶 × --u。--u 由档位类（.t-card / .t-stage …）给，
+   一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
+   加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
+.card{position:relative;background:var(--sf-card,var(--bg-surface));border:1px solid var(--hair,transparent);
+  border-radius:var(--r-m);box-shadow:var(--sh-1);overflow:hidden;
+  padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
+  transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
+  animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
+/* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
+.card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
+  border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
 @keyframes cardIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
-.card.hot{background:var(--bg-elevated);box-shadow:0 0 0 3px var(--brand)}
-.card h3{font-size:30px;font-weight:600;margin-bottom:16px;color:var(--text-primary)}
-.card .sub{font-size:26px;color:var(--text-secondary);line-height:1.5}
-.slot{border:2px dashed var(--hairline);border-radius:var(--r-lg)}
-.card .rowline{display:flex;justify-content:space-between;align-items:baseline;font-size:26px;margin-bottom:6px}
-.card .rowline span{color:var(--text-secondary)}
-.card .rowline em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
-.card.hot .rowline em{color:var(--brand)}
-.card .opt{display:inline-block;padding:10px 24px;margin:8px 12px 0 0;border-radius:999px;
-  background:var(--bg-elevated);font-size:26px;color:var(--text-primary)}
-.card .sug{margin-top:12px;font-size:24px;color:var(--brand)}
-/* 候选列表：序号让语音选择("第一个")和屏幕对得上号 */
-.listcard{list-style:none;counter-reset:pick;margin:0;padding:0;overflow:auto}
-.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:14px;
-  padding:12px 0;border-bottom:1px solid var(--hairline)}
+.card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
+.card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
+  margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
+  font-weight:500;color:var(--tx-3,var(--text-secondary));letter-spacing:.09em}
+/* 诊断 1：内容缩在左上角，下半张脸空着。
+   .bd 认领全部剩余高度，主数值贴底 —— 空白被推到标题与数据之间，而不是堆在底部。 */
+.bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
+  gap:calc(8px*var(--u))}
+/* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
+   全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
+   只是把「缩在左上角」换成了「缩在左下角」 */
+.bd>.listcard,.bd>.cap,.bd>.blocks,.bd>.glist{flex:1;min-height:0}
+/* 卡里只有一块主数值时（card 档的天气、续航），让它居中占满并放大一阶 ——
+   一个 76px 的数字挂在 562px 高的卡底部，看着像没加载完 */
+.bd>.wxnow:only-child{flex:1;align-items:center}
+.bd>.wxnow:only-child b{font-size:calc(var(--t-mega)*var(--u))}
+.slot{border:2px dashed var(--hair,var(--hairline));border-radius:var(--r-m)}
+
+/* ── 语义身份：八类各四件套 ──
+   诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
+   身份由「模板 + 紧急度」定，不由 kind 定 —— kind 是编排优先级，不是外观。 */
+.a-brand {--ac:var(--brand-fg); --acbg:var(--brand-bg); --acbd:var(--brand-bd); --acgr:var(--brand-gr)}
+.a-info  {--ac:var(--info-fg);  --acbg:var(--info-bg);  --acbd:var(--info-bd);  --acgr:var(--info-gr)}
+.a-ok    {--ac:var(--ok-fg);    --acbg:var(--ok-bg);    --acbd:var(--ok-bd);    --acgr:var(--ok-gr)}
+.a-warn  {--ac:var(--warn-fg);  --acbg:var(--warn-bg);  --acbd:var(--warn-bd);  --acgr:var(--warn-gr)}
+.a-danger{--ac:var(--danger-fg);--acbg:var(--danger-bg);--acbd:var(--danger-bd);--acgr:var(--danger-gr)}
+.a-media {--ac:var(--media-fg); --acbg:var(--media-bg); --acbd:var(--media-bd); --acgr:var(--media-gr)}
+.a-pick  {--ac:var(--pick-fg);  --acbg:var(--pick-bg);  --acbd:var(--pick-bd);  --acgr:var(--pick-gr)}
+.a-sys   {--ac:var(--sys-fg);   --acbg:var(--sys-bg);   --acbd:var(--sys-bd);   --acgr:var(--sys-gr)}
+
+/* ── 数值 ── */
+.num{font-size:calc(var(--t-num)*var(--u));font-weight:600;color:var(--tx-1,var(--text-primary));
+  font-variant-numeric:tabular-nums;letter-spacing:-1.5px;line-height:1;
+  display:flex;align-items:flex-end;gap:calc(5px*var(--u))}
+.num i{font-style:normal;font-size:.44em;font-weight:400;color:var(--tx-3,var(--text-secondary));
+  letter-spacing:0;transform:translateY(-.08em)}
+
+/* ── 块状均分 ──
+   grid-auto-rows:1fr 让块平分剩余高度：三块一人三分之一，四块一人四分之一。
+   数据条数变了高度自动重分，不用为每种条数写一条 CSS。 */
+.blocks{flex:1;min-height:0;display:grid;gap:calc(10px*var(--u));grid-auto-rows:1fr}
+.blocks.c2{grid-template-columns:1fr 1fr}
+.blocks.c3{grid-template-columns:repeat(3,1fr)}
+.blk{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+  border-radius:calc(16px*var(--u));padding:calc(12px*var(--u)) calc(15px*var(--u));
+  display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;
+  transition:box-shadow .24s var(--ez,var(--ease))}
+.blk.hot{box-shadow:0 0 0 2px var(--ac)}
+.blk.hot .num{color:var(--ac)}
+.blk .lb{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 7px 细轨。目标位刻度是过渡仿真已有能力的可视化——车窗正在开到 60% 时看得见终点 */
+.trk{position:relative;height:calc(7px*var(--u));border-radius:99px;
+  background:var(--n3,var(--bg-elevated));overflow:visible}
+.trk .fl{height:100%;border-radius:99px;background:var(--acgr);
+  transition:width var(--d4,.38s) var(--ez,var(--ease))}
+.trk .tg{position:absolute;top:-3px;width:2.5px;height:calc(13px*var(--u));border-radius:2px;
+  background:var(--ac);opacity:.42}
+
+/* ── 文本块 ── */
+.card .sub{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary));line-height:1.5}
+.card .sug{margin-top:calc(10px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--ac)}
+.card .opt{display:inline-block;padding:calc(5px*var(--u)) calc(13px*var(--u));
+  margin:calc(8px*var(--u)) calc(10px*var(--u)) 0 0;border-radius:var(--r-pill,999px);
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:500}
+
+/* ── 候选列表：序号让语音选择（"第一个"）和屏幕对得上号 ── */
+.listcard{list-style:none;counter-reset:pick;margin:0;padding:0;
+  display:grid;gap:calc(7px*var(--u));align-content:start;grid-auto-rows:max-content}
+/* 屏幕 cursor:none 滚不动 —— 列表一律截断，绝不留 overflow:auto */
+.listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
+.listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
+.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(12px*var(--u));
+  padding:calc(7px*var(--u)) 0;border-bottom:1px solid var(--hair,var(--hairline));min-width:0}
 .listcard li:last-child{border-bottom:none}
-.listcard li::before{content:counter(pick);flex:none;width:40px;height:40px;border-radius:50%;
-  background:var(--brand);color:#fff;font-size:24px;font-weight:600;
-  display:flex;align-items:center;justify-content:center}
-.listcard li b{font-size:28px;font-weight:600;color:var(--text-primary)}
-.listcard li small{font-size:22px;color:var(--text-secondary)}
-/* ── 导航卡：转向条在上、地图居中、关键数字在下 ── */
-.tpl-nav{overflow:hidden;padding:0}
-.tpl-nav h3{display:none} /* 目的地已在底部呈现，标题重复了 */
-.navwrap{display:flex;flex-direction:column;height:100%;gap:0}
-.turnbar{flex:none;display:flex;align-items:center;gap:24px;padding:22px 32px;
-  background:var(--brand);color:#fff}
-.turnbar .arrow{font-size:64px;line-height:1;flex:none}
-.turntext{display:flex;align-items:baseline;gap:16px;min-width:0}
-.turntext b{font-size:52px;font-weight:700;font-variant-numeric:tabular-nums}
-.turntext span{font-size:30px;opacity:.92;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 要进的路名右对齐单独占一栏——它是用户确认没走错的依据，不能跟动作挤在一起被省略号吃掉 */
-.turnroad{margin-left:auto;font-size:28px;opacity:.82;max-width:44%;
+.listcard li::before{content:counter(pick);flex:none;
+  width:calc(34px*var(--u));height:calc(34px*var(--u));border-radius:50%;
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  display:flex;align-items:center;justify-content:center;align-self:center}
+.listcard li b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+  color:var(--tx-1,var(--text-primary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.listcard li small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mapbox{flex:1;min-height:0;background:var(--bg-elevated);position:relative;overflow:hidden}
+.listcard li .rr{margin-left:auto;font-style:normal;flex:none;
+  font-size:calc(var(--t-cap)*var(--u));color:var(--ac);font-variant-numeric:tabular-nums}
+/* 截断必须说出来。只截不说，用户以为屏上就这么多 */
+.card .more{flex:none;margin-top:calc(6px*var(--u));font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-3,var(--text-secondary))}
+/* 放不下一条时只报数量 —— 硬塞等于骗用户"屏上有" */
+.card .lstcount,.capcount{flex:1;display:flex;align-items:center;justify-content:center;
+  gap:calc(10px*var(--u))}
+.card .lstcount b,.capcount b{font-size:calc(var(--t-hero)*var(--u));font-weight:700;line-height:1;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums}
+.card .lstcount span,.capcount span{font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-3,var(--text-secondary))}
+.card .vehslot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+/* generic 的 items/actions：不是并列数值，用横排定义列而不是块 */
+.card .glist{display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.card .gi{display:flex;align-items:baseline;justify-content:space-between;
+  gap:calc(14px*var(--u));padding:calc(7px*var(--u)) 0;
+  border-bottom:1px solid var(--hair,var(--hairline))}
+.card .gi:last-child{border-bottom:none}
+.card .gi span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.card .gi b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums}
+.card .gi b i{font-size:.72em;font-weight:500;font-style:normal;margin-left:3px;
+  color:var(--tx-3,var(--text-secondary))}
+.card .gacts{display:flex;flex-wrap:wrap}
+
+/* ── 天气卡 ── */
+.wxnow{flex:none;display:flex;align-items:flex-end;gap:calc(16px*var(--u))}
+.wxnow b{font-size:calc(var(--t-hero)*var(--u));font-weight:600;line-height:.92;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums;letter-spacing:-2px}
+.wxnow b i{font-style:normal;font-size:.42em;font-weight:400;color:var(--tx-3,var(--text-secondary))}
+.wxmeta{display:flex;flex-direction:column;gap:calc(3px*var(--u));padding-bottom:calc(6px*var(--u))}
+.wxmeta span{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary))}
+.wxmeta small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+
+/* ── 能力目录 ── */
+.cap{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:calc(12px*var(--u));
+  align-content:start;overflow:hidden}
+.cap.list{grid-template-columns:1fr;gap:calc(8px*var(--u))}
+.cap div{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+  border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-1,var(--text-primary))}
+.cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
+.cap div.off{opacity:.35;text-decoration:line-through}
+
+/* ══════════ 导航卡：转向条在上、地图居中、关键数字在下 ══════════
+   小卡（没有地图）时两块垂直居中，别被推到两端中间空一大片。
+   字号跟着 --u 走，不再需要 .sz-1-3 / .sz-1-6 各写一遍。 */
+.tpl-nav{overflow:hidden;padding:0}
+.tpl-nav>h3{display:none} /* 目的地已在底部呈现，标题重复了 */
+.navwrap{display:flex;flex-direction:column;height:100%;gap:0}
+.tpl-nav.no-map .navwrap{justify-content:center;gap:calc(6px*var(--u))}
+.turnbar{flex:none;display:flex;align-items:center;gap:calc(20px*var(--u));
+  padding:calc(20px*var(--u)) calc(28px*var(--u));background:var(--acgr);color:#fff}
+.tpl-nav.no-map .turnbar{border-radius:var(--r-m)}
+.turnbar .arrow{font-size:calc(var(--t-num)*var(--u));line-height:1;flex:none}
+.turntext{display:flex;align-items:baseline;gap:calc(14px*var(--u));min-width:0}
+.turntext b{font-size:calc(var(--t-num)*var(--u));font-weight:700;font-variant-numeric:tabular-nums}
+.turntext span{font-size:calc(var(--t-body)*var(--u));opacity:.92;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 要进的路名右对齐单独占一栏——它是用户确认没走错的依据，
+   不能跟动作挤在一起被省略号吃掉 */
+.turnroad{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));opacity:.82;max-width:44%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
+.mapbox{flex:1;min-height:0;background:var(--sf-sunken,var(--bg-elevated));position:relative;overflow:hidden}
 .mapimg{width:100%;height:100%;object-fit:cover;display:block}
 /* 高德 JS API 的版权条在车机上是噪音 */
 .mapbox .amap-logo,.mapbox .amap-copyright{display:none!important}
-.navfoot{flex:none;display:flex;align-items:baseline;gap:40px;padding:20px 32px}
-.navbig{display:flex;align-items:baseline;gap:8px}
-.navbig b{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-primary)}
-.navbig span{font-size:26px;color:var(--text-secondary)}
-/* 导航小卡：格子只有一格宽，2/3 的字号会撑破 */
-.sz-1-3 .turnbar,.sz-1-6 .turnbar{gap:14px;padding:16px 20px}
-.sz-1-3 .turnbar .arrow,.sz-1-6 .turnbar .arrow{font-size:40px}
-.sz-1-3 .turntext b,.sz-1-6 .turntext b{font-size:34px}
-.sz-1-3 .turntext span,.sz-1-6 .turntext span{font-size:22px}
-.sz-1-3 .turnroad,.sz-1-6 .turnroad{font-size:20px;max-width:38%}
-.sz-1-3 .navfoot{gap:20px;padding:16px 20px;flex-wrap:wrap}
-.sz-1-3 .navbig b{font-size:34px}
-.sz-1-3 .navbig span{font-size:20px}
-.sz-1-3 .navdest{font-size:22px}
-/* 小卡没有地图。两块挨在一起垂直居中，别被推到两端中间空一大片 */
-.sz-1-3 .navwrap,.sz-1-6 .navwrap{justify-content:center;gap:4px}
-.sz-1-3 .turnbar,.sz-1-6 .turnbar{border-radius:var(--r-md)}
-.navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
+.navfoot{flex:none;display:flex;align-items:baseline;gap:calc(32px*var(--u));
+  padding:calc(18px*var(--u)) calc(28px*var(--u));flex-wrap:wrap}
+.navbig{display:flex;align-items:baseline;gap:calc(6px*var(--u))}
+.navbig b{font-size:calc(var(--t-lead)*var(--u));font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--tx-1,var(--text-primary))}
+.navbig span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.navdest{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%}
 /* 途经点比终点次一级，但不能小到看不见 */
-.navdest em{font-style:normal;display:block;font-size:.72em;opacity:.6;margin-bottom:2px}
-.card.kind-system{box-shadow:0 0 0 3px rgba(201,122,22,.5)}
-.card.tpl-notice{background:rgba(201,122,22,.10)}
-.card.tpl-notice h3{color:var(--warning)}
-.card.tpl-confirm{background:rgba(30,111,217,.08)}
-#overlay{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;display:none;z-index:6}
-#overlay.on{display:block;animation:cardIn .32s var(--ease)}
-#overlay .card{height:100%}
-.cap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px;overflow:auto}
-.cap div{background:var(--bg-elevated);border-radius:14px;padding:14px 18px;font-size:24px}
-.cap div small{display:block;color:var(--text-secondary);font-size:20px;margin-top:4px}
-.cap div.off{opacity:.35;text-decoration:line-through}
-/* 一格宽排不下三列，退成一列；再小就只报个数 */
-.cap.list{grid-template-columns:1fr;gap:10px}
-.cap.list div{padding:10px 14px;font-size:22px}
-.cap.list div small{font-size:18px;margin-top:2px}
-.capcount{display:flex;align-items:baseline;gap:10px;margin-top:18px}
-.capcount b{font-size:76px;font-weight:700;line-height:1}
-.capcount span{font-size:26px;color:var(--text-secondary)}
+.navdest em{font-style:normal;display:block;font-size:.78em;opacity:.6;margin-bottom:2px}
 
-/* ── 播放器卡 ── */
-.plwrap{display:flex;align-items:center;gap:24px;height:100%;min-height:0}
-.plart{flex:none;width:132px;height:132px;border-radius:18px;overflow:hidden;background:var(--bg-elevated);
+/* ══════════ 播放器卡 ══════════
+   控制条是**状态指示不是按钮** —— 屏幕不可交互，画成图标就有诱导点击的风险。
+   底下那行「说『换一台』就行」把它标回语音能力。 */
+.plwrap{display:flex;align-items:center;gap:calc(20px*var(--u));height:100%;min-height:0}
+.tpl-media.narrow .plwrap{flex-direction:column;align-items:flex-start;justify-content:center}
+.plart{flex:none;width:calc(132px*var(--u));height:calc(132px*var(--u));
+  border-radius:calc(18px*var(--u));overflow:hidden;background:var(--sf-sunken,var(--bg-elevated));
   display:flex;align-items:center;justify-content:center}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
-.plicon{font-size:56px;opacity:.5}
-.plmeta{display:flex;flex-direction:column;gap:8px;min-width:0}
-.plmeta b{font-size:38px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.plmeta span{font-size:26px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sz-1-6 .plwrap{flex-direction:column;align-items:flex-start;justify-content:center;gap:14px}
-.sz-1-6 .plart{width:96px;height:96px}
-.sz-1-6 .plmeta b{font-size:28px}
-.sz-1-6 .plmeta span{font-size:20px}
-.sz-1-2 .plart{width:180px;height:180px}
-/* 视频占满整张卡，文字压在底部——2/3 是给它准备的大画面 */
+.plicon{font-size:calc(var(--t-lead)*var(--u));opacity:.5}
+.plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
+.plmeta b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
+.plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.pl-hint b{font-weight:500;color:var(--ac)}
+/* 视频占满整张卡，文字压在底部——stage 是给它准备的大画面 */
 .card.is-video{padding:0;position:relative}
-.card.is-video h3{display:none}
+.card.is-video>h3{display:none}
 .card.is-video .plwrap{display:block}
 .card.is-video .plart{width:100%;height:100%;border-radius:0}
-.card.is-video .plmeta{position:absolute;left:28px;right:28px;bottom:24px;
-  text-shadow:0 2px 12px rgba(0,0,0,.6);color:#fff}
+.card.is-video .plmeta{position:absolute;left:calc(26px*var(--u));right:calc(26px*var(--u));
+  bottom:calc(22px*var(--u));color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.card.is-video .plmeta b{color:#fff}
 .card.is-video .plmeta span{color:rgba(255,255,255,.82)}
+
 
 /* ── 自动播放解锁遮罩 ── */
 #unlock{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
@@ -156,40 +257,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .wxmeta{display:flex;flex-direction:column;gap:4px;min-width:0}
 .wxmeta span{font-size:30px}
 .wxmeta small{font-size:21px;color:var(--text-secondary)}
-.wxcast{display:flex;flex-direction:column;gap:2px;margin-top:16px}
-.wxcast>div{display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--hairline)}
-.wxcast>div:last-child{border-bottom:none}
-.wxcast span{font-size:22px;color:var(--text-secondary);min-width:3.2em}
-.wxcast em{font-size:22px;font-style:normal;flex:1}
-.wxcast b{font-size:24px;font-variant-numeric:tabular-nums}
-/* 宽卡横排，别让内容缩在左上角 */
-.wxcast.row{flex-direction:row;gap:14px;margin-top:22px}
-.wxcast.row>div{flex:1;flex-direction:column;align-items:flex-start;gap:6px;
-  background:var(--bg-elevated);border-radius:16px;padding:16px 18px;border-bottom:none}
-.wxcast.row span{min-width:0}
-.sz-1-2 .wxnow b{font-size:104px}
-
-/* ── 宽卡多列：内容纵向堆叠会让右半边空着 ── */
-.sz-1-2 .listcard{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
-.sz-1-2 .cap.list{grid-template-columns:1fr 1fr}
-.sz-1-2 .wins{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
+/* 天气预报改走块状均分（.blocks/.blk），不再需要 .wxcast 那一套
+   —— 预报本来就是并列数据，跟车窗开度同一个形状。 */
 
 /* ── 短文本卡：正文是主角，不是标题下面的灰色小字 ──
    这几张（续航、正在播放、执行反馈、临时提醒）内容天生就一句话，
-   照通用样式渲染的话一行小字挂在顶上，下面 80% 空着，看着像没加载完 */
-.tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub{
+   照通用样式渲染的话一行小字挂在顶上，下面 80% 空着，看着像没加载完。
+   现在字号跟 --u 走，一张 chip 和一张 banner 用同一条规则。 */
+.tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub,.tpl-notice .sub{
   flex:1;display:flex;align-items:center;
-  font-size:38px;line-height:1.25;color:var(--text-primary);margin-top:8px}
-.sz-1-2 .tpl-info .sub,.sz-1-2 .tpl-media .sub,
-.sz-1-2 .tpl-feedback .sub,.sz-1-2 .tpl-generic .sub{font-size:46px}
-
-.win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-.win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
-.win .top span{color:var(--text-secondary)}
-.win .top em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
-.track{height:18px;border-radius:999px;background:var(--track);overflow:hidden}
-.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2E7FD6,var(--brand))}
-.win.hot .top em{color:var(--brand)}
+  font-size:calc(var(--t-lead)*var(--u));line-height:1.25;color:var(--tx-1,var(--text-primary))}
 
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}
@@ -468,22 +545,219 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return ["今天", "明天", "后天"][diff] ?? WEEK[local.getDay()];
   }
 
+  // src/config/grid.ts
+  var GRID = { cols: 12, rows: 4 };
+  var TIERS = {
+    chip: { w: 2, h: 1 },
+    // 一个数字，比如车速、剩余电量
+    strip: { w: 4, h: 1 },
+    // 一行字
+    bar: { w: 6, h: 1 },
+    // 一行字 + 一条进度
+    card: { w: 4, h: 2 },
+    // 基准档：天气、单条反馈
+    wide: { w: 6, h: 2 },
+    panel: { w: 8, h: 2 },
+    // 导航小卡、候选列表
+    banner: { w: 12, h: 2 },
+    // 横跨整屏的提醒
+    tower: { w: 4, h: 4 },
+    // 竖着的：车身图、电台节目单
+    stage: { w: 8, h: 4 },
+    // 导航主卡
+    full: { w: 12, h: 4 }
+    // 铺满
+  };
+  var ALIAS = {
+    "1/6": "card",
+    "1/3": "panel",
+    "1/2": "banner",
+    "2/3": "stage",
+    full: "full"
+  };
+  function normalizeTier(size) {
+    if (size in TIERS) return size;
+    return ALIAS[size] ?? "card";
+  }
+  function dimsOf(size) {
+    const t = TIERS[normalizeTier(size)];
+    return [t.w, t.h];
+  }
+  var contentCols = (c) => c >= 12 ? 3 : c >= 8 ? 2 : 1;
+  function listCapacity(c, r) {
+    if (r < 2) return 0;
+    return contentCols(c) * r * 2;
+  }
+
   // src/screen/layout.ts
-  function navForm(size) {
-    if (size === "2/3" || size === "1/2" || size === "full")
-      return { map: true, turnbar: true, foot: true };
-    if (size === "1/3") return { map: false, turnbar: true, foot: true };
-    return { map: false, turnbar: true, foot: false };
+  var area = (c, r) => c * r;
+  var navForm = (c, r) => {
+    const blocks = ["turn"];
+    if (area(c, r) >= 24 && c >= 8) blocks.splice(1, 0, "map");
+    if (area(c, r) >= 12) blocks.push("foot");
+    return { blocks };
+  };
+  var controlForm = (c, r) => {
+    const blocks = [];
+    if (r >= 4 && c >= 4) blocks.push("vehicle");
+    blocks.push("items");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var confirmForm = (c, r) => {
+    const blocks = ["what"];
+    if (area(c, r) >= 16) blocks.push("why");
+    blocks.push("hint");
+    return { blocks };
+  };
+  var textDetail = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 12) blocks.push("detail");
+    return { blocks };
+  };
+  var listForm = (c, r) => {
+    const n = listCapacity(c, r);
+    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: contentCols(c) };
+  };
+  var genericForm = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 8) blocks.push("items", "actions");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var mediaForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = [];
+    if (a >= 8) blocks.push("art");
+    blocks.push("title");
+    if (a >= 8) blocks.push("sub");
+    if (c >= 6) blocks.push("bar");
+    if (r >= 2 && a >= 12) blocks.push("hint");
+    return { blocks };
+  };
+  var weatherForm = (c, r) => {
+    const a = area(c, r);
+    const days = a >= 32 ? 5 : a >= 12 ? 3 : 0;
+    const blocks = ["temp"];
+    if (days > 0) blocks.push("forecast");
+    return { blocks, maxItems: days, cols: c >= 12 ? days : 1 };
+  };
+  var capForm = (c, r) => {
+    const a = area(c, r);
+    const mode = a >= 32 ? "grid" : a >= 12 ? "list" : "count";
+    return {
+      blocks: ["groups"],
+      mode,
+      maxItems: mode === "count" ? 0 : listCapacity(c, r) * 2,
+      overflow: mode === "count" ? "count" : "more",
+      cols: mode === "grid" ? contentCols(c) : 1
+    };
+  };
+  var CARD_FORMS = {
+    nav: navForm,
+    control: controlForm,
+    confirm: confirmForm,
+    feedback: textDetail,
+    notice: textDetail,
+    list: listForm,
+    info: genericForm,
+    media: mediaForm,
+    weather: weatherForm,
+    capability: capForm,
+    generic: genericForm
+  };
+  var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
+
+  // src/screen/render.ts
+  var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  function listBody(items, opts = {}) {
+    const all = items ?? [];
+    const max = opts.maxItems ?? all.length;
+    if (opts.overflow === "count" || max <= 0)
+      return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`;
+    const shown = all.slice(0, max);
+    const rest = all.length - shown.length;
+    return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i) => `
+    <li><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
-  function capForm(size) {
-    if (size === "full") return { mode: "grid" };
-    if (size === "1/6") return { mode: "count" };
-    return { mode: "list" };
+  var tierClass = (size) => `t-${normalizeTier(size)}`;
+  var ACCENT = {
+    nav: "brand",
+    weather: "info",
+    control: "info",
+    vehicle: "info",
+    media: "media",
+    list: "pick",
+    confirm: "pick",
+    feedback: "ok",
+    notice: "warn",
+    capability: "sys",
+    generic: "sys",
+    info: "sys",
+    canvas: "sys"
+  };
+  var URGENCY = { critical: "danger", warn: "warn" };
+  var accentClass = (template, d = {}) => `a-${URGENCY[d?.urgency] ?? ACCENT[template] ?? "sys"}`;
+  function blocksBody(items, opts = {}) {
+    const cls = opts.cols === 3 ? " c3" : opts.cols === 2 ? " c2" : "";
+    return `<div class="blocks${cls}">${(items ?? []).map((it) => {
+      const raw = it.value;
+      const shown = typeof raw === "boolean" ? raw ? "开" : "关" : typeof raw === "number" ? String(Math.round(raw)) : raw === void 0 || raw === null ? "--" : String(raw);
+      const pct = typeof it.pct === "number" ? it.pct : typeof raw === "number" && it.unit === "%" ? raw : void 0;
+      return `<div class="blk${it.hot ? " hot" : ""}">
+      <div class="lb">${esc(it.label)}</div>
+      <div class="num">${esc(shown)}${it.unit ? `<i>${esc(it.unit)}</i>` : ""}</div>
+      ${pct !== void 0 ? `<div class="trk"><div class="fl" style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%"></div>${typeof it.target === "number" ? `<div class="tg" style="left:${Math.max(0, Math.min(100, Math.round(it.target)))}%"></div>` : ""}</div>` : ""}
+    </div>`;
+    }).join("")}</div>`;
   }
-  function weatherForm(size) {
-    if (size === "1/6") return { bigTemp: true, forecast: 0, forecastRow: false };
-    if (size === "1/3") return { bigTemp: true, forecast: 3, forecastRow: false };
-    return { bigTemp: true, forecast: 3, forecastRow: true };
+  function cardBody(c) {
+    const d = c.data ?? {};
+    switch (c.template) {
+      case "vehicle":
+        return `<div class="vehslot"></div>`;
+      case "control": {
+        const form = formOf("control", ...dimsOf(c.size));
+        const hot = d.hot ?? [];
+        return blocksBody((d.items ?? []).slice(0, form.maxItems).map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols });
+      }
+      case "confirm":
+        return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
+      case "notice":
+        return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
+      case "list":
+        return listBody(d.items, formOf("list", ...dimsOf(c.size)));
+      case "capability": {
+        const items = d.items ?? [];
+        const form = capForm(...dimsOf(c.size));
+        if (form.mode === "count")
+          return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
+        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
+      }
+      case "weather": {
+        const w = weatherForm(...dimsOf(c.size));
+        const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
+        const cast = (d.forecast ?? []).slice(0, w.maxItems ?? 0);
+        return `${d.now ? `<div class="wxnow">
+          <b>${Math.round(d.now.temperature)}<i>°</i></b>
+          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+        </div>` : ""}${cast.length ? blocksBody(cast.map((f) => ({
+          label: dayLabel(f.date),
+          value: `${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°`
+        })), { cols: (w.cols ?? 1) > 1 ? 3 : 1 }) : ""}`;
+      }
+      case "nav":
+        return "";
+      default: {
+        const form = formOf("generic", ...dimsOf(c.size));
+        const parts = [];
+        if (d.text) parts.push(`<div class="sub">${esc(d.text)}</div>`);
+        if (d.items?.length)
+          parts.push(`<div class="glist">${d.items.slice(0, form.maxItems).map((i) => `
+          <div class="gi"><span>${esc(i.label ?? i)}</span>${i.value !== void 0 ? `<b>${esc(i.value)}${i.unit ? `<i>${esc(i.unit)}</i>` : ""}</b>` : ""}</div>`).join("")}</div>`);
+        if (d.actions?.length)
+          parts.push(`<div class="gacts">${d.actions.map((a, n) => `<span class="opt">${n + 1} ${esc(a)}</span>`).join("")}</div>`);
+        return parts.join("") || `<div class="sub"></div>`;
+      }
+    }
   }
 
   // src/screen/mapView.ts
@@ -679,7 +953,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var TRANSIT = 4e3;
   var deskState = { cards: [], free: 6 };
   var hotCards = /* @__PURE__ */ new Set();
-  var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  var esc2 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -726,13 +1000,22 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   function renderPlayerCard(node, c) {
     const d = c.data ?? {};
     const isVideo = d.source === "video";
+    const form = mediaForm(...dimsOf(c.size));
     if (!node.querySelector(".plwrap")) {
       node.innerHTML = `<div class="plwrap">
       <div class="plart"></div>
-      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span></div>
+      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+        <div class="pl-hint"></div></div>
     </div>`;
     }
+    node.classList.toggle("narrow", !form.blocks.includes("sub"));
     const art = node.querySelector(".plart");
+    art.style.display = form.blocks.includes("art") ? "" : "none";
+    const sub = node.querySelector(".plartist");
+    sub.style.display = form.blocks.includes("sub") ? "" : "none";
+    const hint = node.querySelector(".pl-hint");
+    hint.style.display = form.blocks.includes("hint") ? "" : "none";
+    hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`;
     if (isVideo) {
       player.attachVideo(art);
     } else {
@@ -741,7 +1024,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       if (url) {
         if (img) {
           if (img.src !== url) img.src = url;
-        } else art.innerHTML = `<img src="${esc(url)}" alt="">`;
+        } else art.innerHTML = `<img src="${esc2(url)}" alt="">`;
       } else if (!img) {
         art.innerHTML = `<div class="plicon">${d.source === "radio" ? "📻" : "♪"}</div>`;
       }
@@ -761,24 +1044,26 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       <div class="navfoot"></div>
     </div>`;
     }
-    const form = navForm(c.size);
+    const form = navForm(...dimsOf(c.size));
     const step = d.steps?.[0]?.instruction;
     const turn = step ? parseTurn(step) : void 0;
     const bar = node.querySelector(".turnbar");
-    bar.style.display = turn && form.turnbar ? "" : "none";
+    bar.style.display = turn && form.blocks.includes("turn") ? "" : "none";
     if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
-    <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
-    ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ""}`;
-    const via = (d.via ?? []).length ? `<em>经 ${esc(d.via.join("、"))}</em>` : "";
+    <div class="turntext"><b>${esc2(turn.dist)}</b><span>${esc2(turn.action)}</span></div>
+    ${turn.road ? `<div class="turnroad">${esc2(turn.road)}</div>` : ""}`;
+    const via = (d.via ?? []).length ? `<em>经 ${esc2(d.via.join("、"))}</em>` : "";
     const foot = node.querySelector(".navfoot");
-    foot.style.display = form.foot ? "" : "none";
+    foot.style.display = form.blocks.includes("foot") ? "" : "none";
     foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
-    <div class="navdest">${via}${esc(d.destination ?? "")}</div>`;
+    <div class="navdest">${via}${esc2(d.destination ?? "")}</div>`;
     const box = node.querySelector(".mapbox");
-    box.style.display = form.map ? "" : "none";
-    if (!form.map) {
+    const hasMap = form.blocks.includes("map");
+    node.classList.toggle("no-map", !hasMap);
+    box.style.display = hasMap ? "" : "none";
+    if (!form.blocks.includes("map")) {
       disposeRoute(box);
       return;
     }
@@ -789,53 +1074,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const img = box.querySelector("img");
       if (img) {
         if (img.src !== d.mapUrl) img.src = d.mapUrl;
-      } else box.innerHTML = `<img class="mapimg" src="${esc(d.mapUrl)}" alt="路线地图">`;
+      } else box.innerHTML = `<img class="mapimg" src="${esc2(d.mapUrl)}" alt="路线地图">`;
     });
-  }
-  function body(c) {
-    const d = c.data ?? {};
-    switch (c.template) {
-      case "vehicle":
-        return `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${CAR_SVG}</div>`;
-      case "control":
-        return `<div class="wins">` + (d.items ?? []).map((it) => {
-          const isPct = typeof it.value === "number" && it.unit === "%";
-          const shown = typeof it.value === "boolean" ? it.value ? "开" : "关" : typeof it.value === "number" ? `${Math.round(it.value)}${esc(it.unit ?? "")}` : esc(String(it.value ?? "--"));
-          return `
-        <div class="win${hotWindows.includes(it.key) ? " hot" : ""}">
-          <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
-          ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ""}
-        </div>`;
-        }).join("") + `</div>`;
-      case "confirm":
-        return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
-      case "notice":
-        return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
-      case "list":
-        return `<ol class="listcard">${(d.items ?? []).map((i) => `<li><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}</li>`).join("")}</ol>`;
-      case "capability": {
-        const items = d.items ?? [];
-        const form = capForm(c.size);
-        if (form.mode === "count")
-          return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
-        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
-      }
-      case "weather": {
-        const w = weatherForm(c.size);
-        const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
-        const cast = (d.forecast ?? []).slice(0, w.forecast);
-        return `${d.now ? `<div class="wxnow">
-          <b>${Math.round(d.now.temperature)}<i>°</i></b>
-          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
-        </div>` : ""}
-        ${cast.length ? `<div class="wxcast${w.forecastRow ? " row" : ""}">${cast.map((f) => `
-          <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join("")}</div>` : ""}`;
-      }
-      case "nav":
-        return "";
-      default:
-        return `<div class="sub">${esc(d.text ?? "")}</div>`;
-    }
   }
   var cardNodes = /* @__PURE__ */ new Map();
   var cardSig = (c) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`;
@@ -843,7 +1083,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();
     desk.querySelectorAll(".slot").forEach((el) => el.remove());
-    const occupied = [[false, false, false], [false, false, false]];
+    const occupied = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false));
     for (const c of deskState.cards) {
       seen.add(c.id);
       for (let dr = 0; dr < c.rowSpan; dr++)
@@ -856,23 +1096,35 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       }
       node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
       node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
-      node.className = `card tpl-${c.template} kind-${c.kind} sz-${c.size.replace("/", "-")}${hotCards.has(c.id) ? " hot" : ""}`;
+      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}`;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
         else if (c.template === "media") renderPlayerCard(node, c);
-        else node.innerHTML = `<h3>${esc(c.title)}</h3>${body(c)}`;
+        else {
+          node.innerHTML = `<h3>${esc2(c.title)}</h3><div class="bd">${cardBody(c)}</div>`;
+          const slot = node.querySelector(".vehslot");
+          if (slot) slot.innerHTML = CAR_SVG;
+        }
         node.dataset.sig = sig;
       }
     }
-    for (let r = 0; r < 2; r++) for (let col = 0; col < 3; col++) {
-      if (occupied[r][col]) continue;
-      const slot = document.createElement("div");
-      slot.className = "slot";
-      slot.style.gridRow = String(r + 1);
-      slot.style.gridColumn = String(col + 1);
-      desk.appendChild(slot);
-    }
+    const [bw, bh] = [TIERS.card.w, TIERS.card.h];
+    for (let r = 0; r + bh <= GRID.rows; r += bh)
+      for (let col = 0; col + bw <= GRID.cols; col += bw) {
+        let free = true;
+        for (let dr = 0; dr < bh && free; dr++)
+          for (let dc = 0; dc < bw; dc++) if (occupied[r + dr][col + dc]) {
+            free = false;
+            break;
+          }
+        if (!free) continue;
+        const slot = document.createElement("div");
+        slot.className = "slot";
+        slot.style.gridRow = `${r + 1} / span ${bh}`;
+        slot.style.gridColumn = `${col + 1} / span ${bw}`;
+        desk.appendChild(slot);
+      }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
         if (node.classList.contains("tpl-media")) player.stop();
@@ -884,7 +1136,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     if (deskState.overlay) {
       ov.className = "on";
       ov.innerHTML = `<div class="card tpl-${deskState.overlay.template}">
-      <h3>${esc(deskState.overlay.title)}</h3>${body(deskState.overlay)}</div>`;
+      <h3>${esc2(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`;
     } else {
       ov.className = "";
       ov.innerHTML = "";

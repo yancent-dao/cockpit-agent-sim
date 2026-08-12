@@ -7,7 +7,7 @@
  */
 import { dayLabel } from './turn'
 import { capForm, weatherForm, formOf } from './layout'
-import { dimsOf } from '../config/grid'
+import { dimsOf, normalizeTier } from '../config/grid'
 
 export const esc = (s: any) =>
   String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
@@ -49,25 +49,83 @@ export function listBody(items: any[], opts: ListOpts = {}): string {
     rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ''}`
 }
 
+
+/**
+ * 档位类。字号 = 字阶 × `--u`，一个类管住一整张卡的排版比例。
+ * 之前是 22 条 `.sz-*` 硬怼 60 处 font-size —— 加一个档位要补 6 条规则。
+ */
+export const tierClass = (size: string) => `t-${normalizeTier(size)}`
+
+/**
+ * 八类语义色映射。
+ *
+ * 诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
+ * 身份由**模板 + 紧急度**定，不由 kind 定 —— kind 是编排优先级
+ * （谁先占位、谁被挤），跟"这张卡长什么样"是两码事。
+ *
+ * 紧急度是**正交**维度：同一张车控卡平时是 info，胎压报警时是 danger。
+ * 所以它盖过模板色而不是另开一套模板。
+ */
+const ACCENT: Record<string, string> = {
+  nav: 'brand', weather: 'info', control: 'info', vehicle: 'info',
+  media: 'media', list: 'pick', confirm: 'pick',
+  feedback: 'ok', notice: 'warn', capability: 'sys', generic: 'sys', info: 'sys', canvas: 'sys',
+}
+const URGENCY: Record<string, string> = { critical: 'danger', warn: 'warn' }
+
+export const accentClass = (template: string, d: any = {}) =>
+  `a-${URGENCY[d?.urgency] ?? ACCENT[template] ?? 'sys'}`
+
+export interface BlockOpts {
+  /** 分几栏。落到 class 上（c2/c3），不写内联 style —— 那样 CSS 改不动 */
+  cols?: number
+}
+
+/**
+ * 块状均分。
+ *
+ * 诊断 1：卡片内容缩在左上角，下半张脸空着。根因是内容按自然高度从上往下堆，
+ * 剩下的空间无人认领。12×4 之后卡片可能是 4×2 也可能是 8×4，"自然高度"这个
+ * 概念本身就不成立 —— 必须让**内容去适应容器**。
+ *
+ * `grid-auto-rows:1fr` 让块平分剩余高度：三块就一人三分之一，四块就一人四分之一，
+ * 数据条数变了高度自动重分，不用为每种条数写一条 CSS。
+ */
+export function blocksBody(items: any[], opts: BlockOpts = {}): string {
+  const cls = opts.cols === 3 ? ' c3' : opts.cols === 2 ? ' c2' : ''
+  return `<div class="blocks${cls}">${(items ?? []).map(it => {
+    // 0 是有效值（车窗全关），不能被当成空
+    const raw = it.value
+    const shown = typeof raw === 'boolean' ? (raw ? '开' : '关')
+      : typeof raw === 'number' ? String(Math.round(raw))
+      : raw === undefined || raw === null ? '--' : String(raw)
+    const pct = typeof it.pct === 'number' ? it.pct
+      : (typeof raw === 'number' && it.unit === '%' ? raw : undefined)
+    return `<div class="blk${it.hot ? ' hot' : ''}">
+      <div class="lb">${esc(it.label)}</div>
+      <div class="num">${esc(shown)}${it.unit ? `<i>${esc(it.unit)}</i>` : ''}</div>
+      ${pct !== undefined
+        ? `<div class="trk"><div class="fl" style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%"></div>${
+            typeof it.target === 'number'
+              ? `<div class="tg" style="left:${Math.max(0, Math.min(100, Math.round(it.target)))}%"></div>` : ''}</div>`
+        : ''}
+    </div>`
+  }).join('')}</div>`
+}
+
 export function cardBody(c: CardView): string {
   const d = c.data ?? {}
   switch (c.template) {
     case 'vehicle':
       // 车身图形留在 main.ts（它是资源不是逻辑），这里只留占位
       return `<div class="vehslot"></div>`
-    case 'control':
-      // 包一层容器：卡片本身是 flex column，靠 inline-block 排不成多列
-      return `<div class="wins">` + (d.items ?? []).map((it: any) => {
-        const isPct = typeof it.value === 'number' && it.unit === '%'
-        const shown = typeof it.value === 'boolean' ? (it.value ? '开' : '关')
-          : typeof it.value === 'number' ? `${Math.round(it.value)}${esc(it.unit ?? '')}`
-          : esc(String(it.value ?? '--'))
-        return `
-        <div class="win${(d.hot ?? []).includes(it.key) ? ' hot' : ''}">
-          <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
-          ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ''}
-        </div>`
-      }).join('') + `</div>`
+    case 'control': {
+      // 四扇窗的开度是典型的"并列数据"，走块状均分
+      const form = formOf('control', ...dimsOf(c.size))
+      const hot = d.hot ?? []
+      return blocksBody((d.items ?? []).slice(0, form.maxItems)
+        .map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols })
+    }
     case 'confirm':
       // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。
       // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
@@ -102,9 +160,13 @@ export function cardBody(c: CardView): string {
       return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
           <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
-        </div>` : ''}
-        ${cast.length ? `<div class="wxcast${(w.cols ?? 1) > 1 ? ' row' : ''}">${cast.map((f: any) => `
-          <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join('')}</div>` : ''}`
+        </div>` : ''}${cast.length
+        // 预报也是并列数据，走块状均分——省掉一套只给天气用的 CSS
+        ? blocksBody(cast.map((f: any) => ({
+            label: dayLabel(f.date),
+            value: `${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°`,
+          })), { cols: (w.cols ?? 1) > 1 ? 3 : 1 })
+        : ''}`
     }
     case 'nav':
       // 导航卡由 renderNavCard 单独处理——活地图有状态，不能跟着文字一起重绘

@@ -1,9 +1,9 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { navForm } from './layout'
+import { navForm, mediaForm } from './layout'
 import { dimsOf, GRID, TIERS } from '../config/grid'
-import { cardBody, esc as escR } from './render'
+import { cardBody, tierClass, accentClass } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 
@@ -99,13 +99,25 @@ $('unlock').addEventListener('click', () => {
 function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   const d = c.data ?? {}
   const isVideo = d.source === 'video'
+  const form = mediaForm(...dimsOf(c.size))
   if (!node.querySelector('.plwrap')) {
     node.innerHTML = `<div class="plwrap">
       <div class="plart"></div>
-      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span></div>
+      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+        <div class="pl-hint"></div></div>
     </div>`
   }
+  // 窄卡（封面挤掉歌名）竖排；封面本身在小档直接不出现
+  node.classList.toggle('narrow', !form.blocks.includes('sub'))
   const art = node.querySelector('.plart') as HTMLElement
+  art.style.display = form.blocks.includes('art') ? '' : 'none'
+  const sub = node.querySelector('.plartist') as HTMLElement
+  sub.style.display = form.blocks.includes('sub') ? '' : 'none'
+  // 控制条是**状态指示不是按钮**——屏幕不可交互，画成图标就有诱导点击的风险。
+  // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
+  const hint = node.querySelector('.pl-hint') as HTMLElement
+  hint.style.display = form.blocks.includes('hint') ? '' : 'none'
+  hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`
   if (isVideo) {
     player.attachVideo(art)
   } else {
@@ -162,7 +174,10 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
     <div class="navdest">${via}${esc(d.destination ?? '')}</div>`
 
   const box = node.querySelector('.mapbox') as HTMLElement
-  box.style.display = form.blocks.includes('map') ? '' : 'none'
+  const hasMap = form.blocks.includes('map')
+  // 没地图时两块要垂直居中，否则会被推到上下两端、中间空一大片
+  node.classList.toggle('no-map', !hasMap)
+  box.style.display = hasMap ? '' : 'none'
   if (!form.blocks.includes('map')) { disposeRoute(box); return }   // 小卡不画地图，实例留着会错位还白占 WebGL context
   // 还是显示地图但格子变了（2/3 ↔ 1/2）：实例留着，通知它重算视口
   if (node.dataset.mapSize && node.dataset.mapSize !== c.size) resizeRoute(box)
@@ -208,14 +223,17 @@ function renderDesk() {
     }
     node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
     node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
-    // 尺寸挂到 class 上，让 CSS 能按格子大小收字号——2/3 的排版塞进 1/6 会撑破
-    node.className = `card tpl-${c.template} kind-${c.kind} sz-${c.size.replace('/', '-')}${hotCards.has(c.id) ? ' hot' : ''}`
+    // 档位类给 --u（字号 = 字阶 × --u），语义色类给 --ac 一族。
+    // sz-* 那 22 条硬怼 font-size 的规则被这一个类取代了
+    node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
+      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}`
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
       else {
-        node.innerHTML = `<h3>${esc(c.title)}</h3>${cardBody(c)}`
+        // .bd 认领全部剩余高度并让内容贴底——诊断 1「内容缩在左上角」的修法
+        node.innerHTML = `<h3>${esc(c.title)}</h3><div class="bd">${cardBody(c)}</div>`
         // 车身图形是资源不是逻辑，留在这里填进 render 层给的占位
         const slot = node.querySelector('.vehslot')
         if (slot) slot.innerHTML = CAR_SVG

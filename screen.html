@@ -36,125 +36,211 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   transition:bottom .32s var(--ease)}
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
   writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
-.card{background:var(--bg-surface);border-radius:var(--r-lg);padding:28px 32px;overflow:hidden;
-  display:flex;flex-direction:column;transition:box-shadow .24s var(--ease),background .24s var(--ease);
-  animation:cardIn .32s var(--ease)}
+/* ══════════ 卡片基座 ══════════
+   字号一律 = 字阶 × --u。--u 由档位类（.t-card / .t-stage …）给，
+   一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
+   加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
+.card{position:relative;background:var(--sf-card,var(--bg-surface));border:1px solid var(--hair,transparent);
+  border-radius:var(--r-m);box-shadow:var(--sh-1);overflow:hidden;
+  padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
+  transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
+  animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
+/* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
+.card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
+  border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
 @keyframes cardIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
-.card.hot{background:var(--bg-elevated);box-shadow:0 0 0 3px var(--brand)}
-.card h3{font-size:30px;font-weight:600;margin-bottom:16px;color:var(--text-primary)}
-.card .sub{font-size:26px;color:var(--text-secondary);line-height:1.5}
-.slot{border:2px dashed var(--hairline);border-radius:var(--r-lg)}
-.card .rowline{display:flex;justify-content:space-between;align-items:baseline;font-size:26px;margin-bottom:6px}
-.card .rowline span{color:var(--text-secondary)}
-.card .rowline em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
-.card.hot .rowline em{color:var(--brand)}
-.card .opt{display:inline-block;padding:10px 24px;margin:8px 12px 0 0;border-radius:999px;
-  background:var(--bg-elevated);font-size:26px;color:var(--text-primary)}
-.card .sug{margin-top:12px;font-size:24px;color:var(--brand)}
-/* 候选列表：序号让语音选择("第一个")和屏幕对得上号 */
-.listcard{list-style:none;counter-reset:pick;margin:0;padding:0}
-/* 屏幕 cursor:none，滚不动 —— 列表一律截断，不留 overflow:auto */
-.listcard.c2{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
-.card .more{margin-top:10px;font-size:22px;color:var(--text-secondary)}
-.card .lstcount{flex:1;display:flex;align-items:baseline;justify-content:center;gap:10px}
-.card .lstcount b{font-size:76px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card .lstcount span{font-size:24px;color:var(--text-secondary)}
-.card .vehslot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
-.card .glist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.card .gi{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
-  padding:8px 0;border-bottom:1px solid var(--hair, rgba(0,0,0,.06))}
-.card .gi:last-child{border-bottom:none}
-.card .gi span{font-size:24px;color:var(--text-secondary)}
-.card .gi b{font-size:28px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card .gi b i{font-size:20px;font-weight:500;font-style:normal;margin-left:3px;color:var(--text-secondary)}
-.card .gacts{display:flex;flex-wrap:wrap;margin-top:4px}
-.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:14px;
-  padding:12px 0;border-bottom:1px solid var(--hairline)}
+.card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
+.card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
+  margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
+  font-weight:500;color:var(--tx-3,var(--text-secondary));letter-spacing:.09em}
+/* 诊断 1：内容缩在左上角，下半张脸空着。
+   .bd 认领全部剩余高度，主数值贴底 —— 空白被推到标题与数据之间，而不是堆在底部。 */
+.bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
+  gap:calc(8px*var(--u))}
+/* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
+   全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
+   只是把「缩在左上角」换成了「缩在左下角」 */
+.bd>.listcard,.bd>.cap,.bd>.blocks,.bd>.glist{flex:1;min-height:0}
+/* 卡里只有一块主数值时（card 档的天气、续航），让它居中占满并放大一阶 ——
+   一个 76px 的数字挂在 562px 高的卡底部，看着像没加载完 */
+.bd>.wxnow:only-child{flex:1;align-items:center}
+.bd>.wxnow:only-child b{font-size:calc(var(--t-mega)*var(--u))}
+.slot{border:2px dashed var(--hair,var(--hairline));border-radius:var(--r-m)}
+
+/* ── 语义身份：八类各四件套 ──
+   诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
+   身份由「模板 + 紧急度」定，不由 kind 定 —— kind 是编排优先级，不是外观。 */
+.a-brand {--ac:var(--brand-fg); --acbg:var(--brand-bg); --acbd:var(--brand-bd); --acgr:var(--brand-gr)}
+.a-info  {--ac:var(--info-fg);  --acbg:var(--info-bg);  --acbd:var(--info-bd);  --acgr:var(--info-gr)}
+.a-ok    {--ac:var(--ok-fg);    --acbg:var(--ok-bg);    --acbd:var(--ok-bd);    --acgr:var(--ok-gr)}
+.a-warn  {--ac:var(--warn-fg);  --acbg:var(--warn-bg);  --acbd:var(--warn-bd);  --acgr:var(--warn-gr)}
+.a-danger{--ac:var(--danger-fg);--acbg:var(--danger-bg);--acbd:var(--danger-bd);--acgr:var(--danger-gr)}
+.a-media {--ac:var(--media-fg); --acbg:var(--media-bg); --acbd:var(--media-bd); --acgr:var(--media-gr)}
+.a-pick  {--ac:var(--pick-fg);  --acbg:var(--pick-bg);  --acbd:var(--pick-bd);  --acgr:var(--pick-gr)}
+.a-sys   {--ac:var(--sys-fg);   --acbg:var(--sys-bg);   --acbd:var(--sys-bd);   --acgr:var(--sys-gr)}
+
+/* ── 数值 ── */
+.num{font-size:calc(var(--t-num)*var(--u));font-weight:600;color:var(--tx-1,var(--text-primary));
+  font-variant-numeric:tabular-nums;letter-spacing:-1.5px;line-height:1;
+  display:flex;align-items:flex-end;gap:calc(5px*var(--u))}
+.num i{font-style:normal;font-size:.44em;font-weight:400;color:var(--tx-3,var(--text-secondary));
+  letter-spacing:0;transform:translateY(-.08em)}
+
+/* ── 块状均分 ──
+   grid-auto-rows:1fr 让块平分剩余高度：三块一人三分之一，四块一人四分之一。
+   数据条数变了高度自动重分，不用为每种条数写一条 CSS。 */
+.blocks{flex:1;min-height:0;display:grid;gap:calc(10px*var(--u));grid-auto-rows:1fr}
+.blocks.c2{grid-template-columns:1fr 1fr}
+.blocks.c3{grid-template-columns:repeat(3,1fr)}
+.blk{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+  border-radius:calc(16px*var(--u));padding:calc(12px*var(--u)) calc(15px*var(--u));
+  display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;
+  transition:box-shadow .24s var(--ez,var(--ease))}
+.blk.hot{box-shadow:0 0 0 2px var(--ac)}
+.blk.hot .num{color:var(--ac)}
+.blk .lb{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 7px 细轨。目标位刻度是过渡仿真已有能力的可视化——车窗正在开到 60% 时看得见终点 */
+.trk{position:relative;height:calc(7px*var(--u));border-radius:99px;
+  background:var(--n3,var(--bg-elevated));overflow:visible}
+.trk .fl{height:100%;border-radius:99px;background:var(--acgr);
+  transition:width var(--d4,.38s) var(--ez,var(--ease))}
+.trk .tg{position:absolute;top:-3px;width:2.5px;height:calc(13px*var(--u));border-radius:2px;
+  background:var(--ac);opacity:.42}
+
+/* ── 文本块 ── */
+.card .sub{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary));line-height:1.5}
+.card .sug{margin-top:calc(10px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--ac)}
+.card .opt{display:inline-block;padding:calc(5px*var(--u)) calc(13px*var(--u));
+  margin:calc(8px*var(--u)) calc(10px*var(--u)) 0 0;border-radius:var(--r-pill,999px);
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:500}
+
+/* ── 候选列表：序号让语音选择（"第一个"）和屏幕对得上号 ── */
+.listcard{list-style:none;counter-reset:pick;margin:0;padding:0;
+  display:grid;gap:calc(7px*var(--u));align-content:start;grid-auto-rows:max-content}
+/* 屏幕 cursor:none 滚不动 —— 列表一律截断，绝不留 overflow:auto */
+.listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
+.listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
+.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(12px*var(--u));
+  padding:calc(7px*var(--u)) 0;border-bottom:1px solid var(--hair,var(--hairline));min-width:0}
 .listcard li:last-child{border-bottom:none}
-.listcard li::before{content:counter(pick);flex:none;width:40px;height:40px;border-radius:50%;
-  background:var(--brand);color:#fff;font-size:24px;font-weight:600;
-  display:flex;align-items:center;justify-content:center}
-.listcard li b{font-size:28px;font-weight:600;color:var(--text-primary)}
-.listcard li small{font-size:22px;color:var(--text-secondary)}
-/* ── 导航卡：转向条在上、地图居中、关键数字在下 ── */
-.tpl-nav{overflow:hidden;padding:0}
-.tpl-nav h3{display:none} /* 目的地已在底部呈现，标题重复了 */
-.navwrap{display:flex;flex-direction:column;height:100%;gap:0}
-.turnbar{flex:none;display:flex;align-items:center;gap:24px;padding:22px 32px;
-  background:var(--brand);color:#fff}
-.turnbar .arrow{font-size:64px;line-height:1;flex:none}
-.turntext{display:flex;align-items:baseline;gap:16px;min-width:0}
-.turntext b{font-size:52px;font-weight:700;font-variant-numeric:tabular-nums}
-.turntext span{font-size:30px;opacity:.92;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 要进的路名右对齐单独占一栏——它是用户确认没走错的依据，不能跟动作挤在一起被省略号吃掉 */
-.turnroad{margin-left:auto;font-size:28px;opacity:.82;max-width:44%;
+.listcard li::before{content:counter(pick);flex:none;
+  width:calc(34px*var(--u));height:calc(34px*var(--u));border-radius:50%;
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  display:flex;align-items:center;justify-content:center;align-self:center}
+.listcard li b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+  color:var(--tx-1,var(--text-primary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.listcard li small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mapbox{flex:1;min-height:0;background:var(--bg-elevated);position:relative;overflow:hidden}
+.listcard li .rr{margin-left:auto;font-style:normal;flex:none;
+  font-size:calc(var(--t-cap)*var(--u));color:var(--ac);font-variant-numeric:tabular-nums}
+/* 截断必须说出来。只截不说，用户以为屏上就这么多 */
+.card .more{flex:none;margin-top:calc(6px*var(--u));font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-3,var(--text-secondary))}
+/* 放不下一条时只报数量 —— 硬塞等于骗用户"屏上有" */
+.card .lstcount,.capcount{flex:1;display:flex;align-items:center;justify-content:center;
+  gap:calc(10px*var(--u))}
+.card .lstcount b,.capcount b{font-size:calc(var(--t-hero)*var(--u));font-weight:700;line-height:1;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums}
+.card .lstcount span,.capcount span{font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-3,var(--text-secondary))}
+.card .vehslot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+/* generic 的 items/actions：不是并列数值，用横排定义列而不是块 */
+.card .glist{display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.card .gi{display:flex;align-items:baseline;justify-content:space-between;
+  gap:calc(14px*var(--u));padding:calc(7px*var(--u)) 0;
+  border-bottom:1px solid var(--hair,var(--hairline))}
+.card .gi:last-child{border-bottom:none}
+.card .gi span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.card .gi b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums}
+.card .gi b i{font-size:.72em;font-weight:500;font-style:normal;margin-left:3px;
+  color:var(--tx-3,var(--text-secondary))}
+.card .gacts{display:flex;flex-wrap:wrap}
+
+/* ── 天气卡 ── */
+.wxnow{flex:none;display:flex;align-items:flex-end;gap:calc(16px*var(--u))}
+.wxnow b{font-size:calc(var(--t-hero)*var(--u));font-weight:600;line-height:.92;
+  color:var(--tx-1,var(--text-primary));font-variant-numeric:tabular-nums;letter-spacing:-2px}
+.wxnow b i{font-style:normal;font-size:.42em;font-weight:400;color:var(--tx-3,var(--text-secondary))}
+.wxmeta{display:flex;flex-direction:column;gap:calc(3px*var(--u));padding-bottom:calc(6px*var(--u))}
+.wxmeta span{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary))}
+.wxmeta small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+
+/* ── 能力目录 ── */
+.cap{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:calc(12px*var(--u));
+  align-content:start;overflow:hidden}
+.cap.list{grid-template-columns:1fr;gap:calc(8px*var(--u))}
+.cap div{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+  border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-1,var(--text-primary))}
+.cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
+.cap div.off{opacity:.35;text-decoration:line-through}
+
+/* ══════════ 导航卡：转向条在上、地图居中、关键数字在下 ══════════
+   小卡（没有地图）时两块垂直居中，别被推到两端中间空一大片。
+   字号跟着 --u 走，不再需要 .sz-1-3 / .sz-1-6 各写一遍。 */
+.tpl-nav{overflow:hidden;padding:0}
+.tpl-nav>h3{display:none} /* 目的地已在底部呈现，标题重复了 */
+.navwrap{display:flex;flex-direction:column;height:100%;gap:0}
+.tpl-nav.no-map .navwrap{justify-content:center;gap:calc(6px*var(--u))}
+.turnbar{flex:none;display:flex;align-items:center;gap:calc(20px*var(--u));
+  padding:calc(20px*var(--u)) calc(28px*var(--u));background:var(--acgr);color:#fff}
+.tpl-nav.no-map .turnbar{border-radius:var(--r-m)}
+.turnbar .arrow{font-size:calc(var(--t-num)*var(--u));line-height:1;flex:none}
+.turntext{display:flex;align-items:baseline;gap:calc(14px*var(--u));min-width:0}
+.turntext b{font-size:calc(var(--t-num)*var(--u));font-weight:700;font-variant-numeric:tabular-nums}
+.turntext span{font-size:calc(var(--t-body)*var(--u));opacity:.92;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 要进的路名右对齐单独占一栏——它是用户确认没走错的依据，
+   不能跟动作挤在一起被省略号吃掉 */
+.turnroad{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));opacity:.82;max-width:44%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none}
+.mapbox{flex:1;min-height:0;background:var(--sf-sunken,var(--bg-elevated));position:relative;overflow:hidden}
 .mapimg{width:100%;height:100%;object-fit:cover;display:block}
 /* 高德 JS API 的版权条在车机上是噪音 */
 .mapbox .amap-logo,.mapbox .amap-copyright{display:none!important}
-.navfoot{flex:none;display:flex;align-items:baseline;gap:40px;padding:20px 32px}
-.navbig{display:flex;align-items:baseline;gap:8px}
-.navbig b{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-primary)}
-.navbig span{font-size:26px;color:var(--text-secondary)}
-/* 导航小卡：格子只有一格宽，2/3 的字号会撑破 */
-.sz-1-3 .turnbar,.sz-1-6 .turnbar{gap:14px;padding:16px 20px}
-.sz-1-3 .turnbar .arrow,.sz-1-6 .turnbar .arrow{font-size:40px}
-.sz-1-3 .turntext b,.sz-1-6 .turntext b{font-size:34px}
-.sz-1-3 .turntext span,.sz-1-6 .turntext span{font-size:22px}
-.sz-1-3 .turnroad,.sz-1-6 .turnroad{font-size:20px;max-width:38%}
-.sz-1-3 .navfoot{gap:20px;padding:16px 20px;flex-wrap:wrap}
-.sz-1-3 .navbig b{font-size:34px}
-.sz-1-3 .navbig span{font-size:20px}
-.sz-1-3 .navdest{font-size:22px}
-/* 小卡没有地图。两块挨在一起垂直居中，别被推到两端中间空一大片 */
-.sz-1-3 .navwrap,.sz-1-6 .navwrap{justify-content:center;gap:4px}
-.sz-1-3 .turnbar,.sz-1-6 .turnbar{border-radius:var(--r-md)}
-.navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
+.navfoot{flex:none;display:flex;align-items:baseline;gap:calc(32px*var(--u));
+  padding:calc(18px*var(--u)) calc(28px*var(--u));flex-wrap:wrap}
+.navbig{display:flex;align-items:baseline;gap:calc(6px*var(--u))}
+.navbig b{font-size:calc(var(--t-lead)*var(--u));font-weight:700;
+  font-variant-numeric:tabular-nums;color:var(--tx-1,var(--text-primary))}
+.navbig span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.navdest{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%}
 /* 途经点比终点次一级，但不能小到看不见 */
-.navdest em{font-style:normal;display:block;font-size:.72em;opacity:.6;margin-bottom:2px}
-.card.kind-system{box-shadow:0 0 0 3px rgba(201,122,22,.5)}
-.card.tpl-notice{background:rgba(201,122,22,.10)}
-.card.tpl-notice h3{color:var(--warning)}
-.card.tpl-confirm{background:rgba(30,111,217,.08)}
-#overlay{position:absolute;top:96px;left:0;right:0;bottom:300px;padding:24px 60px;display:none;z-index:6}
-#overlay.on{display:block;animation:cardIn .32s var(--ease)}
-#overlay .card{height:100%}
-.cap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px;overflow:auto}
-.cap div{background:var(--bg-elevated);border-radius:14px;padding:14px 18px;font-size:24px}
-.cap div small{display:block;color:var(--text-secondary);font-size:20px;margin-top:4px}
-.cap div.off{opacity:.35;text-decoration:line-through}
-/* 一格宽排不下三列，退成一列；再小就只报个数 */
-.cap.list{grid-template-columns:1fr;gap:10px}
-.cap.list div{padding:10px 14px;font-size:22px}
-.cap.list div small{font-size:18px;margin-top:2px}
-.capcount{display:flex;align-items:baseline;gap:10px;margin-top:18px}
-.capcount b{font-size:76px;font-weight:700;line-height:1}
-.capcount span{font-size:26px;color:var(--text-secondary)}
+.navdest em{font-style:normal;display:block;font-size:.78em;opacity:.6;margin-bottom:2px}
 
-/* ── 播放器卡 ── */
-.plwrap{display:flex;align-items:center;gap:24px;height:100%;min-height:0}
-.plart{flex:none;width:132px;height:132px;border-radius:18px;overflow:hidden;background:var(--bg-elevated);
+/* ══════════ 播放器卡 ══════════
+   控制条是**状态指示不是按钮** —— 屏幕不可交互，画成图标就有诱导点击的风险。
+   底下那行「说『换一台』就行」把它标回语音能力。 */
+.plwrap{display:flex;align-items:center;gap:calc(20px*var(--u));height:100%;min-height:0}
+.tpl-media.narrow .plwrap{flex-direction:column;align-items:flex-start;justify-content:center}
+.plart{flex:none;width:calc(132px*var(--u));height:calc(132px*var(--u));
+  border-radius:calc(18px*var(--u));overflow:hidden;background:var(--sf-sunken,var(--bg-elevated));
   display:flex;align-items:center;justify-content:center}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
-.plicon{font-size:56px;opacity:.5}
-.plmeta{display:flex;flex-direction:column;gap:8px;min-width:0}
-.plmeta b{font-size:38px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.plmeta span{font-size:26px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sz-1-6 .plwrap{flex-direction:column;align-items:flex-start;justify-content:center;gap:14px}
-.sz-1-6 .plart{width:96px;height:96px}
-.sz-1-6 .plmeta b{font-size:28px}
-.sz-1-6 .plmeta span{font-size:20px}
-.sz-1-2 .plart{width:180px;height:180px}
-/* 视频占满整张卡，文字压在底部——2/3 是给它准备的大画面 */
+.plicon{font-size:calc(var(--t-lead)*var(--u));opacity:.5}
+.plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
+.plmeta b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
+.plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+.pl-hint b{font-weight:500;color:var(--ac)}
+/* 视频占满整张卡，文字压在底部——stage 是给它准备的大画面 */
 .card.is-video{padding:0;position:relative}
-.card.is-video h3{display:none}
+.card.is-video>h3{display:none}
 .card.is-video .plwrap{display:block}
 .card.is-video .plart{width:100%;height:100%;border-radius:0}
-.card.is-video .plmeta{position:absolute;left:28px;right:28px;bottom:24px;
-  text-shadow:0 2px 12px rgba(0,0,0,.6);color:#fff}
+.card.is-video .plmeta{position:absolute;left:calc(26px*var(--u));right:calc(26px*var(--u));
+  bottom:calc(22px*var(--u));color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.card.is-video .plmeta b{color:#fff}
 .card.is-video .plmeta span{color:rgba(255,255,255,.82)}
+
 
 /* ── 自动播放解锁遮罩 ── */
 #unlock{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
@@ -171,40 +257,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .wxmeta{display:flex;flex-direction:column;gap:4px;min-width:0}
 .wxmeta span{font-size:30px}
 .wxmeta small{font-size:21px;color:var(--text-secondary)}
-.wxcast{display:flex;flex-direction:column;gap:2px;margin-top:16px}
-.wxcast>div{display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--hairline)}
-.wxcast>div:last-child{border-bottom:none}
-.wxcast span{font-size:22px;color:var(--text-secondary);min-width:3.2em}
-.wxcast em{font-size:22px;font-style:normal;flex:1}
-.wxcast b{font-size:24px;font-variant-numeric:tabular-nums}
-/* 宽卡横排，别让内容缩在左上角 */
-.wxcast.row{flex-direction:row;gap:14px;margin-top:22px}
-.wxcast.row>div{flex:1;flex-direction:column;align-items:flex-start;gap:6px;
-  background:var(--bg-elevated);border-radius:16px;padding:16px 18px;border-bottom:none}
-.wxcast.row span{min-width:0}
-.sz-1-2 .wxnow b{font-size:104px}
-
-/* ── 宽卡多列：内容纵向堆叠会让右半边空着 ── */
-.sz-1-2 .listcard{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
-.sz-1-2 .cap.list{grid-template-columns:1fr 1fr}
-.sz-1-2 .wins{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
+/* 天气预报改走块状均分（.blocks/.blk），不再需要 .wxcast 那一套
+   —— 预报本来就是并列数据，跟车窗开度同一个形状。 */
 
 /* ── 短文本卡：正文是主角，不是标题下面的灰色小字 ──
    这几张（续航、正在播放、执行反馈、临时提醒）内容天生就一句话，
-   照通用样式渲染的话一行小字挂在顶上，下面 80% 空着，看着像没加载完 */
-.tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub{
+   照通用样式渲染的话一行小字挂在顶上，下面 80% 空着，看着像没加载完。
+   现在字号跟 --u 走，一张 chip 和一张 banner 用同一条规则。 */
+.tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub,.tpl-notice .sub{
   flex:1;display:flex;align-items:center;
-  font-size:38px;line-height:1.25;color:var(--text-primary);margin-top:8px}
-.sz-1-2 .tpl-info .sub,.sz-1-2 .tpl-media .sub,
-.sz-1-2 .tpl-feedback .sub,.sz-1-2 .tpl-generic .sub{font-size:46px}
-
-.win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-.win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
-.win .top span{color:var(--text-secondary)}
-.win .top em{font-style:normal;font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
-.track{height:18px;border-radius:999px;background:var(--track);overflow:hidden}
-.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2E7FD6,var(--brand))}
-.win.hot .top em{color:var(--brand)}
+  font-size:calc(var(--t-lead)*var(--u));line-height:1.25;color:var(--tx-1,var(--text-primary))}
 
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}

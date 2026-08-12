@@ -356,7 +356,14 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
     weatherQuery: async (args: any): Promise<ToolResult> => {
       const amap = needAmap()
       try {
-        const g = await amap.geocode(args.location)
+        // 坐标串要走逆地理编码。geocode 是"地名→坐标"，拿 104.065861,30.657401
+        // 去搜会命中内蒙古一个叫"一零四"的地方——实测撞到过，卡片标题成了
+        // "阿拉善左旗一零四天气"
+        const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location))
+        const area = isCoord
+          ? await amap.areaOf(String(args.location).trim())
+          : await amap.geocode(args.location).then(x => x && { adcode: x.adcode, name: x.formattedAddress })
+        const g = area?.adcode ? { adcode: area.adcode, formattedAddress: area.name } : null
         if (!g?.adcode)
           return { status: 'unavailable', code: 'PLACE_NOT_FOUND', message: '找不到这个地方的天气', suggestion: '换个更常见的地名试试' }
         const [now, forecast] = await Promise.all([amap.weatherNow(g.adcode), amap.weatherForecast(g.adcode)])

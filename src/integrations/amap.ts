@@ -243,6 +243,16 @@ export function createAmapClient(fetcher: Fetcher, keys: AmapKeys) {
       return typeof city === 'string' && city ? city : null
     },
 
+    /** 坐标 → 天气用的 adcode + 可读地名。查"我这儿的天气"要用这个而不是 geocode */
+    async areaOf(location: string): Promise<{ adcode: string; name: string } | null> {
+      const json = await get('/v3/geocode/regeo', { location })
+      const c = json.regeocode?.addressComponent
+      if (!c?.adcode) return null
+      const name = [c.province, c.city, c.district].filter(Boolean)
+        .filter((v: any, i: number, a: any[]) => a.indexOf(v) === i).join('')
+      return { adcode: String(c.adcode), name: name || String(c.city ?? c.province ?? '') }
+    },
+
     /**
      * 行政区域查询（v3/config/district）—— 列出某地下辖的区县。
      * "附近哪个县在下雨"这类需求，第一步就是先知道附近有哪些县。

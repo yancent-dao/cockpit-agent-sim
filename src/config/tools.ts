@@ -381,10 +381,12 @@ export const TOOLS: ToolDef[] = [
   /* ── L2 应用级：天气（真实接高德） ── */
   {
     name: 'weather.query',
-    desc: '查询某个地点的天气，同时返回实况与未来几天预报。查询成功后天气卡会自动显示在屏幕上，你只负责口头播报重点，不要再建卡。查不到这个地点时会得到 unavailable。',
+    desc: '查询某个地点的天气，同时返回实况与未来几天预报。查询成功后天气卡会自动显示在屏幕上，你只负责口头播报重点，不要再建卡。查不到这个地点时会得到 unavailable。'
+      + '**注意**：这是气象服务的城市级数据，跟车上传感器（车外温度、当前天况）测的"此刻这里"不是一回事，'
+      + '两者对不上很正常，别当成矛盾去质问用户——车里冷不冷、雨大不大以传感器为准。',
     permission: '彩',
     params: {
-      location: { type: 'string', required: true, desc: '地点名称，如"北京"、"望京"' },
+      location: { type: 'string', required: true, desc: '地点名称如"北京"、"望京"；也可以直接传"经度,纬度"坐标，查当前位置天气就传 vehicle.location 的值' },
     },
     handler: 'weatherQuery',
   },

@@ -1158,6 +1158,48 @@ describe('查询/交互结果自动上屏', () => {
     expect(titles.join()).toContain('怀柔')
   })
 
+  /**
+   * 实测：Agent 想查"当前位置天气"时会把坐标串当地名传进来，
+   * 而 geocode 是"地名→坐标"，拿 104.065861,30.657401 去搜就命中了
+   * 内蒙古某个叫"一零四"的地方，卡片标题成了"阿拉善左旗一零四天气"。
+   * 坐标要走 regeo（逆地理编码）。
+   */
+  it('传坐标查天气时走逆地理编码，不能当地名搜', async () => {
+    const calls: string[] = []
+    const amap = createAmapClient((async (url: string) => {
+      calls.push(new URL(url).pathname)
+      const p = new URL(url).pathname
+      const body = p === '/v3/geocode/regeo'
+        ? { status: '1', regeocode: { addressComponent: { city: '成都市', province: '四川省', adcode: '510100' } } }
+        : { status: '1', lives: [{ city: '成都市', weather: '中雨', temperature: '18', winddirection: '东',
+            windpower: '3', humidity: '80', reporttime: 't' }],
+            forecasts: [{ casts: [{ date: '2026-08-12', dayweather: '中雨', nightweather: '小雨', daytemp: '20', nighttemp: '17' }] }] }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'test-key' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('weather.query', { location: '104.065861,30.657401' })
+    expect(res.status).toBe('ok')
+    expect(calls).toContain('/v3/geocode/regeo')
+    expect(calls).not.toContain('/v3/geocode/geo')   // 绝不能走正向地理编码
+    expect((res.data as any).city).toContain('成都')
+  })
+
+  it('传地名时照常走正向地理编码', async () => {
+    const calls: string[] = []
+    const amap = createAmapClient((async (url: string) => {
+      calls.push(new URL(url).pathname)
+      const p = new URL(url).pathname
+      const body = p === '/v3/geocode/geo'
+        ? { status: '1', geocodes: [{ location: '104.06,30.65', formatted_address: '乐山市', adcode: '511100' }] }
+        : { status: '1', lives: [{ city: '乐山市', weather: '多云', temperature: '30', winddirection: '东',
+            windpower: '2', humidity: '60', reporttime: 't' }], forecasts: [{ casts: [] }] }
+      return { ok: true, json: async () => body }
+    }) as Fetcher, { webKey: 'test-key' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('weather.query', { location: '乐山' })
+    expect(calls).toContain('/v3/geocode/geo')
+  })
+
   it('capability.list 成功 → 能力目录卡自动上屏（full）', async () => {
     const desk = await mkDesk()
     const r = createRegistry(store, TOOLS, () => now, { desk })

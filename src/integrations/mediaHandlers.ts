@@ -386,13 +386,16 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
 
     webSearch: async (args: any): Promise<ToolResult> => {
       try {
-        const { answer } = await need('websearch').search(args.query)
-        // 上屏是为了让用户能回看——语音念完就没了，数字和人名尤其记不住
+        const { brief, detail } = await need('websearch').search(args.query)
+        // 详细内容只进卡片。语音念完就没了，数字和人名尤其记不住，得让用户能回看
         desk?.()?.render({
           key: 'websearch', template: 'generic', size: '1/2', kind: 'task', ttl: 180, refreshTtl: true,
-          data: { title: args.query, text: answer },
+          data: { title: args.query, text: detail },
         })
-        return { status: 'ok', data: { answer } }
+        // **只把一句话结论返回给 Agent**。给全文的话它会整段念——实测 366 字。
+        // 这是机制，不是嘱咐
+        return { status: 'ok', data: { answer: brief, detailOnScreen: true },
+          message: '详细内容已经在屏幕上了，你只需要说这一句结论' }
       } catch (e) { return cpFail(e, '联网搜索') }
     },
 

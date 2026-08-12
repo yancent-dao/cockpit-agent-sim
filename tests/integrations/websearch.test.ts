@@ -35,8 +35,7 @@ describe('web.search', () => {
     const res = await r.invoke('web.search', { query: '特斯拉最新交付量' })
     expect(res.status).toBe('ok')
     expect((res.data as any).answer).toContain('44 万辆')
-    const card = desk.findByKey('websearch')!
-    expect(card.data.text).toContain('44 万辆')
+    expect(desk.findByKey('websearch')!.data.text).toContain('44 万辆')
   })
 
   // 答案会被车载助手念出来，Markdown 是噪音
@@ -46,6 +45,35 @@ describe('web.search', () => {
     await r.invoke('web.search', { query: 'x' })
     expect(sys).toMatch(/Markdown/)
     expect(sys).toMatch(/开车|车载|语音/)
+  })
+
+  /**
+   * 实测：给 Agent 全文，它就整段念——四轮话术 122/144/165/185 字，
+   * 改完 Tool 描述再跑，变成 284/363/366 字，不降反升。
+   * 光靠嘱咐没用，得让它根本看不到长文。
+   */
+  it('只把一句话结论返回给 Agent，长文只进卡片', async () => {
+    const long = '零跑B01性价比最高。\n\n车身四米七七，轴距两米七三五，后备厢四百六十升。'
+      + '续航三个版本，四百三、五百五、六百五公里。激光雷达只有高配两款才有。'
+    const r = mk(long)
+    const res = await r.invoke('web.search', { query: '新电动车' })
+    const answer = (res.data as any).answer
+    expect(answer).toBe('零跑B01性价比最高。')
+    expect(answer).not.toContain('轴距')          // 细节没进 Agent 上下文
+    expect(desk.findByKey('websearch')!.data.text).toContain('轴距')  // 但屏幕上有
+  })
+
+  it('结论过长也截断——搜索模型不听话时兜底', async () => {
+    const r = mk('一'.repeat(200) + '\n\n详细内容')
+    const res = await r.invoke('web.search', { query: 'x' })
+    expect(String((res.data as any).answer).length).toBeLessThanOrEqual(80)
+  })
+
+  it('搜索模型没分段时不至于丢内容', async () => {
+    const r = mk('就一段话没有空行')
+    const res = await r.invoke('web.search', { query: 'x' })
+    expect((res.data as any).answer).toBe('就一段话没有空行')
+    expect(desk.findByKey('websearch')!.data.text).toBe('就一段话没有空行')
   })
 
   it('搜了个空 → unavailable，不能假装有答案', async () => {

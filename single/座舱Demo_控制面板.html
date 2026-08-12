@@ -1393,7 +1393,7 @@ input::placeholder{color:#4A5462}
       /* ══════════ 联网搜索（OpenRouter :online） ══════════ */
       webSearch: async (args) => {
         try {
-          const { answer } = await need("websearch").search(args.query);
+          const { brief: brief3, detail } = await need("websearch").search(args.query);
           desk2?.()?.render({
             key: "websearch",
             template: "generic",
@@ -1401,9 +1401,13 @@ input::placeholder{color:#4A5462}
             kind: "task",
             ttl: 180,
             refreshTtl: true,
-            data: { title: args.query, text: answer }
+            data: { title: args.query, text: detail }
           });
-          return { status: "ok", data: { answer } };
+          return {
+            status: "ok",
+            data: { answer: brief3, detailOnScreen: true },
+            message: "详细内容已经在屏幕上了，你只需要说这一句结论"
+          };
         } catch (e) {
           return cpFail(e, "联网搜索");
         }
@@ -1955,14 +1959,18 @@ input::placeholder{color:#4A5462}
   function createWebSearch(chat) {
     return {
       async search(query) {
-        const answer = await chat(
+        const raw = await chat(
           // 这是给"搜索模型"的指令，跟主 Agent 的人设无关——
           // 它的产出会成为主 Agent 的 Tool 返回值，再由主 Agent 转成车里的话
-          '你是搜索助手。用联网结果回答问题，简明扼要，只讲事实。答案会被车载语音助手转述给正在开车的人，所以：不要 Markdown、不要列表符号、不要"根据搜索结果"这类套话，直接给结论。查不到就说查不到。',
+          '你是搜索助手。用联网结果回答问题，只讲事实，不要 Markdown、不要列表符号、不要"根据搜索结果"这类套话。查不到就说查不到。\n格式**必须**是：第一行一句话给结论（40 字以内，会被车载助手念出来），然后空一行，再写详细内容（会显示在屏幕上给用户自己看）。',
           query
         );
-        if (!answer.trim()) throw new WebSearchError("没搜到什么", "EMPTY");
-        return { answer: answer.trim() };
+        const text = raw.trim();
+        if (!text) throw new WebSearchError("没搜到什么", "EMPTY");
+        const [head, ...rest] = text.split(/\n\s*\n/);
+        const detail = rest.join("\n\n").trim() || text;
+        const brief2 = head.trim().slice(0, 80);
+        return { brief: brief2, detail };
       }
     };
   }
@@ -3911,7 +3919,7 @@ ${extras.desktop}`);
     /* ══════════ 联网搜索 ══════════ */
     {
       name: "web.search",
-      desc: "联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**",
+      desc: "联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**返回的答案往往很长，别整段念——挑一两句最关键的说，剩下的让用户看屏幕。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**",
       permission: "彩",
       params: { query: { type: "string", required: true, desc: "要查的问题，一句话说清" } },
       handler: "webSearch"
@@ -4236,17 +4244,17 @@ ${extras.desktop}`);
     context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
     maxRounds: 6,
     persona: `你是这台车的车载助手，能直接操作车辆功能。
-说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。这是**语音播报**，
-不要用 Markdown、列表符号、表情；坐标经纬度这类数字别念出来，说地名就行。
-用户在开车，**只能用说的跟你交互，不能点屏幕**，所以永远别说"点一下""你选一个点击"。
-你就是这台车的助手，别提自己是什么模型、哪家公司做的。
+说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。这是**语音播报**，不要用
+Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用户在开车，**只能用说的、
+不能点屏幕**，永远别说"点一下""你选一个点击"。别提自己是什么模型、哪家公司做的。
+做不到就说做不到，**别把人支到车外**——"装个 App""连蓝牙"，这车都没有，骗人白忙一趟更糟。
 
 行为准则：
 1. 意图明确就直接调工具，别反问显而易见的事，**用户说过的别再问第二遍**；一次意图多个工具一起调。
 2. 结合车辆状态与说话人位置判断：后排的人说"开窗"，指的是他自己那扇。
 3. rejected → 用 message 说原因，把 suggestion 作为替代方案给出来。
-4. unavailable → 坦白这台车做不到，绝不假装成功或编造结果。也别许做不到的诺——
-   你只在用户开口时才醒着，没法"等会儿自动帮他"，该说"你降下来喊我一声"。
+4. unavailable → 坦白做不到，绝不假装成功或编造。**别许做不到的诺**——你只在用户开口时
+   才醒着，没法"等会儿自动帮他"，该说"你降下来喊我一声"。
 5. CONFIRM_REQUIRED → 用它的 message 问用户，同意后带 token 重调同一工具。
 6. 只用工具列表里有的能力。但**说"做不到"之前先想想能不能组合**——"找个周围有饺子馆的
    充电站"分两步就成：先搜充电站拿坐标，再以那坐标搜饺子馆。同一工具换参数多调也是组合。

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pilot": "vite-node tests/pilot/run.ts --"
+    "pilot": "NODE_USE_ENV_PROXY=1 vite-node tests/pilot/run.ts --"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

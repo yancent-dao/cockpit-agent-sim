@@ -6,7 +6,7 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 398 个，必须全绿才算完成）
+- 测试：`npm test`（当前 563 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
 - 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173
@@ -56,8 +56,12 @@ src/integrations/  三方适配。分两层，预算口径不同：
                   mediaHandlers 413 / 17 Tool = 24 · navHandlers 376 / 11 Tool = 34
 src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 399）
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
+src/design/    Design Token（CSS 文本常量）—— 算数据不算代码，不占预算
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
-               展示逻辑（转向条文案、日期人性化、尺寸→形态）可以放这，抽成纯函数配测试
+               展示逻辑（转向条文案、日期人性化、档位→形态、HTML 消毒、
+               FLIP、横幅排队、时长格式化）可以放这，但**必须抽成纯函数配测试**。
+               现在 512 行纯函数全有测试，main.ts 那 500 行是 DOM 操作。
+               超预算时先看是不是有逻辑漏进来了
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
 agents/        Agent 实例：manifest + 人设
 ```

@@ -45,12 +45,12 @@
 ```
 src/config/    signals · constraints · tools · cards —— 数据，越多越好
 src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 242）
-src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 377）
-src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 727）
-src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 382）
+src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 401）
+src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 737）
+src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 399）
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
-               展示逻辑（转向条文案、日期人性化）可以放这，抽成纯函数配测试
+               展示逻辑（转向条文案、日期人性化、尺寸→形态）可以放这，抽成纯函数配测试
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
 agents/        Agent 实例：manifest + 人设
 ```
@@ -66,6 +66,11 @@ agents/        Agent 实例：manifest + 人设
 
 - **约束引擎**：只支持 `[path, op, value]` 三元组，不支持嵌套逻辑。复杂场景写具名谓词函数登记白名单。**绝不引入 eval 或表达式引擎。**
 - **卡片布局**：每个尺寸只允许一种形状（2/3 只允许左锚定），位置可枚举。**不追求最优解，追求可预测解**——演示者能预判结果比空间利用率重要。
+  尺寸本身是活的：模板声明 `defaultSize`，通用池 1/6 · 1/3 · 1/2 全部可用（详见
+  `docs/superpowers/specs/2026-08-11-card-size-adaptive-design.md`）。**2/3 和 full 不进池**——
+  前者全桌面只有一个合法位置，两张必冲突；后者是覆盖层不是尺寸，任意卡能 full 意味着
+  天气能盖住导航。尺寸优先级：**物理（仲裁缩放）> 意愿（用户 resize）> 建议（defaultSize）**，
+  中间那层就是 `sizeLocked`——不做的话用户说"地图小一点"，下一秒 ETA 一跳就弹回去。
 - **Agent 编排**：全部在 Prompt 里。代码只做四件事：上下文拼装、并行调用、结果回填、确认流转。
 
 ## 卡片编排（2026-08-10 重设计，详见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md）

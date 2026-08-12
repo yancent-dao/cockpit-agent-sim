@@ -250,13 +250,27 @@ export function createDesk(clock: () => number = Date.now) {
       createdAt: clock(), touchedAt: clock(),
     }
 
-    if (size === 'full') { // 整屏覆盖：不占栅格，退出还原
+    const toOverlay = () => { // 整屏覆盖：不占栅格，退出还原
       cards.set(id, card)
       overlay = id
       emit()
       return { status: 'ok', cardId: id }
     }
-    return fit(card)
+    if (size === 'full') return toOverlay()
+    const r = fit(card)
+    /**
+     * **安全告警被拒是事故。**
+     *
+     * 真实几何：导航 stage（8×4，不可挤）在场时右边只剩 4×4 竖条，
+     * 而 critical 的最小档是 panel（8×2）—— 桌面上真的没有它的位置。
+     * 老逻辑走到这里返回 DESKTOP_FULL，车门没关这件事用户就永远不知道。
+     *
+     * 改走覆盖层：critical 本来就该盖住一切，这也正是三通道里
+     * `channelOf()` 给 critical 的答案。只对 critical 生效 ——
+     * 覆盖层不是放不下就往里扔的垃圾桶。
+     */
+    if (r.status === 'rejected' && card.urgency === 'critical') return toOverlay()
+    return r
   }
 
   function update(id: string, data: any): DeskResult {

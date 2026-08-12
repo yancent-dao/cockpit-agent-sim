@@ -408,6 +408,39 @@ describe('urgency 参与仲裁', () => {
     expect(desk.cellsOf(c.size)).toBeGreaterThanOrEqual(desk.cellsOf('1/3'))
   })
 
+  /**
+   * 真实几何：导航 stage（8×4，不可挤）在场时右边只剩 4×4 竖条，
+   * 而 critical 的最小档是 panel（8×2）—— 放不进去。
+   *
+   * 走到这一步的老逻辑是 DESKTOP_FULL 拒绝，**安全告警被拒是事故**。
+   * critical 必须改走覆盖层：它本来就该盖住一切，这也正是三通道里
+   * channelOf() 给 critical 的答案。
+   */
+  it('放不下的 critical 卡改走覆盖层，绝不拒绝', () => {
+    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    const r = mk({ template: 'notice', size: '1/2', kind: 'system', urgency: 'critical', ttl: 60, data: { title: '车门未关' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().overlay?.data?.title).toBe('车门未关')
+    // 导航卡还在，没被挤掉
+    expect(desk.layout().cards.some(c => c.data?.title === '导航')).toBe(true)
+  })
+
+  it('放得下的 critical 卡照常进桌面，不滥用覆盖层', () => {
+    const r = mk({ size: '1/3', urgency: 'critical', data: { title: '胎压过低' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().overlay).toBeUndefined()
+    expect(desk.layout().cards.some(c => c.data?.title === '胎压过低')).toBe(true)
+  })
+
+  it('非 critical 卡放不下还是照常拒绝 —— 覆盖层不是垃圾桶', () => {
+    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ size: '1/2', kind: 'system', data: { title: '普通提示' } })
+    expect(r.status).toBe('ok')       // 会被降档放进右边竖条
+    const r2 = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张大卡' } })
+    expect(r2.status).toBe('rejected')
+    expect(desk.layout().overlay).toBeUndefined()
+  })
+
   it('没声明 urgency 的卡行为跟以前一模一样', () => {
     mk({ data: { title: 'A' } }); now += 10
     mk({ kind: 'system', data: { title: 'B' } }); now += 10

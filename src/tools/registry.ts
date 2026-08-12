@@ -13,6 +13,8 @@ import type { WebSearchClient } from '../integrations/websearch'
 import { createNavHandlers } from '../integrations/navHandlers'
 import { createMediaHandlers, CANDIDATES } from '../integrations/mediaHandlers'
 import type { DomainState } from '../state/domain'
+import type { Prefs } from '../state/prefs'
+import { createMemoryHandlers } from '../integrations/memoryHandlers'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -42,7 +44,7 @@ const compare = (a: any, op: Op, b: any) =>
 
 const CONFIRM_TTL = 60_000
 
-export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState }
+export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs }
 
 export function createRegistry(
   store: Store,
@@ -152,6 +154,7 @@ export function createRegistry(
 
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
     ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound),
+    ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }
 

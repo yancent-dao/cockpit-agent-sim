@@ -16,7 +16,7 @@ export function buildSystemPrompt(
   manifest: AgentManifest,
   store: Store,
   registry: Registry,
-  extras: { desktop?: string } = {},
+  extras: { desktop?: string; prefs?: string[]; recent?: string } = {},
 ): string {
   const parts: string[] = [manifest.persona]
   const want = new Set(manifest.context)
@@ -35,6 +35,15 @@ export function buildSystemPrompt(
     }
     parts.push(`\n## 当前车辆状态\n${lines.join('\n')}`)
   }
+
+  // 长期记忆注入：用户明说要记的偏好，整包给策略层。封顶 10 条取最近——
+  // system 的每个字都在挤别的东西
+  if (extras.prefs?.length) {
+    const shown = extras.prefs.slice(-10)
+    parts.push(`\n## 用户偏好（用户让你记住的，落实靠你）\n${shown.map(t => `- ${t}`).join('\n')}`)
+  }
+  // 会话摘要：最近放过/查过的**结论**。细节走 Tool，不在这堆原始数据
+  if (extras.recent) parts.push(`\n## 最近\n${extras.recent}`)
 
   if (want.has('environment')) {
     parts.push(`\n## 环境\n- 天气: ${cn(store, 'env.weather')}\n- 车外温度: ${Math.round(g('cabin.temperature.outside') as number)}°C`)

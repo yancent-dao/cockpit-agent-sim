@@ -675,4 +675,27 @@ export const TOOLS: ToolDef[] = [
     permission: '黑',
     params: { force: { type: 'number', range: [0, 1], required: true, desc: '制动力度' } },
   },
+  /* ══════════ 记忆（显式，长期） ══════════ */
+  {
+    name: 'memory.remember',
+    desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。' +
+      '只记**用户明说要记**的；你自己猜的规律不许存。这些偏好每次对话都会注入给你，落实靠你自己。',
+    permission: '彩',
+    params: { text: { type: 'string', required: true, desc: '一句话的偏好，如"空调默认 24 度""出风别对着脸吹"' } },
+    handler: 'memoryRemember',
+  },
+  {
+    name: 'memory.forget',
+    desc: '用户说"别记了""把那条删了"时调用，按内容片段模糊匹配删除。',
+    permission: '彩',
+    params: { text: { type: 'string', required: true, desc: '要删的偏好的关键词' } },
+    handler: 'memoryForget',
+  },
+  {
+    name: 'memory.list',
+    desc: '用户问"你记住了什么"时调用，清单会上屏。',
+    permission: '彩',
+    params: {},
+    handler: 'memoryList',
+  },
 ]

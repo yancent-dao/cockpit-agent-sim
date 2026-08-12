@@ -1732,6 +1732,44 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   }
 
+  // src/integrations/memoryHandlers.ts
+  function createMemoryHandlers(prefs2, desk2) {
+    const need = () => {
+      const p = prefs2?.();
+      if (!p) throw new Error("记忆仓未装配");
+      return p;
+    };
+    return {
+      memoryRemember: (args) => {
+        const text = String(args.text ?? "").trim();
+        if (!text) return { status: "rejected", code: "INVALID_PARAMS", message: "要记什么得说清楚" };
+        const fresh = need().remember(text);
+        return fresh ? { status: "ok", data: { saved: text }, message: `记住了：${text}` } : { status: "ok", data: { already: true }, message: `这条早就记着了：${text}` };
+      },
+      memoryForget: (args) => {
+        const text = String(args.text ?? "").trim();
+        if (!text) return { status: "rejected", code: "INVALID_PARAMS", message: "要忘哪条得说清楚" };
+        return need().forget(text) ? { status: "ok", data: { forgot: text }, message: "好，这条忘掉了" } : { status: "unavailable", code: "NOT_FOUND", message: "没有记过这样的内容", suggestion: "用 memory.list 看看记了什么" };
+      },
+      memoryList: () => {
+        const items = need().list();
+        if (items.length)
+          desk2?.()?.render({
+            key: "memory",
+            template: "list",
+            kind: "task",
+            ttl: "untilDismissed",
+            data: { title: "我记住的", items: items.map((p) => ({ label: p.text })) }
+          });
+        return {
+          status: "ok",
+          data: { items },
+          message: items.length ? `记着 ${items.length} 条，都在屏上` : "现在什么都没记"
+        };
+      }
+    };
+  }
+
   // src/tools/registry.ts
   var compare2 = (a, op, b) => op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : op === "<=" ? a <= b : op === "==" ? a === b : a !== b;
   var CONFIRM_TTL = 6e4;
@@ -1840,6 +1878,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       },
       /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
       ...createNavHandlers(store2, () => needAmap(), () => sizedDesk(), () => currentRound),
+      ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
       ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
     };
     const sizedDesk = () => {
@@ -2156,6 +2195,58 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return { queue, history, queries, favorites };
   }
 
+  // src/state/prefs.ts
+  function createPrefs(storage = defaultStorage(), clock = Date.now) {
+    const load = () => {
+      try {
+        const raw = storage.get("cockpit.prefs");
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    };
+    let items = load();
+    const save = () => {
+      try {
+        storage.set("cockpit.prefs", JSON.stringify(items));
+      } catch {
+      }
+    };
+    return {
+      /** 返回是否新增（重复内容不追加） */
+      remember(text) {
+        const t = text.trim();
+        if (!t || items.some((p) => p.text === t)) return false;
+        items = [...items, { text: t, createdAt: clock() }];
+        save();
+        return true;
+      },
+      /** 模糊匹配删除——用户不会一字不差复述自己当初说的话 */
+      forget(fragment) {
+        const before = items.length;
+        const f = fragment.trim();
+        if (!f) return false;
+        items = items.filter((p) => !p.text.includes(f));
+        if (items.length === before) return false;
+        save();
+        return true;
+      },
+      list: () => [...items]
+    };
+  }
+
+  // src/state/session.ts
+  function recentSummary(d) {
+    const lines = [];
+    const played = d.history.recent(3);
+    if (played.length)
+      lines.push(`最近放过：${played.map((t) => t.track).join("、")}`);
+    const asked = d.queries.recent(3);
+    if (asked.length)
+      lines.push(`最近查过：${asked.map((q) => `${q.entity}(${q.brief})`).join("；")}`);
+    return lines.join("\n");
+  }
+
   // src/cards/heal.ts
   var LADDER2 = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "2/3", "full"].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
   function healStep(size, contentPx, opts) {
@@ -2420,6 +2511,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
 ## 当前车辆状态
 ${lines.join("\n")}`);
     }
+    if (extras.prefs?.length) {
+      const shown = extras.prefs.slice(-10);
+      parts.push(`
+## 用户偏好（用户让你记住的，落实靠你）
+${shown.map((t) => `- ${t}`).join("\n")}`);
+    }
+    if (extras.recent) parts.push(`
+## 最近
+${extras.recent}`);
     if (want.has("environment")) {
       parts.push(`
 ## 环境
@@ -2449,7 +2549,7 @@ ${extras.desktop}`);
   }
 
   // src/agent/runtime.ts
-  function createAgent({ manifest, registry: registry2, store: store2, llm: llm2, clock = Date.now, desktopSummary, onTurnStart }) {
+  function createAgent({ manifest, registry: registry2, store: store2, llm: llm2, clock = Date.now, desktopSummary, prefsList, recentSummary: recentSummary2, onTurnStart }) {
     let toolRound = 0;
     const listeners = [];
     const emit = (e) => listeners.forEach((l) => l(e));
@@ -2473,7 +2573,12 @@ ${extras.desktop}`);
       try {
         while (rounds < manifest.maxRounds) {
           rounds++;
-          const system = buildSystemPrompt(manifest, store2, registry2, { desktop: desktopSummary?.() });
+          const system = buildSystemPrompt(
+            manifest,
+            store2,
+            registry2,
+            { desktop: desktopSummary?.(), prefs: prefsList?.(), recent: recentSummary2?.() }
+          );
           trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
           emit({ type: "thinking" });
           const last = rounds === manifest.maxRounds;
@@ -4676,6 +4781,28 @@ ${extras.desktop}`);
       desc: "施加制动力。",
       permission: "黑",
       params: { force: { type: "number", range: [0, 1], required: true, desc: "制动力度" } }
+    },
+    /* ══════════ 记忆（显式，长期） ══════════ */
+    {
+      name: "memory.remember",
+      desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。只记**用户明说要记**的；你自己猜的规律不许存。这些偏好每次对话都会注入给你，落实靠你自己。',
+      permission: "彩",
+      params: { text: { type: "string", required: true, desc: '一句话的偏好，如"空调默认 24 度""出风别对着脸吹"' } },
+      handler: "memoryRemember"
+    },
+    {
+      name: "memory.forget",
+      desc: '用户说"别记了""把那条删了"时调用，按内容片段模糊匹配删除。',
+      permission: "彩",
+      params: { text: { type: "string", required: true, desc: "要删的偏好的关键词" } },
+      handler: "memoryForget"
+    },
+    {
+      name: "memory.list",
+      desc: '用户问"你记住了什么"时调用，清单会上屏。',
+      permission: "彩",
+      params: {},
+      handler: "memoryList"
     }
   ];
 
@@ -4946,6 +5073,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
 3. rejected → 用 message 说原因，把 suggestion 作为替代方案给出来。
 4. unavailable → 坦白做不到，绝不假装成功或编造。**别许做不到的诺**——你只在用户开口时
    才醒着，没法"等会儿自动帮他"，该说"你降下来喊我一声"。
+   例外：偏好记得住——"记住""以后都"就调 memory.remember 并复述，落实靠你对着「用户偏好」做。
 5. CONFIRM_REQUIRED → 用它的 message 问用户，同意后带 token 重调同一工具。
 6. 只用工具列表里有的能力。但**说"做不到"之前先想想能不能组合**——"找个周围有饺子馆的
    充电站"分两步就成：先搜充电站拿坐标，再以那坐标搜饺子馆。同一工具换参数多调也是组合。
@@ -4972,9 +5100,11 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   var amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : void 0;
   if (!amapWebKey) console.warn("未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable");
   var state = createDomainState();
+  var prefs = createPrefs();
   var autoplay = createAutoplay(store, state);
   var registry = createRegistry(store, TOOLS, Date.now, {
     state,
+    prefs,
     desk,
     amap,
     itunes: createItunesClient(),
@@ -4993,6 +5123,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
     store,
     llm,
     desktopSummary: () => desk.summary(),
+    prefsList: () => prefs.list().map((x) => x.text),
+    recentSummary: () => recentSummary(state),
     onTurnStart: () => desk.endTask()
   });
   var brief = (c) => ({

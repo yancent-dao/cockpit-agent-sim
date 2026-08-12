@@ -8,6 +8,8 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { createStore } from '../../src/core/store'
 import { createDesk } from '../../src/cards/desk'
 import { createDomainState } from '../../src/state/domain'
+import { createPrefs } from '../../src/state/prefs'
+import { recentSummary } from '../../src/state/session'
 import { sanitize } from '../../src/screen/sanitize'
 import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createRegistry } from '../../src/tools/registry'
@@ -187,8 +189,9 @@ async function runScenario(s: Scenario) {
   const desk = createDesk()
   const amap = AMAP_KEY ? createAmapClient(fetch as any, { webKey: AMAP_KEY }) : undefined
   const state = createDomainState()
+  const prefs = createPrefs()
   const registry = createRegistry(store, TOOLS, Date.now, {
-    desk, amap, state,
+    desk, amap, state, prefs,
     // iTunes 走 JSONP（浏览器 script 标签），Node 里没有 document——
     // 这里用 fetch 直连，它对服务端请求是放行的，只有浏览器才被 CORS 挡
     itunes: createItunesClient(async url => (await fetch(url)).json()),
@@ -206,7 +209,9 @@ async function runScenario(s: Scenario) {
 
   const llm = createOpenRouter(() => OPENROUTER_KEY, () => AGENT_MODEL)
   const agent = createAgent({ manifest: MAIN_AGENT, registry, store, llm,
-    desktopSummary: () => desk.summary(), onTurnStart: () => desk.endTask() })
+    desktopSummary: () => desk.summary(),
+    prefsList: () => prefs.list().map(x => x.text),
+    recentSummary: () => recentSummary(state), onTurnStart: () => desk.endTask() })
   const bot = createUserBot({ chat: botChat })
 
   const history: Array<{ role: 'user' | 'assistant'; content: string }> = []

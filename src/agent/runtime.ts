@@ -35,6 +35,10 @@ export interface AgentDeps {
   llm: LLM
   clock?: () => number
   desktopSummary?: () => string
+  /** 长期记忆（用户偏好），注入 system。落实靠模型，代码不解析 */
+  prefsList?: () => string[]
+  /** 会话摘要（最近放过/查过的结论） */
+  recentSummary?: () => string
   /**
    * 每轮用户真正开口时回调。用来清理上一轮遗留的临时卡——
    * 上一轮问"你要哪个"，用户这轮一开口就等于回答了或换了话题，那张问题卡该走了。
@@ -43,7 +47,7 @@ export interface AgentDeps {
   onTurnStart?: () => void
 }
 
-export function createAgent({ manifest, registry, store, llm, clock = Date.now, desktopSummary, onTurnStart }: AgentDeps) {
+export function createAgent({ manifest, registry, store, llm, clock = Date.now, desktopSummary, prefsList, recentSummary, onTurnStart }: AgentDeps) {
   let toolRound = 0
   const listeners: Array<(e: AgentEvent) => void> = []
   const emit = (e: AgentEvent) => listeners.forEach(l => l(e))
@@ -73,7 +77,8 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
     try {
       while (rounds < manifest.maxRounds) {
         rounds++
-        const system = buildSystemPrompt(manifest, store, registry, { desktop: desktopSummary?.() })
+        const system = buildSystemPrompt(manifest, store, registry,
+          { desktop: desktopSummary?.(), prefs: prefsList?.(), recent: recentSummary?.() })
         trace.push({ type: 'prompt', at: clock(), system, toolCount: tools.length })
         emit({ type: 'thinking' })
 

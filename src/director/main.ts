@@ -2,6 +2,8 @@ import { injectTokens } from '../design/tokens'
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
 import { createDomainState } from '../state/domain'
+import { createPrefs } from '../state/prefs'
+import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
 import { createAmapClient } from '../integrations/amap'
@@ -43,9 +45,10 @@ if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weathe
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
 /** 领域状态仓：队列/历史/收藏（localStorage 持久化）。记忆系统的第三级 */
 const state = createDomainState()
+const prefs = createPrefs()
 const autoplay = createAutoplay(store, state)
 const registry = createRegistry(store, TOOLS, Date.now, {
-  state, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
+  state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   news: createNewsClient(fetch.bind(window), () => newsKey),
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)) })
@@ -59,6 +62,8 @@ const llm = createOpenRouter(() => apiKey, () => modelId)
 const agent = createAgent({
   manifest: MAIN_AGENT, registry, store, llm,
   desktopSummary: () => desk.summary(),
+  prefsList: () => prefs.list().map(x => x.text),
+  recentSummary: () => recentSummary(state),
   onTurnStart: () => desk.endTask(),
 })
 

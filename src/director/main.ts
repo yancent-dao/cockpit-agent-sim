@@ -1,4 +1,5 @@
 import { injectTokens } from '../design/tokens'
+import { esc } from '../text'   // 卡片标题来自模型，转义走唯一实现
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
 import { createDomainState } from '../state/domain'
@@ -28,9 +29,7 @@ import { MAIN_AGENT } from '../../agents/main-agent/manifest'
 injectTokens('director')
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
-/** 卡片标题来自模型，直接塞 innerHTML 会被注入 */
-const esc = (v: any) =>
-  String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
+
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
 
 /* ══════════ 底层装配 ══════════ */
@@ -110,6 +109,9 @@ desk.subscribe(renderInspector)
 renderInspector()
 
 desk.subscribe(pushDesk)
+// diff 高亮：同槽数据真变了（北京刷进成都那张天气卡）让屏幕闪一下。
+// desk 只报事实（哪张卡变了），闪不闪、闪多久是屏幕的事
+desk.onDataChange(id => bus.send({ type: 'highlight', ids: [], cards: [id] } as any))
 // 卡片被挤出必须告诉用户 —— 静默消失不可接受。走横幅而不是塞一张卡：
 // 「我把天气收起来了」是对刚才那个动作的解释，不是内容
 desk.onNotice(n => bus.send({

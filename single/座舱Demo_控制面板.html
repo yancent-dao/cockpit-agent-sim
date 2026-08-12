@@ -255,6 +255,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return el;
   }
 
+  // src/text.ts
+  var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
   // src/core/glob.ts
   var cache = /* @__PURE__ */ new Map();
   function globMatch(pattern, path) {
@@ -2887,6 +2890,12 @@ ${extras.desktop}`);
     ambient: "chip"
   };
   var minTierFor = (urgency) => MIN_TIER[normalizeUrgency(urgency)];
+  function channelOf(c) {
+    if (normalizeUrgency(c.urgency) === "critical") return "overlay";
+    if (c.reason) return "banner";
+    if (c.size === "full") return "overlay";
+    return "card";
+  }
 
   // src/cards/desk.ts
   var ROWS = GRID.rows;
@@ -2921,6 +2930,7 @@ ${extras.desktop}`);
     const listeners = [];
     const emit = () => listeners.forEach((l) => l());
     const noticeListeners = [];
+    const dataChangeListeners = [];
     const suppressed = /* @__PURE__ */ new Set();
     let releasedAt;
     let familyAutoRound = 0;
@@ -3069,16 +3079,19 @@ ${extras.desktop}`);
         emit();
         return { status: "ok", cardId: id };
       };
-      if (size === "full") return toOverlay();
+      if (channelOf({ size, urgency: card.urgency }) === "overlay" && size === "full") return toOverlay();
       const r = fit(card);
-      if (r.status === "rejected" && card.urgency === "critical") return toOverlay();
+      if (r.status === "rejected" && channelOf({ urgency: card.urgency }) === "overlay") return toOverlay();
       return r;
     }
     function update(id, data) {
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
-      c.data = { ...c.data, ...data };
+      const next = { ...c.data, ...data };
+      const changed = JSON.stringify(next) !== JSON.stringify(c.data);
+      c.data = next;
       c.touchedAt = clock();
+      if (changed) dataChangeListeners.forEach((l) => l(id));
       emit();
       return { status: "ok", cardId: id };
     }
@@ -3212,6 +3225,10 @@ ${extras.desktop}`);
       subscribe: (cb) => {
         listeners.push(cb);
         return () => listeners.splice(listeners.indexOf(cb), 1);
+      },
+      onDataChange: (cb) => {
+        dataChangeListeners.push(cb);
+        return () => dataChangeListeners.splice(dataChangeListeners.indexOf(cb), 1);
       },
       onNotice: (cb) => {
         noticeListeners.push(cb);
@@ -5072,8 +5089,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
 2. 结合车辆状态与说话人位置判断：后排的人说"开窗"，指的是他自己那扇。
 3. rejected → 用 message 说原因，把 suggestion 作为替代方案给出来。
 4. unavailable → 坦白做不到，绝不假装成功或编造。**别许做不到的诺**——你只在用户开口时
-   才醒着，没法"等会儿自动帮他"，该说"你降下来喊我一声"。
-   例外：偏好记得住——"记住""以后都"就调 memory.remember 并复述，落实靠你对着「用户偏好」做。
+   才醒着没法"等会儿自动帮他"（说"你降下来喊我一声"）；但偏好记得住——"记住""以后都"就调 memory.remember 并复述，落实靠你对着「用户偏好」做。
 5. CONFIRM_REQUIRED → 用它的 message 问用户，同意后带 token 重调同一工具。
 6. 只用工具列表里有的能力。但**说"做不到"之前先想想能不能组合**——"找个周围有饺子馆的
    充电站"分两步就成：先搜充电站拿坐标，再以那坐标搜饺子馆。同一工具换参数多调也是组合。
@@ -5090,7 +5106,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   var import_meta = {};
   injectTokens("director");
   var $ = (id) => document.getElementById(id);
-  var esc = (v) => String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
   var store = createStore(SIGNALS, CONSTRAINTS);
   var desk = createDesk();
@@ -5175,6 +5190,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   desk.subscribe(renderInspector);
   renderInspector();
   desk.subscribe(pushDesk);
+  desk.onDataChange((id) => bus.send({ type: "highlight", ids: [], cards: [id] }));
   desk.onNotice((n) => bus.send({
     type: "banner",
     on: true,

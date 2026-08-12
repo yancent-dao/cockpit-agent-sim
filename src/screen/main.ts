@@ -7,13 +7,22 @@ import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { sanitize } from './sanitize'
 import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
 import { tokensFor } from '../design/tokens'
-import { dimsOf, GRID, TIERS } from '../config/grid'
+import { dimsOf, GRID, TIERS, SCREEN } from '../config/grid'
 import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
+import { esc } from '../text'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('screen')
+// 几何常量注入：栅格/内边距的唯一出处是 grid.ts，CSS 只消费变量——
+// 之前 repeat(12,1fr) 和 padding 在两边手工同步，注释里自己承认"改这里要同步改那边"
+{
+  const el = document.createElement('style')
+  el.textContent = `:root{--grid-cols:${GRID.cols};--grid-rows:${GRID.rows};` +
+    `--desk-pad:${SCREEN.padY}px ${SCREEN.padX}px;--desk-gap:${SCREEN.gap}px;--status-h:${SCREEN.statusH}px}`
+  document.head.appendChild(el)
+}
 
 const $ = (id: string) => document.getElementById(id)!
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
@@ -47,7 +56,6 @@ interface CardView {
 }
 let deskState: { cards: CardView[]; overlay?: CardView; free: number } = { cards: [], free: 6 }
 let hotCards = new Set<string>()
-const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
 
 const CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
   <defs>
@@ -228,8 +236,7 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
     svg{max-height:100%}
   </style>${r.empty
     // 退回纯文字。模型写了一整屏 <script> 时，用户该看到那句话，不是一张空卡
-    ? `<div style="font-size:var(--t-lead);line-height:1.3">${
-        String(d.text ?? '').replace(/[<>&]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]!))}</div>`
+    ? `<div style="font-size:var(--t-lead);line-height:1.3">${esc(d.text)}</div>`
     : r.html}`
   // 溢出检测：屏幕不可滚动，超出等于用户永远看不到
   requestAnimationFrame(() => {

@@ -31,8 +31,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 待机时语音区让出高度给桌面：一个球加两个字占掉整屏 21% 是浪费 */
 #stage{--voiceH:300px}
 #stage[data-s=idle]{--voiceH:148px}
-#desk{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
-  display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,1fr);gap:24px;
+#desk{position:absolute;top:var(--status-h,96px);left:0;right:0;bottom:var(--voiceH);
+  padding:var(--desk-pad,24px 60px);
+  display:grid;grid-template-columns:repeat(var(--grid-cols,12),1fr);
+  grid-template-rows:repeat(var(--grid-rows,4),1fr);gap:var(--desk-gap,24px);
   transition:bottom .32s var(--ease)}
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
   writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
@@ -1292,15 +1294,22 @@ ${BRIDGE}
     return null;
   }
 
-  // src/screen/render.ts
+  // src/text.ts
   var esc2 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+  // src/screen/render.ts
+  function truncate(items, max) {
+    const all = items ?? [];
+    const m = max ?? all.length;
+    const shown = all.slice(0, m);
+    return { shown, rest: all.length - shown.length };
+  }
   function listBody(items, opts = {}) {
     const all = items ?? [];
     const max = opts.maxItems ?? all.length;
     if (opts.overflow === "count" || max <= 0)
       return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`;
-    const shown = all.slice(0, max);
-    const rest = all.length - shown.length;
+    const { shown, rest } = truncate(all, max);
     return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i) => `
     <li><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
@@ -1358,8 +1367,7 @@ ${BRIDGE}
         const form = capForm(...dimsOf(c.size));
         if (form.mode === "count")
           return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
-        const shown = items.slice(0, form.maxItems);
-        const rest = items.length - shown.length;
+        const { shown, rest } = truncate(items, form.maxItems);
         return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i) => `<div class="${i.off ? "off" : ""}">${esc2(i.label)}<small>${esc2(i.desc ?? "")}</small></div>`).join("")}</div>${rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ""}`;
       }
       case "weather": {
@@ -1381,7 +1389,7 @@ ${BRIDGE}
         const parts = [];
         if (d.text) parts.push(`<div class="sub">${esc2(d.text)}</div>`);
         if (d.items?.length)
-          parts.push(`<div class="glist">${d.items.slice(0, form.maxItems).map((i) => `
+          parts.push(`<div class="glist">${truncate(d.items, form.maxItems).shown.map((i) => `
           <div class="gi"><span>${esc2(i.label ?? i)}</span>${i.value !== void 0 ? `<b>${esc2(i.value)}${i.unit ? `<i>${esc2(i.unit)}</i>` : ""}</b>` : ""}</div>`).join("")}</div>`);
         if (d.actions?.length)
           parts.push(`<div class="gacts">${d.actions.map((a, n) => `<span class="opt">${n + 1} ${esc2(a)}</span>`).join("")}</div>`);
@@ -1578,6 +1586,11 @@ ${BRIDGE}
 
   // src/screen/main.ts
   injectTokens("screen");
+  {
+    const el = document.createElement("style");
+    el.textContent = `:root{--grid-cols:${GRID.cols};--grid-rows:${GRID.rows};--desk-pad:${SCREEN.padY}px ${SCREEN.padX}px;--desk-gap:${SCREEN.gap}px;--status-h:${SCREEN.statusH}px}`;
+    document.head.appendChild(el);
+  }
   var $ = (id) => document.getElementById(id);
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
   var CN = { driver: "主驾", passenger: "副驾", rearLeft: "左后", rearRight: "右后" };
@@ -1600,7 +1613,6 @@ ${BRIDGE}
   var TRANSIT = 4e3;
   var deskState = { cards: [], free: 6 };
   var hotCards = /* @__PURE__ */ new Set();
-  var esc3 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -1701,7 +1713,7 @@ ${BRIDGE}
       if (url) {
         if (img) {
           if (img.src !== url) img.src = url;
-        } else art.innerHTML = `<img src="${esc3(url)}" alt="">`;
+        } else art.innerHTML = `<img src="${esc2(url)}" alt="">`;
       } else if (!img) {
         art.innerHTML = `<div class="plicon">${d.source === "radio" ? "📻" : "♪"}</div>`;
       }
@@ -1728,7 +1740,7 @@ ${BRIDGE}
     td,th{padding:8px 12px;border-bottom:1px solid var(--hair);text-align:left}
     th{color:var(--tx-3);font-weight:500}
     svg{max-height:100%}
-  </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${String(d.text ?? "").replace(/[<>&]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[ch])}</div>` : r.html}`;
+  </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${esc2(d.text)}</div>` : r.html}`;
     requestAnimationFrame(() => {
       const over = host.scrollHeight > host.clientHeight + 2;
       bus.send({ type: "canvasNote", cardId: c.id, overflow: over, contentPx: host.scrollHeight });
@@ -1755,7 +1767,7 @@ ${BRIDGE}
     const html = String(d.html ?? "").trim();
     if (!html) {
       frame.remove();
-      node.querySelector(".bd").innerHTML = `<div class="sub">${esc3(d.text ?? "")}</div>`;
+      node.querySelector(".bd").innerHTML = `<div class="sub">${esc2(d.text ?? "")}</div>`;
       return;
     }
     const doc = buildSrcdoc(html);
@@ -1782,15 +1794,15 @@ ${BRIDGE}
     const bar = node.querySelector(".turnbar");
     bar.style.display = turn && form.blocks.includes("turn") ? "" : "none";
     if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
-    <div class="turntext"><b>${esc3(turn.dist)}</b><span>${esc3(turn.action)}</span></div>
-    ${turn.road ? `<div class="turnroad">${esc3(turn.road)}</div>` : ""}`;
-    const via = (d.via ?? []).length ? `<em>经 ${esc3(d.via.join("、"))}</em>` : "";
+    <div class="turntext"><b>${esc2(turn.dist)}</b><span>${esc2(turn.action)}</span></div>
+    ${turn.road ? `<div class="turnroad">${esc2(turn.road)}</div>` : ""}`;
+    const via = (d.via ?? []).length ? `<em>经 ${esc2(d.via.join("、"))}</em>` : "";
     const foot = node.querySelector(".navfoot");
     foot.style.display = form.blocks.includes("foot") ? "" : "none";
     foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
-    <div class="navdest">${via}${esc3(d.destination ?? "")}</div>`;
+    <div class="navdest">${via}${esc2(d.destination ?? "")}</div>`;
     const box = node.querySelector(".mapbox");
     const hasMap = form.blocks.includes("map");
     node.classList.toggle("no-map", !hasMap);
@@ -1806,7 +1818,7 @@ ${BRIDGE}
       const img = box.querySelector("img");
       if (img) {
         if (img.src !== d.mapUrl) img.src = d.mapUrl;
-      } else box.innerHTML = `<img class="mapimg" src="${esc3(d.mapUrl)}" alt="路线地图">`;
+      } else box.innerHTML = `<img class="mapimg" src="${esc2(d.mapUrl)}" alt="路线地图">`;
     });
   }
   var cardNodes = /* @__PURE__ */ new Map();
@@ -1907,7 +1919,7 @@ ${BRIDGE}
       if (ov.dataset.sig !== sig) {
         ov.dataset.sig = sig;
         ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}">
-        <h3>${esc3(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
+        <h3>${esc2(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
       }
     } else {
       ov.className = "";

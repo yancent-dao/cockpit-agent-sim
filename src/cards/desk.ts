@@ -2,7 +2,7 @@ import { CARD_TEMPLATES } from '../config/cards'
 import { formOf, suggestSize } from '../config/forms'
 import { checkSize } from './contract'
 import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
-import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency } from '../config/priority'
+import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency, channelOf } from '../config/priority'
 
 /**
  * 卡片桌面（无APP化）—— 2026-08-10 重设计，见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md
@@ -193,6 +193,8 @@ export function createDesk(clock: () => number = Date.now) {
    * 静默消失不可接受：用户刚看的天气卡没了得有个交代。
    */
   const noticeListeners: Array<(n: { note: string; titles: string[] }) => void> = []
+  /** 数据真变了才叫（diff 高亮的机制半边）——ETA 每秒重刷相同值不能闪个不停 */
+  const dataChangeListeners: Array<(id: string) => void> = []
   /** 用户亲手关掉的规则卡 key——补回通道跳过它们，直到规则重新断言 */
   const suppressed = new Set<string>()
   /** 最近一次空间释放的时刻。尺寸回落带 2 秒迟滞：候选卡进进出出时天气不能跟着缩-涨-缩 */
@@ -366,7 +368,8 @@ export function createDesk(clock: () => number = Date.now) {
       emit()
       return { status: 'ok', cardId: id }
     }
-    if (size === 'full') return toOverlay()
+    // 通道分派统一走判据表（channelOf）——它不再是带测试的死代码
+    if (channelOf({ size, urgency: card.urgency }) === 'overlay' && size === 'full') return toOverlay()
     const r = fit(card)
     /**
      * **安全告警被拒是事故。**
@@ -379,15 +382,19 @@ export function createDesk(clock: () => number = Date.now) {
      * `channelOf()` 给 critical 的答案。只对 critical 生效 ——
      * 覆盖层不是放不下就往里扔的垃圾桶。
      */
-    if (r.status === 'rejected' && card.urgency === 'critical') return toOverlay()
+    if (r.status === 'rejected' && channelOf({ urgency: card.urgency }) === 'overlay') return toOverlay()
     return r
   }
 
   function update(id: string, data: any): DeskResult {
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
-    c.data = { ...c.data, ...data }
+    const next = { ...c.data, ...data }
+    // 真变了才通知（JSON 比对够用：卡片 data 本来就是可序列化的投影数据）
+    const changed = JSON.stringify(next) !== JSON.stringify(c.data)
+    c.data = next
     c.touchedAt = clock()
+    if (changed) dataChangeListeners.forEach(l => l(id))
     emit()
     return { status: 'ok', cardId: id }
   }
@@ -546,6 +553,9 @@ export function createDesk(clock: () => number = Date.now) {
     ladder: () => [...LADDER],
     priorityOf: (k: Kind, u?: Urgency) => prioOf(k, u),
     subscribe: (cb: () => void) => { listeners.push(cb); return () => listeners.splice(listeners.indexOf(cb), 1) },
+    onDataChange: (cb: (id: string) => void) => {
+      dataChangeListeners.push(cb); return () => dataChangeListeners.splice(dataChangeListeners.indexOf(cb), 1)
+    },
     onNotice: (cb: (n: { note: string; titles: string[] }) => void) => {
       noticeListeners.push(cb); return () => noticeListeners.splice(noticeListeners.indexOf(cb), 1)
     },

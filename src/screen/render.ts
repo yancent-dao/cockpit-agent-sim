@@ -9,8 +9,8 @@ import { dayLabel } from './turn'
 import { capForm, weatherForm, formOf } from '../config/forms'
 import { dimsOf, normalizeTier } from '../config/grid'
 
-export const esc = (s: any) =>
-  String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
+import { esc } from '../text'
+export { esc }
 
 export interface CardView {
   /** 需要高亮的项（车控卡刚被改动的那几扇窗）。由 main.ts 在渲染前塞进 data.hot —— 
@@ -35,14 +35,21 @@ export interface ListOpts {
  * 列表正文。截断是硬需求不是优化：
  * 屏幕不可交互，滚动条等于摆设，第 N 条之后用户永远不知道存在。
  */
+/** 截断的唯一公式。listBody / capability / generic 都消费它——三份 slice+rest 归一 */
+export function truncate<T>(items: T[], max?: number): { shown: T[]; rest: number } {
+  const all = items ?? []
+  const m = max ?? all.length
+  const shown = all.slice(0, m)
+  return { shown, rest: all.length - shown.length }
+}
+
 export function listBody(items: any[], opts: ListOpts = {}): string {
   const all = items ?? []
   const max = opts.maxItems ?? all.length
   if (opts.overflow === 'count' || max <= 0)
     return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`
 
-  const shown = all.slice(0, max)
-  const rest = all.length - shown.length
+  const { shown, rest } = truncate(all, max)
   return `<ol class="listcard${opts.cols === 2 ? ' c2' : ''}">${shown.map((i: any) => `
     <li><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
       i.right ? `<em class="rr">${esc(i.right)}</em>` : ''}</li>`).join('')}</ol>${
@@ -149,8 +156,7 @@ export function cardBody(c: CardView): string {
       if (form.mode === 'count')
         return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`
       // 屏幕不可滚动，放不下的必须截断并说明——切掉半行等于骗人
-      const shown = items.slice(0, form.maxItems)
-      const rest = items.length - shown.length
+      const { shown, rest } = truncate(items, form.maxItems)
       return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i: any) =>
         `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>${
         rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ''}`
@@ -183,7 +189,7 @@ export function cardBody(c: CardView): string {
       const parts: string[] = []
       if (d.text) parts.push(`<div class="sub">${esc(d.text)}</div>`)
       if (d.items?.length)
-        parts.push(`<div class="glist">${d.items.slice(0, form.maxItems).map((i: any) => `
+        parts.push(`<div class="glist">${truncate(d.items, form.maxItems).shown.map((i: any) => `
           <div class="gi"><span>${esc(i.label ?? i)}</span>${
             i.value !== undefined ? `<b>${esc(i.value)}${i.unit ? `<i>${esc(i.unit)}</i>` : ''}</b>` : ''}</div>`).join('')}</div>`)
       if (d.actions?.length)

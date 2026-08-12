@@ -404,6 +404,63 @@ export const TOOLS: ToolDef[] = [
   },
 
   /* ── 卡片调度（无APP化核心） ── */
+  /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
+  {
+    name: 'media.control',
+    desc: '播放控制：继续/暂停/停止/上一首/下一首。跟正在放的是什么无关。注意 play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+    permission: '彩',
+    params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev'], required: true, desc: '动作' } },
+    handler: 'mediaControl',
+  },
+  {
+    name: 'media.volume',
+    desc: '媒体音量。level 传绝对值（0-100），delta 传增减量（"大声点"用 +10 这种）。超出范围会自动夹住而不是报错。',
+    permission: '彩',
+    params: {
+      level: { type: 'number', range: [0, 100], desc: '目标音量' },
+      delta: { type: 'number', range: [-100, 100], desc: '相对增减' },
+    },
+    handler: 'mediaVolume',
+  },
+  {
+    name: 'media.seek',
+    desc: '跳到某个时间点或快进快退。电台是直播流，会返回 rejected。',
+    permission: '彩',
+    params: {
+      position: { type: 'number', range: [0, 86400], desc: '目标秒数' },
+      delta: { type: 'number', desc: '相对秒数，快退传负数' },
+    },
+    handler: 'mediaSeek',
+  },
+  {
+    name: 'media.mode',
+    desc: '播放模式：顺序/随机/单曲循环。电台没有播放模式，会返回 rejected。',
+    permission: '彩',
+    params: { mode: { type: 'enum', values: ['sequential', 'shuffle', 'repeatOne'], required: true, desc: '模式' } },
+    handler: 'mediaMode',
+  },
+  {
+    name: 'media.queue',
+    desc: '看接下来要播什么。这台车一次只放一首，所以基本都会告诉你没有播放列表。',
+    permission: '彩',
+    params: {},
+    handler: 'mediaQueue',
+  },
+  {
+    name: 'media.favorite',
+    desc: '收藏正在播的内容。歌和电台存在同一份收藏里，用户说"收藏"不用分类型。',
+    permission: '彩',
+    params: {},
+    handler: 'mediaFavorite',
+  },
+  {
+    name: 'media.favorites',
+    desc: '列出收藏过的内容，列表会自动显示到屏幕上带编号，你说一句"你收藏了几个"就行，别逐条念。',
+    permission: '彩',
+    params: {},
+    handler: 'mediaFavorites',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

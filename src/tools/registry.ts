@@ -6,6 +6,7 @@ import type { Desk } from '../cards/desk'
 import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
 import type { AmapClient } from '../integrations/amap'
 import { createNavHandlers } from '../integrations/navHandlers'
+import { createMediaHandlers } from '../integrations/mediaHandlers'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -137,6 +138,7 @@ export function createRegistry(
 
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
     ...createNavHandlers(store, () => needAmap(), () => sizedDesk()),
+    ...createMediaHandlers(store, () => sizedDesk()),
   }
 
   /**

@@ -1,3 +1,4 @@
+import { CARD_TEMPLATES } from '../config/cards'
 import type { Store } from '../core/store'
 import type { Op } from '../core/types'
 import type { Desk } from './desk'
@@ -31,8 +32,10 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
   /** 确保卡片在场且数据最新。事件卡顺带刷新寿命 */
   const apply = (r: CardRule) => {
     const build = builders[r.card.data]
+    // 规则不写尺寸就用模板的默认值——改默认尺寸只改一处
+    const size = r.card.size ?? CARD_TEMPLATES.find(t => t.id === r.card.template)?.defaultSize as any
     desk.render({
-      key: r.card.key, template: r.card.template, size: r.card.size,
+      key: r.card.key, template: r.card.template, size,
       kind: 'rule', evictable: r.card.evictable,
       ttl: r.card.ttl ?? 'untilDismissed',
       refreshTtl: r.card.ttl !== undefined,

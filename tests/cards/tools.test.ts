@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createStore } from '../../src/core/store'
 import { createRegistry } from '../../src/tools/registry'
 import { createDesk } from '../../src/cards/desk'
+import { CARD_TEMPLATES } from '../../src/config/cards'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
@@ -40,15 +41,21 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.show 尺寸必须是该模板支持的形状之一', async () => {
-    const r = await show({ template: 'capability', size: '1/2', data: {} })
+    // 天气卡在通用池里，拿不到 2/3（那档是导航卡专属）
+    const r = await show({ template: 'weather', size: '2/3', data: { now: { weather: '晴', temperature: 25 } } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
   })
 
-  it('Agent 无法手动创建导航卡——nav 模板只接受 2/3，而 card.show 的尺寸枚举里没有 2/3', async () => {
-    for (const size of ['1/6', '1/3', '1/2', 'full', '2/3']) {
+  // 导航卡由 orchestrator 按车辆状态驱动。Agent 手动建会出现两张、
+  // 而且数据是它编的不是来自信号。以前是靠"尺寸枚举里没有 2/3"这个副作用
+  // 拦住的，现在尺寸放开了，得有显式机制
+  it('Agent 手动建不了导航卡，任何尺寸都不行', async () => {
+    for (const size of ['1/6', '1/3', '1/2', '2/3']) {
       const r = await show({ template: 'nav', size, data: { destination: 'x' } })
-      expect(r.status).toBe('rejected')
+      expect(r.status, `nav ${size}`).toBe('rejected')
+      expect(r.code).toBe('SYSTEM_TEMPLATE')
+      expect(r.message).toBeTruthy()
     }
   })
 
@@ -110,25 +117,55 @@ describe('卡片调度 Tool', () => {
     expect(desk.layout().cards).toHaveLength(0)
   })
 
-  /**
-   * 实测："地图小一点" → resize 把只支持 2/3 的导航卡缩成了 1/3，成功；
-   * 再想调回去 → "size 不支持取值 2/3"，卡永久困在 1/3。
-   * card.show 一直有模板尺寸校验，resize 漏了。
-   */
-  it('card.resize 也要认模板声明的尺寸，不能把导航卡缩成 1/3', async () => {
-    // 导航卡由规则驱动，测试里直接建一张
-    const id = desk.show({ template: 'nav', size: '2/3', kind: 'rule',
-      ttl: 'untilDismissed', data: { destination: '春熙路' } }).cardId!
-    const r = await reg.invoke('card.resize', { cardId: id, size: '1/3' })
+  // resize 一样要认模板：反馈卡只有 1/6 是它的默认，但它在通用池里，
+  // 真正拿不到的是 2/3 那种专属档
+  it('card.resize 也认模板的可用档位', async () => {
+    const id = ((await show({ template: 'weather', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
+    expect((await reg.invoke('card.resize', { cardId: id, size: '1/2' })).status).toBe('ok')
+    const r = await reg.invoke('card.resize', { cardId: id, size: '2/3' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
-    expect(r.message).toContain('2/3')
-    expect(desk.get(id)!.size).toBe('2/3')  // 没被改动
   })
 
   it('card.resize 的参数枚举得含 2/3，否则连表达都表达不了', async () => {
     const size = TOOLS.find(t => t.name === 'card.resize')!.params!.size
     expect(size.values).toContain('2/3')
+  })
+
+  /* ── 尺寸池：不声明 sizes 的模板通吃 1/6 · 1/3 · 1/2 ── */
+  it('通用池三档任何模板都能用——白名单越窄，桌面几何死角越多', async () => {
+    for (const size of ['1/6', '1/3', '1/2']) {
+      const r = await show({ template: 'weather', size,
+        data: { now: { weather: '晴', temperature: 25 } } })
+      expect(r.status, `weather 应该支持 ${size}`).toBe('ok')
+    }
+  })
+
+  it('2/3 是稀缺档，只有导航卡能用——全桌面只有一个合法位置，两张必冲突', async () => {
+    const r = await show({ template: 'weather', size: '2/3',
+      data: { now: { weather: '晴', temperature: 25 } } })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+  })
+
+  it('full 是覆盖层不是尺寸，别的卡拿不到——天气盖住导航是安全问题', async () => {
+    const r = await show({ template: 'weather', size: 'full',
+      data: { now: { weather: '晴', temperature: 25 } } })
+    expect(r.status).toBe('rejected')
+  })
+
+  it('导航卡可以被调小到通用池的档位', async () => {
+    const id = desk.show({ template: 'nav', size: '2/3', kind: 'rule',
+      ttl: 'untilDismissed', data: { destination: '春熙路' } }).cardId!
+    for (const size of ['1/2', '1/3', '2/3']) {
+      const r = await reg.invoke('card.resize', { cardId: id, size })
+      expect(r.status, `nav 应该支持 ${size}`).toBe('ok')
+      expect(desk.get(id)!.size).toBe(size)
+    }
+  })
+
+  it('每个模板都有 defaultSize', () => {
+    for (const t of CARD_TEMPLATES) expect(t.defaultSize, t.id).toBeTruthy()
   })
 
   it('操作不存在的卡片返回可读错误，不抛异常', async () => {

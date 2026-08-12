@@ -40,6 +40,13 @@ export interface Card {
   ttl: Ttl
   evictable: boolean
   minSize?: Size
+  /**
+   * 用户显式 resize 过。规则驱动的重刷不再碰它的尺寸——
+   * 桌面是 f(车辆状态)，导航中 ETA 每变一次就重刷一次，
+   * 不锁的话用户说"地图小一点"，下一秒就弹回默认。
+   * 优先级：物理（仲裁缩放）> 意愿（这个锁）> 建议（模板默认值）
+   */
+  sizeLocked?: boolean
   createdAt: number
   touchedAt: number
 }
@@ -220,7 +227,11 @@ export function createDesk(clock: () => number = Date.now) {
     return { status: 'ok', cardId: id }
   }
 
-  function resize(id: string, size: Size): DeskResult {
+  /**
+   * @param byUser 是不是用户的意愿。true 会给卡片上尺寸锁，之后规则重刷不再改它。
+   *   render() 内部的放大传 false——那是系统在恢复默认值，不是用户要求的
+   */
+  function resize(id: string, size: Size, byUser = true): DeskResult {
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     const prev = c.size
@@ -229,6 +240,7 @@ export function createDesk(clock: () => number = Date.now) {
       c.size = prev
       return { status: 'rejected', code: 'NO_ROOM', message: '这个尺寸放不下了' }
     }
+    if (byUser) c.sizeLocked = true
     c.touchedAt = clock()
     emit()
     return { status: 'ok', cardId: id }
@@ -256,11 +268,13 @@ export function createDesk(clock: () => number = Date.now) {
     const want = i.size ?? '1/6'
     if (exist) {
       if (i.refreshTtl) exist.createdAt = clock()
-      if (CELLS[exist.size] >= CELLS[want]) {
+      // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
+      // 就重刷一次，不认这个锁的话"地图小一点"下一秒就被弹回去
+      if (exist.sizeLocked || CELLS[exist.size] >= CELLS[want]) {
         const r = update(exist.id, i.data ?? {})
         return { ...r, level: 'L1' }
       }
-      const r = resize(exist.id, want)
+      const r = resize(exist.id, want, false)
       if (r.status !== 'ok') { update(exist.id, i.data ?? {}); return { ...r, cardId: exist.id } }
       update(exist.id, i.data ?? {})
       return { ...r, level: 'L2' }

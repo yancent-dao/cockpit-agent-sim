@@ -26,7 +26,8 @@ export interface CardRule {
   card: {
     key: string
     template: string
-    size: Size
+    /** 不写就用模板的 defaultSize */
+    size?: Size
     /** 事件卡的寿命（秒）。状态卡不填——退场由条件决定 */
     ttl?: number
     evictable?: boolean
@@ -44,27 +45,27 @@ export const CARD_RULES: CardRule[] = [
       'navigation.nextInstruction', 'navigation.destinationLocation','navigation.waypointNames',
       'navigation.routePolyline', 'vehicle.location',
     ],
-    card: { key: 'nav', template: 'nav', size: '2/3', evictable: false, data: 'navCard' },
+    card: { key: 'nav', template: 'nav', evictable: false, data: 'navCard' },
   },
   /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
   { id: 'window-feedback', watch: ['cabin.window.*.position'],
-    card: { key: 'windows', template: 'control', size: '1/6', ttl: 30, data: 'windowCard' } },
+    card: { key: 'windows', template: 'control', ttl: 30, data: 'windowCard' } },
   { id: 'climate-feedback', watch: ['cabin.climate.*'],
-    card: { key: 'climate', template: 'control', size: '1/6', ttl: 30, data: 'climateCard' } },
+    card: { key: 'climate', template: 'control', ttl: 30, data: 'climateCard' } },
   { id: 'seat-feedback', watch: ['seat.*.*'],
-    card: { key: 'seats', template: 'control', size: '1/6', ttl: 30, data: 'seatCard' } },
+    card: { key: 'seats', template: 'control', ttl: 30, data: 'seatCard' } },
   { id: 'steering-feedback', watch: ['cabin.steeringWheel.heating'],
-    card: { key: 'steering', template: 'control', size: '1/6', ttl: 30, data: 'steeringCard' } },
+    card: { key: 'steering', template: 'control', ttl: 30, data: 'steeringCard' } },
   { id: 'ambient-feedback', watch: ['cabin.ambientLight.*'],
-    card: { key: 'ambient', template: 'control', size: '1/6', ttl: 30, data: 'ambientCard' } },
+    card: { key: 'ambient', template: 'control', ttl: 30, data: 'ambientCard' } },
   { id: 'fragrance-feedback', watch: ['cabin.fragrance.*'],
-    card: { key: 'fragrance', template: 'control', size: '1/6', ttl: 30, data: 'fragranceCard' } },
+    card: { key: 'fragrance', template: 'control', ttl: 30, data: 'fragranceCard' } },
   { id: 'light-feedback', watch: ['cabin.light.*.state'],
-    card: { key: 'lights', template: 'control', size: '1/6', ttl: 30, data: 'lightCard' } },
+    card: { key: 'lights', template: 'control', ttl: 30, data: 'lightCard' } },
   { id: 'drive-feedback', watch: ['vehicle.driveMode', 'vehicle.regenLevel', 'vehicle.suspensionHeight'],
-    card: { key: 'drive', template: 'control', size: '1/6', ttl: 30, data: 'driveCard' } },
+    card: { key: 'drive', template: 'control', ttl: 30, data: 'driveCard' } },
   { id: 'opening-feedback', watch: ['cabin.door.*.isOpen', 'cabin.trunk.isOpen', 'cabin.chargePort.isOpen'],
-    card: { key: 'openings', template: 'control', size: '1/6', ttl: 30, data: 'openingCard' } },
+    card: { key: 'openings', template: 'control', ttl: 30, data: 'openingCard' } },
 ]
 
 const WIN_POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const

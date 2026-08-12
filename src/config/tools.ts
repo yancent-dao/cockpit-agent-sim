@@ -410,7 +410,7 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       template: { type: 'enum', values: TEMPLATE_IDS, required: true, desc: '卡片模板' },
-      size: { type: 'enum', values: ['1/6', '1/3', '1/2', 'full'], required: true, desc: '尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / full 全屏（临时征用，关闭后自动还原）' },
+      size: { type: 'enum', values: ['1/6', '1/3', '1/2', '2/3', 'full'], required: true, desc: '尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / 2/3 左侧大方块（地图专用）/ full 全屏（临时征用，关闭后自动还原）。每个模板有自己的可用档位，用不了会告诉你支持哪些。' },
       ttl: { type: 'string', required: true, desc: '生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数' },
       key: { type: 'string', desc: '逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建' },
       data: { type: 'object', desc: '卡片内容，字段取决于模板' },

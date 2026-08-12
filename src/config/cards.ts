@@ -9,11 +9,30 @@ export interface FieldSpec {
   required?: boolean
 }
 
+/**
+ * 通用尺寸池。不声明 sizes 的模板这三档全支持。
+ *
+ * 不含 2/3 和 full，这两档不是"更大的尺寸"：
+ * - 2/3 是 2×2 方块、左锚定，全桌面只有一个合法位置，两张必然冲突
+ * - full 是整屏覆盖层，任意卡都能 full 意味着天气卡能盖住导航
+ * 需要它们的模板自己在 sizes 里写出来。
+ */
+export const COMMON_SIZES = ['1/6', '1/3', '1/2'] as const
+
 export interface CardTemplate {
   id: string
   label: string
   desc: string
-  sizes: string[]
+  /** 首次出现时用哪个尺寸。之后用户显式改过就听用户的（见 desk 的 sizeLocked） */
+  defaultSize: string
+  /** 可选：收窄或放宽可用尺寸。不写 = COMMON_SIZES */
+  sizes?: string[]
+  /**
+   * 只能由系统（规则或 Tool）创建，Agent 手动 card.show 一律拒绝。
+   * 导航卡是这类：它由 orchestrator 按车辆状态驱动，Agent 自己建会出现两张，
+   * 而且数据是它编的而不是来自信号。
+   */
+  systemOnly?: boolean
   /**
    * data 的形状声明，供 registry 在 card.show/card.update 时做运行时校验——
    * 不声明（如 generic）就不校验。这不是通用 schema 引擎，只做一层平的
@@ -23,41 +42,38 @@ export interface CardTemplate {
 }
 
 export const CARD_TEMPLATES: CardTemplate[] = [
-  { id: 'control', label: '车控卡', sizes: ['1/6', '1/3'],
+  { id: 'control', label: '车控卡', defaultSize: '1/6',
     desc: '通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。',
     fields: { items: { type: 'array', required: true } } },
-  // 必须保留 1/6：导航卡 2/3 占掉左两列后，右列只有 1 格宽，横向的 1/3 塞不进去。
-  // 拿掉 1/6 就成死锁——用户听到了问题，屏幕上什么都没有。1/6 在 2560 屏上
-  // 仍有约 800×460，放得下两三个选项
-  { id: 'confirm', label: '确认卡', sizes: ['1/6', '1/3'],
+  { id: 'confirm', label: '确认卡', defaultSize: '1/3',
     desc: '二次确认。data: {title, question, options:[string]}',
     fields: { question: { type: 'string', required: true } } },
-  { id: 'feedback', label: '反馈卡', sizes: ['1/6'],
+  { id: 'feedback', label: '反馈卡', defaultSize: '1/6',
     desc: '执行结果摘要。data: {title, text?}——只给 title 也可以，比如"已开窗"。',
     fields: { text: { type: 'string' } } },
-  { id: 'notice', label: '提示/拒绝卡', sizes: ['1/6', '1/3'],
+  { id: 'notice', label: '提示/拒绝卡', defaultSize: '1/6',
     desc: '拒绝原因与替代方案。data: {title, text, suggestion}',
     fields: { text: { type: 'string', required: true } } },
-  // 含 1/6：导航卡 2/3 在场时右列只有 1 格宽，没有这一档候选卡就整个进不来——
-  // 用户听着"你说第几个"，屏幕上却只有旧的导航卡。实测 1/6 放得下四个带地址的候选
-  { id: 'list', label: '列表卡', sizes: ['1/6', '1/3', '1/2'],
+  { id: 'list', label: '列表卡', defaultSize: '1/2',
     desc: '搜索结果或候选项。data: {title, items:[{label, sub}]}',
     fields: { items: { type: 'array', required: true } } },
-  { id: 'info', label: '信息卡', sizes: ['1/6', '1/3'],
+  { id: 'info', label: '信息卡', defaultSize: '1/6',
     desc: '只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。',
     fields: { text: { type: 'string', required: true } } },
-  { id: 'media', label: '媒体卡', sizes: ['1/6', '1/3', '1/2'],
+  { id: 'media', label: '媒体卡', defaultSize: '1/3',
     desc: '播放中的内容。data: {title, artist, progress}' },
-  { id: 'weather', label: '天气卡', sizes: ['1/6', '1/3'],
+  { id: 'weather', label: '天气卡', defaultSize: '1/6',
     desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
     fields: { now: { type: 'object', required: true }, forecast: { type: 'array' } } },
-  { id: 'nav', label: '导航卡', sizes: ['2/3'],
+    // 唯一能用 2/3 的：地图要大画布。可以被调小，1/3 时退成转向条小卡
+  { id: 'nav', label: '导航卡', defaultSize: '2/3', sizes: [...COMMON_SIZES, '2/3'], systemOnly: true,
     desc: '导航卡由系统按导航状态自动创建/刷新/撤销，不要手动创建——调 navigation.setDestination 成功后它会自己出现在桌面左侧。',
     fields: { destination: { type: 'string', required: true } } },
-  { id: 'capability', label: '能力目录卡', sizes: ['full'],
+    // 唯一能用 full 的：33 项能力要铺得开
+  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: [...COMMON_SIZES, 'full'],
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
-  { id: 'generic', label: '通用卡', sizes: ['1/6', '1/3', '1/2', 'full'],
+  { id: 'generic', label: '通用卡', defaultSize: '1/3',
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },
 ]
 

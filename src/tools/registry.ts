@@ -3,7 +3,7 @@ import type { Permission, Value, Op } from '../core/types'
 import type { ToolDef, ParamDef } from '../config/tools'
 import { globMatch } from '../core/glob'
 import type { Desk } from '../cards/desk'
-import { CARD_TEMPLATES, type CardTemplate } from '../config/cards'
+import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
 import type { AmapClient } from '../integrations/amap'
 import { createNavHandlers } from '../integrations/navHandlers'
 
@@ -88,6 +88,12 @@ export function createRegistry(
     /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
     cardShow: args => {
       const tmpl = CARD_TEMPLATES.find(t => t.id === args.template)
+      if (tmpl?.systemOnly)
+        return {
+          status: 'rejected', code: 'SYSTEM_TEMPLATE',
+          message: `${tmpl.label}由系统按车辆状态自动出，不用你建`,
+          suggestion: '需要的话调对应的业务工具（如 navigation.setDestination），卡片会自己出现',
+        }
       const sizeErr = tmpl && checkSize(tmpl, args.size)
       if (sizeErr) return sizeErr
       const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false })
@@ -144,7 +150,8 @@ export function createRegistry(
       ...d,
       render: (input: Parameters<Desk['render']>[0]) => {
         if (input.minSize) return d.render(input)
-        const sizes = CARD_TEMPLATES.find(t => t.id === input.template)?.sizes ?? []
+        const tmpl = CARD_TEMPLATES.find(t => t.id === input.template)
+        const sizes = tmpl ? (tmpl.sizes ?? COMMON_SIZES) : []
         const min = [...sizes].sort((a, b) => d.cellsOf(a as any) - d.cellsOf(b as any))[0]
         return d.render(min ? { ...input, minSize: min as any } : input)
       },
@@ -176,12 +183,17 @@ export function createRegistry(
           ...(r.note && { message: r.note }) }
       : { status: 'rejected', code: r.code, message: r.message }
 
-  /** 模板只允许它声明过的形状。show 和 resize 共用一份，别再漏一处 */
-  const checkSize = (tmpl: CardTemplate, size: string): ToolResult | null =>
-    tmpl.sizes.includes(size) ? null : {
+  /**
+   * 模板只允许它声明过的形状。show 和 resize 共用一份，别再漏一处。
+   * 不声明 sizes 就是通用池——白名单窄一分，桌面的几何死角就多一分。
+   */
+  const checkSize = (tmpl: CardTemplate, size: string): ToolResult | null => {
+    const allowed = tmpl.sizes ?? COMMON_SIZES
+    return allowed.includes(size as any) ? null : {
       status: 'rejected', code: 'SIZE_NOT_SUPPORTED',
-      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${tmpl.sizes.join('、')}`,
+      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${allowed.join('、')}`,
     }
+  }
 
   /**
    * 校验 data 是否匹配模板声明的 fields。没声明 fields（如 generic）就放行。

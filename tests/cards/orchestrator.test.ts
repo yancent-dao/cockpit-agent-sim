@@ -3,6 +3,7 @@ import { createStore } from '../../src/core/store'
 import { createDesk } from '../../src/cards/desk'
 import { createOrchestrator } from '../../src/cards/orchestrator'
 import { CARD_RULES, DATA_BUILDERS } from '../../src/config/cardRules'
+import { CARD_TEMPLATES } from '../../src/config/cards'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { createAmapClient, type Fetcher } from '../../src/integrations/amap'
@@ -64,6 +65,17 @@ describe('导航状态卡：navigation.active 驱动，模型零参与', () => {
     store.setDirect('navigation.destinationLocation', '104.07,30.65')
     store.setDirect('navigation.active', true)
     expect(desk.findByKey('nav')!.data.via).toEqual([])
+  })
+
+  // 规则不写 size 时用模板的 defaultSize——改默认尺寸只改一处
+  it('规则没写尺寸就用模板的默认值', () => {
+    // 用 confirm（默认 1/3）而不是 control（默认 1/6）——后者跟 render 的兜底值撞了，测不出区别
+    const rules = [{ id: 'w', watch: ['cabin.window.driver.position'],
+      card: { key: 'w', template: 'confirm', ttl: 30, data: 'windowCard' } }]
+    createOrchestrator({ store, desk, rules: rules as any, builders: DATA_BUILDERS, deps: { store } }).start()
+    store.setDirect('cabin.window.driver.position', 50)
+    expect(desk.findByKey('w')!.size).toBe('1/3')
+    expect(CARD_TEMPLATES.find(t => t.id === 'confirm')!.defaultSize).toBe('1/3')
   })
 
   it('导航卡带上画活地图需要的坐标：起点/终点/路线', () => {

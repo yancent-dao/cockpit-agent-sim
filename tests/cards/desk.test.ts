@@ -290,3 +290,59 @@ describe('导航 2/3 在场时，选择卡还进不进得来', () => {
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('请选择')
   })
 })
+
+/**
+ * 桌面是 f(车辆状态)：导航中每次 ETA、剩余距离、下一步指令变化都会重刷导航卡。
+ * 如果刷新时带着默认尺寸，用户说"地图小一点"调到 1/3，下一秒 ETA 一跳就弹回 2/3。
+ *
+ * 优先级：物理（仲裁）> 意愿（显式 resize）> 建议（defaultSize）
+ */
+describe('尺寸粘性：显式改过就听用户的', () => {
+  const nav = () => desk.show({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+    evictable: false, ttl: 'untilDismissed', data: { title: '导航', eta: 20 } })
+
+  it('resize 之后，规则重刷不把尺寸改回默认', () => {
+    nav()
+    const id = desk.findByKey('nav')!.id
+    desk.resize(id, '1/3')
+    now += 10
+    // orchestrator 每次状态变化都这么调
+    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航', eta: 19 } })
+    const c = desk.findByKey('nav')!
+    expect(c.size).toBe('1/3')      // 用户的选择还在
+    expect(c.data.eta).toBe(19)     // 数据照常更新
+  })
+
+  // render 的既有语义是只放大不缩小——规则重刷不该让卡片忽大忽小。
+  // 没上锁的卡，空间腾出来时规则能把它带回默认尺寸
+  it('没被 resize 过的卡，规则重刷能放大回默认尺寸', () => {
+    desk.render({ key: 'nav', template: 'nav', size: '1/3', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
+    expect(desk.findByKey('nav')!.size).toBe('1/3')
+    now += 10
+    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
+    expect(desk.findByKey('nav')!.size).toBe('2/3')
+  })
+
+  it('卡片退场后锁也没了，下次出现回到默认尺寸', () => {
+    nav()
+    const id = desk.findByKey('nav')!.id
+    desk.resize(id, '1/3')
+    desk.dismiss(id)
+    now += 10
+    nav()
+    expect(desk.findByKey('nav')!.size).toBe('2/3')
+  })
+
+  it('锁不住仲裁——空间不够时该缩还得缩，那是物理不是偏好', () => {
+    nav()
+    desk.resize(desk.findByKey('nav')!.id, '1/2')
+    now += 10
+    // 塞满剩余空间，逼一张 system 卡进来
+    for (let i = 0; i < 3; i++) { mk({ kind: 'system' }); now += 10 }
+    const r = mk({ kind: 'system', size: '1/2', data: { title: '告警' } })
+    expect(r.status).toBe('ok')
+  })
+})

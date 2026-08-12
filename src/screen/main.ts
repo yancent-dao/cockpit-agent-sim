@@ -128,6 +128,8 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
   const barEl = node.querySelector('.plbar') as HTMLElement
   barEl.style.display = form.blocks.includes('bar') ? '' : 'none'
+  // 直播与否是**音源**的属性，不是"这一刻 duration 是多少"能猜的
+  barEl.classList.toggle('live', d.source === 'radio')
   const hint = node.querySelector('.pl-hint') as HTMLElement
   hint.style.display = form.blocks.includes('hint') ? '' : 'none'
   hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`
@@ -450,17 +452,23 @@ setInterval(() => banners.tick(), 200)
  */
 function tickProgress() {
   requestAnimationFrame(tickProgress)
-  const meta = document.querySelector('.tpl-media .plbar') as HTMLElement | null
-  if (!meta || meta.style.display === 'none') return
   const { current, duration } = player.progress()
   const pct = progressPct(current, duration)
-  const fl = meta.querySelector('.plfl') as HTMLElement
-  const t = meta.querySelector('.pltime') as HTMLElement
-  // 电台是直播流：没有百分比，画一条走到底的进度条是撒谎。改说"已收听多久"
-  meta.classList.toggle('live', pct === null)
-  fl.style.width = pct === null ? '100%' : `${pct}%`
-  t.textContent = pct === null ? `● 直播中 · 已收听 ${fmtTime(current)}`
-    : `${fmtTime(current)} / ${fmtTime(duration)}`
+  // 规则保证同时只有一张播放器卡，但代码不该赌这个 —— 全部更新
+  for (const meta of Array.from(document.querySelectorAll<HTMLElement>('.tpl-media .plbar'))) {
+    if (meta.style.display === 'none') continue
+    const fl = meta.querySelector('.plfl') as HTMLElement
+    const t = meta.querySelector('.pltime') as HTMLElement
+    /**
+     * 是不是直播由**音源**定（renderPlayerCard 挂的 .live），不由 duration 猜。
+     * 用 duration 猜的话，音乐卡在还没开始播时 duration 是 NaN，
+     * 屏上就写出「● 直播中」——一首歌被说成直播是硬错。
+     */
+    const live = meta.classList.contains('live')
+    fl.style.width = live ? '100%' : `${pct ?? 0}%`
+    t.textContent = live ? `● 直播中 · 已收听 ${fmtTime(current)}`
+      : pct === null ? '' : `${fmtTime(current)} / ${fmtTime(duration)}`
+  }
 }
 requestAnimationFrame(tickProgress)
 

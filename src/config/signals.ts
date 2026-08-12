@@ -302,6 +302,18 @@ export const SIGNALS: Signal[] = [
     type: 'string', label: '播放地址',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
 
+  /**
+   * 视频画面是否开着。跟 media.source='video' 不冗余——
+   * source 是"在放什么"，这个是"画面开着"，真车机里确实是两回事
+   * （行驶中常见的处理是画面关掉、声音继续）。
+   * 单独成信号是为了让"行驶中禁止看视频"能写成一条约束，
+   * 而不是塞进 handler 里的 if——约束引擎的 target 只匹配路径不看值，
+   * 打在 media.source 上会连音乐一起拦掉。
+   */
+  { alias: 'media.videoActive', vssPath: 'Vehicle.X-Ext.Media.VideoActive',
+    type: 'boolean', label: '视频画面',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+
   { alias: 'media.volume', vssPath: 'Vehicle.Cabin.Infotainment.Media.Volume',
     type: 'number', range: [0, 100], unit: '%', label: '媒体音量',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 40 },

@@ -9,6 +9,7 @@ import type { ToolResult } from '../tools/registry'
 import type { Track, ItunesClient } from './itunes'
 import type { Station, RadioClient } from './radio'
 import type { Article, NewsClient } from './news'
+import type { Clip, PexelsClient } from './pexels'
 
 export interface Favorite {
   source: string
@@ -35,6 +36,7 @@ export interface MediaDeps {
   itunes?: () => ItunesClient
   radio?: () => RadioClient
   news?: () => NewsClient
+  pexels?: () => PexelsClient
 }
 
 export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
@@ -45,6 +47,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   let lastResults: Track[] = []
   let lastStations: Station[] = []
   let lastArticles: Article[] = []
+  let lastClips: Clip[] = []
 
   const need = <K extends keyof MediaDeps>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
     const f = deps[k]
@@ -74,6 +77,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
    * 搜不到台的原因常常不是"没这个台"，而是筛掉 http 流之后一个不剩。
    * 这个区别要说出来，否则用户以为是搜索不好使
    */
+  const cBrief = (c: Clip) => ({ id: c.id, title: c.title, author: c.author, duration: c.duration })
   const aBrief = (a: Article) => ({ title: a.title, source: a.source, publishedAt: a.publishedAt })
 
   const noNews = (q?: string): ToolResult => ({
@@ -144,7 +148,8 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         case 'stop':
           // 停止不是暂停：把正在播的内容整个清掉，播放器卡也跟着退场
           for (const [k, v] of [['media.playing', false], ['media.source', 'none'],
-            ['media.streamUrl', ''], ['media.track', ''], ['media.artist', ''], ['media.artwork', '']] as const)
+            ['media.streamUrl', ''], ['media.track', ''], ['media.artist', ''], ['media.artwork', ''],
+            ['media.videoActive', false]] as const)
             store.set(k as string, v as any)
           return { status: 'ok', data: { stopped: true } }
         case 'next':
@@ -330,6 +335,49 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           text: [a.description, a.content].filter(Boolean).join(' '),
         },
       }
+    },
+
+    /* ══════════ 短视频（Pexels） ══════════ */
+
+    videoSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const clips = await need('pexels').search(args.query, args.limit ?? 8)
+        if (!clips.length) return noResult(args.query)
+        lastClips = clips
+        desk?.()?.render({
+          key: 'video-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          data: { title: '找到这些视频', items: clips.map(c => ({ label: c.title, sub: `${c.author} · ${c.duration}秒` })) },
+        })
+        return { status: 'ok', data: { clips: clips.map(cBrief) } }
+      } catch (e) { return cpFail(e, '短视频搜索') }
+    },
+
+    videoPlay: async (args: any): Promise<ToolResult> => {
+      try {
+        let clip = args.videoId ? lastClips.find(c => c.id === Number(args.videoId)) : undefined
+        if (!clip) {
+          const q = args.query ?? String(args.videoId ?? '')
+          const found = await need('pexels').search(q, 5)
+          if (!found.length) return noResult(q)
+          lastClips = found
+          clip = found[0]
+        }
+        // 先过安全约束再写任何播放状态。反过来的话被拒时会留下
+        // "在放视频但画面没开"的半吊子状态，播放器卡就出来了
+        const gate = store.set('media.videoActive', true)
+        if (gate.status !== 'ok')
+          return { status: 'rejected', code: gate.code ?? 'VIDEO_WHILE_DRIVING',
+            message: gate.message ?? '车在动，视频画面不能开', suggestion: gate.suggestion }
+
+        store.set('media.source', 'video')
+        store.set('media.track', clip.title)
+        store.set('media.artist', clip.author)
+        store.set('media.artwork', clip.cover)
+        store.set('media.streamUrl', clip.url)
+        store.set('media.playing', true)
+        dismissKey('video-candidates')
+        return { status: 'ok', data: { playing: cBrief(clip) }, message: `在放${clip.title}` }
+      } catch (e) { return cpFail(e, '短视频播放') }
     },
 
     mediaFavorites: (): ToolResult => {

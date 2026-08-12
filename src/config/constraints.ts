@@ -14,6 +14,16 @@ export const CONSTRAINTS: Constraint[] = [
     message: '当前车速 {vehicle.speed}km/h，车窗最多开到 {value}%',
   },
   {
+    // 行车安全，跟"行驶中不能开车门"同一类。放约束引擎而不是 handler 里的 if——
+    // 判据一改（比如允许副驾看），只动这一条数据
+    id: 'VIDEO_WHILE_DRIVING',
+    when: ['vehicle.speed', '>', 0],
+    target: 'media.videoActive',
+    action: 'reject',
+    message: '车在动，视频画面不能开',
+    suggestion: '停稳了再看；想听点东西的话我可以放音乐或者电台',
+  },
+  {
     id: 'CHILD_LOCK_ON',
     when: ['cabin.childLock', '==', true],
     target: 'cabin.window.rear*.position',

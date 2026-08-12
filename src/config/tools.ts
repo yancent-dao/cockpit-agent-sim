@@ -537,6 +537,28 @@ export const TOOLS: ToolDef[] = [
     handler: 'newsRead',
   },
 
+  /* ══════════ 短视频（Pexels） ══════════ */
+  {
+    name: 'video.search',
+    desc: '找短视频。素材库风格（风景、城市、动物、美食这类），**不是社交平台的推荐流**，没有点赞评论。用英文关键词命中率高得多。结果自动上屏带编号。',
+    permission: '彩',
+    params: {
+      query: { type: 'string', required: true, desc: '关键词，英文命中率更高，如 city drive / cat / cooking' },
+      limit: { type: 'number', range: [1, 15], desc: '最多几条，默认 8' },
+    },
+    handler: 'videoSearch',
+  },
+  {
+    name: 'video.play',
+    desc: '播短视频。**车一动就会被拒**（行车安全），拒绝时把原因和替代方案告诉用户——可以改放音乐或电台。用户说"放个视频"直接传 query 即可。',
+    permission: '彩',
+    params: {
+      videoId: { type: 'number', desc: 'video.search 返回的 id' },
+      query: { type: 'string', desc: '没有 id 时按关键词现搜现播' },
+    },
+    handler: 'videoPlay',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

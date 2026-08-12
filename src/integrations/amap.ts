@@ -114,7 +114,9 @@ const STRATEGY: Record<string, number> = {
 
 const TRAFFIC_STATUS = ['unknown', 'clear', 'slow', 'congested'] as const
 
-export type Fetcher = (url: string) => Promise<{ ok: boolean; json: () => Promise<any> }>
+/** init 是可选的：高德用不上，Pexels 要靠它传 Authorization 头 */
+export type Fetcher = (url: string, init?: { headers?: Record<string, string> })
+  => Promise<{ ok: boolean; json: () => Promise<any> }>
 
 /**
  * 路线点抽稀。一条几十公里的路线有几百个坐标点，全塞进 URL 会超长被高德拒绝；

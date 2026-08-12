@@ -126,11 +126,13 @@ export const weatherForm: FormFn = (c, r) => {
 export const capForm: FormFn = (c, r) => {
   const a = area(c, r)
   const mode = a >= 32 ? 'grid' : a >= 12 ? 'list' : 'count'
+  // 按**实际列数**算容量。list 模式只有一列，照三列的容量给就会切掉半行——
+  // 用户看到一条被拦腰截断的能力比不显示更糟，他会以为那就是全部
+  const cols = mode === 'grid' ? contentCols(c) : 1
   return {
-    blocks: ['groups'], mode,
-    maxItems: mode === 'count' ? 0 : listCapacity(c, r) * 2,
+    blocks: ['groups'], mode, cols,
+    maxItems: mode === 'count' ? 0 : cols * r * 2,
     overflow: mode === 'count' ? 'count' : 'more',
-    cols: mode === 'grid' ? contentCols(c) : 1,
   }
 }
 

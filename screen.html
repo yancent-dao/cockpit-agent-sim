@@ -215,9 +215,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .wxmeta small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 
 /* ── 能力目录 ── */
-.cap{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:calc(12px*var(--u));
+/* 列数由形态函数给（c1/c2/c3），不在 CSS 里硬编码 ——
+   写死 3 列的话 form.cols 说 2 列、渲染出 3 列，算出来的容量对不上，
+   最后就是切掉半行 */
+.cap{flex:1;display:grid;grid-template-columns:1fr;gap:calc(10px*var(--u));
   align-content:start;overflow:hidden}
-.cap.list{grid-template-columns:1fr;gap:calc(8px*var(--u))}
+.cap.c2{grid-template-columns:1fr 1fr}
+.cap.c3{grid-template-columns:repeat(3,1fr)}
 .cap div{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
   border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-1,var(--text-primary))}
@@ -319,6 +323,15 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub,.tpl-notice .sub{
   flex:1;display:flex;align-items:center;
   font-size:calc(var(--t-lead)*var(--u));line-height:1.25;color:var(--tx-1,var(--text-primary))}
+
+/* ── 确认卡：问句是主体，不是标题下面的小字 ──
+   这张卡的意思是「现在轮到你说话了」。问句跟正文一样大的话，
+   用户扫一眼不知道系统在等他。选项压到底部，中间留白把两者分开 */
+.tpl-confirm .bd{justify-content:space-between}
+.tpl-confirm .sub{font-size:calc(var(--t-lead)*var(--u)*1.2);line-height:1.22;
+  font-weight:600;color:var(--ac)}
+.tpl-confirm .listcard{flex:none}
+.tpl-confirm .listcard li{border-bottom:none;padding:calc(4px*var(--u)) 0}
 
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}

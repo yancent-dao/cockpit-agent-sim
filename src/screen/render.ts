@@ -148,8 +148,12 @@ export function cardBody(c: CardView): string {
       // 33 项塞进一格是不可能的，老实报个数
       if (form.mode === 'count')
         return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`
-      return `<div class="cap ${form.mode}">${items.map((i: any) =>
-        `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
+      // 屏幕不可滚动，放不下的必须截断并说明——切掉半行等于骗人
+      const shown = items.slice(0, form.maxItems)
+      const rest = items.length - shown.length
+      return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i: any) =>
+        `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>${
+        rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ''}`
     }
     case 'weather': {
       const w = weatherForm(...dimsOf(c.size))

@@ -89,6 +89,20 @@ describe('能力目录：33 项塞不进小卡就老实报个数', () => {
     for (const t of ['banner', 'panel'] as const) expect(f(capForm, t).mode, t).toBe('list')
   })
 
+  /**
+   * 能显示几项要按**实际列数**算。list 模式只有一列，
+   * 按三列的容量给就会切掉半行 —— 用户看到一条被拦腰截断的能力，
+   * 比不显示更糟（他会以为那就是全部）。
+   */
+  it('list 模式按一列算容量，不按三列', () => {
+    expect(f(capForm, 'banner').maxItems).toBe(4)   // 12×2 一列 = 4 条
+    expect(f(capForm, 'panel').maxItems).toBe(4)
+  })
+
+  it('grid 模式才按多列算', () => {
+    expect(f(capForm, 'full').maxItems).toBeGreaterThan(f(capForm, 'banner').maxItems!)
+  })
+
   it('card 及以下只报数量', () => {
     for (const t of ['card', 'chip'] as const) {
       expect(f(capForm, t).mode, t).toBe('count')

@@ -1,7 +1,8 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { navForm, capForm, weatherForm } from './layout'
+import { navForm } from './layout'
+import { cardBody, esc as escR } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 
@@ -175,67 +176,6 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
 }
 
 /** 卡片模板渲染 —— 模板为主 + 通用卡兜底 */
-function body(c: CardView): string {
-  const d = c.data ?? {}
-  switch (c.template) {
-    case 'vehicle':
-      return `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${CAR_SVG}</div>`
-    case 'control':
-      // 包一层容器：卡片本身是 flex column，靠 inline-block 排不成多列
-      return `<div class="wins">` + (d.items ?? []).map((it: any) => {
-        const isPct = typeof it.value === 'number' && it.unit === '%'
-        const shown = typeof it.value === 'boolean' ? (it.value ? '开' : '关')
-          : typeof it.value === 'number' ? `${Math.round(it.value)}${esc(it.unit ?? '')}`
-          : esc(String(it.value ?? '--'))
-        return `
-        <div class="win${hotWindows.includes(it.key) ? ' hot' : ''}">
-          <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
-          ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ''}
-        </div>`
-      }).join('') + `</div>`
-    case 'confirm':
-      // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。
-      // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
-      return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (
-        d.options?.length
-          ? `<ol class="listcard opts">${d.options.map((o: string) => `<li><b>${esc(o)}</b></li>`).join('')}</ol>`
-          : `<div>${['确认', '取消'].map(o => `<span class="opt">${o}</span>`).join('')}</div>`)
-    case 'notice':
-      return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ''}`
-    case 'list':
-      // 带序号：用户是用语音选的（"第一个"），屏上必须能对上号
-      return `<ol class="listcard">${(d.items ?? []).map((i: any) =>
-        `<li><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</li>`).join('')}</ol>`
-    case 'capability': {
-      const items = d.items ?? []
-      const form = capForm(c.size)
-      // 33 项塞进一格是不可能的，老实报个数
-      if (form.mode === 'count')
-        return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`
-      return `<div class="cap ${form.mode}">${items.map((i: any) =>
-        `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
-    }
-    case 'weather': {
-      const w = weatherForm(c.size)
-      // 风力和湿度任一缺失都不该留下孤零零一个分隔点
-      const sub = d.now
-        ? [d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · ')
-        : ''
-      const cast = (d.forecast ?? []).slice(0, w.forecast)
-      return `${d.now ? `<div class="wxnow">
-          <b>${Math.round(d.now.temperature)}<i>°</i></b>
-          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
-        </div>` : ''}
-        ${cast.length ? `<div class="wxcast${w.forecastRow ? ' row' : ''}">${cast.map((f: any) => `
-          <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join('')}</div>` : ''}`
-    }
-    case 'nav':
-      // 导航卡由 renderNavCard 单独处理——活地图有状态，不能跟着文字一起重绘
-      return ''
-    default:
-      return `<div class="sub">${esc(d.text ?? '')}</div>`
-  }
-}
 
 /**
  * 卡片节点按 id 复用，不再整体 innerHTML 重绘。
@@ -273,7 +213,12 @@ function renderDesk() {
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
-      else node.innerHTML = `<h3>${esc(c.title)}</h3>${body(c)}`
+      else {
+        node.innerHTML = `<h3>${esc(c.title)}</h3>${cardBody(c)}`
+        // 车身图形是资源不是逻辑，留在这里填进 render 层给的占位
+        const slot = node.querySelector('.vehslot')
+        if (slot) slot.innerHTML = CAR_SVG
+      }
       node.dataset.sig = sig
     }
   }
@@ -299,7 +244,7 @@ function renderDesk() {
   if (deskState.overlay) {
     ov.className = 'on'
     ov.innerHTML = `<div class="card tpl-${deskState.overlay.template}">
-      <h3>${esc(deskState.overlay.title)}</h3>${body(deskState.overlay)}</div>`
+      <h3>${esc(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`
   } else { ov.className = ''; ov.innerHTML = '' }
 
   // 车辆示意图里的车窗

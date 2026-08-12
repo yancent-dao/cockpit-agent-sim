@@ -19,6 +19,21 @@ export interface FieldSpec {
  */
 export const COMMON_SIZES = ['1/6', '1/3', '1/2'] as const
 
+/**
+ * 列表类卡片每档能显示几条。
+ *
+ * 屏幕 cursor:none 不可交互，`overflow:auto` 等于内容永远看不到 ——
+ * 所以必须截断并明说"还有 N 条"。这张表同时被两处用：
+ *   · 车机屏渲染时按它截断
+ *   · desk.summary() 按它算剩余数，回给 Agent
+ * 不共用一张表的话，模型以为屏上有 12 条、说"第 10 个"，用户根本看不到。
+ */
+export const LIST_CAPACITY: Record<string, number> = {
+  '1/6': 4, '1/3': 6, '1/2': 8, '2/3': 12, full: 20,
+}
+/** chip 档放不下选项，只报数量——被用户"第 4 个"点到就是事故 */
+export const listCapacity = (size: string) => LIST_CAPACITY[size] ?? 4
+
 export interface CardTemplate {
   id: string
   label: string

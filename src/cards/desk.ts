@@ -1,4 +1,4 @@
-import { CARD_TEMPLATES } from '../config/cards'
+import { CARD_TEMPLATES, listCapacity } from '../config/cards'
 
 /**
  * 卡片桌面（无APP化）—— 2026-08-10 重设计，见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md
@@ -311,6 +311,14 @@ export function createDesk(clock: () => number = Date.now) {
     lines.push(l.cards.length
       ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，剩余 ${l.free} 格`
       : `桌面为空，剩余 6 格`)
+    // 截断信息必须回给 Agent。只做 UI 的话模型以为屏上有 12 条、
+    // 张口就说"第 10 个"，而用户根本看不到第 5 条之后的东西
+    for (const c of l.cards) {
+      // 优先用卡片自己声明的 moreCount；没声明就按档位容量算
+      const total = Array.isArray(c.data?.items) ? c.data.items.length : 0
+      const n = Number(c.data?.moreCount ?? Math.max(0, total - listCapacity(c.size)))
+      if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`)
+    }
     return lines.join('\n')
   }
 

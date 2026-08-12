@@ -52,7 +52,22 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   background:var(--bg-elevated);font-size:26px;color:var(--text-primary)}
 .card .sug{margin-top:12px;font-size:24px;color:var(--brand)}
 /* 候选列表：序号让语音选择("第一个")和屏幕对得上号 */
-.listcard{list-style:none;counter-reset:pick;margin:0;padding:0;overflow:auto}
+.listcard{list-style:none;counter-reset:pick;margin:0;padding:0}
+/* 屏幕 cursor:none，滚不动 —— 列表一律截断，不留 overflow:auto */
+.listcard.c2{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
+.card .more{margin-top:10px;font-size:22px;color:var(--text-secondary)}
+.card .lstcount{flex:1;display:flex;align-items:baseline;justify-content:center;gap:10px}
+.card .lstcount b{font-size:76px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.card .lstcount span{font-size:24px;color:var(--text-secondary)}
+.card .vehslot{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+.card .glist{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.card .gi{display:flex;align-items:baseline;justify-content:space-between;gap:16px;
+  padding:8px 0;border-bottom:1px solid var(--hair, rgba(0,0,0,.06))}
+.card .gi:last-child{border-bottom:none}
+.card .gi span{font-size:24px;color:var(--text-secondary)}
+.card .gi b{font-size:28px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.card .gi b i{font-size:20px;font-weight:500;font-style:normal;margin-left:3px;color:var(--text-secondary)}
+.card .gacts{display:flex;flex-wrap:wrap;margin-top:4px}
 .listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:14px;
   padding:12px 0;border-bottom:1px solid var(--hairline)}
 .listcard li:last-child{border-bottom:none}

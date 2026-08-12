@@ -11,7 +11,7 @@ import type { NewsClient } from '../integrations/news'
 import type { PexelsClient } from '../integrations/pexels'
 import type { WebSearchClient } from '../integrations/websearch'
 import { createNavHandlers } from '../integrations/navHandlers'
-import { createMediaHandlers } from '../integrations/mediaHandlers'
+import { createMediaHandlers, CANDIDATES } from '../integrations/mediaHandlers'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -68,7 +68,7 @@ export function createRegistry(
       // 问句同步上屏——显示是机制，模型只负责把问题念出来。
       // 但候选列表卡已经在场时（如导航搜索多结果）屏幕上不用再动：
       // 选项在列表里摆着，模型的问句常是一整段，塞进标题反而挤掉列表。
-      const candidates = deps.desk?.findByKey('nav-candidates')
+      const candidates = deps.desk?.findByKey(CANDIDATES)
       if (candidates) { /* 屏幕已经在展示候选，不再开卡也不改标题 */ }
       // ttl 用 untilTaskEnd 而非秒数：用户下一句一开口，这问题要么被回答要么被跳过，
       // 卡片就该走。挂满 60 秒是白占位置。

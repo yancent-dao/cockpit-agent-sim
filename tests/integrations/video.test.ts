@@ -64,7 +64,7 @@ describe('video.search / play', () => {
   it('搜索结果自动上屏', async () => {
     const r = mk(fakePexels([clip(1), clip(2)]))
     expect((await r.invoke('video.search', { query: '风景' })).status).toBe('ok')
-    expect(desk.findByKey('video-candidates')!.data.items).toHaveLength(2)
+    expect(desk.findByKey('candidates')!.data.items).toHaveLength(2)
   })
 
   it('停车时能播，写满播放状态且画面打开', async () => {

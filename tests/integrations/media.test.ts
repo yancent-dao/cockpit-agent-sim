@@ -130,3 +130,44 @@ describe('media.favorite / favorites：跨源统一的收藏', () => {
     expect(((await reg.invoke('media.favorites', {})).data as any).items).toHaveLength(1)
   })
 })
+
+/**
+ * 实测（带孩子场景）：用户先让找动画片、说"没有就算了"，转而听儿歌，
+ * 那张"找到这些视频"从第 2 轮一直挂到第 5 轮。
+ *
+ * 用户放弃某个话题是没有机制信号的（那属于意图理解）。但有一条约定成立：
+ * **一次只在选一样东西**——开始挑歌的时候，视频候选就没意义了。
+ * 所有候选列表共用一个 key，天然互斥，零新增机制。
+ */
+describe('候选列表一次只有一张', () => {
+  const withCps = (extra: any) =>
+    createRegistry(store, TOOLS, Date.now, { desk, ...extra } as any)
+
+  it('搜歌之后再搜视频，屏幕上只剩视频那张', async () => {
+    const r = withCps({
+      itunes: { search: async () => [
+        { id: 1, name: '小宝贝', artist: '儿歌', album: '', artwork: 'a', preview: 'p', duration: 60 },
+        { id: 2, name: '两只老虎', artist: '儿歌', album: '', artwork: 'a', preview: 'p2', duration: 60 }] },
+      pexels: { search: async () => [
+        { id: 9, title: 'cartoon', author: 'x', duration: 10, cover: 'c', url: 'u', width: 360, height: 640 },
+        { id: 8, title: 'cat', author: 'y', duration: 12, cover: 'c', url: 'u2', width: 360, height: 640 }] },
+    })
+    await r.invoke('music.search', { query: '儿歌' })
+    await r.invoke('video.search', { query: '动画片' })
+    const lists = desk.layout().cards.filter(c => c.template === 'list')
+    expect(lists).toHaveLength(1)
+    expect(lists[0].data.title).toContain('视频')
+  })
+
+  it('反过来也一样：搜完视频再搜歌，只剩歌那张', async () => {
+    const r = withCps({
+      itunes: { search: async () => [{ id: 1, name: '小宝贝', artist: '儿歌', album: '', artwork: 'a', preview: 'p', duration: 60 }] },
+      pexels: { search: async () => [{ id: 9, title: 'cartoon', author: 'x', duration: 10, cover: 'c', url: 'u', width: 360, height: 640 }] },
+    })
+    await r.invoke('video.search', { query: '动画片' })
+    await r.invoke('music.search', { query: '儿歌' })
+    const lists = desk.layout().cards.filter(c => c.template === 'list')
+    expect(lists).toHaveLength(1)
+    expect(lists[0].data.title).toContain('歌')
+  })
+})

@@ -463,7 +463,7 @@ describe('navigation.search', () => {
     })
     const res = await r.invoke('navigation.search', { query: '春熙路' })
     expect(res.status).toBe('ok')
-    const card = desk.findByKey('nav-candidates')!
+    const card = desk.findByKey('candidates')!
     expect(card).toBeTruthy()
     expect(card.template).toBe('list')
     expect(card.data.items).toHaveLength(2)
@@ -480,7 +480,7 @@ describe('navigation.search', () => {
       ] } }),
     })
     await r.invoke('navigation.search', { query: '春熙路步行街' })
-    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
   it('setDestination 定下来后候选列表卡自动撤掉——任务闭环', async () => {
@@ -498,9 +498,9 @@ describe('navigation.search', () => {
       }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    expect(desk.findByKey('candidates')).toBeTruthy()
     await r.invoke('navigation.setDestination', { poiId: 'B1' })
-    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
   // 模板已经声明了自己支持哪些尺寸，仲裁该认这个下限，不该让每个建卡处手写
@@ -514,7 +514,7 @@ describe('navigation.search', () => {
       ] } }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('nav-candidates')!.minSize).toBe('1/6') // list 模板最小的那档
+    expect(desk.findByKey('candidates')!.minSize).toBe('1/6') // list 模板最小的那档
   })
 
   // 候选卡不能像问题卡那样"用户一开口就撤"——实测用户的下一句往往就是冲着
@@ -532,7 +532,7 @@ describe('navigation.search', () => {
     })
     await r.invoke('navigation.search', { query: 'x' })
     desk.endTask()
-    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    expect(desk.findByKey('candidates')).toBeTruthy()
   })
 
   // 卡片没上屏而 Tool 说 ok，Agent 就会照常说"你说第几个"，用户对着空屏幕懵。
@@ -606,9 +606,9 @@ describe('navigation.search', () => {
       }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    expect(desk.findByKey('candidates')).toBeTruthy()
     await r.invoke('navigation.compareRoutes', { poiId: 'B1' })
-    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
     expect(desk.findByKey('routes')).toBeTruthy() // 但路线卡自己得留着
   })
 
@@ -627,9 +627,9 @@ describe('navigation.search', () => {
       }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('nav-candidates')).toBeTruthy()
+    expect(desk.findByKey('candidates')).toBeTruthy()
     await r.invoke('places.save', { alias: '家', address: 'a', location: '104.07,30.65' })
-    expect(desk.findByKey('nav-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
   it('type=bus 时搜公交线路，city 用 near 传', async () => {
@@ -1236,7 +1236,7 @@ describe('查询/交互结果自动上屏', () => {
     await r.invoke('navigation.search', { query: 'x' })
     await r.invoke('voice.ask', { question: '春熙路有好几个，你说去哪个？第一个是步行街，第二个是地铁站。', options: ['甲', '乙'] })
     expect(desk.findByKey('ask')).toBeUndefined() // 不开第二张
-    expect(desk.findByKey('nav-candidates')!.data.title).toBe('你要去哪个？') // 列表卡自己的短标题，没被长问句覆盖
+    expect(desk.findByKey('candidates')!.data.title).toBe('你要去哪个？') // 列表卡自己的短标题，没被长问句覆盖
   })
 
   it('灰级 MRTR 拦截 → 确认卡自动上屏，带确认问句', async () => {

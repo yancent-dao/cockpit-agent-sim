@@ -7,6 +7,7 @@ import type { Store } from '../core/store'
 import type { Desk } from '../cards/desk'
 import { AmapError, thinPolyline, type AmapClient, type CarType } from './amap'
 import type { ToolResult } from '../tools/registry'
+import { CANDIDATES } from './mediaHandlers'
 
 /** 三方服务失败一律翻译成 unavailable——L2 的语义是"服务不可用"，不是"车不让做" */
 const amapFail = (e: unknown, what: string): ToolResult => ({
@@ -88,7 +89,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
    */
   const showCandidates = (pois: Array<{ name: string; address: string }>) => {
     const r = desk?.()?.render({
-      key: 'nav-candidates', template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
+      key: CANDIDATES, template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
       data: { title: '你要去哪个？', items: pois.map(p => ({ label: p.name, sub: p.address })) },
     })
     // 桌面满到连 1/6 都塞不下时，得让 Agent 知道——不然它照常说"你说第几个"，
@@ -96,7 +97,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
     return r && r.status !== 'ok'
   }
   /** 目的地定了，候选列表与方案对比都完成使命。比路线时只撤候选、留下路线卡 */
-  const dismissCandidates = (keys = ['nav-candidates', 'routes']) => {
+  const dismissCandidates = (keys = [CANDIDATES, 'routes']) => {
     const d = desk?.()
     for (const key of keys) {
       const c = d?.findByKey(key)
@@ -225,7 +226,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
           return { ...r, label: tags.join('·') || '备选' }
         })
 
-        dismissCandidates(['nav-candidates']) // 能比路线说明目的地已经定了
+        dismissCandidates([CANDIDATES]) // 能比路线说明目的地已经定了
         desk?.()?.render({
           key: 'routes', template: 'list', size: '1/2', kind: 'task', ttl: 120, refreshTtl: true,
           data: {

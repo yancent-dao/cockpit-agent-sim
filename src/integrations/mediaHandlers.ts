@@ -12,6 +12,14 @@ import type { Article, NewsClient } from './news'
 import type { Clip, PexelsClient } from './pexels'
 import type { WebSearchClient } from './websearch'
 
+/**
+ * 所有候选列表共用一个 key —— 一次只在选一样东西。
+ * 实测用户让找动画片、说"算了"转而听儿歌，那张视频候选挂了四轮不走：
+ * 用户放弃某个话题是没有机制信号的（那属于意图理解），但"同时只挑一样"
+ * 这条约定成立，共用 key 就天然互斥了。
+ */
+export const CANDIDATES = 'candidates'
+
 export interface Favorite {
   source: string
   track: string
@@ -110,7 +118,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
 
   const showTracks = (tracks: Track[]) => {
     desk?.()?.render({
-      key: 'music-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+      key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
       data: { title: '搜到这些歌', items: tracks.map(t => ({ label: t.name, sub: `${t.artist} · ${t.album}` })) },
     })
   }
@@ -233,7 +241,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           track = found[0]
         }
         playTrack(track)
-        dismissKey('music-candidates')   // 选完了，候选就翻篇了
+        dismissKey(CANDIDATES)   // 选完了，候选就翻篇了
         return {
           status: 'ok',
           data: { playing: brief(track) },
@@ -254,7 +262,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         if (!stations.length) return noStation(args.query ?? args.category ?? '')
         lastStations = stations
         desk?.()?.render({
-          key: 'radio-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
           data: {
             title: '搜到这些台',
             items: stations.map(s => ({ label: s.name, sub: stationSub(s) })),
@@ -281,7 +289,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         store.set('media.artwork', st.favicon)
         store.set('media.streamUrl', st.url)
         store.set('media.playing', true)
-        dismissKey('radio-candidates')
+        dismissKey(CANDIDATES)
         return { status: 'ok', data: { playing: sBrief(st) }, message: `在放 ${st.name}` }
       } catch (e) { return cpFail(e, '电台播放') }
     },
@@ -347,7 +355,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         if (!clips.length) return noResult(args.query)
         lastClips = clips
         desk?.()?.render({
-          key: 'video-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
           data: { title: '找到这些视频', items: clips.map(c => ({ label: c.title, sub: `${c.author} · ${c.duration}秒` })) },
         })
         return { status: 'ok', data: { clips: clips.map(cBrief) } }
@@ -377,7 +385,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         store.set('media.artwork', clip.cover)
         store.set('media.streamUrl', clip.url)
         store.set('media.playing', true)
-        dismissKey('video-candidates')
+        dismissKey(CANDIDATES)
         return { status: 'ok', data: { playing: cBrief(clip) }, message: `在放${clip.title}` }
       } catch (e) { return cpFail(e, '短视频播放') }
     },

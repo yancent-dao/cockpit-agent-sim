@@ -59,7 +59,7 @@ describe('music.search', () => {
     const r = mk(fakeItunes([song(1), song(2), song(3)]))
     const res = await r.invoke('music.search', { query: '周杰伦' })
     expect(res.status).toBe('ok')
-    const card = desk.findByKey('music-candidates')!
+    const card = desk.findByKey('candidates')!
     expect(card.template).toBe('list')
     expect(card.data.items[0].label).toContain('歌1')
   })
@@ -97,9 +97,9 @@ describe('music.play', () => {
   it('播了之后候选列表就翻篇了，撤掉', async () => {
     const r = mk(fakeItunes([song(1), song(2)]))
     await r.invoke('music.search', { query: 'x' })
-    expect(desk.findByKey('music-candidates')).toBeTruthy()
+    expect(desk.findByKey('candidates')).toBeTruthy()
     await r.invoke('music.play', { trackId: 1 })
-    expect(desk.findByKey('music-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
   // 只有 30 秒是 iTunes 的硬限制，不能让 Agent 以为能放整首

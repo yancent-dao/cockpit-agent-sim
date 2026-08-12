@@ -113,7 +113,7 @@ describe('radio.search', () => {
   it('结果自动上屏成带编号的列表', async () => {
     const r = mk(fakeRadio([station(1), station(2)]))
     expect((await r.invoke('radio.search', { query: '中国之声' })).status).toBe('ok')
-    const card = desk.findByKey('radio-candidates')!
+    const card = desk.findByKey('candidates')!
     expect(card.data.items[0].label).toContain('电台1')
   })
 
@@ -148,7 +148,7 @@ describe('radio.play', () => {
     const r = mk(fakeRadio([station(1), station(2)]))
     await r.invoke('radio.search', { query: 'x' })
     await r.invoke('radio.play', { stationId: 'uuid-1' })
-    expect(desk.findByKey('radio-candidates')).toBeUndefined()
+    expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
   // 电台是直播，没有"艺人"，把台的地区语言放进去更有用

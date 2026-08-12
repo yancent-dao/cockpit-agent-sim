@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>车机屏 HMI 视觉稿 v4 · 实施基准</title>
+<style>
+:root{
+  /* ① 原始色板 */
+  --n0:#FFFFFF; --n1:#F6F8FB; --n2:#EEF2F7; --n3:#E2E8F0; --n4:#CBD5E1;
+  --n5:#94A3B8; --n6:#64748B; --n7:#475569; --n8:#334155; --n9:#1E293B; --n10:#0F172A;
+
+  /* ② 语义色四件套 fg/bg/bd/gr */
+  --brand-fg:#1D4ED8; --brand-bg:#EFF6FF; --brand-bd:#BFDBFE; --brand-gr:linear-gradient(145deg,#3B82F6,#1D4ED8);
+  --info-fg:#0E7490;  --info-bg:#ECFEFF;  --info-bd:#A5F3FC; --info-gr:linear-gradient(145deg,#22B8CF,#0E7490);
+  --ok-fg:#047857;    --ok-bg:#ECFDF5;    --ok-bd:#A7F3D0;  --ok-gr:linear-gradient(145deg,#10B981,#047857);
+  --warn-fg:#B45309;  --warn-bg:#FFFBEB;  --warn-bd:#FDE68A;--warn-gr:linear-gradient(145deg,#F59E0B,#B45309);
+  --danger-fg:#B91C1C;--danger-bg:#FEF2F2;--danger-bd:#FECACA;--danger-gr:linear-gradient(145deg,#EF4444,#B91C1C);
+  --media-fg:#6D28D9; --media-bg:#F5F3FF; --media-bd:#DDD6FE;--media-gr:linear-gradient(145deg,#8B5CF6,#6D28D9);
+  --pick-fg:#4338CA;  --pick-bg:#EEF2FF;  --pick-bd:#C7D2FE;--pick-gr:linear-gradient(145deg,#6366F1,#4338CA);
+  --sys-fg:#475569;   --sys-bg:#F1F5F9;   --sys-bd:#CBD5E1; --sys-gr:linear-gradient(145deg,#64748B,#475569);
+
+  --sf-base:#E7ECF3; --sf-card:#FFFFFF; --sf-raised:#F6F8FB; --sf-sunken:#DCE3EC;
+  --tx-1:#0F172A; --tx-2:#475569; --tx-3:#94A3B8; --tx-inv:#FFFFFF;
+  --hair:rgba(15,23,42,.07); --hair-strong:rgba(15,23,42,.13);
+  --sh-1:0 1px 2px rgba(15,23,42,.05), 0 6px 18px rgba(15,23,42,.055);
+  --sh-2:0 2px 6px rgba(15,23,42,.06), 0 18px 44px rgba(15,23,42,.09);
+  --gloss:inset 0 1px 0 rgba(255,255,255,.92);
+
+  /* ③ 字阶 —— 乘以档位单位 --u */
+  --t-cap:22px; --t-body:26px; --t-title:24px; --t-lead:38px;
+  --t-num:52px; --t-hero:76px; --t-mega:100px;
+
+  --r-s:20px; --r-m:26px; --r-l:32px; --r-blk:16px; --r-pill:999px;
+  --ez:cubic-bezier(.22,.61,.36,1); --ez-in:cubic-bezier(.4,0,1,1); --ez-pop:cubic-bezier(.34,1.26,.64,1);
+  --d1:120ms; --d2:240ms; --d3:340ms; --d4:380ms;
+  --u:1; --ac:var(--brand-fg); --acbg:var(--brand-bg); --acgr:var(--brand-gr); --acbd:var(--brand-bd);
+}
+
+/* ═══════════ 文档外壳（深色，不属于车机屏） ═══════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0B0F16;color:#E2E8F0;padding:30px 22px 80px;
+  font-family:"PingFang SC","Noto Sans CJK SC",-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+.doc{max-width:1400px;margin:0 auto}
+.doc h1{font-size:23px;font-weight:600;margin-bottom:5px}
+.lede{font-size:13px;color:#7C8AA0;line-height:1.75;margin-bottom:14px}
+.note{background:#131A25;border:1px solid #1F2937;border-left:3px solid #8B5CF6;border-radius:8px;
+  padding:13px 17px;font-size:13px;line-height:1.85;color:#94A3B8;margin-bottom:24px}
+.note b{color:#E2E8F0} .note code{color:#A5B4FC;font-size:12px}
+.note em{color:#FCA5A5;font-style:normal}
+.sec{margin:34px 0 11px;display:flex;align-items:baseline;gap:11px;flex-wrap:wrap}
+.sec b{font-size:15px;font-weight:600;color:#F1F5F9}
+.sec span{font-size:12px;color:#64748B;line-height:1.6}
+.frame{background:#0E141C;border:1px solid #1B2432;border-radius:12px;padding:11px;overflow:hidden}
+
+/* ═══════════ 车机屏舞台 ═══════════ */
+.stage{width:2560px;height:1440px;transform-origin:top left;position:relative;
+  background:var(--sf-base);overflow:hidden;cursor:none}
+/* 环境底板：两团光晕，ΔL<4% 是硬上限，再大白卡显脏 */
+.stage::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(1100px 700px at 12% 4%, rgba(255,247,232,.55), transparent 62%),
+             radial-gradient(1000px 760px at 92% 96%, rgba(226,238,255,.6), transparent 60%)}
+.wrap{position:relative;width:100%;height:100%;display:flex;flex-direction:column}
+
+/* ── 状态条 ── */
+.bar-top{flex:none;height:96px;display:flex;align-items:center;gap:26px;padding:0 40px;
+  border-bottom:1px solid var(--hair)}
+.clock{font-size:34px;font-weight:500;color:var(--tx-1);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.wx-mini{display:flex;align-items:center;gap:9px;font-size:23px;color:var(--tx-2)}
+.wx-mini svg{width:26px;height:26px}
+.wx-mini b{font-weight:600;color:var(--tx-1);font-variant-numeric:tabular-nums}
+.bar-top .sp{flex:1}
+.gear{display:flex;align-items:center;gap:9px;padding:7px 17px;border-radius:var(--r-pill);
+  background:var(--brand-gr);color:#fff;font-size:23px;font-weight:600;
+  box-shadow:0 3px 12px rgba(29,78,216,.3);font-variant-numeric:tabular-nums}
+.gear i{font-style:normal;opacity:.72;font-weight:500;font-size:20px}
+.batt{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:600;color:var(--tx-1);
+  font-variant-numeric:tabular-nums}
+.batt .cell{width:52px;height:26px;border:2.5px solid var(--n5);border-radius:6px;position:relative;padding:2.5px}
+.batt .cell::after{content:'';position:absolute;right:-6px;top:7px;width:4px;height:9px;background:var(--n5);border-radius:0 2px 2px 0}
+.batt .fillb{height:100%;border-radius:2px;background:var(--ok-gr)}
+.batt.low .fillb{background:var(--warn-gr)} .batt.low .cell{border-color:var(--warn-fg)}
+
+/* ── 桌面 12×4 ── */
+.desk{flex:1;min-height:0;position:relative;padding:22px 40px;
+  display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,1fr);gap:16px}
+.slot{border:2px dashed rgba(15,23,42,.045);border-radius:var(--r-m)}
+
+/* ── 卡片基座 ── */
+.card{position:relative;overflow:hidden;background:var(--sf-card);border:1px solid var(--hair);
+  border-radius:var(--r-m);box-shadow:var(--sh-1),var(--gloss);
+  padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
+  background-image:linear-gradient(162deg,#FFFFFF 0%,#F7FAFD 100%)}
+/* 语义色晕：右上角一团身份色，7.5% 上限 */
+.card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;border-radius:50%;
+  background:var(--acgr);opacity:.075;pointer-events:none}
+.card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));margin-bottom:calc(12px*var(--u));
+  font-size:calc(var(--t-title)*var(--u));font-weight:500;color:var(--tx-3);letter-spacing:.09em}
+/* 图标块：40px 实色，远看一眼定位卡片类型 */
+.ico{flex:none;width:calc(40px*var(--u));height:calc(40px*var(--u));border-radius:calc(11px*var(--u));
+  background:var(--acbg);border:1px solid var(--acbd);display:flex;align-items:center;justify-content:center;color:var(--ac)}
+.ico svg{width:60%;height:60%}
+.card>h3 .rt{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);letter-spacing:0}
+.bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end}
+
+/* 档位只管 --u 和圆角；**位置由 style.gridArea 显式给**，跟真实实现一致——
+   desk.layout() 算出 row/col/span，screen/main.ts 写进 style，不靠 CSS 自动流。
+   稿子里如果靠自动流，节点复用时新卡 append 到末尾就会跑位（stage 会飘到右边） */
+.t-chip  {--u:.86;border-radius:var(--r-s)}
+.t-strip {--u:.92;border-radius:var(--r-s)}
+.t-bar   {--u:.96;border-radius:var(--r-s)}
+.t-card  {--u:1}
+.t-wide  {--u:1.06}
+.t-panel {--u:1.12}
+.t-banner{--u:1.18}
+.t-tower {--u:1.06;border-radius:var(--r-l)}
+.t-stage {--u:1.3;border-radius:var(--r-l)}
+
+/* 语义身份 */
+.a-brand{--ac:var(--brand-fg);--acbg:var(--brand-bg);--acbd:var(--brand-bd);--acgr:var(--brand-gr)}
+.a-info {--ac:var(--info-fg); --acbg:var(--info-bg); --acbd:var(--info-bd); --acgr:var(--info-gr)}
+.a-ok   {--ac:var(--ok-fg);   --acbg:var(--ok-bg);   --acbd:var(--ok-bd);   --acgr:var(--ok-gr)}
+.a-warn {--ac:var(--warn-fg); --acbg:var(--warn-bg); --acbd:var(--warn-bd); --acgr:var(--warn-gr)}
+.a-danger{--ac:var(--danger-fg);--acbg:var(--danger-bg);--acbd:var(--danger-bd);--acgr:var(--danger-gr)}
+.a-media{--ac:var(--media-fg);--acbg:var(--media-bg);--acbd:var(--media-bd);--acgr:var(--media-gr)}
+.a-pick {--ac:var(--pick-fg); --acbg:var(--pick-bg); --acbd:var(--pick-bd); --acgr:var(--pick-gr)}
+.a-sys  {--ac:var(--sys-fg);  --acbg:var(--sys-bg);  --acbd:var(--sys-bd);  --acgr:var(--sys-gr)}
+
+/* 数值 */
+.num{font-size:calc(var(--t-num)*var(--u));font-weight:600;color:var(--tx-1);
+  font-variant-numeric:tabular-nums;letter-spacing:-1.5px;line-height:1;
+  display:flex;align-items:flex-end;gap:calc(5px*var(--u))}
+.num i{font-style:normal;font-size:.44em;font-weight:400;color:var(--tx-3);letter-spacing:0;
+  transform:translateY(-.08em)}
+.hero{font-size:calc(var(--t-hero)*var(--u))}
+.mega{font-size:calc(var(--t-mega)*var(--u))}
+
+/* 块状均分容器：块数由 item 数决定，行数变了高度自动重分 */
+.blocks{flex:1;min-height:0;display:grid;gap:calc(10px*var(--u));grid-auto-rows:1fr}
+.blocks.c2{grid-template-columns:1fr 1fr}
+.blocks.c3{grid-template-columns:repeat(3,1fr)}
+.blk{background:linear-gradient(160deg,var(--n1),#fff);border:1px solid var(--hair);
+  border-radius:calc(var(--r-blk)*var(--u));padding:calc(12px*var(--u)) calc(15px*var(--u));
+  display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden}
+.blk.span2{grid-column:span 2}
+.blk .lb{display:flex;align-items:center;gap:calc(7px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);white-space:nowrap}
+.blk .lb svg{width:calc(19px*var(--u));height:calc(19px*var(--u));flex:none;opacity:.8}
+/* 7px 细轨道（原 18px 太粗）。目标位刻度是过渡仿真已有能力的可视化 */
+.trk{position:relative;height:calc(7px*var(--u));border-radius:99px;background:var(--n3);overflow:visible}
+.trk .fl{height:100%;border-radius:99px;background:var(--acgr);box-shadow:0 0 10px -2px var(--ac);
+  transition:width var(--d4) var(--ez)}
+.trk .tg{position:absolute;top:-3px;width:2.5px;height:calc(13px*var(--u));border-radius:2px;
+  background:var(--ac);opacity:.42}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:calc(5px*var(--u)) calc(13px*var(--u));
+  border-radius:var(--r-pill);background:var(--acbg);border:1px solid var(--acbd);
+  color:var(--ac);font-size:calc(var(--t-cap)*var(--u));font-weight:500;white-space:nowrap}
+.pill.solid{background:var(--acgr);color:#fff;border-color:transparent}
+
+/* ── 导航卡 ── */
+.nav-wrap{display:flex;flex-direction:column;height:100%;gap:calc(12px*var(--u))}
+.turn{flex:none;display:flex;align-items:center;gap:calc(18px*var(--u));
+  background:var(--sf-raised);border:1px solid var(--hair);border-radius:calc(20px*var(--u));
+  padding:calc(11px*var(--u)) calc(16px*var(--u))}
+/* 只有箭头方块是实心 brand，不整条铺蓝——整条蓝视觉重量压过地图 */
+.turn .arw{flex:none;width:calc(74px*var(--u));height:calc(74px*var(--u));border-radius:calc(17px*var(--u));
+  background:var(--brand-gr);color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 5px 18px -4px rgba(29,78,216,.5)}
+.turn .arw svg{width:56%;height:56%}
+.turn .dist{font-size:calc(52px*var(--u));font-weight:600;color:var(--tx-1);
+  font-variant-numeric:tabular-nums;letter-spacing:-1.5px;line-height:1;display:flex;align-items:flex-end;gap:4px}
+.turn .dist i{font-style:normal;font-size:.42em;font-weight:400;color:var(--tx-3);transform:translateY(-.1em)}
+.turn .act{font-size:calc(28px*var(--u));color:var(--tx-2);font-weight:500}
+.turn .road{margin-left:auto;text-align:right;min-width:0}
+.turn .road small{display:block;font-size:calc(19px*var(--u));color:var(--tx-3);letter-spacing:.06em}
+.turn .road b{font-size:calc(26px*var(--u));font-weight:500;color:var(--tx-1);
+  display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:calc(330px*var(--u))}
+.map{flex:1;min-height:0;border-radius:calc(22px*var(--u));overflow:hidden;position:relative;
+  background:#EAEEF3;border:1px solid var(--hair)}
+.nav-foot{flex:none;display:flex;align-items:flex-end;gap:calc(30px*var(--u))}
+.nav-foot .dest{margin-left:auto;text-align:right}
+.nav-foot .dest small{display:block;font-size:calc(19px*var(--u));color:var(--tx-3)}
+.nav-foot .dest b{font-size:calc(26px*var(--u));font-weight:500;color:var(--tx-1)}
+
+/* ── 播放器 ── */
+.pl{display:flex;flex-direction:column;height:100%;gap:calc(14px*var(--u))}
+.pl-top{flex:1;min-height:0;display:flex;align-items:center;gap:calc(18px*var(--u))}
+.pl-art{flex:none;width:calc(112px*var(--u));height:calc(112px*var(--u));border-radius:calc(18px*var(--u));
+  background:var(--media-gr);display:flex;align-items:center;justify-content:center;color:#fff;
+  box-shadow:0 8px 24px -6px rgba(109,40,217,.45);overflow:hidden}
+.pl-art svg{width:44%;height:44%}
+.pl-meta{min-width:0;display:flex;flex-direction:column;gap:calc(6px*var(--u))}
+.pl-meta b{font-size:calc(34px*var(--u));font-weight:600;color:var(--tx-1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-meta span{font-size:calc(24px*var(--u));color:var(--tx-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-time{flex:none;display:flex;align-items:center;gap:calc(12px*var(--u));
+  font-size:calc(20px*var(--u));color:var(--tx-3);font-variant-numeric:tabular-nums}
+.pl-time .trk{flex:1}
+/* 控制条不是按钮：低对比图标 + 当前态高亮，视觉上不像可点 */
+.pl-ctl{flex:none;display:flex;align-items:center;gap:calc(24px*var(--u));
+  padding-top:calc(11px*var(--u));border-top:1px solid var(--hair)}
+.pl-ctl .ci{color:var(--n4);display:flex}
+.pl-ctl .ci svg{width:calc(28px*var(--u));height:calc(28px*var(--u))}
+.pl-ctl .ci.on{color:var(--media-fg)}
+.pl-ctl .main{width:calc(52px*var(--u));height:calc(52px*var(--u));border-radius:50%;
+  background:var(--media-gr);color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 5px 16px -4px rgba(109,40,217,.5)}
+.pl-ctl .main svg{width:44%;height:44%}
+.pl-ctl .vol{margin-left:auto;display:flex;align-items:center;gap:calc(9px*var(--u));color:var(--tx-3);
+  font-size:calc(20px*var(--u));font-variant-numeric:tabular-nums}
+.pl-hint{flex:none;font-size:calc(19px*var(--u));color:var(--tx-3);display:flex;align-items:center;gap:7px}
+.pl-hint svg{width:calc(20px*var(--u));height:calc(20px*var(--u));flex:none}
+.live{display:inline-flex;align-items:center;gap:7px;color:var(--danger-fg);font-size:calc(20px*var(--u));font-weight:500}
+.live .dot{width:9px;height:9px;border-radius:50%;background:var(--danger-fg);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(185,28,28,.5)}70%{box-shadow:0 0 0 9px rgba(185,28,28,0)}100%{box-shadow:0 0 0 0 rgba(185,28,28,0)}}
+
+/* ── 列表 ── */
+.lst{flex:1;min-height:0;display:grid;gap:calc(7px*var(--u));align-content:start;grid-auto-rows:max-content}
+.lst.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
+.li{display:flex;align-items:center;gap:calc(13px*var(--u));padding:calc(8px*var(--u)) 0;
+  border-bottom:1px solid var(--hair)}
+.li:last-child{border-bottom:none}
+.li .no{flex:none;width:calc(32px*var(--u));height:calc(32px*var(--u));border-radius:50%;
+  border:1.5px solid var(--pick-bd);color:var(--pick-fg);background:var(--pick-bg);
+  display:flex;align-items:center;justify-content:center;
+  font-size:calc(19px*var(--u));font-weight:600;font-variant-numeric:tabular-nums}
+.picking .li .no{background:var(--pick-gr);color:#fff;border-color:transparent}
+.li .tt{min-width:0;flex:1}
+.li .tt b{display:block;font-size:calc(26px*var(--u));font-weight:500;color:var(--tx-1);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .tt small{display:block;font-size:calc(20px*var(--u));color:var(--tx-3);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .rr{flex:none;font-size:calc(22px*var(--u));color:var(--tx-2);font-variant-numeric:tabular-nums}
+.more{flex:none;margin-top:calc(8px*var(--u));padding-top:calc(9px*var(--u));border-top:1px solid var(--hair);
+  font-size:calc(21px*var(--u));color:var(--tx-3)}
+
+/* ── 提示 / 拒绝 / 成功：白卡 + 左竖条，不整块染色 ── */
+.card.strip-l{padding-left:calc(34px*var(--u))}
+.card.strip-l::before{content:'';position:absolute;left:0;top:0;bottom:0;width:8px;background:var(--acgr)}
+.card.strip-l .wash{position:absolute;left:0;top:0;bottom:0;width:42%;
+  background:linear-gradient(90deg,var(--acbg),transparent);pointer-events:none;opacity:.75}
+.msg{font-size:calc(30px*var(--u));font-weight:500;color:var(--tx-1);line-height:1.4;position:relative}
+.msg-sub{margin-top:calc(9px*var(--u));font-size:calc(23px*var(--u));color:var(--tx-2);line-height:1.5;position:relative}
+
+/* ── 待选：描边呼吸 3 轮后停在高亮态，不持续闪 ── */
+.picking{border-color:var(--pick-bd);box-shadow:var(--sh-1),var(--gloss),0 0 0 3px rgba(67,56,202,.16);
+  animation:breathe 2.2s var(--ez) 3}
+@keyframes breathe{0%,100%{box-shadow:var(--sh-1),var(--gloss),0 0 0 3px rgba(67,56,202,.12)}
+  50%{box-shadow:var(--sh-2),var(--gloss),0 0 0 7px rgba(67,56,202,.2)}}
+.cdown{position:absolute;left:0;bottom:0;height:5px;background:var(--pick-gr);border-radius:0 3px 0 0}
+
+/* ── 天气 ── */
+.wx-now{display:flex;align-items:center;gap:calc(22px*var(--u))}
+.wx-now .ic{width:calc(84px*var(--u));height:calc(84px*var(--u));color:var(--info-fg);flex:none}
+.wx-t{font-size:calc(var(--t-mega)*var(--u));font-weight:500;line-height:.92;letter-spacing:-4px;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(150deg,var(--tx-1),#0E7490);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wx-side{display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.wx-side b{font-size:calc(28px*var(--u));font-weight:500;color:var(--tx-1)}
+.wx-side small{font-size:calc(21px*var(--u));color:var(--tx-3)}
+
+/* ── 生成式 ── */
+.card.gen{border-color:var(--media-bd);box-shadow:var(--sh-1),var(--gloss),0 0 0 2px rgba(109,40,217,.09)}
+.badge{margin-left:auto;font-size:calc(18px*var(--u));padding:3px 11px;border-radius:var(--r-pill);
+  background:var(--media-bg);border:1px solid var(--media-bd);color:var(--media-fg);letter-spacing:0}
+.chartbars{flex:1;display:flex;align-items:flex-end;gap:calc(11px*var(--u));padding-top:calc(9px*var(--u))}
+.chartbars i{flex:1;border-radius:8px 8px 0 0;background:linear-gradient(180deg,#C4B5FD,#8B5CF6);display:block}
+.chartbars i.hot{background:var(--media-gr);box-shadow:0 0 18px -4px rgba(109,40,217,.55)}
+.chartx{flex:none;display:flex;gap:calc(11px*var(--u));margin-top:calc(7px*var(--u))}
+.chartx span{flex:1;text-align:center;font-size:calc(19px*var(--u));color:var(--tx-3)}
+
+/* ── 横幅：锚定桌面区顶部，不浮空 ── */
+.banner-slot{position:absolute;left:40px;right:40px;top:14px;z-index:20;pointer-events:none}
+.bn{display:flex;align-items:center;gap:16px;padding:15px 22px;border-radius:var(--r-s);
+  background:var(--sf-card);border:1px solid var(--acbd);box-shadow:var(--sh-2);
+  animation:bnIn 340ms var(--ez-pop)}
+.bn .ico{width:42px;height:42px;border-radius:12px}
+.bn b{font-size:27px;font-weight:600;color:var(--tx-1)}
+.bn span{font-size:22px;color:var(--tx-2);margin-left:4px}
+@keyframes bnIn{from{opacity:0;transform:translateY(-22px)}to{opacity:1;transform:none}}
+
+/* ── 语音区 ── */
+.voice{flex:none;height:var(--vh,300px);display:flex;align-items:center;gap:32px;padding:0 44px;
+  background:var(--sf-sunken);border-top:1px solid var(--hair-strong);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7);transition:height var(--d4) var(--ez)}
+.orb{flex:none;width:104px;height:104px;border-radius:50%;position:relative;
+  background:radial-gradient(circle at 34% 30%,#93C5FD,#2563EB 56%,#1E40AF);
+  box-shadow:0 0 44px -6px rgba(37,99,235,.55);display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:transform var(--d3) var(--ez)}
+.orb i{width:7px;border-radius:99px;background:rgba(255,255,255,.94);display:block;
+  animation:wv .85s ease-in-out infinite}
+.orb i:nth-child(2){animation-delay:.12s} .orb i:nth-child(3){animation-delay:.24s}
+.orb i:nth-child(4){animation-delay:.36s}
+@keyframes wv{0%,100%{height:15px}50%{height:44px}}
+.orb.think::after{content:'';position:absolute;inset:-9px;border-radius:50%;
+  background:conic-gradient(from 0deg,transparent,rgba(37,99,235,.75),transparent);
+  animation:spin 1.6s linear infinite;-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 0);
+  mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 0)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.vtx{min-width:0}
+.vtag{display:flex;align-items:center;gap:9px;font-size:21px;color:var(--tx-3);margin-bottom:7px}
+.vtag .d{width:8px;height:8px;border-radius:50%;background:var(--brand-fg);animation:pulse 1.8s infinite}
+.vtx p{font-size:38px;font-weight:500;color:var(--tx-1);line-height:1.35}
+.vtx p.user{color:var(--tx-2);font-weight:400}
+.idle .orb{width:74px;height:74px;filter:brightness(.72)}
+.idle .orb i{animation:none;height:13px;opacity:.5}
+.idle .vtx p{font-size:27px;color:var(--tx-3);font-weight:400}
+
+/* 覆盖层 */
+.ovl{position:absolute;inset:0;z-index:30;background:rgba(231,236,243,.93);backdrop-filter:blur(9px);
+  padding:96px 40px 40px;display:flex;flex-direction:column}
+.ovl.alert{background:rgba(254,242,242,.95)}
+.caps{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-content:start;overflow:hidden}
+.cap{background:linear-gradient(160deg,var(--n1),#fff);border:1px solid var(--hair);border-radius:16px;padding:15px 18px}
+.cap b{display:block;font-size:25px;font-weight:500;color:var(--tx-1)}
+.cap small{display:block;font-size:20px;color:var(--tx-3);margin-top:3px}
+
+/* 档位总览 */
+.tiers{display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,64px);gap:10px;
+  background:#0E141C;padding:14px;border-radius:10px;border:1px solid #1B2432}
+.tv{border-radius:8px;background:linear-gradient(145deg,#1E293B,#0F172A);border:1px solid #334155;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#94A3B8}
+.tv b{font-size:14px;color:#E2E8F0;font-weight:600}
+.tv small{font-size:11px}
+.tv.hi{border-color:#6D28D9;background:linear-gradient(145deg,#2E1065,#1E1B4B)}
+</style>
+
+<div class="doc">
+<h1>车机屏 HMI 视觉稿 v4 · 实施基准</h1>
+<p class="lede">2560×1440 · 12 列 × 4 行 · gutter 16px · 单元 188.7×237px　｜　基于 2026-08-11 设计文档，视觉执行按 1.5m 视距 / 余光扫视 / 行车震动三条现场条件重做</p>
+
+<div class="note">
+<b>v4 相对 v3 改了五处，都是从"车里能不能看清"倒推的：</b><br>
+① <b>图标块进标题行</b> —— 40px 实色语义图标是远看时定位卡片类型的锚点，比读标题快。<em>标题降到 24px/tx-3 是为了给它让位，不是为了小而小。</em><br>
+② <b>轨道加目标位刻度</b> —— 车窗从 30% 调到 60% 时轨道上有一道淡刻度标着目标。<em>过渡仿真（getTarget vs get）本来就有这个能力，UI 一直没体现。</em><br>
+③ <b>状态条时间降到 34px</b> —— v3 给了 42px。时间是最不需要盯着看的信息，视觉权重让给车速和电量，那两个才跟驾驶有关。<br>
+④ <b>待选卡呼吸 3 轮就停</b> —— 持续 2.2s 呼吸会一直在余光里闪，行车中是干扰。停在高亮态一样能标识"在等你选"。<br>
+⑤ <b>单位基线对齐数字底部</b> —— <code>translateY(-.08em)</code>。居中对齐会让数字的视觉重量散掉，车机上远看尤其明显。
+</div>
+
+<div class="sec"><b>① 动效演示</b><span>自动循环 · 进场 340ms 过冲 / 退场 220ms 先缩后淡 / 栅格移位与档位缩放走 FLIP 380ms</span></div>
+<div class="frame"><div class="stage" id="s1"><div class="wrap">
+  <div class="bar-top">
+    <div class="clock">08:24</div>
+    <div class="wx-mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 7 18z"/></svg>多云 · 车外 <b>4°C</b></div>
+    <div class="sp"></div>
+    <div class="gear">D <i>·</i> 0 <i>km/h</i></div>
+    <div class="batt"><span class="cell"><span class="fillb" style="width:68%"></span></span>68<span style="font-size:19px;color:var(--tx-3)">%</span></div>
+  </div>
+  <div class="desk" id="d1"></div>
+  <div class="voice idle" id="v1"><div class="orb"><i></i><i></i><i></i><i></i></div>
+    <div class="vtx"><div class="vtag" id="vt1">待机</div><p id="vp1">说「你好」开始对话</p></div></div>
+</div></div></div>
+
+<div class="sec"><b>② 场景 A · 导航中</b><span>stage 导航（左锚定）+ 右侧两张 card —— 8+4=12 列正好占满，这是最常见的导航态</span></div>
+<div class="frame"><div class="stage" id="s2"></div></div>
+
+<div class="sec"><b>③ 场景 B · 停车 · 媒体与信息</b><span>档位梯度：banner 列表 / card 天气 / strip 反馈 / chip 单值</span></div>
+<div class="frame"><div class="stage" id="s3"></div></div>
+
+<div class="sec"><b>④ 场景 C · 三条通道同屏</b><span>横幅（拒绝）+ 待选卡（呼吸+倒计时）+ 生成式卡 —— 三种语义色各司其职</span></div>
+<div class="frame"><div class="stage" id="s4"></div></div>
+
+<div class="sec"><b>⑤ 覆盖层</b><span>full 内容卡（能力目录）与 critical 告警是两种视觉</span></div>
+<div class="frame"><div class="stage" id="s5"></div></div>
+
+<div class="sec"><b>⑥ 十个档位</b><span>宽度全为偶数列、列起点限偶数 ⇒ 空隙必为偶数宽 ⇒ chip(2 宽) 永远填得上，不出死缝</span></div>
+<div class="tiers" id="tiers"></div>
+
+<div class="sec"><b>⑦ 同一模板的形态降级</b><span>列表卡在 banner / panel / wide / card / strip / chip 六档下的形态 —— 由 layout.ts 的形态函数决定，不是 CSS 覆盖</span></div>
+<div class="frame"><div class="stage" id="s6"></div></div>
+</div>
+
+<script>
+const SV = {
+  turn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10a4 4 0 0 1 4-4h9"/><path d="m13 2 5 4-5 4"/></svg>',
+  music:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>',
+  radio:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="2" y="8" width="20" height="13" rx="2.5"/><path d="m17 2-9 6"/><circle cx="8" cy="14.5" r="3"/><path d="M17 12h3M17 17h3"/></svg>',
+  win:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 11h18"/></svg>',
+  ac:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2v20M4 6l16 12M20 6 4 18"/></svg>',
+  seat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M6 4h8l1 9H6z"/><path d="M5 13h12l2 7H7z"/></svg>',
+  wheel:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v6M3.5 17 9 13.5M20.5 17 15 13.5"/></svg>',
+  wx:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19" stroke-linecap="round"/></svg>',
+  moon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>',
+  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 2 20h20L12 3z"/><path d="M12 9v5M12 17.5v.01"/></svg>',
+  ban:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5.5 5.5L20 7"/></svg>',
+  list:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
+  spark:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 2.2 6.4L21 10.6l-5.4 3.9L17 21l-5-3.4L7 21l1.4-6.5L3 10.6l6.8-2.2z"/></svg>',
+  bolt:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>',
+  pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>',
+  prev:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14l-10-7z"/><rect x="5" y="5" width="2.6" height="14" rx="1"/></svg>',
+  next:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14l10-7z"/><rect x="16.4" y="5" width="2.6" height="14" rx="1"/></svg>',
+  loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.5 20.5 6 17 9.5"/><path d="M3.5 11V9a3 3 0 0 1 3-3h14"/><path d="M7 21.5 3.5 18 7 14.5"/><path d="M20.5 13v2a3 3 0 0 1-3 3h-14"/></svg>',
+  vol:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 4V5L8 9z"/></svg>',
+  mic:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></svg>',
+}
+const mapSVG = `<svg viewBox="0 0 900 460" preserveAspectRatio="xMidYMid slice" style="width:100%;height:100%;display:block">
+  <rect width="900" height="460" fill="#EAEEF3"/>
+  <g fill="#DEE5EC"><rect x="60" y="40" width="180" height="120" rx="8"/><rect x="300" y="60" width="150" height="90" rx="8"/>
+   <rect x="520" y="30" width="200" height="140" rx="8"/><rect x="100" y="250" width="160" height="130" rx="8"/>
+   <rect x="330" y="270" width="210" height="120" rx="8"/><rect x="620" y="240" width="190" height="150" rx="8"/></g>
+  <g stroke="#E4EAF1" stroke-width="26"><path d="M0 210h900"/><path d="M280 0v460"/><path d="M690 0v460"/></g>
+  <path d="M120 400 L120 210 L470 210 L470 95 L790 95" fill="none" stroke="#1D4ED8" stroke-width="17" stroke-linecap="round" stroke-linejoin="round" opacity=".28"/>
+  <path d="M120 400 L120 210 L470 210 L470 95 L790 95" fill="none" stroke="#2563EB" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="120" cy="400" r="13" fill="#2563EB" stroke="#fff" stroke-width="4.5"/>
+  <circle cx="470" cy="210" r="9" fill="#fff" stroke="#2563EB" stroke-width="4.5"/>
+  <path d="M790 95 l0 -30 a15 15 0 1 1 0 30z" fill="#DC2626"/><circle cx="790" cy="80" r="15" fill="#DC2626" stroke="#fff" stroke-width="4"/>
+</svg>`
+
+/* ═══════ 卡片 HTML 片段 ═══════ */
+const blk = (ico, lb, val, unit, pct, tgt) => `<div class="blk">
+  <div class="lb">${ico}${lb}</div>
+  <div class="num">${val}${unit ? `<i>${unit}</i>` : ''}</div>
+  ${pct === undefined ? '' : `<div class="trk"><div class="fl" style="width:${pct}%"></div>${
+    tgt === undefined ? '' : `<div class="tg" style="left:calc(${tgt}% - 1px)"></div>`}</div>`}
+</div>`
+
+const C = {
+  nav: {t:'stage', a:'brand', html:`<div class="nav-wrap">
+    <div class="turn"><div class="arw">${SV.turn}</div>
+      <div><div class="dist">300<i>米</i></div></div><div class="act">右转</div>
+      <div class="road"><small>进入</small><b>天府大道北段</b></div></div>
+    <div class="map">${mapSVG}</div>
+    <div class="nav-foot"><div class="num">28<i>分钟</i></div><div class="num">14.2<i>公里</i></div>
+      <div class="dest"><small>经 华阳服务区</small><b>成都远洋太古里</b></div></div>
+  </div>`},
+  player: {t:'tower', a:'media', html:`<h3><span class="ico">${SV.music}</span>正在播放<span class="rt">音乐</span></h3>
+    <div class="pl">
+      <div class="pl-top"><div class="pl-art">${SV.music}</div>
+        <div class="pl-meta"><b>起风了</b><span>买辣椒也用券</span><span class="pill" style="margin-top:4px">♪ 音乐</span></div></div>
+      <div class="pl-time"><span>1:12</span><span class="trk"><span class="fl" style="width:38%"></span></span><span>3:11</span></div>
+      <div class="pl-ctl"><span class="ci">${SV.prev}</span><span class="main">${SV.pause}</span>
+        <span class="ci">${SV.next}</span><span class="ci on">${SV.loop}</span>
+        <span class="vol">${SV.vol}40</span></div>
+      <div class="pl-hint">${SV.mic}说「下一首」「大点声」都可以</div>
+    </div>`},
+  radio: {t:'card', a:'media', html:`<h3><span class="ico">${SV.radio}</span>正在收听<span class="rt">电台</span></h3>
+    <div class="pl">
+      <div class="pl-top"><div class="pl-art">${SV.radio}</div>
+        <div class="pl-meta"><b>成都交通广播</b><span>FM 91.4 · 路况播报中</span></div></div>
+      <div class="pl-time"><span class="live"><span class="dot"></span>直播中</span>
+        <span style="flex:1"></span><span>已收听 12:08</span></div>
+      <div class="pl-ctl"><span class="ci">${SV.prev}</span><span class="main">${SV.pause}</span>
+        <span class="ci">${SV.next}</span><span class="vol">${SV.vol}55</span></div>
+      <div class="pl-hint">${SV.mic}说「换一台」「大点声」都可以</div>
+    </div>`},
+  win: {t:'card', a:'brand', html:`<h3><span class="ico">${SV.win}</span>车窗</h3>
+    <div class="bd"><div class="blocks c2">
+      ${blk('', '主驾', 30, '%', 30, 60)}${blk('', '副驾', 30, '%', 30)}
+      ${blk('', '左后', 0, '%', 0)}${blk('', '右后', 100, '%', 100)}</div></div>`},
+  ac: {t:'card', a:'info', html:`<h3><span class="ico">${SV.ac}</span>空调</h3>
+    <div class="bd"><div class="blocks c2">
+      <div class="blk span2"><div class="lb">${SV.ac}温度</div>
+        <div class="num hero">22<i>°C</i></div><div class="trk"><div class="fl" style="width:45%"></div></div></div>
+      ${blk('', '风量', 3, '档', 43)}
+      <div class="blk"><div class="lb">出风</div><div class="num" style="font-size:calc(34px*var(--u))">吹脚</div>
+        <span class="pill">自动</span></div></div></div>`},
+  seat: {t:'chip', a:'ok', html:`<h3><span class="ico">${SV.seat}</span>座椅</h3>
+    <div class="bd"><div class="num hero">2<i>档</i></div></div>`},
+  wheel: {t:'chip', a:'ok', html:`<h3><span class="ico">${SV.wheel}</span>方向盘</h3>
+    <div class="bd"><div class="num hero">开</div></div>`},
+  wx: {t:'card', a:'info', html:`<h3><span class="ico">${SV.wx}</span>成都 · 天气<span class="rt">22:00 更新</span></h3>
+    <div class="bd"><div class="wx-now"><span class="ic">${SV.moon}</span><span class="wx-t">-2</span>
+      <div class="wx-side"><b>晴</b><small>北风 3 级</small><small>湿度 41%</small></div></div>
+      <div class="blocks c3" style="flex:none;height:calc(96px*var(--u));margin-top:calc(12px*var(--u))">
+        <div class="blk"><div class="lb">今天</div><div class="num" style="font-size:calc(26px*var(--u))">6°/-1°</div></div>
+        <div class="blk"><div class="lb">明天</div><div class="num" style="font-size:calc(26px*var(--u))">9°/3°</div></div>
+        <div class="blk"><div class="lb">后天</div><div class="num" style="font-size:calc(26px*var(--u))">11°/5°</div></div>
+      </div></div>`},
+  chargers: {t:'panel', a:'pick', cls:'picking', html:`<h3><span class="ico">${SV.bolt}</span>附近的充电站<span class="rt">说编号选择</span></h3>
+    <div class="lst c2">
+      ${[['国充充电·天府','快充 12 桩空闲','1.2 km'],['特来电·软件园','快充 6 桩空闲','2.8 km'],
+         ['星星充电·中海','快充 4 桩空闲','3.1 km'],['小鹏超充·天府','超充 8 桩空闲','4.4 km'],
+         ['蔚来换电·锦江','换电站 · 排队 1','5.0 km'],['国家电网·高新','快充 3 桩空闲','5.9 km']]
+        .map((r,i)=>`<div class="li"><span class="no">${i+1}</span>
+          <span class="tt"><b>${r[0]}</b><small>${r[1]}</small></span><span class="rr">${r[2]}</span></div>`).join('')}
+    </div><div class="more">还有 6 条没显示 · 说「更多」继续</div>
+    <div class="cdown" style="width:64%"></div>`},
+  confirm: {t:'card', a:'pick', cls:'picking', html:`<h3><span class="ico">${SV.warn}</span>需要确认</h3>
+    <div class="bd"><div class="msg">车门当前是锁着的，<br>确认现在解锁吗？</div>
+      <div style="display:flex;gap:calc(11px*var(--u));margin-top:calc(16px*var(--u))">
+        <span class="pill solid">① 确认</span><span class="pill">② 取消</span></div></div>`},
+  reject: {t:'strip', a:'danger', cls:'strip-l', html:`<span class="wash"></span>
+    <h3><span class="ico">${SV.ban}</span>执行不了</h3>
+    <div class="bd"><div class="msg" style="font-size:calc(25px*var(--u))">车在动，视频画面不能开</div></div>`},
+  okcard: {t:'chip', a:'ok', cls:'strip-l', html:`<span class="wash"></span>
+    <h3><span class="ico">${SV.ok}</span>已执行</h3>
+    <div class="bd"><div class="num hero">30<i>%</i></div></div>`},
+  gen: {t:'wide', a:'media', cls:'gen', html:`<h3><span class="ico">${SV.spark}</span>本周充电花费<span class="badge">生成式</span></h3>
+    <div class="bd"><div style="font-size:calc(22px*var(--u));color:var(--tx-3)">单位：元 · 共 ¥248</div>
+      <div class="chartbars"><i style="height:34%"></i><i style="height:22%"></i><i style="height:58%"></i>
+        <i style="height:41%"></i><i style="height:30%"></i><i style="height:48%"></i><i class="hot" style="height:88%"></i></div>
+      <div class="chartx"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+    </div>`},
+  news: {t:'bar', a:'info', html:`<h3><span class="ico">${SV.list}</span>今天的新闻<span class="rt">按时间排序</span></h3>
+    <div class="bd"><div class="msg" style="font-size:calc(26px*var(--u))">谷歌在韩月活用户数首超 Naver</div>
+      <div class="msg-sub">36氪 · 12 分钟前</div></div>`},
+  eta: {t:'chip', a:'brand', html:`<h3><span class="ico">${SV.pin}</span>剩余</h3>
+    <div class="bd"><div class="num hero">7<i>公里</i></div></div>`},
+}
+
+const TIER = {chip:[2,1], strip:[4,1], bar:[6,1], card:[4,2], wide:[6,2],
+  panel:[8,2], banner:[12,2], tower:[4,4], stage:[8,4], full:[12,4]}
+
+/**
+ * 放置算法 —— 跟 desk.ts 要实现的一致：
+ *   顺序：全高(4行) → 半高(2行) → 单行(1行)，同高按给定顺序
+ *   位置：列起点限偶数（0/2/4/6/8/10），行优先扫第一个合法位
+ * 单行档最灵活，让它最后填缝，否则会把半高档的位置切碎。
+ */
+function place(list){
+  const grid = Array.from({length:4}, () => Array(12).fill(false))
+  const order = [...list].map((c,i)=>({c,i}))
+    .sort((x,y) => (TIER[y.c.t][1] - TIER[x.c.t][1]) || (x.i - y.i))
+  const out = new Map()
+  for (const {c} of order){
+    const [w,h] = TIER[c.t]
+    let done = false
+    for (let r = 0; r + h <= 4 && !done; r++){
+      for (let c0 = 0; c0 + w <= 12; c0 += 2){          // ← 列起点限偶数
+        let free = true
+        for (let dr = 0; dr < h && free; dr++)
+          for (let dc = 0; dc < w; dc++) if (grid[r+dr][c0+dc]) { free = false; break }
+        if (!free) continue
+        for (let dr = 0; dr < h; dr++) for (let dc = 0; dc < w; dc++) grid[r+dr][c0+dc] = true
+        out.set(c, {r, c0, w, h}); done = true; break
+      }
+    }
+  }
+  return out
+}
+const area = p => `grid-area:${p.r+1}/${p.c0+1}/span ${p.h}/span ${p.w}`
+
+function deck(list){
+  const pos = place(list)
+  return list.map(c => {
+    const p = pos.get(c); if (!p) return ''
+    return `<div class="card t-${c.t} a-${c.a}${c.cls ? ' ' + c.cls : ''}" style="${area(p)}">${c.html}</div>`
+  }).join('')
+}
+const card = (c, extra) => `<div class="card t-${c.t} a-${c.a}${c.cls ? ' ' + c.cls : ''}"${extra ? ` style="${extra}"` : ''}>${c.html}</div>`
+
+const shell = (deskHtml, voice, opt = {}) => `<div class="wrap">
+  <div class="bar-top">
+    <div class="clock">${opt.time || '14:32'}</div>
+    <div class="wx-mini"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.5 3.5 0 0 0 7 18z"/></svg>${opt.wx || '多云'} · 车外 <b>${opt.temp || 3}°C</b></div>
+    <div class="sp"></div>
+    <div class="gear">${opt.gear || 'D'} <i>·</i> ${opt.spd ?? 46} <i>km/h</i></div>
+    <div class="batt${opt.low ? ' low' : ''}"><span class="cell"><span class="fillb" style="width:${opt.batt ?? 68}%"></span></span>${opt.batt ?? 68}<span style="font-size:19px;color:var(--tx-3)">%</span></div>
+  </div>
+  <div class="desk">${opt.banner || ''}${deskHtml}</div>
+  ${opt.ovl || ''}
+  <div class="voice${voice.idle ? ' idle' : ''}" ${opt.vh ? `style="--vh:${opt.vh}px"` : ''}>
+    <div class="orb${voice.think ? ' think' : ''}"><i></i><i></i><i></i><i></i></div>
+    <div class="vtx"><div class="vtag">${voice.idle ? '' : '<span class="d"></span>'}${voice.tag}</div>
+      <p${voice.who === 'user' ? ' class="user"' : ''}>${voice.tx}</p></div></div>
+</div>`
+
+/* 场景 A：导航中 */
+document.getElementById('s2').innerHTML = shell(
+  deck([C.nav, {...C.player, t:'card'}, {...C.win, t:'card'}]),
+  {tag:'播报中', tx:'前面 300 米右转进天府大道北段，还有 28 分钟到。'},
+  {time:'14:32', spd:46, vh:260})
+
+/* 场景 B：停车 · 媒体与信息 */
+document.getElementById('s3').innerHTML = shell(
+  deck([C.radio, C.wx, C.ac, C.news, C.okcard, C.seat, C.wheel]),
+  {tag:'待机', tx:'说「你好」开始对话', idle:true},
+  {time:'22:06', wx:'晴', temp:-2, gear:'P', spd:0, batt:83, vh:150})
+
+/* 场景 C：三条通道同屏 */
+document.getElementById('s4').innerHTML = shell(
+  deck([C.chargers, C.confirm, C.gen, C.reject, C.okcard]),
+  {tag:'待确认', tx:'屏幕上六个充电站，说个编号就行。'},
+  {time:'09:15', wx:'晴', temp:18, spd:72, batt:22, low:true, vh:260,
+   banner:`<div class="banner-slot"><div class="bn a-danger"><span class="ico">${SV.ban}</span>
+     <div><b>行驶中不能播放视频</b><span>已为你收藏这个视频，停车后说「看视频」可以切回画面</span></div></div></div>`})
+
+/* 覆盖层 */
+document.getElementById('s5').innerHTML = shell(
+  deck([C.nav, C.player]),
+  {tag:'播报中', tx:'我能管车里的功能、导航、天气这些，屏幕上是全的。'},
+  {time:'10:41', vh:260, ovl:`<div class="ovl"><div class="bar-top" style="border:none;padding:0 0 18px">
+      <div class="clock" style="font-size:30px">我能做的事</div>
+      <div class="wx-mini">共 50 项能力 · 说名字就能用</div></div>
+    <div class="caps">${[['车窗','开关 / 开到几成'],['空调','温度 / 风量 / 出风'],['座椅','加热 / 通风 / 位置'],
+      ['方向盘','加热'],['氛围灯','颜色 / 亮度 / 灯效'],['香氛','香型 / 浓度'],['车门后备箱','开关（需确认）'],
+      ['导航','搜地点 / 设目的地 / 途经点'],['路线','多方案对比 / 沿途搜索'],['常用地址','存家和公司'],
+      ['天气','实况 / 预报'],['音乐','搜歌 / 播放（30 秒预览）'],['电台','按名称或分类找台'],
+      ['新闻','头条 / 搜索 / 朗读'],['短视频','搜索 / 播放（行驶中禁用）'],['联网搜索','实时信息']]
+      .map(c=>`<div class="cap"><b>${c[0]}</b><small>${c[1]}</small></div>`).join('')}</div></div>`})
+
+/* 档位总览 */
+const TIERS = [['chip',2,1,'4.2%'],['strip',4,1,'8.3%'],['bar',6,1,'12.5%'],['card',4,2,'16.7% · 旧 1/6'],
+  ['wide',6,2,'25%'],['panel',8,2,'33.3% · 旧 1/3'],['banner',12,2,'50% · 旧 1/2'],
+  ['tower',4,4,'33.3%'],['stage',8,4,'66.7% · 旧 2/3'],['full',12,4,'100%']]
+document.getElementById('tiers').innerHTML = TIERS.slice(0,7).map(t =>
+  `<div class="tv${t[0]==='card'?' hi':''}" style="grid-column:span ${t[1]};grid-row:span ${t[2]}">
+    <b>${t[0]}</b><small>${t[1]}×${t[2]} · ${t[3]}</small></div>`).join('')
+
+/* 形态降级 */
+const listAt = (t, n, two, more, st) => `<div class="card t-${t} a-pick" style="${st||''}">
+  <h3><span class="ico">${SV.bolt}</span>充电站${t==='chip'?'':'<span class="rt">说编号选择</span>'}</h3>
+  ${t === 'chip'
+    ? `<div class="bd"><div class="num hero">12<i>个</i></div></div>`
+    : `<div class="lst${two?' c2':''}">${[['国充充电·天府','1.2 km'],['特来电·软件园','2.8 km'],
+        ['星星充电·中海','3.1 km'],['小鹏超充·天府','4.4 km'],['蔚来换电·锦江','5.0 km'],
+        ['国家电网·高新','5.9 km'],['依威充电·武侯','6.2 km'],['万城万充·青羊','7.1 km']]
+        .slice(0, n).map((r,i)=>`<div class="li"><span class="no">${i+1}</span>
+          <span class="tt"><b>${r[0]}</b></span><span class="rr">${r[1]}</span></div>`).join('')}</div>
+       ${more ? `<div class="more">还有 ${more} 条没显示</div>` : ''}`}
+</div>`
+{
+  const forms = [['banner',8,true,4],['panel',4,true,8],['card',4,false,8],
+                 ['bar',2,true,10],['strip',2,false,10],['chip',0,false,0]]
+  const items = forms.map(f => ({t:f[0], a:'pick', html:'', _f:f}))
+  const pos = place(items)
+  document.getElementById('s6').innerHTML = `<div class="wrap"><div class="desk">${
+    items.map(it => {
+      const p = pos.get(it); if (!p) return ''
+      return listAt(it._f[0], it._f[1], it._f[2], it._f[3], area(p))
+    }).join('')}</div></div>`
+}
+
+/* ═══════ 舞台等比缩放 ═══════ */
+function fit(){
+  document.querySelectorAll('.frame').forEach(f => {
+    const st = f.querySelector('.stage'); if (!st) return
+    const k = (f.clientWidth - 22) / 2560
+    st.style.transform = `scale(${k})`
+    f.style.height = (1440 * k + 22) + 'px'
+  })
+}
+addEventListener('resize', fit); fit()
+const scaleOf = () => (document.querySelector('.frame').clientWidth - 22) / 2560
+
+/* ═══════ 动效演示 · FLIP ═══════ */
+const d1 = document.getElementById('d1'), v1 = document.getElementById('v1')
+const A = {
+  wx:   {id:'wx',   ...C.wx,   t:'card'},
+  win:  {id:'win',  ...C.win,  t:'chip'},
+  ac:   {id:'ac',   ...C.ac,   t:'chip'},
+  nav:  {id:'nav',  ...C.nav},
+  pl:   {id:'pl',   ...C.player},
+  rej:  {id:'rej',  ...C.reject},
+}
+/* chip 档的车控要换成单值形态——这是形态函数的活，稿子里手写演示 */
+A.win = {...A.win, html:`<h3><span class="ico">${SV.win}</span>车窗</h3><div class="bd"><div class="num hero">60<i>%</i></div></div>`}
+A.ac  = {...A.ac,  html:`<h3><span class="ico">${SV.ac}</span>空调</h3><div class="bd"><div class="num hero">22<i>°C</i></div></div>`}
+
+const SCENES = [
+  {n:'桌面为空 —— 无常驻卡，一切按需出现', v:{tag:'聆听中', tx:'成都今天天气怎么样？', who:'user'}, cards:[]},
+  {n:'① 进场：天气卡从下方浮起（340ms 轻微过冲）', v:{tag:'播报中', tx:'成都今天多云，4 度，东北风 2 级。'}, cards:[A.wx]},
+  {n:'① 进场：两张 chip 依次加入，45ms 错峰', v:{tag:'执行中', tx:'好，车窗开到 60%，空调 22 度。'}, cards:[A.wx, A.win, A.ac]},
+  {n:'③ 栅格移位：导航卡占 stage，其余整体右移 —— FLIP 380ms', v:{tag:'播报中', tx:'导航去太古里，14 公里，28 分钟。'}, cards:[A.nav, A.wx, A.win, A.ac]},
+  {n:'④ 档位缩放：天气 card → chip，宽高一起插值', v:{tag:'执行中', tx:'放上音乐了，起风了。'}, cards:[A.nav, A.pl, A.win, A.ac]},
+  {n:'② 退场 + 横幅：视频被拒，先缩到 .94 再淡出', v:{tag:'已拒绝', tx:'车在动，视频放不了。停稳了再说。'}, cards:[A.nav, A.pl, A.rej]},
+]
+
+function paint(cards){
+  const k = scaleOf()
+  const pos = place(cards)
+  const first = new Map()
+  for (const n of d1.children) if (n.dataset.id && !n.dataset.out) first.set(n.dataset.id, n.getBoundingClientRect())
+  const keep = new Set(cards.map(c => c.id))
+
+  // 退场：先缩后淡，动画结束才移除节点
+  for (const n of [...d1.children])
+    if (n.dataset.id && !keep.has(n.dataset.id) && !n.dataset.out){
+      n.dataset.out = '1'
+      n.animate([{opacity:1, transform:'scale(1)'},{opacity:0, transform:'scale(.94)'}],
+        {duration:220, easing:'cubic-bezier(.4,0,1,1)', fill:'forwards'}).onfinish = () => n.remove()
+    }
+
+  cards.forEach((c, i) => {
+    let n = d1.querySelector(`[data-id="${c.id}"]:not([data-out])`)
+    const isNew = !n
+    if (isNew){ n = document.createElement('div'); n.dataset.id = c.id; d1.appendChild(n) }
+    n.className = `card t-${c.t} a-${c.a}${c.cls ? ' ' + c.cls : ''}`
+    // 位置显式写，不靠 DOM 顺序——节点是复用的，新卡 append 在末尾，
+    // 靠 CSS 自动流的话 stage 会飘到右边
+    const p = pos.get(c); if (p) n.style.cssText = area(p)
+    // 内容签名：档位或内容变了才重写 innerHTML，纯数据刷新不动 DOM
+    const sig = c.t + '|' + c.html.length
+    if (n.dataset.sig !== sig){ n.innerHTML = c.html; n.dataset.sig = sig }
+    if (isNew) n.animate([{opacity:0, transform:'translateY(20px) scale(.95)'},{opacity:1, transform:'none'}],
+      {duration:340, delay:i*45, easing:'cubic-bezier(.34,1.26,.64,1)', fill:'backwards'})
+  })
+
+  // FLIP：Grid 的 row/column 不能 transition，靠反向 transform 补一段
+  // 坑一：舞台被 scale() 过，dx/dy 必须除以缩放比；sx/sy 是比值不受影响
+  requestAnimationFrame(() => {
+    for (const c of cards){
+      const n = d1.querySelector(`[data-id="${c.id}"]:not([data-out])`)
+      const f = first.get(c.id); if (!n || !f) continue
+      const l = n.getBoundingClientRect()
+      const dx = (f.left - l.left) / k, dy = (f.top - l.top) / k
+      const sx = f.width / l.width, sy = f.height / l.height
+      // 坑二：位置没真变就别动——车窗过渡每帧 render，FLIP 每帧跑会打架
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx-1) < .01 && Math.abs(sy-1) < .01) continue
+      n.animate([{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`, transformOrigin:'top left'},
+                 {transform:'none', transformOrigin:'top left'}],
+        {duration:380, easing:'cubic-bezier(.22,.61,.36,1)'})
+    }
+  })
+}
+
+let si = 0
+const cap = document.createElement('div')
+cap.style.cssText = 'position:absolute;left:40px;bottom:calc(var(--vh,300px) + 14px);z-index:25;'
+  + 'background:rgba(15,23,42,.82);color:#fff;font-size:20px;padding:8px 16px;border-radius:999px'
+document.getElementById('s1').querySelector('.wrap').appendChild(cap)
+
+const step = () => {
+  const s = SCENES[si]
+  paint(s.cards)
+  cap.textContent = s.n
+  v1.className = 'voice' + (s.v.who === 'user' || s.v.tag === '待机' ? '' : '')
+  document.getElementById('vt1').innerHTML = `<span class="d"></span>${s.v.tag}`
+  const p = document.getElementById('vp1')
+  p.textContent = s.v.tx
+  p.className = s.v.who === 'user' ? 'user' : ''
+  si = (si + 1) % SCENES.length
+}
+step(); setInterval(step, 2600)
+</script>
+</html>

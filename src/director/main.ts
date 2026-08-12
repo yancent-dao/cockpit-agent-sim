@@ -2,6 +2,7 @@ import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
 import { createAmapClient } from '../integrations/amap'
 import { createItunesClient } from '../integrations/itunes'
+import { createRadioClient } from '../integrations/radio'
 import { createAgent } from '../agent/runtime'
 import { createOpenRouter, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
@@ -24,7 +25,7 @@ const amapWebKey: string = (import.meta as any).env?.VITE_AMAP_WEB_KEY || ''
 const amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : undefined
 if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable')
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
-const registry = createRegistry(store, TOOLS, Date.now, { desk, amap, itunes: createItunesClient() })
+const registry = createRegistry(store, TOOLS, Date.now, { desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)) })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
 createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()

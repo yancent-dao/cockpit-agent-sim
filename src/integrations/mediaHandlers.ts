@@ -7,6 +7,7 @@ import type { Store } from '../core/store'
 import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
 import type { Track, ItunesClient } from './itunes'
+import type { Station, RadioClient } from './radio'
 
 export interface Favorite {
   source: string
@@ -31,6 +32,7 @@ const radioNo = (what: string): ToolResult => ({
 
 export interface MediaDeps {
   itunes?: () => ItunesClient
+  radio?: () => RadioClient
 }
 
 export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
@@ -39,6 +41,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
 
   /** 上一次搜索结果，用来把"第二个"翻译成具体条目 */
   let lastResults: Track[] = []
+  let lastStations: Station[] = []
 
   const need = <K extends keyof MediaDeps>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
     const f = deps[k]
@@ -60,6 +63,19 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   })
 
   const brief = (t: Track) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, duration: t.duration })
+  const sBrief = (s: Station) => ({ id: s.id, name: s.name, country: s.country, tags: s.tags, bitrate: s.bitrate })
+  const stationSub = (s: Station) =>
+    [s.country, s.tags.split(',')[0]].filter(Boolean).join(' · ')
+
+  /**
+   * 搜不到台的原因常常不是"没这个台"，而是筛掉 http 流之后一个不剩。
+   * 这个区别要说出来，否则用户以为是搜索不好使
+   */
+  const noStation = (q: string): ToolResult => ({
+    status: 'unavailable', code: 'NO_RESULT',
+    message: `没找到能放的「${q}」。有些台只提供不加密的流，车机放不了`,
+    suggestion: '换个台名试试，或者说个分类，比如"来个新闻台""放点爵士"',
+  })
 
   const dismissKey = (key: string) => {
     const d = desk?.()
@@ -199,6 +215,49 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           message: `在放${track.name}（${track.artist}）。iTunes 只提供 30 秒预览，放完就停`,
         }
       } catch (e) { return cpFail(e, '音乐播放') }
+    },
+
+    /* ══════════ 电台（Radio Browser） ══════════ */
+
+    radioSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const stations = await need('radio').search({
+          name: args.query, tag: args.category, country: args.country, language: args.language,
+          limit: args.limit ?? 10,
+        })
+        if (!stations.length) return noStation(args.query ?? args.category ?? '')
+        lastStations = stations
+        desk?.()?.render({
+          key: 'radio-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          data: {
+            title: '搜到这些台',
+            items: stations.map(s => ({ label: s.name, sub: stationSub(s) })),
+          },
+        })
+        return { status: 'ok', data: { stations: stations.map(sBrief) } }
+      } catch (e) { return cpFail(e, '电台搜索') }
+    },
+
+    radioPlay: async (args: any): Promise<ToolResult> => {
+      try {
+        let st = args.stationId ? lastStations.find(s => s.id === args.stationId) : undefined
+        if (!st) {
+          const q = args.query ?? String(args.stationId ?? '')
+          const found = await need('radio').search({ name: q, limit: 5 })
+          if (!found.length) return noStation(q)
+          lastStations = found
+          st = found[0]
+        }
+        store.set('media.source', 'radio')
+        store.set('media.track', st.name)
+        // 电台没有"艺人"，放地区和分类比留空有用
+        store.set('media.artist', stationSub(st))
+        store.set('media.artwork', st.favicon)
+        store.set('media.streamUrl', st.url)
+        store.set('media.playing', true)
+        dismissKey('radio-candidates')
+        return { status: 'ok', data: { playing: sBrief(st) }, message: `在放 ${st.name}` }
+      } catch (e) { return cpFail(e, '电台播放') }
     },
 
     mediaFavorites: (): ToolResult => {

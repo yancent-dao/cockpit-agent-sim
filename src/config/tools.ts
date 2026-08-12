@@ -483,6 +483,31 @@ export const TOOLS: ToolDef[] = [
     handler: 'musicPlay',
   },
 
+  /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
+  {
+    name: 'radio.search',
+    desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',
+    permission: '彩',
+    params: {
+      query: { type: 'string', desc: '台名，比如"中国之声"' },
+      category: { type: 'string', desc: '英文分类 tag，如 news / jazz / pop / classical' },
+      country: { type: 'string', desc: '国家英文名，如 China' },
+      language: { type: 'string', desc: '语言英文名，如 chinese' },
+      limit: { type: 'number', range: [1, 20], desc: '最多返回几个，默认 10' },
+    },
+    handler: 'radioSearch',
+  },
+  {
+    name: 'radio.play',
+    desc: '放电台。用户说"放中国之声"直接传 query，不用先 search。从搜索结果里选的传 stationId。',
+    permission: '彩',
+    params: {
+      stationId: { type: 'string', desc: 'radio.search 返回的 id' },
+      query: { type: 'string', desc: '没有 id 时按台名现搜现播' },
+    },
+    handler: 'radioPlay',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

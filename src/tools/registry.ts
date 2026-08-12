@@ -6,6 +6,7 @@ import type { Desk } from '../cards/desk'
 import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
 import type { AmapClient } from '../integrations/amap'
 import type { ItunesClient } from '../integrations/itunes'
+import type { RadioClient } from '../integrations/radio'
 import { createNavHandlers } from '../integrations/navHandlers'
 import { createMediaHandlers } from '../integrations/mediaHandlers'
 
@@ -35,7 +36,7 @@ const compare = (a: any, op: Op, b: any) =>
 
 const CONFIRM_TTL = 60_000
 
-export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient }
+export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient }
 
 export function createRegistry(
   store: Store,
@@ -139,7 +140,7 @@ export function createRegistry(
 
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
     ...createNavHandlers(store, () => needAmap(), () => sizedDesk()),
-    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes') }),
+    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio') }),
   }
 
   /**
@@ -170,7 +171,7 @@ export function createRegistry(
     try { sizedDesk()?.render(input) } catch { /* 显示失败不拖累执行 */ }
   }
   /** 三方能力未装配时给一句人话，而不是让 undefined 一路炸到堆栈里 */
-  const needCp = <K extends 'itunes'>(k: K): NonNullable<RegistryDeps[K]> => {
+  const needCp = <K extends 'itunes' | 'radio'>(k: K): NonNullable<RegistryDeps[K]> => {
     const c = deps[k]
     if (!c) throw new Error(`${k} 能力未装配：createRegistry 缺少 ${k}`)
     return c

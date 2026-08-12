@@ -82,6 +82,19 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .navbig{display:flex;align-items:baseline;gap:8px}
 .navbig b{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-primary)}
 .navbig span{font-size:26px;color:var(--text-secondary)}
+/* 导航小卡：格子只有一格宽，2/3 的字号会撑破 */
+.sz-1-3 .turnbar,.sz-1-6 .turnbar{gap:14px;padding:16px 20px}
+.sz-1-3 .turnbar .arrow,.sz-1-6 .turnbar .arrow{font-size:40px}
+.sz-1-3 .turntext b,.sz-1-6 .turntext b{font-size:34px}
+.sz-1-3 .turntext span,.sz-1-6 .turntext span{font-size:22px}
+.sz-1-3 .turnroad,.sz-1-6 .turnroad{font-size:20px;max-width:38%}
+.sz-1-3 .navfoot{gap:20px;padding:16px 20px;flex-wrap:wrap}
+.sz-1-3 .navbig b{font-size:34px}
+.sz-1-3 .navbig span{font-size:20px}
+.sz-1-3 .navdest{font-size:22px}
+/* 小卡没有地图。两块挨在一起垂直居中，别被推到两端中间空一大片 */
+.sz-1-3 .navwrap,.sz-1-6 .navwrap{justify-content:center;gap:4px}
+.sz-1-3 .turnbar,.sz-1-6 .turnbar{border-radius:var(--r-md)}
 .navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
 /* 途经点比终点次一级，但不能小到看不见 */
@@ -97,6 +110,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .cap div{background:var(--bg-elevated);border-radius:14px;padding:14px 18px;font-size:24px}
 .cap div small{display:block;color:var(--text-secondary);font-size:20px;margin-top:4px}
 .cap div.off{opacity:.35;text-decoration:line-through}
+/* 一格宽排不下三列，退成一列；再小就只报个数 */
+.cap.list{grid-template-columns:1fr;gap:10px}
+.cap.list div{padding:10px 14px;font-size:22px}
+.cap.list div small{font-size:18px;margin-top:2px}
+.capcount{display:flex;align-items:baseline;gap:10px;margin-top:18px}
+.capcount b{font-size:76px;font-weight:700;line-height:1}
+.capcount span{font-size:26px;color:var(--text-secondary)}
 
 .win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}

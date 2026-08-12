@@ -1,6 +1,7 @@
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { showRoute } from './mapView'
+import { navForm, capForm } from './layout'
+import { showRoute, disposeRoute, resizeRoute } from './mapView'
 
 const $ = (id: string) => document.getElementById(id)!
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
@@ -89,23 +90,32 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
       <div class="navfoot"></div>
     </div>`
   }
+  // 尺寸决定形态：一格宽的地图看不出路，不如把空间让给转向指令
+  const form = navForm(c.size)
   const step = d.steps?.[0]?.instruction as string | undefined
   const turn = step ? parseTurn(step) : undefined
   const bar = node.querySelector('.turnbar') as HTMLElement
-  bar.style.display = turn ? '' : 'none'
+  bar.style.display = turn && form.turnbar ? '' : 'none'
   if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ''}`
 
   // 途经点要写出来：语音说了"先去充电站再去太古里"，屏幕只写终点的话用户不知道要绕路
   const via = (d.via ?? []).length ? `<em>经 ${esc((d.via as string[]).join('、'))}</em>` : ''
-  node.querySelector('.navfoot')!.innerHTML = `
+  const foot = node.querySelector('.navfoot') as HTMLElement
+  foot.style.display = form.foot ? '' : 'none'
+  foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? '--'}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? '--'}</b><span>公里</span></div>
     <div class="navdest">${via}${esc(d.destination ?? '')}</div>`
 
-  // 活地图优先；跑不了（无 Key / 环境不支持 WebGL2 / 加载失败）就退回静态图，绝不白屏
   const box = node.querySelector('.mapbox') as HTMLElement
+  box.style.display = form.map ? '' : 'none'
+  if (!form.map) { disposeRoute(box); return }   // 小卡不画地图，实例留着会错位还白占 WebGL context
+  // 还是显示地图但格子变了（2/3 ↔ 1/2）：实例留着，通知它重算视口
+  if (node.dataset.mapSize && node.dataset.mapSize !== c.size) resizeRoute(box)
+  node.dataset.mapSize = c.size
+  // 活地图优先；跑不了（无 Key / 环境不支持 WebGL2 / 加载失败）就退回静态图，绝不白屏
   showRoute(box, { originLoc: d.originLoc, destLoc: d.destLoc, polyline: d.polyline, waypoints: d.waypoints }).then(ok => {
     if (ok || !d.mapUrl) return
     const img = box.querySelector('img') as HTMLImageElement | null
@@ -145,9 +155,15 @@ function body(c: CardView): string {
       // 带序号：用户是用语音选的（"第一个"），屏上必须能对上号
       return `<ol class="listcard">${(d.items ?? []).map((i: any) =>
         `<li><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</li>`).join('')}</ol>`
-    case 'capability':
-      return `<div class="cap">${(d.items ?? []).map((i: any) =>
+    case 'capability': {
+      const items = d.items ?? []
+      const form = capForm(c.size)
+      // 33 项塞进一格是不可能的，老实报个数
+      if (form.mode === 'count')
+        return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`
+      return `<div class="cap ${form.mode}">${items.map((i: any) =>
         `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
+    }
     case 'weather':
       // 风力和湿度任一缺失都不该留下孤零零一个分隔点
       return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
@@ -169,7 +185,9 @@ function body(c: CardView): string {
  * 不依赖 DOM 顺序，所以"节点建好之后只挪位置、按需更内容"是安全的。
  */
 const cardNodes = new Map<string, HTMLDivElement>()
-const cardSig = (c: CardView) => `${c.template}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`
+// size 必须进签名：尺寸变了形态也要跟着变（导航卡缩小要收起地图），
+// 不算进来的话只有栅格位置动、内容还是老样子
+const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`
 
 function renderDesk() {
   const desk = $('desk')
@@ -190,7 +208,8 @@ function renderDesk() {
     }
     node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
     node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
-    node.className = `card tpl-${c.template} kind-${c.kind}${hotCards.has(c.id) ? ' hot' : ''}`
+    // 尺寸挂到 class 上，让 CSS 能按格子大小收字号——2/3 的排版塞进 1/6 会撑破
+    node.className = `card tpl-${c.template} kind-${c.kind} sz-${c.size.replace('/', '-')}${hotCards.has(c.id) ? ' hot' : ''}`
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)

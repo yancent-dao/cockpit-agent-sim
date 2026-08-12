@@ -351,85 +351,86 @@ input::placeholder{color:#4A5462}
   }
 
   // src/config/cards.ts
+  var COMMON_SIZES = ["1/6", "1/3", "1/2"];
   var CARD_TEMPLATES = [
     {
       id: "control",
       label: "车控卡",
-      sizes: ["1/6", "1/3"],
+      defaultSize: "1/6",
       desc: "通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。",
       fields: { items: { type: "array", required: true } }
     },
-    // 必须保留 1/6：导航卡 2/3 占掉左两列后，右列只有 1 格宽，横向的 1/3 塞不进去。
-    // 拿掉 1/6 就成死锁——用户听到了问题，屏幕上什么都没有。1/6 在 2560 屏上
-    // 仍有约 800×460，放得下两三个选项
     {
       id: "confirm",
       label: "确认卡",
-      sizes: ["1/6", "1/3"],
+      defaultSize: "1/3",
       desc: "二次确认。data: {title, question, options:[string]}",
       fields: { question: { type: "string", required: true } }
     },
     {
       id: "feedback",
       label: "反馈卡",
-      sizes: ["1/6"],
+      defaultSize: "1/6",
       desc: '执行结果摘要。data: {title, text?}——只给 title 也可以，比如"已开窗"。',
       fields: { text: { type: "string" } }
     },
     {
       id: "notice",
       label: "提示/拒绝卡",
-      sizes: ["1/6", "1/3"],
+      defaultSize: "1/6",
       desc: "拒绝原因与替代方案。data: {title, text, suggestion}",
       fields: { text: { type: "string", required: true } }
     },
-    // 含 1/6：导航卡 2/3 在场时右列只有 1 格宽，没有这一档候选卡就整个进不来——
-    // 用户听着"你说第几个"，屏幕上却只有旧的导航卡。实测 1/6 放得下四个带地址的候选
     {
       id: "list",
       label: "列表卡",
-      sizes: ["1/6", "1/3", "1/2"],
+      defaultSize: "1/2",
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
       fields: { items: { type: "array", required: true } }
     },
     {
       id: "info",
       label: "信息卡",
-      sizes: ["1/6", "1/3"],
+      defaultSize: "1/6",
       desc: "只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。",
       fields: { text: { type: "string", required: true } }
     },
     {
       id: "media",
       label: "媒体卡",
-      sizes: ["1/6", "1/3", "1/2"],
+      defaultSize: "1/3",
       desc: "播放中的内容。data: {title, artist, progress}"
     },
     {
       id: "weather",
       label: "天气卡",
-      sizes: ["1/6", "1/3"],
+      defaultSize: "1/6",
       desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
       fields: { now: { type: "object", required: true }, forecast: { type: "array" } }
     },
+    // 唯一能用 2/3 的：地图要大画布。可以被调小，1/3 时退成转向条小卡
     {
       id: "nav",
       label: "导航卡",
-      sizes: ["2/3"],
+      defaultSize: "2/3",
+      sizes: [...COMMON_SIZES, "2/3"],
+      systemOnly: true,
       desc: "导航卡由系统按导航状态自动创建/刷新/撤销，不要手动创建——调 navigation.setDestination 成功后它会自己出现在桌面左侧。",
       fields: { destination: { type: "string", required: true } }
     },
+    // 唯一能用 full 的：33 项能力要铺得开
     {
       id: "capability",
       label: "能力目录卡",
-      sizes: ["full"],
+      defaultSize: "full",
+      sizes: [...COMMON_SIZES, "full"],
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
     {
       id: "generic",
       label: "通用卡",
-      sizes: ["1/6", "1/3", "1/2", "full"],
+      defaultSize: "1/3",
       desc: "兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}"
     }
   ];
@@ -1068,6 +1069,13 @@ input::placeholder{color:#4A5462}
       /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
       cardShow: (args) => {
         const tmpl = CARD_TEMPLATES.find((t) => t.id === args.template);
+        if (tmpl?.systemOnly)
+          return {
+            status: "rejected",
+            code: "SYSTEM_TEMPLATE",
+            message: `${tmpl.label}由系统按车辆状态自动出，不用你建`,
+            suggestion: "需要的话调对应的业务工具（如 navigation.setDestination），卡片会自己出现"
+          };
         const sizeErr = tmpl && checkSize(tmpl, args.size);
         if (sizeErr) return sizeErr;
         const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false });
@@ -1125,7 +1133,8 @@ input::placeholder{color:#4A5462}
         ...d,
         render: (input) => {
           if (input.minSize) return d.render(input);
-          const sizes = CARD_TEMPLATES.find((t) => t.id === input.template)?.sizes ?? [];
+          const tmpl = CARD_TEMPLATES.find((t) => t.id === input.template);
+          const sizes = tmpl ? tmpl.sizes ?? COMMON_SIZES : [];
           const min = [...sizes].sort((a, b) => d.cellsOf(a) - d.cellsOf(b))[0];
           return d.render(min ? { ...input, minSize: min } : input);
         }
@@ -1156,10 +1165,13 @@ input::placeholder{color:#4A5462}
       ...r.shrunk && { code: "CARD_SHRUNK" },
       ...r.note && { message: r.note }
     } : { status: "rejected", code: r.code, message: r.message };
-    const checkSize = (tmpl, size) => tmpl.sizes.includes(size) ? null : {
-      status: "rejected",
-      code: "SIZE_NOT_SUPPORTED",
-      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${tmpl.sizes.join("、")}`
+    const checkSize = (tmpl, size) => {
+      const allowed = tmpl.sizes ?? COMMON_SIZES;
+      return allowed.includes(size) ? null : {
+        status: "rejected",
+        code: "SIZE_NOT_SUPPORTED",
+        message: `${tmpl.label}不支持 ${size} 尺寸，支持：${allowed.join("、")}`
+      };
     };
     const checkDataShape = (tmpl, data, opts) => {
       if (!tmpl.fields) return null;
@@ -1708,7 +1720,7 @@ ${extras.desktop}`);
       emit();
       return { status: "ok", cardId: id };
     }
-    function resize(id, size) {
+    function resize(id, size, byUser = true) {
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       const prev = c.size;
@@ -1717,6 +1729,7 @@ ${extras.desktop}`);
         c.size = prev;
         return { status: "rejected", code: "NO_ROOM", message: "这个尺寸放不下了" };
       }
+      if (byUser) c.sizeLocked = true;
       c.touchedAt = clock();
       emit();
       return { status: "ok", cardId: id };
@@ -1740,11 +1753,11 @@ ${extras.desktop}`);
       const want = i.size ?? "1/6";
       if (exist) {
         if (i.refreshTtl) exist.createdAt = clock();
-        if (CELLS[exist.size] >= CELLS[want]) {
+        if (exist.sizeLocked || CELLS[exist.size] >= CELLS[want]) {
           const r3 = update(exist.id, i.data ?? {});
           return { ...r3, level: "L1" };
         }
-        const r2 = resize(exist.id, want);
+        const r2 = resize(exist.id, want, false);
         if (r2.status !== "ok") {
           update(exist.id, i.data ?? {});
           return { ...r2, cardId: exist.id };
@@ -1807,10 +1820,11 @@ ${extras.desktop}`);
     const isActive = (r) => (r.when ?? []).every(([path, op, value]) => compare3(store2.get(path), op, value));
     const apply = (r) => {
       const build = builders[r.card.data];
+      const size = r.card.size ?? CARD_TEMPLATES.find((t) => t.id === r.card.template)?.defaultSize;
       desk2.render({
         key: r.card.key,
         template: r.card.template,
-        size: r.card.size,
+        size,
         kind: "rule",
         evictable: r.card.evictable,
         ttl: r.card.ttl ?? "untilDismissed",
@@ -2989,7 +3003,7 @@ ${extras.desktop}`);
       permission: "彩",
       params: {
         template: { type: "enum", values: TEMPLATE_IDS, required: true, desc: "卡片模板" },
-        size: { type: "enum", values: ["1/6", "1/3", "1/2", "full"], required: true, desc: "尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / full 全屏（临时征用，关闭后自动还原）" },
+        size: { type: "enum", values: ["1/6", "1/3", "1/2", "2/3", "full"], required: true, desc: "尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / 2/3 左侧大方块（地图专用）/ full 全屏（临时征用，关闭后自动还原）。每个模板有自己的可用档位，用不了会告诉你支持哪些。" },
         ttl: { type: "string", required: true, desc: "生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数" },
         key: { type: "string", desc: "逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建" },
         data: { type: "object", desc: "卡片内容，字段取决于模板" },
@@ -3064,53 +3078,53 @@ ${extras.desktop}`);
         "navigation.routePolyline",
         "vehicle.location"
       ],
-      card: { key: "nav", template: "nav", size: "2/3", evictable: false, data: "navCard" }
+      card: { key: "nav", template: "nav", evictable: false, data: "navCard" }
     },
     /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
     {
       id: "window-feedback",
       watch: ["cabin.window.*.position"],
-      card: { key: "windows", template: "control", size: "1/6", ttl: 30, data: "windowCard" }
+      card: { key: "windows", template: "control", ttl: 30, data: "windowCard" }
     },
     {
       id: "climate-feedback",
       watch: ["cabin.climate.*"],
-      card: { key: "climate", template: "control", size: "1/6", ttl: 30, data: "climateCard" }
+      card: { key: "climate", template: "control", ttl: 30, data: "climateCard" }
     },
     {
       id: "seat-feedback",
       watch: ["seat.*.*"],
-      card: { key: "seats", template: "control", size: "1/6", ttl: 30, data: "seatCard" }
+      card: { key: "seats", template: "control", ttl: 30, data: "seatCard" }
     },
     {
       id: "steering-feedback",
       watch: ["cabin.steeringWheel.heating"],
-      card: { key: "steering", template: "control", size: "1/6", ttl: 30, data: "steeringCard" }
+      card: { key: "steering", template: "control", ttl: 30, data: "steeringCard" }
     },
     {
       id: "ambient-feedback",
       watch: ["cabin.ambientLight.*"],
-      card: { key: "ambient", template: "control", size: "1/6", ttl: 30, data: "ambientCard" }
+      card: { key: "ambient", template: "control", ttl: 30, data: "ambientCard" }
     },
     {
       id: "fragrance-feedback",
       watch: ["cabin.fragrance.*"],
-      card: { key: "fragrance", template: "control", size: "1/6", ttl: 30, data: "fragranceCard" }
+      card: { key: "fragrance", template: "control", ttl: 30, data: "fragranceCard" }
     },
     {
       id: "light-feedback",
       watch: ["cabin.light.*.state"],
-      card: { key: "lights", template: "control", size: "1/6", ttl: 30, data: "lightCard" }
+      card: { key: "lights", template: "control", ttl: 30, data: "lightCard" }
     },
     {
       id: "drive-feedback",
       watch: ["vehicle.driveMode", "vehicle.regenLevel", "vehicle.suspensionHeight"],
-      card: { key: "drive", template: "control", size: "1/6", ttl: 30, data: "driveCard" }
+      card: { key: "drive", template: "control", ttl: 30, data: "driveCard" }
     },
     {
       id: "opening-feedback",
       watch: ["cabin.door.*.isOpen", "cabin.trunk.isOpen", "cabin.chargePort.isOpen"],
-      card: { key: "openings", template: "control", size: "1/6", ttl: 30, data: "openingCard" }
+      card: { key: "openings", template: "control", ttl: 30, data: "openingCard" }
     }
   ];
   var WIN_POS = ["driver", "passenger", "rearLeft", "rearRight"];

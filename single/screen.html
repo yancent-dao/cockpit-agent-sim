@@ -82,6 +82,19 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .navbig{display:flex;align-items:baseline;gap:8px}
 .navbig b{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-primary)}
 .navbig span{font-size:26px;color:var(--text-secondary)}
+/* 导航小卡：格子只有一格宽，2/3 的字号会撑破 */
+.sz-1-3 .turnbar,.sz-1-6 .turnbar{gap:14px;padding:16px 20px}
+.sz-1-3 .turnbar .arrow,.sz-1-6 .turnbar .arrow{font-size:40px}
+.sz-1-3 .turntext b,.sz-1-6 .turntext b{font-size:34px}
+.sz-1-3 .turntext span,.sz-1-6 .turntext span{font-size:22px}
+.sz-1-3 .turnroad,.sz-1-6 .turnroad{font-size:20px;max-width:38%}
+.sz-1-3 .navfoot{gap:20px;padding:16px 20px;flex-wrap:wrap}
+.sz-1-3 .navbig b{font-size:34px}
+.sz-1-3 .navbig span{font-size:20px}
+.sz-1-3 .navdest{font-size:22px}
+/* 小卡没有地图。两块挨在一起垂直居中，别被推到两端中间空一大片 */
+.sz-1-3 .navwrap,.sz-1-6 .navwrap{justify-content:center;gap:4px}
+.sz-1-3 .turnbar,.sz-1-6 .turnbar{border-radius:var(--r-md)}
 .navdest{margin-left:auto;font-size:28px;color:var(--text-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%}
 /* 途经点比终点次一级，但不能小到看不见 */
@@ -97,6 +110,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .cap div{background:var(--bg-elevated);border-radius:14px;padding:14px 18px;font-size:24px}
 .cap div small{display:block;color:var(--text-secondary);font-size:20px;margin-top:4px}
 .cap div.off{opacity:.35;text-decoration:line-through}
+/* 一格宽排不下三列，退成一列；再小就只报个数 */
+.cap.list{grid-template-columns:1fr;gap:10px}
+.cap.list div{padding:10px 14px;font-size:22px}
+.cap.list div small{font-size:18px;margin-top:2px}
+.capcount{display:flex;align-items:baseline;gap:10px;margin-top:18px}
+.capcount b{font-size:76px;font-weight:700;line-height:1}
+.capcount span{font-size:26px;color:var(--text-secondary)}
 
 .win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
@@ -271,6 +291,19 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     return ["今天", "明天", "后天"][diff] ?? WEEK[local.getDay()];
   }
 
+  // src/screen/layout.ts
+  function navForm(size) {
+    if (size === "2/3" || size === "1/2" || size === "full")
+      return { map: true, turnbar: true, foot: true };
+    if (size === "1/3") return { map: false, turnbar: true, foot: true };
+    return { map: false, turnbar: true, foot: false };
+  }
+  function capForm(size) {
+    if (size === "full") return { mode: "grid" };
+    if (size === "1/6") return { mode: "count" };
+    return { mode: "list" };
+  }
+
   // src/screen/mapView.ts
   var import_meta = {};
   var JS_KEY = import_meta.env?.VITE_AMAP_JS_KEY || "";
@@ -356,6 +389,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     map.setFitView(overlays, false, [40, 40, 40, 40]);
     return true;
   }
+  function disposeRoute(box) {
+    const l = live.get(box);
+    if (!l) return;
+    l.map.destroy?.();
+    live.delete(box);
+    box.innerHTML = "";
+  }
+  function resizeRoute(box) {
+    live.get(box)?.map.resize?.();
+  }
 
   // src/screen/main.ts
   var $ = (id) => document.getElementById(id);
@@ -426,19 +469,29 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
       <div class="navfoot"></div>
     </div>`;
     }
+    const form = navForm(c.size);
     const step = d.steps?.[0]?.instruction;
     const turn = step ? parseTurn(step) : void 0;
     const bar = node.querySelector(".turnbar");
-    bar.style.display = turn ? "" : "none";
+    bar.style.display = turn && form.turnbar ? "" : "none";
     if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ""}`;
     const via = (d.via ?? []).length ? `<em>经 ${esc(d.via.join("、"))}</em>` : "";
-    node.querySelector(".navfoot").innerHTML = `
+    const foot = node.querySelector(".navfoot");
+    foot.style.display = form.foot ? "" : "none";
+    foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
     <div class="navdest">${via}${esc(d.destination ?? "")}</div>`;
     const box = node.querySelector(".mapbox");
+    box.style.display = form.map ? "" : "none";
+    if (!form.map) {
+      disposeRoute(box);
+      return;
+    }
+    if (node.dataset.mapSize && node.dataset.mapSize !== c.size) resizeRoute(box);
+    node.dataset.mapSize = c.size;
     showRoute(box, { originLoc: d.originLoc, destLoc: d.destLoc, polyline: d.polyline, waypoints: d.waypoints }).then((ok2) => {
       if (ok2 || !d.mapUrl) return;
       const img = box.querySelector("img");
@@ -468,8 +521,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
         return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
       case "list":
         return `<ol class="listcard">${(d.items ?? []).map((i) => `<li><b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}</li>`).join("")}</ol>`;
-      case "capability":
-        return `<div class="cap">${(d.items ?? []).map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
+      case "capability": {
+        const items = d.items ?? [];
+        const form = capForm(c.size);
+        if (form.mode === "count")
+          return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
+        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
+      }
       case "weather":
         return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
         <div class="sub">${esc([d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · "))}</div>` : ""}
@@ -482,7 +540,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     }
   }
   var cardNodes = /* @__PURE__ */ new Map();
-  var cardSig = (c) => `${c.template}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`;
+  var cardSig = (c) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`;
   function renderDesk() {
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();
@@ -500,7 +558,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
       }
       node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
       node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
-      node.className = `card tpl-${c.template} kind-${c.kind}${hotCards.has(c.id) ? " hot" : ""}`;
+      node.className = `card tpl-${c.template} kind-${c.kind} sz-${c.size.replace("/", "-")}${hotCards.has(c.id) ? " hot" : ""}`;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);

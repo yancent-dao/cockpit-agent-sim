@@ -116,3 +116,21 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
   map.setFitView(overlays, false, [40, 40, 40, 40])
   return true
 }
+
+/**
+ * 销毁容器里的地图实例。卡片缩到不显示地图的尺寸时调用——
+ * 留着不管的话，容器尺寸变了画布会错位，而且白占一个 WebGL context。
+ * 放大回来时 showRoute 会自己重建。
+ */
+export function disposeRoute(box: HTMLElement) {
+  const l = live.get(box)
+  if (!l) return
+  l.map.destroy?.()
+  live.delete(box)
+  box.innerHTML = ''
+}
+
+/** 容器尺寸变了要通知地图重算视口，否则画布留在旧尺寸上 */
+export function resizeRoute(box: HTMLElement) {
+  live.get(box)?.map.resize?.()
+}

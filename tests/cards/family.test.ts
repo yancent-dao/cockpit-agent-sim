@@ -58,6 +58,23 @@ describe('desk 层：同轮并存，新轮替换', () => {
   })
 })
 
+describe('家族清扫也算空间释放', () => {
+  it('五张换一张腾出的空间，2 秒后让被压的卡回落', () => {
+    let now = 0
+    const d = createDesk(() => now)
+    d.show({ template: 'list', size: '1/2', ttl: 'untilDismissed',
+      data: { title: '候选', items: Array.from({ length: 8 }, (_, i) => ({ label: 'x' + i })) } })
+    // 同轮五张县城天气把候选压小
+    for (const c of ['a', 'b', 'c', 'd', 'e']) { now += 10; d.render(wx(c, 1) as any) }
+    const pressed = d.layout().cards.find(c => c.data.title === '候选')!.size
+    expect(d.cellsOf(pressed)).toBeLessThan(d.cellsOf('1/2'))
+    // 新一轮只剩一张 → 清扫腾位 → 2 秒后回落
+    now += 10; d.render(wx('北京', 2) as any)
+    now += 2500; d.tick()
+    expect(d.layout().cards.find(c => c.data.title === '候选')!.size).toBe('1/2')
+  })
+})
+
 describe('handler 层：weatherQuery 带上家族与轮次，ttl 不再定时蒸发', () => {
   const fakeAmap = {
     geocode: async (q: string) => ({ adcode: q === '成都' ? '510100' : '110000', formattedAddress: q, location: '1,1' }),

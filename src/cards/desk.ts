@@ -203,9 +203,15 @@ export function createDesk(clock: () => number = Date.now) {
   /** 新批落地 → 同族旧批退场。同 key 刷新不在此列（render 走 update 不新建） */
   function sweepFamily(c: Card) {
     if (!c.family) return
+    let removed = false
     for (const other of [...cards.values()])
-      if (other.id !== c.id && other.family === c.family && other.round !== c.round)
+      if (other.id !== c.id && other.family === c.family && other.round !== c.round) {
         cards.delete(other.id)   // 静默退场：被新批替换是内容更迭，不是挤出，不用告知
+        removed = true
+      }
+    // 清扫也是空间释放——五张县城天气换成一张北京，腾出的位置要让
+    // 被压缩的卡回落（自省补：直接 delete 绕过 dismiss 就绕过了 releasedAt）
+    if (removed) releasedAt = clock()
   }
 
   /** 确定性放置：2/3 最先，然后优先级降序、创建时间升序，行优先扫第一个合法位置 */

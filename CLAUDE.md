@@ -103,6 +103,11 @@ agents/        Agent 实例：manifest + 人设
 
 ## 卡片编排（2026-08-10 重设计，详见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md）
 
+> 公理（2026-08-12）：**卡片是"带契约的投影"，不是容器。** 数据层集中（信号 + 域仓）、
+> 逻辑层集中（handler/规则 = 机制，Prompt = 策略）、样式层集中（token）。模板契约三件套：
+> 数据形状（fields）· 形态（forms）· 交互声明（interactions）。全系统唯一的容器是
+> canvas-app（iframe 沙箱逃生舱）——它的存在意义恰恰是让其它卡片不必升级为容器。
+
 - **桌面 = f(车辆状态)**：基础卡片（导航、车窗反馈）由 `src/config/cardRules.ts` 的声明式规则驱动，`src/cards/orchestrator.ts` 调和，**模型零参与**。加场景 = 加规则 + data builder，不改编排器
 - 桌面统一 48 单元（12×4）无分区、无常驻卡、默认为空；导航中导航卡 2/3 左锚定且不可被挤，导航结束自动退场
 - **紧急度正交于来源**（2026-08-12）：`kind` 说"谁建的卡"，`urgency` 说"这事有多急"。

@@ -4,6 +4,8 @@ import { parseTurn, dayLabel } from './turn'
 import { navForm, mediaForm } from './layout'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
+import { sanitize } from './sanitize'
+import { tokensFor } from '../design/tokens'
 import { dimsOf, GRID, TIERS } from '../config/grid'
 import { cardBody, tierClass, accentClass } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
@@ -149,6 +151,47 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
 }
 
 /**
+ * 生成式卡：模型直出的 HTML 进 Shadow DOM。
+ *
+ * Shadow DOM 天然做样式隔离 —— 模型写的 style 漏不出去污染桌面，桌面的样式
+ * 也不会打乱它，同时 font/color 仍从外部继承，所以它默认就长得像这套系统。
+ * 零依赖，浏览器原生。
+ *
+ * 消毒（sanitize.ts）是**安全边界不是可选项**：这是整个系统里唯一一处
+ * 把模型输出当代码执行的地方。消毒后为空就退回纯文字，**绝不白屏**。
+ */
+function renderCanvasCard(node: HTMLDivElement, c: CardView) {
+  const d = c.data ?? {}
+  const host = node.querySelector('.cvhost') as HTMLElement
+  if (!host) return
+  const root = (host as any).__shadow ?? host.attachShadow({ mode: 'open' })
+  ;(host as any).__shadow = root
+  const r = sanitize(String(d.html ?? ''))
+  // 剥了什么要上报 —— 不说出来的话没人知道模型哪里写错了
+  if (r.stripped.length) bus.send({ type: 'canvasNote', cardId: c.id, stripped: r.stripped } as any)
+  root.innerHTML = `<style>${tokensFor('screen')}
+    :host{display:block;height:100%;overflow:hidden;color:var(--tx-1);
+      font-family:inherit;font-size:var(--t-cap)}
+    *{box-sizing:border-box;margin:0;max-width:100%}
+    table{border-collapse:collapse;width:100%}
+    td,th{padding:8px 12px;border-bottom:1px solid var(--hair);text-align:left}
+    th{color:var(--tx-3);font-weight:500}
+    svg{max-height:100%}
+  </style>${r.empty
+    // 退回纯文字。模型写了一整屏 <script> 时，用户该看到那句话，不是一张空卡
+    ? `<div style="font-size:var(--t-lead);line-height:1.3">${
+        String(d.text ?? '').replace(/[<>&]/g, ch => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[ch]!))}</div>`
+    : r.html}`
+  // 溢出检测：屏幕不可滚动，超出等于用户永远看不到
+  requestAnimationFrame(() => {
+    const el = root.firstElementChild?.nextElementSibling as HTMLElement | null
+    const over = host.scrollHeight > host.clientHeight + 2
+    if (over) bus.send({ type: 'canvasNote', cardId: c.id, overflow: true } as any)
+    void el
+  })
+}
+
+/**
  * 导航卡单独渲染：地图容器建一次就长在那儿，之后只更新转向条与底部数字。
  * 整块 innerHTML 重刷会把活地图实例冲掉（闪屏、丢视角），所以这里必须分开处理。
  */
@@ -247,6 +290,12 @@ function renderDesk() {
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
+      else if (c.template === 'canvas') {
+        // 角标是诚实标注：这张卡是临场生成的，跟固定模板不是一回事
+        node.innerHTML = `<h3>${esc(c.title)}<span class="genmark">生成式</span></h3>` +
+          `<div class="bd"><div class="cvhost"></div></div>`
+        renderCanvasCard(node, c)
+      }
       else {
         // .bd 认领全部剩余高度并让内容贴底——诊断 1「内容缩在左上角」的修法
         node.innerHTML = `<h3>${esc(c.title)}</h3><div class="bd">${cardBody(c)}</div>`

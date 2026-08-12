@@ -69,7 +69,8 @@ export const tierClass = (size: string) => `t-${normalizeTier(size)}`
 const ACCENT: Record<string, string> = {
   nav: 'brand', weather: 'info', control: 'info', vehicle: 'info',
   media: 'media', list: 'pick', confirm: 'pick',
-  feedback: 'ok', notice: 'warn', capability: 'sys', generic: 'sys', info: 'sys', canvas: 'sys',
+  feedback: 'ok', notice: 'warn', capability: 'sys', generic: 'sys', info: 'sys',
+  canvas: 'media',   // 紫色描边——生成式卡跟固定模板要一眼分得出
 }
 const URGENCY: Record<string, string> = { critical: 'danger', warn: 'warn' }
 

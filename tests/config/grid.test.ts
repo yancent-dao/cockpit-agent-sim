@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { GRID, TIERS, LADDER, ALIAS, normalizeTier, dimsOf, cellsOfTier, tierNames } from '../../src/config/grid'
+import { GRID, TIERS, LADDER, ALIAS, normalizeTier, dimsOf, cellsOfTier, tierNames, pixelsOf } from '../../src/config/grid'
 
 /**
  * 栅格与档位常量的**唯一出处**。
@@ -96,5 +96,37 @@ describe('cellsOfTier：占几个单元', () => {
 
   it('full 正好铺满一屏', () => {
     expect(cellsOfTier('full')).toBe(48)
+  })
+})
+
+/**
+ * 生成式卡要把**当前卡片的真实像素**告诉模型（「你拿到一块 1212×490 的画布，
+ * 不能滚动，超出会被裁掉」）。不给这个数字它必然溢出 ——
+ * 它没有别的办法知道自己有多大。
+ */
+describe('像素契约', () => {
+  it('算得出每个档位的画布像素', () => {
+    const p = pixelsOf('card')
+    expect(p.w).toBeGreaterThan(0)
+    expect(p.h).toBeGreaterThan(0)
+  })
+
+  it('档位越大画布越大', () => {
+    expect(pixelsOf('stage').w).toBeGreaterThan(pixelsOf('card').w)
+    expect(pixelsOf('full').h).toBeGreaterThan(pixelsOf('banner').h)
+  })
+
+  it('full 的宽度接近整个桌面区（差的是左右 padding）', () => {
+    expect(pixelsOf('full').w).toBeGreaterThan(2200)
+    expect(pixelsOf('full').w).toBeLessThan(2450)
+  })
+
+  // 跨列的卡片把中间的 gap 也吃掉了，不算的话报给模型的数字会偏小一大截
+  it('跨列时把中间的 gap 算进去', () => {
+    expect(pixelsOf('panel').w).toBeGreaterThan(pixelsOf('card').w * 2)
+  })
+
+  it('别名同样能查', () => {
+    expect(pixelsOf('2/3')).toEqual(pixelsOf('stage'))
   })
 })

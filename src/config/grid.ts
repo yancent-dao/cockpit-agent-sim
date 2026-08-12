@@ -105,3 +105,38 @@ export function listCapacity(c: number, r: number): number {
   if (r < 2) return 0          // 单行档连一条带副标题的候选都放不下
   return contentCols(c) * r * 2
 }
+
+/**
+ * 屏幕几何。跟 screen.html 的 `#stage` / `#desk` 一一对应 ——
+ * 改这里要同步改那边，反过来也一样。
+ *
+ * 存在的理由只有一个：生成式卡必须把**真实像素**告诉模型。
+ * 不给这个数字它必然溢出，因为它没有别的办法知道自己有多大。
+ */
+export const SCREEN = {
+  w: 2560, h: 1440,
+  statusH: 96,        // 状态栏
+  voiceH: 300,        // 语音区（待机时收到 148，按大的算才不会撑破）
+  padX: 60, padY: 24, // #desk 的内边距
+  gap: 24,
+  /** 卡片自己的内边距（左右各一次，上下各一次），--u 取 1 的基准值 */
+  cardPadX: 26, cardPadY: 22,
+} as const
+
+/**
+ * 档位 → 画布可用像素（已减掉卡片内边距）。
+ *
+ * 跨列的卡片把中间的 gap 也吃掉了 —— 一张 4 列的卡宽度是 `4 列宽 + 3 个 gap`，
+ * 不算 gap 的话报给模型的数字会偏小一大截，它就会把内容排得过于保守。
+ */
+export function pixelsOf(size: string): { w: number; h: number } {
+  const [cw, ch] = dimsOf(size)
+  const deskW = SCREEN.w - SCREEN.padX * 2
+  const deskH = SCREEN.h - SCREEN.statusH - SCREEN.voiceH - SCREEN.padY * 2
+  const colW = (deskW - SCREEN.gap * (GRID.cols - 1)) / GRID.cols
+  const rowH = (deskH - SCREEN.gap * (GRID.rows - 1)) / GRID.rows
+  return {
+    w: Math.round(cw * colW + (cw - 1) * SCREEN.gap - SCREEN.cardPadX * 2),
+    h: Math.round(ch * rowH + (ch - 1) * SCREEN.gap - SCREEN.cardPadY * 2),
+  }
+}

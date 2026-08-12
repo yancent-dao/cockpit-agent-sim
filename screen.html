@@ -90,6 +90,15 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
 #overlay.alert .card{border:3px solid var(--danger-bd);box-shadow:0 0 0 6px rgba(239,68,68,.12),var(--sh-2)}
 
+/* ── 生成式卡：紫色描边 + 角标 ──
+   角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，
+   用户有权知道自己在看的东西每次可能不一样 */
+.tpl-canvas{border:2px solid var(--acbd)}
+.genmark{margin-left:auto;font-size:calc(var(--t-cap)*var(--u)*.86);font-weight:500;
+  padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);letter-spacing:0}
+.cvhost{flex:1;min-height:0;overflow:hidden}
+
 /* ── 语义身份：八类各四件套 ──
    诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
    身份由「模板 + 紧急度」定，不由 kind 定 —— kind 是编排优先级，不是外观。 */

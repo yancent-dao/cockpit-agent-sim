@@ -19,6 +19,12 @@ export type BusMsg =
    * **边界：只上报设备事实，不上报决定。** "放完了"是事实，"该放下一首了"是决定，
    * 后者归控制面板那边的规则管。这条界线以后容易被侵蚀。
    */
+  /**
+   * 生成式卡的自检上报：消毒剥了什么、内容有没有溢出。
+   * 跟 mediaEvent 同一条边界 —— **只上报设备事实，不上报决定**。
+   * "溢出了"是事实，"该换个档位"是决定，后者归控制面板那边管。
+   */
+  | { type: 'canvasNote'; cardId: string; stripped?: string[]; overflow?: boolean }
   | { type: 'mediaEvent'; event: 'ended' | 'error' | 'blocked' | 'ready'; detail?: string }
 
 export function createBus(onMsg: (m: BusMsg) => void) {

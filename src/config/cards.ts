@@ -1,3 +1,4 @@
+import { pixelsOf } from './grid'
 /**
  * 卡片模板清单（v0.1）
  * 多数是"能力无关"的通用形态，靠数据驱动复用，而不是一个功能一张卡。
@@ -43,6 +44,15 @@ export interface CardTemplate {
   fields?: Record<string, FieldSpec>
 }
 
+/**
+ * 各档位的画布像素，拼进生成式卡的模板描述。
+ *
+ * 不告诉模型画布多大它必然溢出 —— 它没有别的办法知道自己有多大。
+ * 这串是**算出来的**不是写死的：改栅格或屏幕尺寸，这句话自动跟着变。
+ */
+const CANVAS_SIZES = ['1/6', '1/3', '1/2', '2/3', 'full']
+  .map(z => { const p = pixelsOf(z); return `${z} ${p.w}×${p.h}` }).join('，')
+
 export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'control', label: '车控卡', defaultSize: '1/6',
     desc: '通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。',
@@ -80,6 +90,18 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     fields: { items: { type: 'array', required: true } } },
   { id: 'generic', label: '通用卡', defaultSize: '1/3',
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },
+  /**
+   * 生成式卡。**先确认别的模板真的装不下再用它** —— 它每次长得都不一样，
+   * 跟「同一场景每次演示长得一样」是正面冲突的，产品已知并接受这个代价。
+   */
+  { id: 'canvas', label: '生成式卡', defaultSize: '1/2',
+    desc: '前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。' +
+      '只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。' +
+      'data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。' +
+      '只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。' +
+      '样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：' +
+      CANVAS_SIZES + '。按这个尺寸排版，别指望滚动。',
+    fields: { html: { type: 'string', required: true }, text: { type: 'string', required: true } } },
 ]
 
 export const TEMPLATE_IDS = CARD_TEMPLATES.map(t => t.id)

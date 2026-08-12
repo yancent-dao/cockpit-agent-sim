@@ -8,18 +8,19 @@ const mk = (o: any = {}) => desk.show({ template: 'feedback', size: '1/6', ttl: 
 
 beforeEach(() => { now = 1000; desk = createDesk(() => now) })
 
-/* ══════════════ 栅格：统一 6 格，无分区 ══════════════ */
-describe('栅格：3列×2行统一画布，每个尺寸只允许一种形状', () => {
-  it('1/6 占 1 格，1/3 占 2 格，1/2 占 3 格，2/3 占 4 格', () => {
-    expect(desk.cellsOf('1/6')).toBe(1)
-    expect(desk.cellsOf('1/3')).toBe(2)
-    expect(desk.cellsOf('1/2')).toBe(3)
-    expect(desk.cellsOf('2/3')).toBe(4)
+/* ══════════════ 栅格：12×4 = 48 单元 ══════════════ */
+describe('栅格：12列×4行统一画布，档位形状可枚举', () => {
+  // 老尺寸名继续能用（'1/6' → card），单元数换算成新栅格
+  it('1/6 占 8 单元，1/3 占 16，1/2 占 24，2/3 占 32', () => {
+    expect(desk.cellsOf('1/6')).toBe(8)
+    expect(desk.cellsOf('1/3')).toBe(16)
+    expect(desk.cellsOf('1/2')).toBe(24)
+    expect(desk.cellsOf('2/3')).toBe(32)
   })
 
   it('默认桌面为空——没有常驻卡，一切按需出现', () => {
     expect(desk.layout().cards).toHaveLength(0)
-    expect(desk.layout().free).toBe(6)
+    expect(desk.layout().free).toBe(48)
   })
 
   it('六张 1/6 填满整个桌面', () => {
@@ -33,46 +34,65 @@ describe('栅格：3列×2行统一画布，每个尺寸只允许一种形状', 
     const c = desk.layout().cards[0]
     expect(c.row).toBe(0)
     expect(c.col).toBe(0)
-    expect(c.rowSpan).toBe(1)
-    expect(c.colSpan).toBe(2)
+    expect(c.rowSpan).toBe(2)
+    expect(c.colSpan).toBe(8)
   })
 
-  it('1/2 整行卡占整行，高优先级先占位，低优先级卡挪到下行', () => {
+  it('1/2 整行卡占满 12 列，高优先级先占位，低优先级卡挪到下面', () => {
     mk(); now += 10; mk({ size: '1/2', kind: 'system' }); now += 10
-    // system 优先级高先占上行整行，1/6 task 卡挪去下行
     const cards = desk.layout().cards
     const half = cards.find(c => c.size === '1/2')!
     const small = cards.find(c => c.size === '1/6')!
     expect(half.row).toBe(0)
     expect(half.col).toBe(0)
-    expect(small.row).toBe(1)
+    expect(half.colSpan).toBe(12)
+    expect(small.row).toBe(2)
+  })
+
+  /**
+   * 不变量：列起点只取偶数，配合「档位宽度一律偶数」⇒ 空隙必为偶数宽，
+   * chip（宽 2）永远填得上。3×2 栅格下导航卡整个出不来的那个几何死局就是缺这条。
+   */
+  it('所有卡的列起点都是偶数', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
+    for (let i = 0; i < 4; i++) { mk(); now += 10 }
+    for (const c of desk.layout().cards) expect(c.col % 2, `${c.id} 在第 ${c.col} 列`).toBe(0)
+  })
+
+  it('半高档的行起点只在 0 或 2，不会错位出一条高 1 的横缝', () => {
+    for (let i = 0; i < 6; i++) { mk(); now += 10 }
+    for (const c of desk.layout().cards) expect([0, 2], `row ${c.row}`).toContain(c.row)
   })
 })
 
 /* ══════════════ 2/3 导航形状 ══════════════ */
-describe('2/3：左锚定 2×2，唯一合法位置是左两列', () => {
-  it('2/3 卡占据左两列整块', () => {
+describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () => {
+  it('2/3 卡占据左八列整块', () => {
     const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { destination: 'x' } })
     expect(r.status).toBe('ok')
     const c = desk.layout().cards[0]
     expect(c.row).toBe(0)
     expect(c.col).toBe(0)
-    expect(c.rowSpan).toBe(2)
-    expect(c.colSpan).toBe(2)
+    expect(c.rowSpan).toBe(4)
+    expect(c.colSpan).toBe(8)
   })
 
-  it('有 2/3 卡时剩余空间是右列两格，只容得下 1/6', () => {
+  /**
+   * 12×4 相对 3×2 最实质的改善：stage 之后右边留的是 4×4 = 16 单元的**竖条**，
+   * 上下两张 card（4×2）叠着放得进去 —— 老栅格下那里是一条宽 1 的死缝。
+   */
+  it('有 2/3 卡时右边竖条还能叠两张 1/6', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
-    expect(desk.layout().free).toBe(2)
+    expect(desk.layout().free).toBe(16)
     const a = mk(); now += 10
     const b = mk(); now += 10
     expect(a.status).toBe('ok')
     expect(b.status).toBe('ok')
     const cells = desk.layout().cards.filter(c => c.size === '1/6').map(c => [c.row, c.col])
-    expect(cells).toEqual([[0, 2], [1, 2]])
+    expect(cells).toEqual([[0, 8], [2, 8]])
   })
 
-  it('2/3 在场时 1/3 横卡放不下（右列上下两格不相邻）→ 自动降为 1/6', () => {
+  it('2/3 在场时 1/3 横卡（宽 8）放不下右边的 4 列 → 自动降为 1/6', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
     const r = mk({ size: '1/3', data: { title: '天气' } })
     expect(r.status).toBe('ok')
@@ -245,17 +265,27 @@ describe('render：优先复用已有卡 → 放大 → 最后才新建', () => 
 
 /* ══════════════ 上下文注入 ══════════════ */
 describe('桌面摘要（注入 system prompt）', () => {
-  it('列出卡片、尺寸与剩余格数，不再提分区', () => {
+  /**
+   * 摘要是给**模型**看的。48 单元下说「剩余 16 格」它没法换算成
+   * 「还能不能再上一张卡」，只会瞎猜。改成按基准卡数说人话。
+   */
+  it('列出卡片、尺寸，剩余空间换算成还能放几张小卡', () => {
     desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule', ttl: 'untilDismissed', data: { title: '导航' } })
     const s = desk.summary()
     expect(s).toContain('导航')
     expect(s).toContain('2/3')
-    expect(s).toMatch(/剩余\s*2\s*格/)
+    expect(s).toMatch(/还(能|放得下).*2\s*张/)   // 16 单元 = 两张基准卡
+    expect(s).not.toMatch(/\d+\s*格/)            // 不许再出现内部单元数
     expect(s).not.toContain('固定区')
   })
 
-  it('空桌面明确说明', () => {
-    expect(desk.summary()).toContain('剩余 6 格')
+  it('空桌面明确说明还能放六张', () => {
+    expect(desk.summary()).toMatch(/还(能|放得下).*6\s*张/)
+  })
+
+  it('放满了就直说，别让模型以为还有位置', () => {
+    for (let i = 0; i < 6; i++) { mk(); now += 10 }
+    expect(desk.summary()).toMatch(/满|放不下/)
   })
 })
 

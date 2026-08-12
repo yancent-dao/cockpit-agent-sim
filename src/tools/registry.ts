@@ -136,7 +136,9 @@ export function createRegistry(
         data: {
           cards: l.cards.map(brief),
           overlay: l.overlay ? brief(l.overlay) : null,
-          free: l.free,
+          // 给模型的是"还放得下几张小卡"，不是内部单元数 ——
+          // 48 单元下报 16 它没法换算成"能不能再上一张"，只会瞎猜
+          slots: Math.floor(l.free / 8),
         },
       }
     },

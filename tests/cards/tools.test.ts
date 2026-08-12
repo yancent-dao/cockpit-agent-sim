@@ -181,13 +181,13 @@ describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => 
     const d = r.data as any
     expect(d.cards[0].title).toBe('A')
     expect(d.cards[0].size).toBe('1/3')
-    expect(d.free).toBe(4)
+    expect(d.slots).toBe(4)   // (48-16)/8，还放得下四张小卡
   })
 
   it('空桌面也返回结构完整的结果', async () => {
     const d = (await reg.invoke('desktop.getLayout', {})).data as any
     expect(d.cards).toEqual([])
-    expect(d.free).toBe(6)
+    expect(d.slots).toBe(6)
   })
 })
 

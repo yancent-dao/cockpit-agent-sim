@@ -1,12 +1,17 @@
 import { CARD_TEMPLATES } from '../config/cards'
-import { listCapacity, dimsOf } from '../config/grid'
+import { GRID, TIERS, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 
 /**
  * 卡片桌面（无APP化）—— 2026-08-10 重设计，见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md
  *
- * 统一 6 格画布（3列×2行），无分区、无常驻卡，默认为空，一切按需出现。
- * 每个尺寸只允许一种形状；2/3 只允许左锚定 —— 布局问题保持可枚举，
+ * 统一 48 单元画布（12列×4行，2026-08-12 从 3×2 换过来），无分区、无常驻卡，
+ * 默认为空，一切按需出现。每个档位只允许一种形状 —— 布局问题保持可枚举，
  * **可预测优先于最优**：同一场景每次演示长得一样。
+ *
+ * 换栅格是为了消掉几何死局：3×2 下一张 2/3 卡占掉左 2 列，右边剩一条宽 1 的竖缝，
+ * 横向的 1/3 卡（宽 2）永远放不进去，整张卡出不来。12×4 之后档位宽度一律偶数、
+ * 列起点只取偶数，空隙必为偶数宽，最小档 chip（宽 2）永远填得上。
+ * 栅格与档位常量的唯一出处是 src/config/grid.ts。
  *
  * 仲裁全部确定性：
  *   放置顺序 = 2/3 卡最先（唯一合法位置）→ 优先级降序 → 创建时间升序
@@ -19,11 +24,8 @@ export type Size = '1/6' | '1/3' | '1/2' | '2/3' | 'full'
 export type Kind = 'task' | 'rule' | 'system'
 export type Ttl = 'untilDismissed' | 'untilTaskEnd' | number
 
-const ROWS = 2, COLS = 3
-const SHAPES: Record<Exclude<Size, 'full'>, { w: number; h: number }> = {
-  '1/6': { w: 1, h: 1 }, '1/3': { w: 2, h: 1 }, '1/2': { w: 3, h: 1 }, '2/3': { w: 2, h: 2 },
-}
-const CELLS: Record<Size, number> = { '1/6': 1, '1/3': 2, '1/2': 3, '2/3': 4, full: 6 }
+const ROWS = GRID.rows, COLS = GRID.cols
+const shapeOf = (size: string) => { const [w, h] = dimsOf(size); return { w, h } }
 /** 阶梯降尺寸。2/3 不参与——只有规则导航卡用它且不可挤 */
 const LADDER: Size[] = ['1/6', '1/3', '1/2']
 /** 卡片能缩到的最低档；没声明 minSize 就一路缩到 1/6 */
@@ -104,19 +106,25 @@ export function createDesk(clock: () => number = Date.now) {
   /** 确定性放置：2/3 最先，然后优先级降序、创建时间升序，行优先扫第一个合法位置 */
   function tryPlace(list: Card[]): PlacedCard[] | null {
     const order = [...list].sort((a, b) => {
-      const a23 = a.size === '2/3' ? 1 : 0, b23 = b.size === '2/3' ? 1 : 0
-      if (a23 !== b23) return b23 - a23
+      // 高的先放。单行档最灵活，让它最后填缝——否则它会把半高档的位置切碎，
+      // 一张 4×2 的卡明明有地方却因为上下都被单行档占了半格而放不下
+      const ha = shapeOf(a.size).h, hb = shapeOf(b.size).h
+      if (ha !== hb) return hb - ha
       const pa = PRIORITY[a.kind], pb = PRIORITY[b.kind]
       if (pa !== pb) return pb - pa
       return a.createdAt - b.createdAt
     })
-    const grid: boolean[][] = [[false, false, false], [false, false, false]]
+    const grid: boolean[][] = Array.from({ length: ROWS }, () => Array(COLS).fill(false))
     const out: PlacedCard[] = []
     for (const c of order) {
-      const shape = SHAPES[c.size as Exclude<Size, 'full'>]
+      const shape = shapeOf(c.size)
       let placed: PlacedCard | null = null
-      const cols = c.size === '2/3' ? [0] : Array.from({ length: COLS - shape.w + 1 }, (_, i) => i)
-      outer: for (let r = 0; r + shape.h <= ROWS; r++) {
+      // 列起点只取偶数 —— 配合「档位宽度一律偶数」，空隙必为偶数宽，chip 永远填得上
+      const cols: number[] = []
+      for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i)
+      // 行起点按自身高度对齐：半高档只落 0/2，不会错位出一条高 1 的横缝
+      const rowStep = shape.h >= 2 ? 2 : 1
+      outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
         for (const c0 of cols) {
           let free = true
           for (let dr = 0; dr < shape.h; dr++)
@@ -271,7 +279,7 @@ export function createDesk(clock: () => number = Date.now) {
       if (i.refreshTtl) exist.createdAt = clock()
       // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
       // 就重刷一次，不认这个锁的话"地图小一点"下一秒就被弹回去
-      if (exist.sizeLocked || CELLS[exist.size] >= CELLS[want]) {
+      if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {
         const r = update(exist.id, i.data ?? {})
         return { ...r, level: 'L1' }
       }
@@ -299,7 +307,7 @@ export function createDesk(clock: () => number = Date.now) {
     const placed = tryPlace(others()) ?? []
     return {
       cards: placed,
-      free: 6 - placed.reduce((n, c) => n + CELLS[c.size], 0),
+      free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
       overlay: overlay ? cards.get(overlay) : undefined,
     }
   }
@@ -309,9 +317,13 @@ export function createDesk(clock: () => number = Date.now) {
     const l = layout()
     const lines: string[] = []
     if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`)
+    // 摘要是给**模型**看的。48 单元下说"剩余 16 格"它没法换算成
+    // "还能不能再上一张卡"，只会瞎猜。按基准卡（1/6）张数说人话
+    const slots = Math.floor(l.free / cellsOfTier('1/6'))
+    const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`
     lines.push(l.cards.length
-      ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，剩余 ${l.free} 格`
-      : `桌面为空，剩余 6 格`)
+      ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，${room}`
+      : `桌面为空，${room}`)
     // 截断信息必须回给 Agent。只做 UI 的话模型以为屏上有 12 条、
     // 张口就说"第 10 个"，而用户根本看不到第 5 条之后的东西
     for (const c of l.cards) {
@@ -327,7 +339,7 @@ export function createDesk(clock: () => number = Date.now) {
     show, update, resize, dismiss, focus, render, tick, endTask, layout, summary,
     get: (id: string) => cards.get(id),
     findByKey: (key: string) => [...cards.values()].find(c => c.key === key),
-    cellsOf: (s: Size) => CELLS[s],
+    cellsOf: (s: Size) => cellsOfTier(s),
     priorityOf: (k: Kind) => PRIORITY[k],
     subscribe: (cb: () => void) => { listeners.push(cb); return () => listeners.splice(listeners.indexOf(cb), 1) },
   }

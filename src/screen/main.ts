@@ -2,7 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm } from './layout'
-import { dimsOf } from '../config/grid'
+import { dimsOf, GRID, TIERS } from '../config/grid'
 import { cardBody, esc as escR } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
@@ -195,7 +195,7 @@ function renderDesk() {
   // 占位符零状态，直接整体重建最简单，不需要跟卡片一样按身份复用
   desk.querySelectorAll('.slot').forEach(el => el.remove())
 
-  const occupied: boolean[][] = [[false, false, false], [false, false, false]]
+  const occupied: boolean[][] = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false))
   for (const c of deskState.cards) {
     seen.add(c.id)
     for (let dr = 0; dr < c.rowSpan; dr++)
@@ -223,14 +223,21 @@ function renderDesk() {
       node.dataset.sig = sig
     }
   }
-  for (let r = 0; r < 2; r++) for (let col = 0; col < 3; col++) {
-    if (occupied[r][col]) continue
-    const slot = document.createElement('div')
-    slot.className = 'slot'
-    slot.style.gridRow = String(r + 1)
-    slot.style.gridColumn = String(col + 1)
-    desk.appendChild(slot)
-  }
+  // 占位符按**基准卡大小**（4×2）画，不是按单元格。48 个 1×1 小方块的空桌面
+  // 看着像坏掉的棋盘；6 个基准块才读得出"这儿能放一张卡"
+  const [bw, bh] = [TIERS.card.w, TIERS.card.h]
+  for (let r = 0; r + bh <= GRID.rows; r += bh)
+    for (let col = 0; col + bw <= GRID.cols; col += bw) {
+      let free = true
+      for (let dr = 0; dr < bh && free; dr++)
+        for (let dc = 0; dc < bw; dc++) if (occupied[r + dr][col + dc]) { free = false; break }
+      if (!free) continue
+      const slot = document.createElement('div')
+      slot.className = 'slot'
+      slot.style.gridRow = `${r + 1} / span ${bh}`
+      slot.style.gridColumn = `${col + 1} / span ${bw}`
+      desk.appendChild(slot)
+    }
 
   // 卡片被移除时（不再出现在新状态里），才真正清掉对应 DOM 节点
   for (const [id, node] of cardNodes) {

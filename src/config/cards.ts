@@ -60,8 +60,11 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'info', label: '信息卡', defaultSize: '1/6',
     desc: '只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。',
     fields: { text: { type: 'string', required: true } } },
-  { id: 'media', label: '媒体卡', defaultSize: '1/3',
-    desc: '播放中的内容。data: {title, artist, progress}' },
+  // 播放器卡由系统按 media.playing 自动出，跟导航卡一样。
+  // 能用 2/3 是因为视频要大画面——它跟导航天然互斥（行驶中禁止看视频）
+  { id: 'media', label: '播放器卡', defaultSize: '1/3', sizes: [...COMMON_SIZES, '2/3'], systemOnly: true,
+    desc: '正在播放的内容，由系统按播放状态自动创建/刷新/撤销，不要手动建——调 music.play / radio.play / video.play 成功后它会自己出现。',
+    fields: { track: { type: 'string', required: true } } },
   { id: 'weather', label: '天气卡', defaultSize: '1/6',
     desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
     fields: { now: { type: 'object', required: true }, forecast: { type: 'array' } } },

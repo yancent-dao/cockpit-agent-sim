@@ -2,6 +2,7 @@ import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm, capForm, weatherForm } from './layout'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
+import { createPlayer } from './player'
 
 const $ = (id: string) => document.getElementById(id)!
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
@@ -77,6 +78,51 @@ const WIN = [
  * 距离 + 动作 + 箭头，好让转向条像真车导航那样一眼可读。
  * 纯展示层的文本解析，不是业务逻辑。
  */
+const player = createPlayer({ report: (event, detail) => bus.send({ type: 'mediaEvent', event, detail } as any) })
+
+// 必须在点击的事件处理函数里同步 unlock()，塞进 await 之后就不算用户手势了
+$('unlock').addEventListener('click', () => {
+  player.unlock()
+  $('unlock').classList.add('gone')
+}, { once: true })
+
+/**
+ * 播放器卡。跟导航卡同一个道理——<video> 元素不能跟着文字一起重绘，
+ * 重建就从头开始播了，所以容器建一次就长在那儿。
+ */
+function renderPlayerCard(node: HTMLDivElement, c: CardView) {
+  const d = c.data ?? {}
+  const isVideo = d.source === 'video'
+  if (!node.querySelector('.plwrap')) {
+    node.innerHTML = `<div class="plwrap">
+      <div class="plart"></div>
+      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span></div>
+    </div>`
+  }
+  const art = node.querySelector('.plart') as HTMLElement
+  if (isVideo) {
+    player.attachVideo(art)
+  } else {
+    const url = String(d.artwork ?? '')
+    const img = art.querySelector('img') as HTMLImageElement | null
+    if (url) {
+      if (img) { if (img.src !== url) img.src = url }
+      else art.innerHTML = `<img src="${esc(url)}" alt="">`
+    } else if (!img) {
+      // 没封面就给个音源图标，别留个空洞
+      art.innerHTML = `<div class="plicon">${d.source === 'radio' ? '📻' : '♪'}</div>`
+    }
+  }
+  node.querySelector('.pltrack')!.textContent = String(d.track ?? '')
+  node.querySelector('.plartist')!.textContent = String(d.artist ?? '')
+  node.classList.toggle('is-video', isVideo)
+
+  // 播放由卡片数据驱动——车机屏依然只是输出设备，不做任何"该播什么"的判断。
+  // play() 内部对同一个地址是幂等的，重复渲染不会打断播放
+  if (d.playing && d.streamUrl) player.play({ url: String(d.streamUrl), source: d.source, volume: Number(d.volume ?? 40) })
+  else if (!d.playing) player.pause()
+}
+
 /**
  * 导航卡单独渲染：地图容器建一次就长在那儿，之后只更新转向条与底部数字。
  * 整块 innerHTML 重刷会把活地图实例冲掉（闪屏、丢视角），所以这里必须分开处理。
@@ -222,6 +268,7 @@ function renderDesk() {
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
+      else if (c.template === 'media') renderPlayerCard(node, c)
       else node.innerHTML = `<h3>${esc(c.title)}</h3>${body(c)}`
       node.dataset.sig = sig
     }
@@ -237,7 +284,11 @@ function renderDesk() {
 
   // 卡片被移除时（不再出现在新状态里），才真正清掉对应 DOM 节点
   for (const [id, node] of cardNodes) {
-    if (!seen.has(id)) { node.remove(); cardNodes.delete(id) }
+    if (!seen.has(id)) {
+      // 播放器卡退场意味着 media.playing 变 false，声音得跟着停
+      if (node.classList.contains('tpl-media')) player.stop()
+      node.remove(); cardNodes.delete(id)
+    }
   }
 
   const ov = $('overlay')

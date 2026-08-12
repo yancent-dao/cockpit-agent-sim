@@ -118,6 +118,37 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .capcount b{font-size:76px;font-weight:700;line-height:1}
 .capcount span{font-size:26px;color:var(--text-secondary)}
 
+/* ── 播放器卡 ── */
+.plwrap{display:flex;align-items:center;gap:24px;height:100%;min-height:0}
+.plart{flex:none;width:132px;height:132px;border-radius:18px;overflow:hidden;background:var(--bg-elevated);
+  display:flex;align-items:center;justify-content:center}
+.plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
+.plicon{font-size:56px;opacity:.5}
+.plmeta{display:flex;flex-direction:column;gap:8px;min-width:0}
+.plmeta b{font-size:38px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plmeta span{font-size:26px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sz-1-6 .plwrap{flex-direction:column;align-items:flex-start;justify-content:center;gap:14px}
+.sz-1-6 .plart{width:96px;height:96px}
+.sz-1-6 .plmeta b{font-size:28px}
+.sz-1-6 .plmeta span{font-size:20px}
+.sz-1-2 .plart{width:180px;height:180px}
+/* 视频占满整张卡，文字压在底部——2/3 是给它准备的大画面 */
+.card.is-video{padding:0;position:relative}
+.card.is-video h3{display:none}
+.card.is-video .plwrap{display:block}
+.card.is-video .plart{width:100%;height:100%;border-radius:0}
+.card.is-video .plmeta{position:absolute;left:28px;right:28px;bottom:24px;
+  text-shadow:0 2px 12px rgba(0,0,0,.6);color:#fff}
+.card.is-video .plmeta span{color:rgba(255,255,255,.82)}
+
+/* ── 自动播放解锁遮罩 ── */
+#unlock{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
+  background:rgba(238,241,246,.94);backdrop-filter:blur(6px);cursor:pointer}
+#unlock.gone{display:none}
+#unlock div{text-align:center;display:flex;flex-direction:column;gap:12px}
+#unlock b{font-size:44px;font-weight:600}
+#unlock span{font-size:24px;color:var(--text-secondary)}
+
 /* ── 天气：温度当主角 ── */
 .wxnow{display:flex;align-items:center;gap:20px;margin-top:14px}
 .wxnow b{font-size:84px;font-weight:300;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-2px}
@@ -240,6 +271,9 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   </div>
 </div></div>
 <div id="conn">等待控制面板连接…（按 F 全屏）</div>
+<!-- 自动播放解锁。浏览器要求页面被交互过才允许出声，而车机屏是被动弹出的窗口，
+     不点这一下，第一首歌会被静默拒绝，只在控制台留一句 NotAllowedError -->
+<div id="unlock"><div><b>点击激活声音</b><span>车机屏需要一次点击才能播放音频</span></div></div>
 <script>
 "use strict";
 (() => {
@@ -439,6 +473,81 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     live.get(box)?.map.resize?.();
   }
 
+  // src/screen/player.ts
+  function createPlayer({ report }) {
+    const audio = new Audio();
+    audio.preload = "auto";
+    let video = null;
+    let unlocked = false;
+    let current = "";
+    const wire = (el) => {
+      el.onended = () => report("ended");
+      el.onerror = () => report("error", el.error?.message ?? "播放失败");
+      el.oncanplay = () => report("ready");
+    };
+    wire(audio);
+    function unlock() {
+      unlocked = true;
+      audio.muted = true;
+      audio.play().catch(() => {
+      });
+      audio.pause();
+      audio.muted = false;
+    }
+    function attachVideo(box) {
+      if (!video) {
+        video = document.createElement("video");
+        video.playsInline = true;
+        video.className = "videoel";
+        wire(video);
+      }
+      if (video.parentElement !== box) box.appendChild(video);
+      return video;
+    }
+    async function play(t) {
+      const el = t.source === "video" ? video ?? audio : audio;
+      if (current !== t.url) {
+        el.src = t.url;
+        current = t.url;
+      }
+      el.volume = Math.max(0, Math.min(1, t.volume / 100));
+      try {
+        await el.play();
+      } catch (e) {
+        report(String(e).includes("NotAllowed") || !unlocked ? "blocked" : "error", String(e).slice(0, 120));
+      }
+    }
+    function pause() {
+      audio.pause();
+      video?.pause();
+    }
+    function stop() {
+      pause();
+      audio.removeAttribute("src");
+      audio.load();
+      current = "";
+    }
+    const setVolume = (v) => {
+      const x = Math.max(0, Math.min(1, v / 100));
+      audio.volume = x;
+      if (video) video.volume = x;
+    };
+    return {
+      unlock,
+      play,
+      pause,
+      stop,
+      setVolume,
+      attachVideo,
+      get unlocked() {
+        return unlocked;
+      },
+      get playingUrl() {
+        return current;
+      }
+    };
+  }
+
   // src/screen/main.ts
   var $ = (id) => document.getElementById(id);
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
@@ -499,6 +608,40 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     { id: "passenger", x: 390, y: 290, w: 26, h: 158 },
     { id: "rearRight", x: 390, y: 462, w: 26, h: 158 }
   ];
+  var player = createPlayer({ report: (event, detail) => bus.send({ type: "mediaEvent", event, detail }) });
+  $("unlock").addEventListener("click", () => {
+    player.unlock();
+    $("unlock").classList.add("gone");
+  }, { once: true });
+  function renderPlayerCard(node, c) {
+    const d = c.data ?? {};
+    const isVideo = d.source === "video";
+    if (!node.querySelector(".plwrap")) {
+      node.innerHTML = `<div class="plwrap">
+      <div class="plart"></div>
+      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span></div>
+    </div>`;
+    }
+    const art = node.querySelector(".plart");
+    if (isVideo) {
+      player.attachVideo(art);
+    } else {
+      const url = String(d.artwork ?? "");
+      const img = art.querySelector("img");
+      if (url) {
+        if (img) {
+          if (img.src !== url) img.src = url;
+        } else art.innerHTML = `<img src="${esc(url)}" alt="">`;
+      } else if (!img) {
+        art.innerHTML = `<div class="plicon">${d.source === "radio" ? "📻" : "♪"}</div>`;
+      }
+    }
+    node.querySelector(".pltrack").textContent = String(d.track ?? "");
+    node.querySelector(".plartist").textContent = String(d.artist ?? "");
+    node.classList.toggle("is-video", isVideo);
+    if (d.playing && d.streamUrl) player.play({ url: String(d.streamUrl), source: d.source, volume: Number(d.volume ?? 40) });
+    else if (!d.playing) player.pause();
+  }
   function renderNavCard(node, c) {
     const d = c.data ?? {};
     if (!node.querySelector(".navwrap")) {
@@ -607,6 +750,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
+        else if (c.template === "media") renderPlayerCard(node, c);
         else node.innerHTML = `<h3>${esc(c.title)}</h3>${body(c)}`;
         node.dataset.sig = sig;
       }
@@ -621,6 +765,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
+        if (node.classList.contains("tpl-media")) player.stop();
         node.remove();
         cardNodes.delete(id);
       }

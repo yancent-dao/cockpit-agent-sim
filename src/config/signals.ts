@@ -271,6 +271,46 @@ export const SIGNALS: Signal[] = [
     type: 'string', label: '途经点名称（分号分隔）',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
 
+  /* ══════════ 媒体（音乐 · 电台 · 短视频共用一套状态） ══════════
+   * 注意这里**没有播放进度**。position 每秒变好几次，进了信号系统就是
+   * 每秒重评一遍卡片规则、约束引擎为一个没人约束的值做无谓计算。
+   * 进度是遥测不是状态，由车机屏本地渲染。Agent 需要知道在放什么，
+   * 不需要知道播到 1 分 23 秒；真问起来现查。 */
+  { alias: 'media.source', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.Source',
+    type: 'enum', values: ['none', 'music', 'radio', 'video'], label: '媒体来源',
+    valueLabels: { none: '无', music: '音乐', radio: '电台', video: '视频' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'none' },
+
+  { alias: 'media.playing', vssPath: 'Vehicle.Cabin.Infotainment.Media.Action',
+    type: 'boolean', label: '正在播放',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+
+  { alias: 'media.track', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.Track',
+    type: 'string', label: '曲目/节目/视频标题',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
+
+  { alias: 'media.artist', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.Artist',
+    type: 'string', label: '艺人/电台名/作者',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
+
+  { alias: 'media.artwork', vssPath: 'Vehicle.X-Ext.Media.Artwork',
+    type: 'string', label: '封面图地址',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
+
+  /** 真正丢给 <audio>/<video> 的地址。车机屏据此播放 */
+  { alias: 'media.streamUrl', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.URI',
+    type: 'string', label: '播放地址',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
+
+  { alias: 'media.volume', vssPath: 'Vehicle.Cabin.Infotainment.Media.Volume',
+    type: 'number', range: [0, 100], unit: '%', label: '媒体音量',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 40 },
+
+  { alias: 'media.mode', vssPath: 'Vehicle.X-Ext.Media.PlayMode',
+    type: 'enum', values: ['sequential', 'shuffle', 'repeatOne'], label: '播放模式',
+    valueLabels: { sequential: '顺序播放', shuffle: '随机播放', repeatOne: '单曲循环' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'sequential' },
+
   { alias: 'navigation.eta', vssPath: 'Vehicle.X-Ext.Navigation.ETA',
     type: 'number', range: [0, 999], unit: '分钟', label: '预计到达时间',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },

@@ -6,6 +6,14 @@ export type BusMsg =
   | { type: 'reject'; on: boolean; title?: string; desc?: string }
   | { type: 'highlight'; ids: string[] }
   | { type: 'card'; action: 'show' | 'dismiss'; id: string; zone?: string; size?: string; title?: string; body?: string }
+  /**
+   * 车机屏 → 控制面板的唯一一类上报。播放器元素在车机屏那边（放控制面板的话，
+   * 投屏后声音在错误的机器上），但播放会产生状态：放完了、放不出来、被浏览器拦了。
+   *
+   * **边界：只上报设备事实，不上报决定。** "放完了"是事实，"该放下一首了"是决定，
+   * 后者归控制面板那边的规则管。这条界线以后容易被侵蚀。
+   */
+  | { type: 'mediaEvent'; event: 'ended' | 'error' | 'blocked' | 'ready'; detail?: string }
 
 export function createBus(onMsg: (m: BusMsg) => void) {
   let bc: BroadcastChannel | null = null

@@ -47,6 +47,24 @@ export const CARD_RULES: CardRule[] = [
     ],
     card: { key: 'nav', template: 'nav', evictable: false, data: 'navCard' },
   },
+  /* ── 播放器卡：持续态，跟导航卡同一个生命周期，不是"30 秒后退场"那类 ── */
+  // 两条互斥规则而不是"按内容算尺寸的函数"——规则得是纯数据，
+  // 塞进去一个 size(store) 回调，声明式就破了。
+  // key 必须不同：orchestrator 的 retire 按 key 撤卡，同 key 的话
+  // 一条规则建完、另一条判定自己不活跃就立刻把它撤了，互相拆台。
+  // when 互斥保证两张卡不会同时在场
+  {
+    id: 'media-playing',
+    when: [['media.playing', '==', true], ['media.source', '!=', 'video']],
+    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode'],
+    card: { key: 'player', template: 'media', evictable: true, data: 'playerCard' },
+  },
+  {
+    id: 'media-playing-video',
+    when: [['media.playing', '==', true], ['media.source', '==', 'video']],
+    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode'],
+    card: { key: 'player-video', template: 'media', size: '2/3', evictable: true, data: 'playerCard' },
+  },
   /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
   { id: 'window-feedback', watch: ['cabin.window.*.position'],
     card: { key: 'windows', template: 'control', ttl: 30, data: 'windowCard' } },
@@ -104,6 +122,22 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
         mapUrl: buildMapUrl(amap, originLoc, destLoc, polyline,
           ((store.get('navigation.waypoints') as string) || '').split(';').filter(Boolean)),
       }),
+    }
+  },
+
+  /** 播放器。视频要大画面，音乐/电台用默认小卡——这是唯一按内容改尺寸的地方 */
+  playerCard: ({ store }) => {
+    const source = store.get('media.source') as string
+    return {
+      title: store.get('media.track') || '正在播放',
+      track: store.get('media.track'),
+      artist: store.get('media.artist'),
+      artwork: store.get('media.artwork'),
+      source,
+      mode: store.get('media.mode'),
+      playing: store.get('media.playing'),
+      streamUrl: store.get('media.streamUrl'),
+      volume: store.get('media.volume'),
     }
   },
 

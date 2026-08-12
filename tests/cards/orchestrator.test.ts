@@ -194,3 +194,66 @@ describe('车窗事件卡：位置一动就出现，ttl 自动过期', () => {
     expect(desk.findByKey('windows')).toBeUndefined() // 35s > 30s ttl
   })
 })
+
+/**
+ * 播放是持续态，跟车控卡"30 秒后退场"是两种生命周期，
+ * 但跟导航卡完全一样——写一条规则就行，模型零参与。
+ */
+describe('播放器卡：media.playing 驱动', () => {
+  const play = (over: Record<string, any> = {}) => {
+    boot()
+    store.setDirect('media.source', 'music')
+    store.setDirect('media.track', '晴天')
+    store.setDirect('media.artist', '周杰伦')
+    for (const [k, v] of Object.entries(over)) store.setDirect(k, v)
+    store.setDirect('media.playing', true)
+  }
+
+  it('开始播放 → 播放器卡自动出现，数据来自信号', () => {
+    play()
+    const c = desk.findByKey('player')!
+    expect(c).toBeTruthy()
+    expect(c.kind).toBe('rule')
+    expect(c.data.track).toBe('晴天')
+    expect(c.data.artist).toBe('周杰伦')
+    expect(c.data.source).toBe('music')
+  })
+
+  it('停止播放 → 卡片自动退场', () => {
+    play()
+    expect(desk.findByKey('player')).toBeTruthy()
+    store.setDirect('media.playing', false)
+    expect(desk.findByKey('player')).toBeUndefined()
+  })
+
+  it('换曲只更新数据，不重建卡片——重建会打断播放器 DOM', () => {
+    play()
+    const id = desk.findByKey('player')!.id
+    store.setDirect('media.track', '稻香')
+    expect(desk.findByKey('player')!.id).toBe(id)
+    expect(desk.findByKey('player')!.data.track).toBe('稻香')
+  })
+
+  it('播视频时用 2/3 大画面，播音乐用小卡', () => {
+    play()
+    expect(desk.findByKey('player')!.size).not.toBe('2/3')
+    play({ 'media.source': 'video' })
+    expect(desk.findByKey('player-video')!.size).toBe('2/3')
+  })
+
+  // 两条规则 when 互斥，切来源时不能两张并存
+  it('音乐切视频，屏上始终只有一张播放器卡', () => {
+    play()
+    play({ 'media.source': 'video' })
+    const players = desk.layout().cards.filter(c => c.template === 'media')
+    expect(players).toHaveLength(1)
+    expect(players[0].data.source).toBe('video')
+  })
+
+  // 进度是遥测不是状态：每秒变好几次，进了 store 就是每秒重评规则、重刷卡片
+  it('信号里没有播放进度', () => {
+    // 只查 media.*——车窗位置也叫 position
+    expect(SIGNALS.find(s => s.alias.startsWith('media.')
+      && /position|progress|elapsed|duration/i.test(s.alias))).toBeUndefined()
+  })
+})

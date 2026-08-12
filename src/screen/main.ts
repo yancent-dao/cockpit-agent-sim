@@ -1,6 +1,6 @@
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { navForm, capForm } from './layout'
+import { navForm, capForm, weatherForm } from './layout'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 
 const $ = (id: string) => document.getElementById(id)!
@@ -131,7 +131,8 @@ function body(c: CardView): string {
     case 'vehicle':
       return `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${CAR_SVG}</div>`
     case 'control':
-      return (d.items ?? []).map((it: any) => {
+      // 包一层容器：卡片本身是 flex column，靠 inline-block 排不成多列
+      return `<div class="wins">` + (d.items ?? []).map((it: any) => {
         const isPct = typeof it.value === 'number' && it.unit === '%'
         const shown = typeof it.value === 'boolean' ? (it.value ? '开' : '关')
           : typeof it.value === 'number' ? `${Math.round(it.value)}${esc(it.unit ?? '')}`
@@ -141,7 +142,7 @@ function body(c: CardView): string {
           <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
           ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ''}
         </div>`
-      }).join('')
+      }).join('') + `</div>`
     case 'confirm':
       // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。
       // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
@@ -164,12 +165,20 @@ function body(c: CardView): string {
       return `<div class="cap ${form.mode}">${items.map((i: any) =>
         `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
     }
-    case 'weather':
+    case 'weather': {
+      const w = weatherForm(c.size)
       // 风力和湿度任一缺失都不该留下孤零零一个分隔点
-      return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
-        <div class="sub">${esc([d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · '))}</div>` : ''}
-        ${(d.forecast ?? []).slice(0, 3).map((f: any) => `
-        <div class="rowline"><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)} ${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</em></div>`).join('')}`
+      const sub = d.now
+        ? [d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · ')
+        : ''
+      const cast = (d.forecast ?? []).slice(0, w.forecast)
+      return `${d.now ? `<div class="wxnow">
+          <b>${Math.round(d.now.temperature)}<i>°</i></b>
+          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+        </div>` : ''}
+        ${cast.length ? `<div class="wxcast${w.forecastRow ? ' row' : ''}">${cast.map((f: any) => `
+          <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join('')}</div>` : ''}`
+    }
     case 'nav':
       // 导航卡由 renderNavCard 单独处理——活地图有状态，不能跟着文字一起重绘
       return ''

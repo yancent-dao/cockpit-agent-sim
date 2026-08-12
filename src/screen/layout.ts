@@ -31,3 +31,18 @@ export function capForm(size: string): CapForm {
   if (size === '1/6') return { mode: 'count' }
   return { mode: 'list' }
 }
+
+export interface WeatherForm {
+  /** 温度当主角，大字号 */
+  bigTemp: boolean
+  /** 放几天预报。0 = 不放 */
+  forecast: number
+  /** 预报横向排（宽卡才这么干，不然内容全缩在左上角） */
+  forecastRow: boolean
+}
+
+export function weatherForm(size: string): WeatherForm {
+  if (size === '1/6') return { bigTemp: true, forecast: 0, forecastRow: false }
+  if (size === '1/3') return { bigTemp: true, forecast: 3, forecastRow: false }
+  return { bigTemp: true, forecast: 3, forecastRow: true }   // 1/2 及以上
+}

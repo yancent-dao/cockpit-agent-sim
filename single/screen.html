@@ -118,6 +118,40 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .capcount b{font-size:76px;font-weight:700;line-height:1}
 .capcount span{font-size:26px;color:var(--text-secondary)}
 
+/* ── 天气：温度当主角 ── */
+.wxnow{display:flex;align-items:center;gap:20px;margin-top:14px}
+.wxnow b{font-size:84px;font-weight:300;line-height:.9;font-variant-numeric:tabular-nums;letter-spacing:-2px}
+.wxnow b i{font-size:44px;font-style:normal;vertical-align:top;opacity:.55}
+.wxmeta{display:flex;flex-direction:column;gap:4px;min-width:0}
+.wxmeta span{font-size:30px}
+.wxmeta small{font-size:21px;color:var(--text-secondary)}
+.wxcast{display:flex;flex-direction:column;gap:2px;margin-top:16px}
+.wxcast>div{display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--hairline)}
+.wxcast>div:last-child{border-bottom:none}
+.wxcast span{font-size:22px;color:var(--text-secondary);min-width:3.2em}
+.wxcast em{font-size:22px;font-style:normal;flex:1}
+.wxcast b{font-size:24px;font-variant-numeric:tabular-nums}
+/* 宽卡横排，别让内容缩在左上角 */
+.wxcast.row{flex-direction:row;gap:14px;margin-top:22px}
+.wxcast.row>div{flex:1;flex-direction:column;align-items:flex-start;gap:6px;
+  background:var(--bg-elevated);border-radius:16px;padding:16px 18px;border-bottom:none}
+.wxcast.row span{min-width:0}
+.sz-1-2 .wxnow b{font-size:104px}
+
+/* ── 宽卡多列：内容纵向堆叠会让右半边空着 ── */
+.sz-1-2 .listcard{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
+.sz-1-2 .cap.list{grid-template-columns:1fr 1fr}
+.sz-1-2 .wins{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-content:start}
+
+/* ── 短文本卡：正文是主角，不是标题下面的灰色小字 ──
+   这几张（续航、正在播放、执行反馈、临时提醒）内容天生就一句话，
+   照通用样式渲染的话一行小字挂在顶上，下面 80% 空着，看着像没加载完 */
+.tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub{
+  flex:1;display:flex;align-items:center;
+  font-size:38px;line-height:1.25;color:var(--text-primary);margin-top:8px}
+.sz-1-2 .tpl-info .sub,.sz-1-2 .tpl-media .sub,
+.sz-1-2 .tpl-feedback .sub,.sz-1-2 .tpl-generic .sub{font-size:46px}
+
 .win{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .win .top{display:flex;justify-content:space-between;align-items:baseline;font-size:26px}
 .win .top span{color:var(--text-secondary)}
@@ -302,6 +336,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
     if (size === "full") return { mode: "grid" };
     if (size === "1/6") return { mode: "count" };
     return { mode: "list" };
+  }
+  function weatherForm(size) {
+    if (size === "1/6") return { bigTemp: true, forecast: 0, forecastRow: false };
+    if (size === "1/3") return { bigTemp: true, forecast: 3, forecastRow: false };
+    return { bigTemp: true, forecast: 3, forecastRow: true };
   }
 
   // src/screen/mapView.ts
@@ -506,7 +545,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
       case "vehicle":
         return `<div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">${CAR_SVG}</div>`;
       case "control":
-        return (d.items ?? []).map((it) => {
+        return `<div class="wins">` + (d.items ?? []).map((it) => {
           const isPct = typeof it.value === "number" && it.unit === "%";
           const shown = typeof it.value === "boolean" ? it.value ? "开" : "关" : typeof it.value === "number" ? `${Math.round(it.value)}${esc(it.unit ?? "")}` : esc(String(it.value ?? "--"));
           return `
@@ -514,7 +553,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
           <div class="top"><span>${esc(it.label)}</span><em>${shown}</em></div>
           ${isPct ? `<div class="track"><div class="fill" style="width:${Math.round(it.value)}%"></div></div>` : ""}
         </div>`;
-        }).join("");
+        }).join("") + `</div>`;
       case "confirm":
         return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
       case "notice":
@@ -528,11 +567,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
           return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
         return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
       }
-      case "weather":
-        return `${d.now ? `<div class="rowline"><span>现在</span><em>${esc(d.now.weather)} ${Math.round(d.now.temperature)}°C</em></div>
-        <div class="sub">${esc([d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · "))}</div>` : ""}
-        ${(d.forecast ?? []).slice(0, 3).map((f) => `
-        <div class="rowline"><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)} ${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</em></div>`).join("")}`;
+      case "weather": {
+        const w = weatherForm(c.size);
+        const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
+        const cast = (d.forecast ?? []).slice(0, w.forecast);
+        return `${d.now ? `<div class="wxnow">
+          <b>${Math.round(d.now.temperature)}<i>°</i></b>
+          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+        </div>` : ""}
+        ${cast.length ? `<div class="wxcast${w.forecastRow ? " row" : ""}">${cast.map((f) => `
+          <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join("")}</div>` : ""}`;
+      }
       case "nav":
         return "";
       default:

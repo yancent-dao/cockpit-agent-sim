@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { navForm, capForm } from '../../src/screen/layout'
+import { navForm, capForm, weatherForm } from '../../src/screen/layout'
 
 /**
  * 尺寸放开之后，"支持某个尺寸"要落到"在那个尺寸下能看"。
@@ -37,5 +37,25 @@ describe('能力目录的形态随尺寸变', () => {
   // 33 项塞进一格是不可能的，老实报个数
   it('1/6 只报数量', () => {
     expect(capForm('1/6').mode).toBe('count')
+  })
+})
+
+describe('天气卡的形态随尺寸变', () => {
+  // 1/6 是它的默认尺寸，也是最常出现的形态。现在挤了 6 行小字，主次不分
+  it('1/6 只讲此刻：温度当主角，不放预报', () => {
+    expect(weatherForm('1/6')).toEqual({ bigTemp: true, forecast: 0, forecastRow: false })
+  })
+
+  it('1/3 放得下三天预报，纵向排', () => {
+    const f = weatherForm('1/3')
+    expect(f.forecast).toBe(3)
+    expect(f.forecastRow).toBe(false)
+  })
+
+  it('1/2 横向排预报，别让内容缩在左上角', () => {
+    const f = weatherForm('1/2')
+    expect(f.forecast).toBe(3)
+    expect(f.forecastRow).toBe(true)
+    expect(f.bigTemp).toBe(true)
   })
 })

@@ -1,6 +1,7 @@
 import { CARD_TEMPLATES } from '../config/cards'
 import { formOf, suggestSize } from '../config/forms'
 import { checkSize } from './contract'
+import { summarize, titleOf } from './summary'
 import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency, channelOf } from '../config/priority'
 
@@ -177,9 +178,6 @@ export interface DeskResult {
 const isEmptyList = (template: string, data: any) =>
   (template === 'list' || template === 'capability')
   && Array.isArray(data?.items) && data.items.length === 0
-
-const titleOf = (c: Card) =>
-  c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template
 
 export function createDesk(clock: () => number = Date.now) {
   const cards = new Map<string, Card>()
@@ -518,31 +516,8 @@ export function createDesk(clock: () => number = Date.now) {
     }
   }
 
-  /** 注入 system prompt 的紧凑描述 */
-  function summary(): string {
-    const l = layout()
-    const lines: string[] = []
-    if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`)
-    // 摘要是给**模型**看的。48 单元下说"剩余 16 格"它没法换算成
-    // "还能不能再上一张卡"，只会瞎猜。按基准卡（1/6）张数说人话
-    const slots = Math.floor(l.free / cellsOfTier('1/6'))
-    const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`
-    lines.push(l.cards.length
-      ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，${room}`
-      : `桌面为空，${room}`)
-    // 截断信息必须回给 Agent。只做 UI 的话模型以为屏上有 12 条、
-    // 张口就说"第 10 个"，而用户根本看不到第 5 条之后的东西
-    for (const c of l.cards) {
-      // 可见条数由**形态函数**给——跟车机屏画的是同一个数（公理 2：
-      // 世界观由结构保证）。之前这里用 listCapacity 自己重算，
-      // 能力目录 @1/2 出过 summary 说 12、屏幕画 4 的分裂
-      const total = Array.isArray(c.data?.items) ? c.data.items.length : 0
-      const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total
-      const n = Number(c.data?.moreCount ?? Math.max(0, total - visible))
-      if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`)
-    }
-    return lines.join('\n')
-  }
+  /** 注入 system prompt 的紧凑描述——实现在 summary.ts（模型视角生成器独立成模块） */
+  const summary = () => summarize(layout())
 
   return {
     show, update, resize, dismiss, focus, render, tick, endTask, layout, summary,

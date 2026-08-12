@@ -6,7 +6,7 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 563 个，必须全绿才算完成）
+- 测试：`npm test`（当前 676 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
 - 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173
@@ -54,7 +54,11 @@ src/integrations/  三方适配。分两层，预算口径不同：
                     分文件（amap/place.ts、amap/route.ts…），暂时记在这里不装看不见
                ② handler 层 —— 业务逻辑，行数跟 Tool 数量成正比，按**每 Tool < 40 行**看
                   mediaHandlers 413 / 17 Tool = 24 · navHandlers 376 / 11 Tool = 34
-src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 399）
+src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占 · 恢复      < 800 行（现 737）
+               > 2026-08-12 从 700 上调：家族机制、reconcile 恢复通道、几何闸
+               （contract）、尺寸自愈（heal）、模型视角生成器（summary）五块
+               **机制**进驻——都是本轮设计新增的职责，不是逻辑漏进来。
+               判据不变：再超先查是不是业务逻辑混进了仲裁
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
 src/state/     记忆系统：域仓（队列/历史/收藏）· 偏好 · 会话摘要        < 300 行
 src/design/    Design Token（CSS 文本常量）—— 算数据不算代码，不占预算

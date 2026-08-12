@@ -1,5 +1,6 @@
 import { CARD_TEMPLATES } from '../config/cards'
 import { formOf, suggestSize } from '../config/forms'
+import { checkSize } from './contract'
 import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency } from '../config/priority'
 
@@ -292,6 +293,8 @@ export function createDesk(clock: () => number = Date.now) {
             ? suggestSize(input.template, input.data.items.length) as Size
             : undefined)
       ?? tmplDefault ?? '1/6'
+    const sizeErr = checkSize(input.template, size)
+    if (sizeErr) return { status: 'rejected', ...sizeErr }
     const id = input.id ?? `card_${++seq}`
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
@@ -342,9 +345,18 @@ export function createDesk(clock: () => number = Date.now) {
    * @param byUser 是不是用户的意愿。true 会给卡片上尺寸锁，之后规则重刷不再改它。
    *   render() 内部的放大传 false——那是系统在恢复默认值，不是用户要求的
    */
+  function resizeGate(id: string, size: Size): DeskResult | null {
+    const c = cards.get(id)
+    if (!c) return null
+    const err = checkSize(c.template, size)
+    return err ? { status: 'rejected', ...err } : null
+  }
+
   function resize(id: string, size: Size, byUser = true): DeskResult {
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    const gateErr = resizeGate(id, size)
+    if (gateErr) return gateErr
     const prev = c.size
     c.size = size
     if (!tryPlace(others())) {

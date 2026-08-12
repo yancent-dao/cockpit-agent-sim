@@ -102,8 +102,7 @@ export function createRegistry(
           message: `${tmpl.label}由系统按车辆状态自动出，不用你建`,
           suggestion: '需要的话调对应的业务工具（如 navigation.setDestination），卡片会自己出现',
         }
-      const sizeErr = tmpl && checkSize(tmpl, args.size)
-      if (sizeErr) return sizeErr
+      // 尺寸闸已下沉到 desk（三条建卡路一个闸）；这里只留形状——模型契约在模型入口把关
       const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false })
       if (shapeErr) return shapeErr
       return toResult(need().show({
@@ -123,8 +122,6 @@ export function createRegistry(
       // 把只支持 2/3 的导航卡缩成了 1/3，再也调不回去
       const card = need().get(args.cardId)
       const tmpl = card && CARD_TEMPLATES.find(t => t.id === card.template)
-      const sizeErr = tmpl && checkSize(tmpl, args.size)
-      if (sizeErr) return sizeErr
       return toResult(need().resize(args.cardId, args.size))
     },
     cardDismiss: args => toResult(need().dismiss(args.cardId)),
@@ -200,17 +197,6 @@ export function createRegistry(
           ...(r.note && { message: r.note }) }
       : { status: 'rejected', code: r.code, message: r.message }
 
-  /**
-   * 模板只允许它声明过的形状。show 和 resize 共用一份，别再漏一处。
-   * 不声明 sizes 就是通用池——白名单窄一分，桌面的几何死角就多一分。
-   */
-  const checkSize = (tmpl: CardTemplate, size: string): ToolResult | null => {
-    const allowed = tmpl.sizes ?? COMMON_SIZES
-    return allowed.includes(size as any) ? null : {
-      status: 'rejected', code: 'SIZE_NOT_SUPPORTED',
-      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${allowed.join('、')}`,
-    }
-  }
 
   /**
    * 校验 data 是否匹配模板声明的 fields。没声明 fields（如 generic）就放行。

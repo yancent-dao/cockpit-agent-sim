@@ -58,7 +58,9 @@ export interface CardTemplate {
  * 不告诉模型画布多大它必然溢出 —— 它没有别的办法知道自己有多大。
  * 这串是**算出来的**不是写死的：改栅格或屏幕尺寸，这句话自动跟着变。
  */
-const CANVAS_SIZES = ['1/6', '1/3', '1/2', '2/3', 'full']
+/** canvas 允许的全部档位。desc 的像素契约从**同一个数组**生成——合同和门卫说同一套话 */
+const CANVAS_ALLOWED = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', 'tower', '2/3', 'full']
+const CANVAS_SIZES = CANVAS_ALLOWED
   .map(z => { const p = pixelsOf(z); return `${z} ${p.w}×${p.h}` }).join('，')
 
 export const CARD_TEMPLATES: CardTemplate[] = [
@@ -102,7 +104,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 生成式卡。**先确认别的模板真的装不下再用它** —— 它每次长得都不一样，
    * 跟「同一场景每次演示长得一样」是正面冲突的，产品已知并接受这个代价。
    */
-  { id: 'canvas', label: '生成式卡', defaultSize: '1/2',
+  { id: 'canvas', label: '生成式卡', defaultSize: '1/2', sizes: [...CANVAS_ALLOWED],
     desc: '前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。' +
       '只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。' +
       'data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。' +

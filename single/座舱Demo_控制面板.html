@@ -3332,7 +3332,10 @@ ${extras.desktop}`);
   setInterval(() => desk.tick(), 500);
   $("toolCount").textContent = `${registry.list(MAIN_AGENT.tools).length} tools`;
   var bus = createBus((m) => {
-    if (m.type === "hello") setConn(true);
+    if (m.type !== "hello") return;
+    setConn(true);
+    pushDesk();
+    push();
   });
   var setConn = (ok) => {
     $("dot").classList.toggle("on", ok);

@@ -53,7 +53,15 @@ setInterval(() => desk.tick(), 500)
 $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
 
 /* ══════════ 跨窗口 ══════════ */
-const bus = createBus(m => { if (m.type === 'hello') setConn(true) })
+// 车机屏每 4 秒发一次 hello。它可能是聊到一半才打开、也可能是中途刷新的，
+// 那时候桌面上早有卡了——只点亮连接灯不够，得把当前状态整个补推过去。
+// 每次都推而不是只在首次推：刷新后控制面板这边并不知道对面换了个新页面。
+// 代价是 4 秒一次小 postMessage，车机屏那边按节点 diff，不会闪
+const bus = createBus(m => {
+  if (m.type !== 'hello') return
+  setConn(true)
+  pushDesk(); push()
+})
 const setConn = (ok: boolean) => {
   $('dot').classList.toggle('on', ok)
   $('connTxt').textContent = ok ? '车机屏已连接' : '车机屏未连接'

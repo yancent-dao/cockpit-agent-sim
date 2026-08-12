@@ -5,6 +5,7 @@ import { navForm, mediaForm } from '../config/forms'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { sanitize } from './sanitize'
+import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
 import { tokensFor } from '../design/tokens'
 import { dimsOf, GRID, TIERS } from '../config/grid'
 import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render'
@@ -232,10 +233,52 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
     : r.html}`
   // 溢出检测：屏幕不可滚动，超出等于用户永远看不到
   requestAnimationFrame(() => {
+    // 实测内容高度喂给 director 的尺寸自愈（机制升降档）。
     // +2 是留给亚像素舍入的。屏幕不可滚动，溢出等于用户永远看不到那部分
-    if (host.scrollHeight > host.clientHeight + 2)
-      bus.send({ type: 'canvasNote', cardId: c.id, overflow: true } as any)
+    const over = host.scrollHeight > host.clientHeight + 2
+    bus.send({ type: 'canvasNote', cardId: c.id, overflow: over, contentPx: host.scrollHeight } as any)
   })
+}
+
+/**
+ * canvas-app：模型的 JS 在 iframe 沙箱里执行——全系统唯一的容器。
+ * 隔离靠源隔离不靠消毒：sandbox 无 allow-same-origin，iframe 是 opaque origin，
+ * 拿不到宿主 localStorage（Key 在里面）、碰不到 bus。
+ * 桥消息全量过 validateBridgeMsg——沙箱能 post 任意东西，形状校验是宿主的责任。
+ */
+const appFrames = new Map<Window, string>()   // iframe window → cardId
+addEventListener('message', ev => {
+  const cardId = ev.source ? appFrames.get(ev.source as Window) : undefined
+  if (!cardId) return
+  const m = validateBridgeMsg(ev.data)
+  if (!m) return
+  if (m.type === 'height') bus.send({ type: 'canvasNote', cardId, contentPx: m.px } as any)
+  else bus.send({ type: 'userAction', cardId, act: 'app', value: m.value } as any)
+})
+
+function renderCanvasAppCard(node: HTMLDivElement, c: CardView) {
+  const d = c.data ?? {}
+  let frame = node.querySelector('iframe') as HTMLIFrameElement | null
+  if (!frame) {
+    frame = document.createElement('iframe')
+    frame.setAttribute('sandbox', SANDBOX)   // 铁律 ①：只有 allow-scripts
+    frame.className = 'cvframe'
+    node.querySelector('.bd')!.appendChild(frame)
+  }
+  const html = String(d.html ?? '').trim()
+  if (!html) {
+    // 兜底：没代码就显纯文字，绝不白屏
+    frame.remove()
+    node.querySelector('.bd')!.innerHTML = `<div class="sub">${esc(d.text ?? '')}</div>`
+    return
+  }
+  const doc = buildSrcdoc(html)
+  if (frame.dataset.sig !== String(html.length)) {
+    frame.dataset.sig = String(html.length)
+    frame.srcdoc = doc
+    // srcdoc 重载后 contentWindow 会换，load 后重新登记桥映射
+    frame.addEventListener('load', () => { if (frame!.contentWindow) appFrames.set(frame!.contentWindow, c.id) }, { once: true })
+  }
 }
 
 /**
@@ -335,12 +378,26 @@ function renderDesk() {
     // picking：等着用户开口选。用户是用语音选的（"第二个"），
     // 屏上必须让他知道现在轮到他说话了
     const picking = c.template === 'confirm' || (c.template === 'list' && c.data?.picking)
+    // fresh（流光两态）由挂载分支加、定时器摘——className 重写要保留它
+    const isFresh = node.classList.contains('fresh')
     node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
-      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}`
+      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}${isFresh ? ' fresh' : ''}`
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
+      else if (c.template === 'canvas-app') {
+        if (!node.dataset.shell) {
+          node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3>` +
+            `<div class="bd"></div>`
+          node.dataset.shell = '1'
+          // 流光两态：进场旋 2 秒表明"刚生成"，之后静置——持续流动在驾驶环境是注意力噪音
+          node.classList.add('fresh')
+          setTimeout(() => node.classList.remove('fresh'), 2200)
+        }
+        node.querySelector('.cvtitle')!.textContent = c.title ?? ''
+        renderCanvasAppCard(node, c)
+      }
       else if (c.template === 'canvas') {
         /**
          * mount/fill：骨架建一次，之后只填。之前每次 sig 变都整刷 innerHTML，
@@ -351,6 +408,8 @@ function renderDesk() {
           node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3>` +
             `<div class="bd"><div class="cvhost"></div></div>`
           node.dataset.shell = '1'
+          node.classList.add('fresh')
+          setTimeout(() => node.classList.remove('fresh'), 2200)
         }
         node.querySelector('.cvtitle')!.textContent = c.title ?? ''
         renderCanvasCard(node, c)

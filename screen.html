@@ -99,6 +99,21 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   color:var(--tx-1,var(--text-primary))}
 #overlay .card .sug{font-size:calc(var(--t-lead)*var(--u)*.8)}
 
+/* ── 生成式卡流光边框两态 ──
+   进场/生成中 conic 渐变旋转 2 秒（"这是刚生成的"），之后静置为渐变描边
+   （"这是生成的"）。持续流动在驾驶环境是注意力噪音——
+   "有事发生才动"沿用待选卡呼吸描边的先例 */
+@property --genang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+.tpl-canvas.fresh, .tpl-canvas-app.fresh {
+  border: 3px solid transparent;
+  background: linear-gradient(var(--sf-card,#fff), var(--sf-card,#fff)) padding-box,
+    conic-gradient(from var(--genang), var(--media-fg), var(--pick-fg), var(--brand-fg), var(--media-fg)) border-box;
+  animation: genspin 1.4s linear infinite;
+}
+@keyframes genspin { to { --genang: 360deg } }
+.tpl-canvas-app{border:2px solid var(--acbd)}
+.cvframe{width:100%;height:100%;border:0;display:block;background:transparent}
+
 /* ── 生成式卡：紫色描边 + 角标 ──
    角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，
    用户有权知道自己在看的东西每次可能不一样 */

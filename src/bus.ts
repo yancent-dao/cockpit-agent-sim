@@ -24,7 +24,12 @@ export type BusMsg =
    * 跟 mediaEvent 同一条边界 —— **只上报设备事实，不上报决定**。
    * "溢出了"是事实，"该换个档位"是决定，后者归控制面板那边管。
    */
-  | { type: 'canvasNote'; cardId: string; stripped?: string[]; overflow?: boolean }
+  | { type: 'canvasNote'; cardId: string; stripped?: string[]; overflow?: boolean; contentPx?: number }
+  /**
+   * 用户在屏上的动作（触控/沙箱组件的 cockpit.action）。
+   * 跟 mediaEvent 同一条边界：**上报的是用户动作这个事实**，怎么处置归 director。
+   */
+  | { type: 'userAction'; cardId: string; act: string; value?: string }
   | { type: 'mediaEvent'; event: 'ended' | 'error' | 'blocked' | 'ready'; detail?: string }
 
 export function createBus(onMsg: (m: BusMsg) => void) {

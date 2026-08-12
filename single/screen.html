@@ -99,6 +99,21 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   color:var(--tx-1,var(--text-primary))}
 #overlay .card .sug{font-size:calc(var(--t-lead)*var(--u)*.8)}
 
+/* ── 生成式卡流光边框两态 ──
+   进场/生成中 conic 渐变旋转 2 秒（"这是刚生成的"），之后静置为渐变描边
+   （"这是生成的"）。持续流动在驾驶环境是注意力噪音——
+   "有事发生才动"沿用待选卡呼吸描边的先例 */
+@property --genang { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+.tpl-canvas.fresh, .tpl-canvas-app.fresh {
+  border: 3px solid transparent;
+  background: linear-gradient(var(--sf-card,#fff), var(--sf-card,#fff)) padding-box,
+    conic-gradient(from var(--genang), var(--media-fg), var(--pick-fg), var(--brand-fg), var(--media-fg)) border-box;
+  animation: genspin 1.4s linear infinite;
+}
+@keyframes genspin { to { --genang: 360deg } }
+.tpl-canvas-app{border:2px solid var(--acbd)}
+.cvframe{width:100%;height:100%;border:0;display:block;background:transparent}
+
 /* ── 生成式卡：紫色描边 + 角标 ──
    角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，
    用户有权知道自己在看的东西每次可能不一样 */
@@ -795,6 +810,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       sizes: [...CANVAS_ALLOWED],
       desc: "前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
+    },
+    /**
+     * 可执行的生成式卡 —— 全系统唯一的容器（iframe 沙箱）。
+     * 跟 canvas 的分工：静态图文走 canvas（Shadow DOM + 消毒），
+     * 需要交互/动画/计算的小组件才走这（每卡一个 iframe，重但值）。
+     */
+    {
+      id: "canvas-app",
+      label: "生成式小组件",
+      defaultSize: "1/2",
+      sizes: [...CANVAS_ALLOWED],
+      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
+      fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
   var TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id);
@@ -1233,6 +1261,37 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return { html, empty: !text.trim() && !hasVisual, stripped: [...stripped] };
   }
 
+  // src/screen/canvasApp.ts
+  var SANDBOX = "allow-scripts";
+  var CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:";
+  var BRIDGE = `<script>
+(function(){
+  var post = function(m){ parent.postMessage(m, '*') }
+  window.cockpit = { action: function(v){ post({ type: 'action', value: String(v).slice(0, 200) }) } }
+  var report = function(){ post({ type: 'height', px: document.documentElement.scrollHeight }) }
+  addEventListener('load', report)
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(report).observe(document.documentElement)
+})()
+<\/script>`;
+  function buildSrcdoc(html) {
+    return `<!doctype html><html><head>
+<meta http-equiv="Content-Security-Policy" content="${CSP}">
+<style>${tokensFor("screen")}
+html,body{margin:0;background:transparent;color:var(--tx-1);font-family:"PingFang SC","Noto Sans CJK SC",sans-serif;font-size:var(--t-cap)}
+*{box-sizing:border-box;max-width:100%}</style>
+${BRIDGE}
+</head><body>${html}</body></html>`;
+  }
+  function validateBridgeMsg(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const m = raw;
+    if (m.type === "height" && typeof m.px === "number" && Number.isFinite(m.px) && m.px > 0)
+      return { type: "height", px: m.px };
+    if (m.type === "action" && typeof m.value === "string" && m.value.length <= 200)
+      return { type: "action", value: m.value };
+    return null;
+  }
+
   // src/screen/render.ts
   var esc2 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   function listBody(items, opts = {}) {
@@ -1259,8 +1318,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     capability: "sys",
     generic: "sys",
     info: "sys",
-    canvas: "media"
-    // 紫色描边——生成式卡跟固定模板要一眼分得出
+    canvas: "media",
+    "canvas-app": "media"
+    // 紫色——生成式跟固定模板要一眼分得出
   };
   var URGENCY = { critical: "danger", warn: "warn" };
   var accentClass = (template, d = {}) => `a-${URGENCY[d?.urgency] ?? ACCENT[template] ?? "sys"}`;
@@ -1670,9 +1730,42 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     svg{max-height:100%}
   </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${String(d.text ?? "").replace(/[<>&]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[ch])}</div>` : r.html}`;
     requestAnimationFrame(() => {
-      if (host.scrollHeight > host.clientHeight + 2)
-        bus.send({ type: "canvasNote", cardId: c.id, overflow: true });
+      const over = host.scrollHeight > host.clientHeight + 2;
+      bus.send({ type: "canvasNote", cardId: c.id, overflow: over, contentPx: host.scrollHeight });
     });
+  }
+  var appFrames = /* @__PURE__ */ new Map();
+  addEventListener("message", (ev) => {
+    const cardId = ev.source ? appFrames.get(ev.source) : void 0;
+    if (!cardId) return;
+    const m = validateBridgeMsg(ev.data);
+    if (!m) return;
+    if (m.type === "height") bus.send({ type: "canvasNote", cardId, contentPx: m.px });
+    else bus.send({ type: "userAction", cardId, act: "app", value: m.value });
+  });
+  function renderCanvasAppCard(node, c) {
+    const d = c.data ?? {};
+    let frame = node.querySelector("iframe");
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", SANDBOX);
+      frame.className = "cvframe";
+      node.querySelector(".bd").appendChild(frame);
+    }
+    const html = String(d.html ?? "").trim();
+    if (!html) {
+      frame.remove();
+      node.querySelector(".bd").innerHTML = `<div class="sub">${esc3(d.text ?? "")}</div>`;
+      return;
+    }
+    const doc = buildSrcdoc(html);
+    if (frame.dataset.sig !== String(html.length)) {
+      frame.dataset.sig = String(html.length);
+      frame.srcdoc = doc;
+      frame.addEventListener("load", () => {
+        if (frame.contentWindow) appFrames.set(frame.contentWindow, c.id);
+      }, { once: true });
+    }
   }
   function renderNavCard(node, c) {
     const d = c.data ?? {};
@@ -1742,16 +1835,37 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
       node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
       const picking = c.template === "confirm" || c.template === "list" && c.data?.picking;
-      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}${picking ? " picking" : ""}`;
+      const isFresh = node.classList.contains("fresh");
+      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}${picking ? " picking" : ""}${isFresh ? " fresh" : ""}`;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
         else if (c.template === "media") renderPlayerCard(node, c);
-        else if (c.template === "canvas") {
-          node.innerHTML = `<h3>${esc3(c.title)}<span class="genmark">生成式</span></h3><div class="bd"><div class="cvhost"></div></div>`;
+        else if (c.template === "canvas-app") {
+          if (!node.dataset.shell) {
+            node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3><div class="bd"></div>`;
+            node.dataset.shell = "1";
+            node.classList.add("fresh");
+            setTimeout(() => node.classList.remove("fresh"), 2200);
+          }
+          node.querySelector(".cvtitle").textContent = c.title ?? "";
+          renderCanvasAppCard(node, c);
+        } else if (c.template === "canvas") {
+          if (!node.dataset.shell) {
+            node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3><div class="bd"><div class="cvhost"></div></div>`;
+            node.dataset.shell = "1";
+            node.classList.add("fresh");
+            setTimeout(() => node.classList.remove("fresh"), 2200);
+          }
+          node.querySelector(".cvtitle").textContent = c.title ?? "";
           renderCanvasCard(node, c);
         } else {
-          node.innerHTML = `<h3>${esc3(c.title)}</h3><div class="bd">${cardBody(c)}</div>`;
+          if (!node.dataset.shell) {
+            node.innerHTML = `<h3></h3><div class="bd"></div>`;
+            node.dataset.shell = "1";
+          }
+          node.querySelector("h3").textContent = c.title ?? "";
+          node.querySelector(".bd").innerHTML = cardBody(c);
           const slot = node.querySelector(".vehslot");
           if (slot) slot.innerHTML = CAR_SVG;
         }
@@ -1789,11 +1903,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const o = deskState.overlay;
       const alert = o.data?.urgency === "critical" || o.urgency === "critical";
       ov.className = `on${alert ? " alert" : ""}`;
-      ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}">
-      <h3>${esc3(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
+      const sig = `${o.id}|${JSON.stringify(o.data)}`;
+      if (ov.dataset.sig !== sig) {
+        ov.dataset.sig = sig;
+        ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}">
+        <h3>${esc3(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
+      }
     } else {
       ov.className = "";
       ov.innerHTML = "";
+      delete ov.dataset.sig;
     }
     const g = document.getElementById("wins");
     if (g) g.innerHTML = WIN.map((w) => {

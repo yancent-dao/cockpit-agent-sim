@@ -3,6 +3,7 @@ import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
 import { createDomainState } from '../state/domain'
 import { createAutoplay } from '../integrations/mediaHandlers'
+import { healStep } from '../cards/heal'
 import { createAmapClient } from '../integrations/amap'
 import { createItunesClient } from '../integrations/itunes'
 import { createRadioClient } from '../integrations/radio'
@@ -73,7 +74,7 @@ function pushDesk() {
   } } as any)
 }
 /** 生成式卡的自检结果。车机屏那边量的（Node 里没有 DOM 量不了），这里只做记录 */
-const canvasNotes = new Map<string, { stripped?: string[]; overflow?: boolean }>()
+const canvasNotes = new Map<string, { stripped?: string[]; overflow?: boolean; bumps?: number }>()
 
 /**
  * 卡片检查器。演示时最常被问的是「为什么这张被挤掉了」——
@@ -127,15 +128,32 @@ const bus = createBus(m => {
     return
   }
   if (m.type === 'canvasNote') {
-    const prev = canvasNotes.get(m.cardId) ?? {}
-    canvasNotes.set(m.cardId, {
+    const prev = canvasNotes.get(m.cardId) ?? { bumps: 0 }
+    const note = {
       stripped: m.stripped ?? prev.stripped,
       overflow: m.overflow ?? prev.overflow,
-    })
+      bumps: prev.bumps ?? 0,
+    }
+    canvasNotes.set(m.cardId, note)
     if (m.stripped?.length) log('r', `生成式卡剥离 ${m.stripped.join(' ')}`)
-    // 溢出是硬伤：屏幕不可滚动，超出等于用户永远看不到那部分
+    // 尺寸自愈闭环（机制，零模型）：实测内容高度 → 升降档，≤2 次防振荡
+    if (typeof m.contentPx === 'number') {
+      const card = desk.get(m.cardId)
+      if (card) {
+        const next = healStep(card.size, m.contentPx, { bumps: note.bumps, sizeLocked: card.sizeLocked })
+        if (next) {
+          const r = desk.resize(m.cardId, next as any, false)
+          if (r.status === 'ok') { note.bumps++; log('p', `生成式卡自适应：${card.size} → ${next}`) }
+        }
+      }
+    }
     if (m.overflow) log('e', '生成式卡内容溢出，超出部分用户看不到')
     renderInspector()
+    return
+  }
+  // 用户在屏上的动作。I 组接三类路由，这里先落 trace 不丢事件
+  if (m.type === 'userAction') {
+    log('u', `[屏幕] ${m.act}${m.value ? '：' + m.value : ''}`)
     return
   }
   if (m.type !== 'hello') return

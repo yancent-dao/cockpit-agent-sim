@@ -112,6 +112,19 @@ export const CARD_TEMPLATES: CardTemplate[] = [
       '样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：' +
       CANVAS_SIZES + '。按这个尺寸排版，别指望滚动。',
     fields: { html: { type: 'string', required: true }, text: { type: 'string', required: true } } },
+  /**
+   * 可执行的生成式卡 —— 全系统唯一的容器（iframe 沙箱）。
+   * 跟 canvas 的分工：静态图文走 canvas（Shadow DOM + 消毒），
+   * 需要交互/动画/计算的小组件才走这（每卡一个 iframe，重但值）。
+   */
+  { id: 'canvas-app', label: '生成式小组件', defaultSize: '1/2', sizes: [...CANVAS_ALLOWED],
+    desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，' +
+      '会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。' +
+      '沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。' +
+      '可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。' +
+      'data: {title, html, text}。text 是纯文字兜底必填。' +
+      '画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + '。',
+    fields: { html: { type: 'string', required: true }, text: { type: 'string', required: true } } },
 ]
 
 export const TEMPLATE_IDS = CARD_TEMPLATES.map(t => t.id)

@@ -88,6 +88,14 @@ export interface Card {
    * 影响三件事：抢位优先级、能不能被挤、能缩到多小。默认 normal。
    */
   urgency?: Urgency
+  /**
+   * 卡片家族：同名实体的身份策略。key 带实体后缀（weather:510100），
+   * family 是族名（weather）。同一**轮次**的族卡并存（"哪个县最凉快"并行五张），
+   * 新一轮到达时旧批退场（北京来了，成都走）。批号 = runtime 调用轮次，
+   * 不用时间窗魔数——轮次是真实边界（同一轮 = 同一个意图的并行展开）。
+   */
+  family?: string
+  round?: number
   data: any
   ttl: Ttl
   evictable: boolean
@@ -127,6 +135,8 @@ export interface ShowInput {
   size?: Size
   kind?: Kind
   urgency?: Urgency
+  family?: string
+  round?: number
   data?: any
   ttl?: Ttl
   evictable?: boolean
@@ -187,6 +197,16 @@ export function createDesk(clock: () => number = Date.now) {
   const suppressed = new Set<string>()
   /** 最近一次空间释放的时刻。尺寸回落带 2 秒迟滞：候选卡进进出出时天气不能跟着缩-涨-缩 */
   let releasedAt: number | undefined
+  /** 没带轮次的家族卡按"每次都是新批"处理（顺序替换语义）——desk 内部自增 */
+  let familyAutoRound = 0
+
+  /** 新批落地 → 同族旧批退场。同 key 刷新不在此列（render 走 update 不新建） */
+  function sweepFamily(c: Card) {
+    if (!c.family) return
+    for (const other of [...cards.values()])
+      if (other.id !== c.id && other.family === c.family && other.round !== c.round)
+        cards.delete(other.id)   // 静默退场：被新批替换是内容更迭，不是挤出，不用告知
+  }
 
   /** 确定性放置：2/3 最先，然后优先级降序、创建时间升序，行优先扫第一个合法位置 */
   function tryPlace(list: Card[]): PlacedCard[] | null {
@@ -270,6 +290,7 @@ export function createDesk(clock: () => number = Date.now) {
         candidate.size = size
         for (const id of evicted) cards.delete(id)
         cards.set(candidate.id, candidate)
+        sweepFamily(candidate)
         const note = titles.length ? `我把${titles.map(t => `「${t}」`).join('、')}收起来了` : undefined
         if (note) noticeListeners.forEach(l => l({ note, titles: [...titles] }))
         emit()
@@ -325,6 +346,8 @@ export function createDesk(clock: () => number = Date.now) {
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
       desiredSize: size,   // 仲裁自降只改 size；这里记住"本来该多大"
+      family: input.family,
+      round: input.family ? (input.round ?? ++familyAutoRound) : undefined,
       urgency: normalizeUrgency(input.urgency),
       data: input.data ?? {}, ttl: input.ttl, evictable: input.evictable ?? true,
       minSize: input.minSize,
@@ -338,6 +361,7 @@ export function createDesk(clock: () => number = Date.now) {
 
     const toOverlay = (): DeskResult => { // 整屏覆盖：不占栅格，退出还原
       cards.set(id, card)
+      sweepFamily(card)
       overlay = id
       emit()
       return { status: 'ok', cardId: id }
@@ -435,6 +459,11 @@ export function createDesk(clock: () => number = Date.now) {
       ?? exist?.size ?? '1/6') as Size
     if (exist) {
       if (i.refreshTtl) exist.createdAt = clock()
+      if (i.family) {
+        exist.family = i.family
+        exist.round = i.round ?? ++familyAutoRound
+        sweepFamily(exist)   // 同城再查也是新批——别的城该走了
+      }
       // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
       // 就重刷一次，不认这个锁的话"地图小一点"下一秒就被弹回去
       if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {

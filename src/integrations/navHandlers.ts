@@ -79,7 +79,8 @@ const vehicleProfile = (store: Store) => ({
   carType: (store.get('vehicle.carType') as CarType) || undefined,
 })
 
-export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk?: () => Desk | undefined) {
+export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk?: () => Desk | undefined,
+                                  round?: () => number) {
   /** 常用地址。放内存即可——模拟环境不做持久化，刷新页面重来是可接受的 */
   const places: SavedPlace[] = []
   /**
@@ -371,8 +372,12 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 查询结果自动上屏——模型只负责播报，不用（也不该）自己搬数据建卡。
         // key 带 adcode：问"周边哪个县最凉快"会并行查一串地方，写死 key 会让它们
         // 互相覆盖，屏幕上只剩最后一个，跟播报的对比结论对不上。
+        // 家族：同轮并查五个县五张并存，新一轮查别的城旧批退场。
+        // ttl untilDismissed：天气是内容不是问题，不许 120 秒自己蒸发（用户点名）——
+        // 堆卡由家族机制管，不再靠定时器兜底
         desk?.()?.render({
-          key: `weather:${g.adcode}`, template: 'weather', size: '1/3', kind: 'task', ttl: 120, refreshTtl: true,
+          key: `weather:${g.adcode}`, family: 'weather', round: round?.(),
+          template: 'weather', size: '1/3', kind: 'task', ttl: 'untilDismissed',
           data: { title: `${g.formattedAddress}天气`, now, forecast },
         })
         return { status: 'ok', data: { city: g.formattedAddress, now, forecast } }

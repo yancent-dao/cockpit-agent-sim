@@ -32,6 +32,8 @@ export interface InvokeCtx {
   allow?: string[]
   /** 跳过确认（仅供控制面板手动触发使用） */
   force?: boolean
+  /** runtime 的调用轮次：同一轮并行工具调用共批（家族机制的批号） */
+  round?: number
 }
 
 const compare = (a: any, op: Op, b: any) =>
@@ -50,6 +52,9 @@ export function createRegistry(
 ) {
   const byName = new Map(tools.map(t => [t.name, t]))
   const tokens = new Map<string, { tool: string; expires: number }>()
+  /** 当前轮次。runtime 给就用它的；没给（直调/测试）每次自增——顺序替换语义 */
+  let currentRound = 0
+  let autoRound = 0
   let seq = 0
 
   /**
@@ -146,7 +151,7 @@ export function createRegistry(
     },
 
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
-    ...createNavHandlers(store, () => needAmap(), () => sizedDesk()),
+    ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }
 
@@ -320,6 +325,7 @@ export function createRegistry(
   }
 
   async function invoke(name: string, args: Record<string, any> = {}, ctx: InvokeCtx = {}): Promise<ToolResult> {
+    currentRound = ctx.round ?? ++autoRound
     const t = resolve(name)
     if (!t) return { status: 'unavailable', code: 'UNKNOWN_TOOL', message: `没有名为 ${name} 的能力` }
     name = t.name // 归一化成内部点号形式：鉴权白名单、token 绑定都按这个来

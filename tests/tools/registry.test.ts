@@ -1150,12 +1150,36 @@ describe('查询/交互结果自动上屏', () => {
         '/v3/weather/weatherInfo': () => live(['延庆区', '怀柔区'][Math.floor(wx++ / 2)], '25'),
       }),
     })
-    await r.invoke('weather.query', { location: '延庆' })
-    await r.invoke('weather.query', { location: '怀柔' })
+    // 家族语义（2026-08-12）：**同一轮**的并行查询并存——runtime 给同批调用
+    // 同一个 round。没带轮次的直调每次自成一批（顺序替换）
+    await r.invoke('weather.query', { location: '延庆' }, { round: 3 })
+    await r.invoke('weather.query', { location: '怀柔' }, { round: 3 })
     const titles = desk.layout().cards.filter(c => c.template === 'weather').map(c => c.data.title)
     expect(titles).toHaveLength(2)
     expect(titles.join()).toContain('延庆')
     expect(titles.join()).toContain('怀柔')
+  })
+
+  // 顺序单查是另一种意图：新一轮替换旧批——问完成都问北京，屏上不该堆两张
+  it('顺序两轮查询 → 后一城替换前一城', async () => {
+    const desk = await mkDesk()
+    let geo = 0
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v3/geocode/geo': () => ({ status: '1', geocodes: [
+          { location: '1,1', formatted_address: ['成都市', '北京市'][geo], adcode: ['510100', '110000'][geo++] },
+        ] }),
+        '/v3/weather/weatherInfo': () => ({ status: '1',
+          lives: [{ city: 'x', weather: '晴', temperature: '30', winddirection: '东', windpower: '3', humidity: '50', reporttime: 't' }],
+          forecasts: [{ casts: [] }] }),
+      }),
+    })
+    await r.invoke('weather.query', { location: '成都' }, { round: 1 })
+    await r.invoke('weather.query', { location: '北京' }, { round: 2 })
+    const titles = desk.layout().cards.filter(c => c.template === 'weather').map(c => c.data.title)
+    expect(titles).toHaveLength(1)
+    expect(titles[0]).toContain('北京')
   })
 
   /**

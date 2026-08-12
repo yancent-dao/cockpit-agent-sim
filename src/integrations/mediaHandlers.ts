@@ -136,7 +136,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   const showNews = (articles: Article[], title: string) => {
     lastArticles = articles
     desk?.()?.render({
-      key: 'news', template: 'list', kind: 'task', ttl: 180, refreshTtl: true,
+      key: 'news', template: 'list', kind: 'task', ttl: 'untilDismissed',   // 内容卡不定时蒸发（用户点名）
       data: { title, items: articles.map(a => ({ label: a.title, sub: a.source })) },
     })
   }
@@ -461,7 +461,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         const { brief, detail } = await need('websearch').search(args.query)
         // 详细内容只进卡片。语音念完就没了，数字和人名尤其记不住，得让用户能回看
         desk?.()?.render({
-          key: 'websearch', template: 'generic', size: '1/2', kind: 'task', ttl: 180, refreshTtl: true,
+          key: 'websearch', template: 'generic', size: '1/2', kind: 'task', ttl: 'untilDismissed',
           data: { title: args.query, text: detail },
         })
         // **只把一句话结论返回给 Agent**。给全文的话它会整段念——实测 366 字。
@@ -474,7 +474,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
     mediaFavorites: (): ToolResult => {
       if (favStore.list().length)
         desk?.()?.render({
-          key: 'favorites', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          key: 'favorites', template: 'list', kind: 'task', ttl: 'untilDismissed',
           data: {
             title: '我的收藏',
             items: favStore.list().map(f => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` })),

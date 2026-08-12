@@ -44,6 +44,7 @@ export interface AgentDeps {
 }
 
 export function createAgent({ manifest, registry, store, llm, clock = Date.now, desktopSummary, onTurnStart }: AgentDeps) {
+  let toolRound = 0
   const listeners: Array<(e: AgentEvent) => void> = []
   const emit = (e: AgentEvent) => listeners.forEach(l => l(e))
   const on = (cb: (e: AgentEvent) => void) => {
@@ -101,6 +102,10 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
           })),
         })
 
+        // 家族机制的批号：同一条模型回复里的并行工具调用共一轮——
+        // "哪个县最凉快"并行查五地是一个意图的展开，五张天气卡该并存；
+        // 下一轮再查别的城，上一批整体退场
+        const round = ++toolRound
         const results = await Promise.all(reply.toolCalls.map(async c => {
           // provider（如 Anthropic）不接受点号，模型可能回传 window_set 这种 wire 形式；
           // 追踪面板统一显示回内部点号命名，不然同一个 Tool 换个模型名字就变了
@@ -111,7 +116,7 @@ export function createAgent({ manifest, registry, store, llm, clock = Date.now, 
           })
           emit({ type: 'executing', name })
           const s = clock()
-          const result = await registry.invoke(c.name, c.args, { allow: manifest.tools })
+          const result = await registry.invoke(c.name, c.args, { allow: manifest.tools, round })
           trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
           if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
           if (result.status === 'rejected' || result.status === 'unavailable')

@@ -268,6 +268,7 @@ function renderDesk() {
   // FLIP：位置真的变了才记 first rect。车窗过渡每帧调 renderDesk()，
   // 每帧都跑 FLIP 会打架，卡片抖得像坏掉的
   const moves: Move[] = []
+  let fresh = 0            // 这一批新建了第几张，用来错峰
   for (const c of deskState.cards) {
     seen.add(c.id)
     for (let dr = 0; dr < c.rowSpan; dr++)
@@ -275,6 +276,9 @@ function renderDesk() {
     let node = cardNodes.get(c.id)
     if (!node) {
       node = document.createElement('div')
+      // 多张卡同时进场要错峰 45ms，一起弹出来像抽搐。
+      // 用 CSS 的 nth-child 不行：桌面里卡片和占位块混在一起，序号对不上
+      node.style.animationDelay = `${fresh++ * 45}ms`
       cardNodes.set(c.id, node)
       desk.appendChild(node)
     }

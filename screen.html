@@ -53,12 +53,9 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
-/* 多张卡同时进场时错峰 45ms，一起弹出来像抽搐 */
-.card:nth-child(2){animation-delay:45ms}
-.card:nth-child(3){animation-delay:90ms}
-.card:nth-child(4){animation-delay:135ms}
-.card:nth-child(5){animation-delay:180ms}
-.card:nth-child(6){animation-delay:225ms}
+/* 错峰 45ms 由 JS 按「这一批第几张新卡」设 style.animationDelay。
+   用 nth-child 不行：桌面里卡片和占位块（.slot）混在一起，
+   序号对不上，而且节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
 .card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));

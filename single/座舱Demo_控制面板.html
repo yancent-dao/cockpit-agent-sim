@@ -2625,13 +2625,16 @@ ${extras.desktop}`);
         createdAt: clock(),
         touchedAt: clock()
       };
-      if (size === "full") {
+      const toOverlay = () => {
         cards.set(id, card);
         overlay = id;
         emit();
         return { status: "ok", cardId: id };
-      }
-      return fit(card);
+      };
+      if (size === "full") return toOverlay();
+      const r = fit(card);
+      if (r.status === "rejected" && card.urgency === "critical") return toOverlay();
+      return r;
     }
     function update(id, data) {
       const c = cards.get(id);

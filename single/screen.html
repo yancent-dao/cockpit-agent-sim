@@ -88,7 +88,20 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   animation:cdrun linear forwards}
 @keyframes cdrun{from{width:100%}to{width:0}}
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
+/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟着 --voiceH 走，
+   跟桌面区同一块地方 —— 语音区不该被盖住，用户还得听得见 Agent 在说什么 */
+#overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
+  display:none;z-index:6;transition:bottom .32s var(--ez,var(--ease))}
+#overlay.on{display:block;animation:cardIn var(--d3,.34s) var(--ez,var(--ease))}
+#overlay .card{height:100%}
+/* alert 态：安全告警要一眼看出跟「一张全屏能力目录」不是一回事 */
 #overlay.alert .card{border:3px solid var(--danger-bd);box-shadow:0 0 0 6px rgba(239,68,68,.12),var(--sh-2)}
+#overlay.alert .card>h3{color:var(--danger-fg)}
+/* 全屏了就该用全屏的字号。照卡片档位渲染的话，一条占满 2560×1044 的安全告警
+   正文只有 55px —— 开着车扫一眼根本读不到 */
+#overlay .card .sub{font-size:calc(var(--t-hero)*var(--u)*.72);line-height:1.25;
+  color:var(--tx-1,var(--text-primary))}
+#overlay .card .sug{font-size:calc(var(--t-lead)*var(--u)*.8)}
 
 /* ── 生成式卡：紫色描边 + 角标 ──
    角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，
@@ -202,9 +215,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .wxmeta small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 
 /* ── 能力目录 ── */
-.cap{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:calc(12px*var(--u));
+/* 列数由形态函数给（c1/c2/c3），不在 CSS 里硬编码 ——
+   写死 3 列的话 form.cols 说 2 列、渲染出 3 列，算出来的容量对不上，
+   最后就是切掉半行 */
+.cap{flex:1;display:grid;grid-template-columns:1fr;gap:calc(10px*var(--u));
   align-content:start;overflow:hidden}
-.cap.list{grid-template-columns:1fr;gap:calc(8px*var(--u))}
+.cap.c2{grid-template-columns:1fr 1fr}
+.cap.c3{grid-template-columns:repeat(3,1fr)}
 .cap div{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
   border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-1,var(--text-primary))}
@@ -306,6 +323,15 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .tpl-info .sub,.tpl-media .sub,.tpl-feedback .sub,.tpl-generic .sub,.tpl-notice .sub{
   flex:1;display:flex;align-items:center;
   font-size:calc(var(--t-lead)*var(--u));line-height:1.25;color:var(--tx-1,var(--text-primary))}
+
+/* ── 确认卡：问句是主体，不是标题下面的小字 ──
+   这张卡的意思是「现在轮到你说话了」。问句跟正文一样大的话，
+   用户扫一眼不知道系统在等他。选项压到底部，中间留白把两者分开 */
+.tpl-confirm .bd{justify-content:space-between}
+.tpl-confirm .sub{font-size:calc(var(--t-lead)*var(--u)*1.2);line-height:1.22;
+  font-weight:600;color:var(--ac)}
+.tpl-confirm .listcard{flex:none}
+.tpl-confirm .listcard li{border-bottom:none;padding:calc(4px*var(--u)) 0}
 
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}
@@ -699,12 +725,13 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var capForm = (c, r) => {
     const a = area(c, r);
     const mode = a >= 32 ? "grid" : a >= 12 ? "list" : "count";
+    const cols = mode === "grid" ? contentCols(c) : 1;
     return {
       blocks: ["groups"],
       mode,
-      maxItems: mode === "count" ? 0 : listCapacity(c, r) * 2,
-      overflow: mode === "count" ? "count" : "more",
-      cols: mode === "grid" ? contentCols(c) : 1
+      cols,
+      maxItems: mode === "count" ? 0 : cols * r * 2,
+      overflow: mode === "count" ? "count" : "more"
     };
   };
   var CARD_FORMS = {
@@ -1138,7 +1165,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const form = capForm(...dimsOf(c.size));
         if (form.mode === "count")
           return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
-        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc2(i.label)}<small>${esc2(i.desc ?? "")}</small></div>`).join("")}</div>`;
+        const shown = items.slice(0, form.maxItems);
+        const rest = items.length - shown.length;
+        return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i) => `<div class="${i.off ? "off" : ""}">${esc2(i.label)}<small>${esc2(i.desc ?? "")}</small></div>`).join("")}</div>${rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ""}`;
       }
       case "weather": {
         const w = weatherForm(...dimsOf(c.size));
@@ -1598,9 +1627,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     if (moves.length) commitMoves(moves, stageScale);
     const ov = $("overlay");
     if (deskState.overlay) {
-      ov.className = "on";
-      ov.innerHTML = `<div class="card tpl-${deskState.overlay.template}">
-      <h3>${esc3(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`;
+      const o = deskState.overlay;
+      const alert = o.data?.urgency === "critical" || o.urgency === "critical";
+      ov.className = `on${alert ? " alert" : ""}`;
+      ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}">
+      <h3>${esc3(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
     } else {
       ov.className = "";
       ov.innerHTML = "";

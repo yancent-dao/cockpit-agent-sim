@@ -152,6 +152,7 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
       <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
         <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
           <span class="pltime"></span></div>
+        <div class="pl-next"></div>
         <div class="pl-hint"></div></div>
     </div>`
   }
@@ -167,6 +168,10 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   barEl.style.display = form.blocks.includes('bar') ? '' : 'none'
   // 直播与否是**音源**的属性，不是"这一刻 duration 是多少"能猜的
   barEl.classList.toggle('live', d.source === 'radio')
+  const nxt = node.querySelector('.pl-next') as HTMLElement
+  const upcoming: string[] = d.nextUp ?? []
+  nxt.style.display = form.blocks.includes('next') && upcoming.length ? '' : 'none'
+  nxt.textContent = upcoming.length ? `接下来：${upcoming.join(' · ')}` : ''
   const hint = node.querySelector('.pl-hint') as HTMLElement
   hint.style.display = form.blocks.includes('hint') ? '' : 'none'
   hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`

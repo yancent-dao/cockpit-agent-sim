@@ -3,6 +3,7 @@ import type { Size } from '../cards/desk'
 import type { Store } from '../core/store'
 import type { AmapClient } from '../integrations/amap'
 import { buildMapUrl } from '../integrations/navHandlers'
+import type { DomainState } from '../state/domain'
 
 /**
  * 卡片规则 —— 状态→卡片的声明式映射（设计见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md）
@@ -15,7 +16,7 @@ import { buildMapUrl } from '../integrations/navHandlers'
  * data builder 用具名函数白名单（沿用约束引擎具名谓词的先例）——纯配置拼不出 mapUrl 这类需要依赖的数据。
  */
 
-export interface BuilderDeps { store: Store; amap?: AmapClient }
+export interface BuilderDeps { store: Store; amap?: AmapClient; state?: DomainState }
 
 export interface CardRule {
   id: string
@@ -141,9 +142,11 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
   },
 
   /** 播放器。视频要大画面，音乐/电台用默认小卡——这是唯一按内容改尺寸的地方 */
-  playerCard: ({ store }) => {
+  playerCard: ({ store, state }) => {
     const source = store.get('media.source') as string
     return {
+      // 接下来两首（域仓队列）——大档播放器卡显示，让"下一曲"有预告
+      nextUp: state?.queue.peek(2).map(t => t.track) ?? [],
       title: store.get('media.track') || '正在播放',
       track: store.get('media.track'),
       artist: store.get('media.artist'),

@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { createStore } from '../../src/core/store'
 import { createDesk } from '../../src/cards/desk'
+import { createDomainState } from '../../src/state/domain'
 import { sanitize } from '../../src/screen/sanitize'
 import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createRegistry } from '../../src/tools/registry'
@@ -185,8 +186,9 @@ async function runScenario(s: Scenario) {
   const store = createStore(SIGNALS, CONSTRAINTS)
   const desk = createDesk()
   const amap = AMAP_KEY ? createAmapClient(fetch as any, { webKey: AMAP_KEY }) : undefined
+  const state = createDomainState()
   const registry = createRegistry(store, TOOLS, Date.now, {
-    desk, amap,
+    desk, amap, state,
     // iTunes 走 JSONP（浏览器 script 标签），Node 里没有 document——
     // 这里用 fetch 直连，它对服务端请求是放行的，只有浏览器才被 CORS 挡
     itunes: createItunesClient(async url => (await fetch(url)).json()),
@@ -195,7 +197,7 @@ async function runScenario(s: Scenario) {
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),
     websearch: createWebSearch(createOnlineChat(() => OPENROUTER_KEY, () => AGENT_MODEL)),
   })
-  createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()
+  createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start()
 
   // 兜底给个车位置。忘了设的场景会用信号默认值（北京），于是"导航去双流机场"
   // 规划出 1800 公里，看起来像产品 bug 其实是场景没写全。场景自己写了就覆盖掉

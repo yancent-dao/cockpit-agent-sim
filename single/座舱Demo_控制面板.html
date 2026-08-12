@@ -567,7 +567,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   // src/config/cards.ts
   var COMMON_SIZES = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2"];
   var LIST_SIZES = ["1/6", "wide", "1/3", "1/2"];
-  var CANVAS_SIZES = ["1/6", "1/3", "1/2", "2/3", "full"].map((z) => {
+  var CANVAS_ALLOWED = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "tower", "2/3", "full"];
+  var CANVAS_SIZES = CANVAS_ALLOWED.map((z) => {
     const p = pixelsOf(z);
     return `${z} ${p.w}×${p.h}`;
   }).join("，");
@@ -667,6 +668,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       id: "canvas",
       label: "生成式卡",
       defaultSize: "1/2",
+      sizes: [...CANVAS_ALLOWED],
       desc: "前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
@@ -940,8 +942,36 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     message: `在放电台，${what}对直播流没用`,
     suggestion: "想换台的话说个台名，或者让我给你放歌"
   });
+  function playQueueTrack(store2, qt) {
+    store2.set("media.source", qt.source);
+    store2.set("media.track", qt.track);
+    store2.set("media.artist", qt.artist);
+    store2.set("media.artwork", qt.artwork ?? "");
+    store2.set("media.streamUrl", qt.streamUrl);
+    store2.set("media.videoActive", qt.videoActive ?? false);
+    store2.set("media.playing", true);
+  }
+  function createAutoplay(store2, state2) {
+    return {
+      onEnded() {
+        const qt = state2.queue.advance(String(store2.get("media.mode") ?? "sequential"));
+        if (qt) {
+          playQueueTrack(store2, qt);
+          state2.history.push(qt);
+        } else store2.set("media.playing", false);
+      }
+    };
+  }
   function createMediaHandlers(store2, desk2, deps = {}) {
-    const favorites = [];
+    const memFavs = [];
+    const favStore = deps.state?.favorites ?? {
+      add: (f) => memFavs.some((x) => x.streamUrl === f.streamUrl) ? false : (memFavs.push(f), true),
+      remove: (u) => {
+        const i = memFavs.findIndex((x) => x.streamUrl === u);
+        if (i >= 0) memFavs.splice(i, 1);
+      },
+      list: () => [...memFavs]
+    };
     let lastResults = [];
     let lastStations = [];
     let lastArticles = [];
@@ -1045,14 +1075,26 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
               store2.set(k, v);
             return { status: "ok", data: { stopped: true } };
           case "next":
-          case "prev":
+          case "prev": {
             if (cur.source === "radio") return radioNo("切上下首");
-            return {
+            const st = deps.state;
+            if (!st || !st.queue.size()) return {
               status: "unavailable",
               code: "NO_QUEUE",
               message: "还没有播放列表，一次只放一首",
               suggestion: "直接说下一首想听什么"
             };
+            const qt = args.action === "next" ? st.queue.next() : st.queue.prev();
+            if (!qt) return {
+              status: "unavailable",
+              code: "QUEUE_END",
+              message: args.action === "next" ? "已经是最后一首了" : "已经是第一首了",
+              suggestion: "想听别的直接点歌"
+            };
+            playQueueTrack(store2, qt);
+            st.history.push(qt);
+            return { status: "ok", data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` };
+          }
           default:
             return { status: "rejected", code: "INVALID_PARAMS", message: `不认识的动作 ${args.action}` };
         }
@@ -1081,18 +1123,26 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         store2.set("media.mode", args.mode);
         return { status: "ok", data: { mode: args.mode }, changed: ["media.mode"] };
       },
-      mediaQueue: () => ({
-        status: "unavailable",
-        code: "NO_QUEUE",
-        message: "这台车一次只放一首，没有播放列表",
-        suggestion: "想连着听的话，说个歌手或者风格，我一首一首放"
-      }),
+      mediaQueue: () => {
+        const st = deps.state;
+        if (!st || !st.queue.size()) return {
+          status: "unavailable",
+          code: "NO_QUEUE",
+          message: "现在没有播放列表",
+          suggestion: "点一首歌，同一批搜索结果会自动排进队列"
+        };
+        const upcoming = st.queue.peek(5);
+        return {
+          status: "ok",
+          data: { current: st.queue.current(), upcoming, recent: st.history.recent(5), origin: st.queue.origin() },
+          message: upcoming.length ? `接下来：${upcoming.map((x) => x.track).join("、")}` : "这是队列里最后一首了"
+        };
+      },
       mediaFavorite: () => {
         const cur = nowPlaying();
         if (!cur) return NOTHING;
-        if (favorites.some((f) => f.streamUrl === cur.streamUrl))
+        if (!favStore.add(cur))
           return { status: "ok", data: { already: true }, message: `${cur.track} 已经在收藏里了` };
-        favorites.push(cur);
         return { status: "ok", data: { saved: cur }, message: `收藏了 ${cur.track}` };
       },
       /* ══════════ 音乐（iTunes） ══════════ */
@@ -1118,6 +1168,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             track = found[0];
           }
           playTrack(track);
+          deps.state?.queue.set(lastResults.map((t) => ({
+            source: "music",
+            track: t.name,
+            artist: t.artist,
+            artwork: t.artwork,
+            streamUrl: t.preview
+          })), lastResults.indexOf(track), "search");
+          deps.state?.history.push({ source: "music", track: track.name, artist: track.artist, streamUrl: track.preview });
           dismissKey(CANDIDATES);
           return {
             status: "ok",
@@ -1305,7 +1363,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         }
       },
       mediaFavorites: () => {
-        if (favorites.length)
+        if (favStore.list().length)
           desk2?.()?.render({
             key: "favorites",
             template: "list",
@@ -1314,10 +1372,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             refreshTtl: true,
             data: {
               title: "我的收藏",
-              items: favorites.map((f) => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` }))
+              items: favStore.list().map((f) => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` }))
             }
           });
-        return { status: "ok", data: { items: favorites } };
+        return { status: "ok", data: { items: favStore.list() } };
       }
     };
   }
@@ -1370,10 +1428,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const r = desk2?.()?.render({
         key: CANDIDATES,
         template: "list",
-        size: "1/2",
         kind: "task",
         ttl: 120,
         refreshTtl: true,
+        // 尺寸交给内容建议：3 条小卡、10 条大卡
         data: { title: "你要去哪个？", items: pois.map((p) => ({ label: p.name, sub: p.address })) }
       });
       return r && r.status !== "ok";
@@ -1422,11 +1480,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       regionDistricts: async (args) => {
         const amap2 = needAmap();
         try {
-          const area = args.area || await amap2.cityOf(store2.get("vehicle.location"));
-          if (!area)
+          const area2 = args.area || await amap2.cityOf(store2.get("vehicle.location"));
+          if (!area2)
             return { status: "unavailable", code: "PLACE_NOT_FOUND", message: "定不了当前在哪个城市", suggestion: "直接说要查哪个城市周边" };
-          const districts = await amap2.districts(area);
-          return { status: "ok", data: { area, districts } };
+          const districts = await amap2.districts(area2);
+          return { status: "ok", data: { area: area2, districts } };
         } catch (e) {
           return amapFail(e, "行政区域查询");
         }
@@ -1455,7 +1513,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           desk2?.()?.render({
             key: "along",
             template: "list",
-            size: "1/2",
             kind: "task",
             ttl: 120,
             refreshTtl: true,
@@ -1506,7 +1563,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           desk2?.()?.render({
             key: "routes",
             template: "list",
-            size: "1/2",
             kind: "task",
             ttl: 120,
             refreshTtl: true,
@@ -1642,8 +1698,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const amap2 = needAmap();
         try {
           const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location));
-          const area = isCoord ? await amap2.areaOf(String(args.location).trim()) : await amap2.geocode(args.location).then((x) => x && { adcode: x.adcode, name: x.formattedAddress });
-          const g = area?.adcode ? { adcode: area.adcode, formattedAddress: area.name } : null;
+          const area2 = isCoord ? await amap2.areaOf(String(args.location).trim()) : await amap2.geocode(args.location).then((x) => x && { adcode: x.adcode, name: x.formattedAddress });
+          const g = area2?.adcode ? { adcode: area2.adcode, formattedAddress: area2.name } : null;
           if (!g?.adcode)
             return { status: "unavailable", code: "PLACE_NOT_FOUND", message: "找不到这个地方的天气", suggestion: "换个更常见的地名试试" };
           const [now, forecast] = await Promise.all([amap2.weatherNow(g.adcode), amap2.weatherForecast(g.adcode)]);
@@ -1720,8 +1776,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             message: `${tmpl.label}由系统按车辆状态自动出，不用你建`,
             suggestion: "需要的话调对应的业务工具（如 navigation.setDestination），卡片会自己出现"
           };
-        const sizeErr = tmpl && checkSize(tmpl, args.size);
-        if (sizeErr) return sizeErr;
         const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false });
         if (shapeErr) return shapeErr;
         return toResult(need().show({
@@ -1744,11 +1798,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       cardResize: (args) => {
         const card = need().get(args.cardId);
         const tmpl = card && CARD_TEMPLATES.find((t) => t.id === card.template);
-        const sizeErr = tmpl && checkSize(tmpl, args.size);
-        if (sizeErr) return sizeErr;
         return toResult(need().resize(args.cardId, args.size));
       },
-      cardDismiss: (args) => toResult(need().dismiss(args.cardId)),
+      // byUser：模型撤卡是在替用户执行"把它收起来"——规则卡被抑制，
+      // 不许下一秒被 reconcile 补回（诈尸），直到 watch 信号重新断言
+      cardDismiss: (args) => toResult(need().dismiss(args.cardId, { byUser: true })),
       cardFocus: (args) => toResult(need().focus(args.cardId)),
       deskLayout: () => {
         const l = need().layout();
@@ -1772,7 +1826,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       },
       /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
       ...createNavHandlers(store2, () => needAmap(), () => sizedDesk()),
-      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch") })
+      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
     };
     const sizedDesk = () => {
       const d = deps.desk;
@@ -1818,14 +1872,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       ...r.shrunk && { code: "CARD_SHRUNK" },
       ...r.note && { message: r.note }
     } : { status: "rejected", code: r.code, message: r.message };
-    const checkSize = (tmpl, size) => {
-      const allowed = tmpl.sizes ?? COMMON_SIZES;
-      return allowed.includes(size) ? null : {
-        status: "rejected",
-        code: "SIZE_NOT_SUPPORTED",
-        message: `${tmpl.label}不支持 ${size} 尺寸，支持：${allowed.join("、")}`
-      };
-    };
     const checkDataShape = (tmpl, data, opts) => {
       if (!tmpl.fields) return null;
       const isType = (v, t) => t === "array" ? Array.isArray(v) : t === "object" ? typeof v === "object" && v !== null && !Array.isArray(v) : typeof v === t;
@@ -1982,6 +2028,117 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       });
     }
     return { list, schemas, invoke, permissionOf, canonicalName, tools };
+  }
+
+  // src/state/domain.ts
+  var memoryStorage = () => {
+    const m = /* @__PURE__ */ new Map();
+    return { get: (k) => m.get(k) ?? null, set: (k, v) => m.set(k, v) };
+  };
+  var defaultStorage = () => {
+    try {
+      if (typeof localStorage !== "undefined") return {
+        get: (k) => localStorage.getItem(k),
+        set: (k, v) => localStorage.setItem(k, v)
+      };
+    } catch {
+    }
+    return memoryStorage();
+  };
+  var HISTORY_CAP = 50;
+  var QUERY_CAP = 20;
+  function createDomainState(storage = defaultStorage(), rng = Math.random) {
+    const load = (key, fallback) => {
+      try {
+        const raw = storage.get(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const save = (key, v) => {
+      try {
+        storage.set(key, JSON.stringify(v));
+      } catch {
+      }
+    };
+    let qItems = [];
+    let qCursor = -1;
+    let qOrigin = "";
+    const clampNext = (i) => i >= 0 && i < qItems.length ? i : -1;
+    const queue = {
+      set(items, cursor, origin) {
+        qItems = [...items];
+        qCursor = clampNext(cursor);
+        qOrigin = origin;
+      },
+      current: () => qCursor >= 0 ? qItems[qCursor] : null,
+      size: () => qItems.length,
+      origin: () => qOrigin,
+      /** 接下来几首（不动 cursor）——播放器卡的"接下来"块用 */
+      peek: (n) => qItems.slice(qCursor + 1, qCursor + 1 + n),
+      list: () => [...qItems],
+      /** 用户手动"下一曲"：任何模式都前进——他都开口了，重放同一首是抬杠 */
+      next(_mode) {
+        const i = clampNext(qCursor + 1);
+        if (i < 0) return null;
+        qCursor = i;
+        return qItems[i];
+      },
+      prev() {
+        const i = clampNext(qCursor - 1);
+        if (i < 0) return null;
+        qCursor = i;
+        return qItems[i];
+      },
+      /**
+       * 自动续播（ended 触发）：这里才看模式——
+       * repeatOne 重放当前；shuffle 随机挑一首别的；sequential 顺序前进，到尾停。
+       */
+      advance(mode) {
+        if (qCursor < 0) return null;
+        if (mode === "repeatOne") return qItems[qCursor];
+        if (mode === "shuffle" && qItems.length > 1) {
+          let i = qCursor;
+          while (i === qCursor) i = Math.floor(rng() * qItems.length);
+          qCursor = i;
+          return qItems[i];
+        }
+        return queue.next(mode);
+      }
+    };
+    let hist = load("cockpit.history", []);
+    const history = {
+      push(t) {
+        hist = [t, ...hist].slice(0, HISTORY_CAP);
+        save("cockpit.history", hist);
+      },
+      recent: (n) => hist.slice(0, n)
+    };
+    let qs = load("cockpit.queries", []);
+    const queries = {
+      push(e) {
+        qs = [e, ...qs].slice(0, QUERY_CAP);
+        save("cockpit.queries", qs);
+      },
+      recent: (n) => qs.slice(0, n)
+    };
+    let favs = load("cockpit.favorites", []);
+    const favorites = {
+      /** 返回是否新增。按 streamUrl 判重——同一首歌不同搜索批次的对象不同 */
+      add(f) {
+        if (favs.some((x) => x.streamUrl === f.streamUrl)) return false;
+        favs = [...favs, f];
+        save("cockpit.favorites", favs);
+        return true;
+      },
+      remove(streamUrl) {
+        favs = favs.filter((x) => x.streamUrl !== streamUrl);
+        save("cockpit.favorites", favs);
+      },
+      list: () => [...favs]
+    };
+    return { queue, history, queries, favorites };
   }
 
   // src/integrations/itunes.ts
@@ -2470,6 +2627,109 @@ ${extras.desktop}`);
     };
   }
 
+  // src/config/forms.ts
+  var area = (c, r) => c * r;
+  var navForm = (c, r) => {
+    const blocks = ["turn"];
+    if (area(c, r) >= 24 && c >= 8) blocks.splice(1, 0, "map");
+    if (area(c, r) >= 12) blocks.push("foot");
+    return { blocks };
+  };
+  var controlForm = (c, r) => {
+    const blocks = [];
+    if (r >= 4 && c >= 4) blocks.push("vehicle");
+    blocks.push("items");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var confirmForm = (c, r) => {
+    const blocks = ["what"];
+    if (area(c, r) >= 16) blocks.push("why");
+    blocks.push("hint");
+    return { blocks };
+  };
+  var textDetail = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 12) blocks.push("detail");
+    return { blocks };
+  };
+  var listForm = (c, r) => {
+    const n = listCapacity(c, r);
+    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: contentCols(c) };
+  };
+  var genericForm = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 8) blocks.push("items", "actions");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var mediaForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = [];
+    if (a >= 8) blocks.push("art");
+    blocks.push("title");
+    if (a >= 8) blocks.push("sub");
+    if (c >= 6) blocks.push("bar");
+    if (r >= 2 && a >= 12) blocks.push("hint");
+    if (a >= 16) blocks.push("next");
+    return { blocks };
+  };
+  var weatherForm = (c, r) => {
+    const a = area(c, r);
+    const days = a >= 32 ? 5 : a >= 12 ? 3 : 0;
+    const blocks = ["temp"];
+    if (days > 0) blocks.push("forecast");
+    return { blocks, maxItems: days, cols: c >= 12 ? days : 1 };
+  };
+  var capForm = (c, r) => {
+    const a = area(c, r);
+    const mode = a >= 32 ? "grid" : a >= 12 ? "list" : "count";
+    const cols = mode === "grid" ? contentCols(c) : 1;
+    return {
+      blocks: ["groups"],
+      mode,
+      cols,
+      maxItems: mode === "count" ? 0 : cols * r * 2,
+      overflow: mode === "count" ? "count" : "more"
+    };
+  };
+  var CARD_FORMS = {
+    nav: navForm,
+    control: controlForm,
+    confirm: confirmForm,
+    feedback: textDetail,
+    notice: textDetail,
+    list: listForm,
+    info: genericForm,
+    media: mediaForm,
+    weather: weatherForm,
+    capability: capForm,
+    generic: genericForm
+  };
+  var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
+  function suggestSize(templateId, count) {
+    const tmpl = CARD_TEMPLATES.find((t) => t.id === templateId);
+    const allowed = [...tmpl?.sizes ?? COMMON_SIZES].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+    for (const z of allowed) {
+      const max = formOf(templateId, ...dimsOf(z)).maxItems;
+      if (max !== void 0 && max >= count) return z;
+    }
+    return allowed[allowed.length - 1];
+  }
+
+  // src/cards/contract.ts
+  var knownSize = (z) => z in TIERS || z in ALIAS;
+  function checkSize(templateId, size) {
+    const tmpl = CARD_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return null;
+    const allowed = tmpl.sizes ?? [...COMMON_SIZES];
+    const fail = () => ({
+      code: "SIZE_NOT_SUPPORTED",
+      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${allowed.join("、")}`
+    });
+    if (!knownSize(size)) return fail();
+    const want = normalizeTier(size);
+    return allowed.some((z) => normalizeTier(z) === want) ? null : fail();
+  }
+
   // src/config/priority.ts
   var URGENCY = {
     ambient: 0,
@@ -2526,6 +2786,8 @@ ${extras.desktop}`);
     const listeners = [];
     const emit = () => listeners.forEach((l) => l());
     const noticeListeners = [];
+    const suppressed = /* @__PURE__ */ new Set();
+    let releasedAt;
     function tryPlace(list) {
       const order = [...list].sort((a, b) => {
         const ha = shapeOf(a.size).h, hb = shapeOf(b.size).h;
@@ -2536,23 +2798,30 @@ ${extras.desktop}`);
       });
       const grid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
       const out = [];
+      const fits = (r, c0, shape) => {
+        if (r + shape.h > ROWS || c0 + shape.w > COLS) return false;
+        for (let dr = 0; dr < shape.h; dr++)
+          for (let dc = 0; dc < shape.w; dc++) if (grid[r + dr][c0 + dc]) return false;
+        return true;
+      };
+      const occupy = (r, c0, shape) => {
+        for (let dr = 0; dr < shape.h; dr++)
+          for (let dc = 0; dc < shape.w; dc++) grid[r + dr][c0 + dc] = true;
+      };
       for (const c of order) {
         const shape = shapeOf(c.size);
         let placed = null;
+        if (c.prevPos && fits(c.prevPos.row, c.prevPos.col, shape)) {
+          occupy(c.prevPos.row, c.prevPos.col, shape);
+          placed = { ...c, row: c.prevPos.row, col: c.prevPos.col, rowSpan: shape.h, colSpan: shape.w };
+        }
         const cols = [];
         for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i);
         const rowStep = shape.h >= 2 ? 2 : 1;
-        outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
+        if (!placed) outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
           for (const c0 of cols) {
-            let free = true;
-            for (let dr = 0; dr < shape.h; dr++)
-              for (let dc = 0; dc < shape.w; dc++) if (grid[r + dr][c0 + dc]) {
-                free = false;
-                break;
-              }
-            if (!free) continue;
-            for (let dr = 0; dr < shape.h; dr++)
-              for (let dc = 0; dc < shape.w; dc++) grid[r + dr][c0 + dc] = true;
+            if (!fits(r, c0, shape)) continue;
+            occupy(r, c0, shape);
             placed = { ...c, row: r, col: c0, rowSpan: shape.h, colSpan: shape.w };
             break outer;
           }
@@ -2622,7 +2891,10 @@ ${extras.desktop}`);
     function show(input) {
       if (input.ttl === void 0 || input.ttl === null)
         return { status: "rejected", code: "TTL_REQUIRED", message: "卡片必须声明 ttl，否则会在桌面堆积" };
-      const size = input.size ?? "1/6";
+      const tmplDefault = CARD_TEMPLATES.find((t) => t.id === input.template)?.defaultSize;
+      const size = input.size ?? (Array.isArray(input.data?.items) && input.data.items.length ? suggestSize(input.template, input.data.items.length) : void 0) ?? tmplDefault ?? "1/6";
+      const sizeErr = checkSize(input.template, size);
+      if (sizeErr) return { status: "rejected", ...sizeErr };
       const id = input.id ?? `card_${++seq}`;
       const card = {
         id,
@@ -2630,6 +2902,8 @@ ${extras.desktop}`);
         template: input.template,
         size,
         kind: input.kind ?? "task",
+        desiredSize: size,
+        // 仲裁自降只改 size；这里记住"本来该多大"
         urgency: normalizeUrgency(input.urgency),
         data: input.data ?? {},
         ttl: input.ttl,
@@ -2662,9 +2936,17 @@ ${extras.desktop}`);
       emit();
       return { status: "ok", cardId: id };
     }
+    function resizeGate(id, size) {
+      const c = cards.get(id);
+      if (!c) return null;
+      const err = checkSize(c.template, size);
+      return err ? { status: "rejected", ...err } : null;
+    }
     function resize(id, size, byUser = true) {
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      const gateErr = resizeGate(id, size);
+      if (gateErr) return gateErr;
       const prev = c.size;
       c.size = size;
       if (!tryPlace(others())) {
@@ -2672,14 +2954,18 @@ ${extras.desktop}`);
         return { status: "rejected", code: "NO_ROOM", message: "这个尺寸放不下了" };
       }
       if (byUser) c.sizeLocked = true;
+      c.desiredSize = size;
       c.touchedAt = clock();
       emit();
       return { status: "ok", cardId: id };
     }
-    function dismiss(id) {
-      if (!cards.has(id)) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+    function dismiss(id, opts) {
+      const c = cards.get(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      if (opts?.byUser && c.key) suppressed.add(c.key);
       cards.delete(id);
       if (overlay === id) overlay = void 0;
+      releasedAt = clock();
       emit();
       return { status: "ok", cardId: id };
     }
@@ -2691,12 +2977,13 @@ ${extras.desktop}`);
       return { status: "ok", cardId: id };
     };
     function render(i) {
+      suppressed.delete(i.key);
       const exist = [...cards.values()].find((c) => c.key === i.key);
       if (isEmptyList(i.template, i.data)) {
         if (exist) dismiss(exist.id);
         return { status: "rejected", code: "EMPTY_CARD", message: "一条都没有，卡撤了" };
       }
-      const want = i.size ?? "1/6";
+      const want = i.size ?? (Array.isArray(i.data?.items) && i.data.items.length ? suggestSize(i.template, i.data.items.length) : void 0) ?? exist?.size ?? "1/6";
       if (exist) {
         if (i.refreshTtl) exist.createdAt = clock();
         if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {
@@ -2718,12 +3005,21 @@ ${extras.desktop}`);
       const t = clock();
       for (const c of [...cards.values()])
         if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) dismiss(c.id);
+      if (releasedAt !== void 0 && t - releasedAt >= 2e3) {
+        releasedAt = void 0;
+        const pressed = [...cards.values()].filter((c) => c.desiredSize && cellsOfTier(c.size) < cellsOfTier(c.desiredSize)).sort((a, b) => PRIO(b) - PRIO(a));
+        for (const c of pressed) resize(c.id, c.desiredSize, false);
+      }
     }
     function endTask() {
       for (const c of [...cards.values()]) if (c.ttl === "untilTaskEnd") dismiss(c.id);
     }
     function layout() {
       const placed = tryPlace(others()) ?? [];
+      for (const pc of placed) {
+        const c = cards.get(pc.id);
+        if (c) c.prevPos = { row: pc.row, col: pc.col };
+      }
       return {
         cards: placed,
         free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
@@ -2739,7 +3035,8 @@ ${extras.desktop}`);
       lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
       for (const c of l.cards) {
         const total = Array.isArray(c.data?.items) ? c.data.items.length : 0;
-        const n = Number(c.data?.moreCount ?? Math.max(0, total - listCapacity(...dimsOf(c.size))));
+        const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total;
+        const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
         if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
       }
       return lines.join("\n");
@@ -2757,6 +3054,7 @@ ${extras.desktop}`);
       summary,
       get: (id) => cards.get(id),
       findByKey: (key) => [...cards.values()].find((c) => c.key === key),
+      isSuppressed: (key) => suppressed.has(key),
       cellsOf: (s) => cellsOfTier(s),
       ladder: () => [...LADDER2],
       priorityOf: (k, u) => priorityOf(k, u),
@@ -2791,6 +3089,11 @@ ${extras.desktop}`);
         data: build ? build(deps) : {}
       });
     };
+    const refill = () => {
+      for (const r of rules)
+        if (r.when && isActive(r) && !desk2.findByKey(r.card.key) && !desk2.isSuppressed(r.card.key))
+          apply(r);
+    };
     const retire = (r) => {
       const c = desk2.findByKey(r.card.key);
       if (c) desk2.dismiss(c.id);
@@ -2800,6 +3103,7 @@ ${extras.desktop}`);
       isActive(r) ? apply(r) : retire(r);
     };
     function start() {
+      unsubs.push(desk2.subscribe(refill));
       for (const r of rules) {
         for (const path of new Set((r.when ?? []).map((w) => w[0])))
           unsubs.push(store2.subscribe(path, () => evaluate(r)));
@@ -4089,7 +4393,7 @@ ${extras.desktop}`);
     /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
     {
       name: "media.control",
-      desc: '播放控制：继续/暂停/停止/上一首/下一首。跟正在放的是什么无关。注意 play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+      desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
       permission: "彩",
       params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev"], required: true, desc: "动作" } },
       handler: "mediaControl"
@@ -4123,7 +4427,7 @@ ${extras.desktop}`);
     },
     {
       name: "media.queue",
-      desc: "看接下来要播什么。这台车一次只放一首，所以基本都会告诉你没有播放列表。",
+      desc: "看播放队列：正在放什么、接下来几首、最近放过什么。点一首歌后同批搜索结果自动排队。",
       permission: "彩",
       params: {},
       handler: "mediaQueue"
@@ -4480,9 +4784,11 @@ ${extras.desktop}`);
       };
     },
     /** 播放器。视频要大画面，音乐/电台用默认小卡——这是唯一按内容改尺寸的地方 */
-    playerCard: ({ store: store2 }) => {
+    playerCard: ({ store: store2, state: state2 }) => {
       const source = store2.get("media.source");
       return {
+        // 接下来两首（域仓队列）——大档播放器卡显示，让"下一曲"有预告
+        nextUp: state2?.queue.peek(2).map((t) => t.track) ?? [],
         title: store2.get("media.track") || "正在播放",
         track: store2.get("media.track"),
         artist: store2.get("media.artist"),
@@ -4619,7 +4925,10 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   var pexelsKey = import_meta.env?.VITE_PEXELS_KEY || "";
   var amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : void 0;
   if (!amapWebKey) console.warn("未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable");
+  var state = createDomainState();
+  var autoplay = createAutoplay(store, state);
   var registry = createRegistry(store, TOOLS, Date.now, {
+    state,
     desk,
     amap,
     itunes: createItunesClient(),
@@ -4628,7 +4937,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
     pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
     websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId))
   });
-  createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start();
+  createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start();
   var apiKey = "";
   var modelId = "";
   var llm = createOpenRouter(() => apiKey, () => modelId);
@@ -4699,6 +5008,11 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   setInterval(() => desk.tick(), 500);
   $("toolCount").textContent = `${registry.list(MAIN_AGENT.tools).length} tools`;
   var bus = createBus((m) => {
+    if (m.type === "mediaEvent" && m.event === "ended") {
+      autoplay.onEnded();
+      log("p", store.get("media.playing") ? `放完了，自动下一首：${store.get("media.track")}` : "队列放完了");
+      return;
+    }
     if (m.type === "canvasNote") {
       const prev = canvasNotes.get(m.cardId) ?? {};
       canvasNotes.set(m.cardId, {

@@ -1,6 +1,8 @@
 import { injectTokens } from '../design/tokens'
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
+import { createDomainState } from '../state/domain'
+import { createAutoplay } from '../integrations/mediaHandlers'
 import { createAmapClient } from '../integrations/amap'
 import { createItunesClient } from '../integrations/itunes'
 import { createRadioClient } from '../integrations/radio'
@@ -38,13 +40,17 @@ const pexelsKey: string = (import.meta as any).env?.VITE_PEXELS_KEY || ''
 const amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : undefined
 if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable')
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
-const registry = createRegistry(store, TOOLS, Date.now, { desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
+/** 领域状态仓：队列/历史/收藏（localStorage 持久化）。记忆系统的第三级 */
+const state = createDomainState()
+const autoplay = createAutoplay(store, state)
+const registry = createRegistry(store, TOOLS, Date.now, {
+  state, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   news: createNewsClient(fetch.bind(window), () => newsKey),
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)) })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
-createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()
+createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start()
 
 let apiKey: string = (import.meta as any).env?.VITE_OPENROUTER_KEY || ''
 let modelId = ''
@@ -113,6 +119,13 @@ $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
 // 每次都推而不是只在首次推：刷新后控制面板这边并不知道对面换了个新页面。
 // 代价是 4 秒一次小 postMessage，车机屏那边按节点 diff，不会闪
 const bus = createBus(m => {
+  // ended → 机制自动续播，零模型调用（公理 4）。写的是信号，
+  // 规则会自己刷新播放器卡——桌面 = f(状态) 的又一次兑现
+  if (m.type === 'mediaEvent' && m.event === 'ended') {
+    autoplay.onEnded()
+    log('p', store.get('media.playing') ? `放完了，自动下一首：${store.get('media.track')}` : '队列放完了')
+    return
+  }
   if (m.type === 'canvasNote') {
     const prev = canvasNotes.get(m.cardId) ?? {}
     canvasNotes.set(m.cardId, {

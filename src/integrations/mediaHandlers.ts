@@ -4,6 +4,7 @@
  * 和 CarPlay MPRemoteCommandCenter 的模型。内容检索各归各的 CP。
  */
 import type { Store } from '../core/store'
+import type { DomainState, QueueTrack } from '../state/domain'
 import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
 import type { Track, ItunesClient } from './itunes'
@@ -47,11 +48,46 @@ export interface MediaDeps {
   news?: () => NewsClient
   pexels?: () => PexelsClient
   websearch?: () => WebSearchClient
+  /** 领域状态仓：队列/历史/收藏。不传则收藏退化为内存数组（老测试兼容），队列功能不可用 */
+  state?: DomainState
+}
+
+/** 把一条队列内容写进 media.* 信号组开播。续播和 next/prev 共用这一条路 */
+export function playQueueTrack(store: Store, qt: QueueTrack) {
+  store.set('media.source', qt.source)
+  store.set('media.track', qt.track)
+  store.set('media.artist', qt.artist)
+  store.set('media.artwork', qt.artwork ?? '')
+  store.set('media.streamUrl', qt.streamUrl)
+  store.set('media.videoActive', qt.videoActive ?? false)
+  store.set('media.playing', true)
+}
+
+/**
+ * ended → 自动续播。**机制，零模型调用**（公理 4：没有"理解"成分的事不叫醒模型）。
+ * 兑现当年 bus 注释里的约定：『"放完了"是事实，"该放下一首"是决定，归控制面板侧规则管』
+ * ——这条"规则"现在建成了。产品收益：iTunes 只给 30 秒试听，
+ * 自动续播让歌单像电台一样流动。
+ */
+export function createAutoplay(store: Store, state: DomainState) {
+  return {
+    onEnded() {
+      const qt = state.queue.advance(String(store.get('media.mode') ?? 'sequential'))
+      if (qt) { playQueueTrack(store, qt); state.history.push(qt) }
+      else store.set('media.playing', false)   // 到尾了就停，不静音挂着
+    },
+  }
 }
 
 export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
-  /** 收藏跨源统一：歌和电台放一份里，用户说"我收藏的"不用分是哪类 */
-  const favorites: Favorite[] = []
+  /** 收藏跨源统一，落域仓持久化（刷新不丢）。不传 state 的老用法退化为内存 */
+  const memFavs: QueueTrack[] = []
+  const favStore: { add(f: QueueTrack): boolean; remove(u: string): void; list(): QueueTrack[] } =
+    deps.state?.favorites ?? {
+      add: f => (memFavs.some(x => x.streamUrl === f.streamUrl) ? false : (memFavs.push(f), true)),
+      remove: u => { const i = memFavs.findIndex(x => x.streamUrl === u); if (i >= 0) memFavs.splice(i, 1) },
+      list: () => [...memFavs],
+    }
 
   /** 上一次搜索结果，用来把"第二个"翻译成具体条目 */
   let lastResults: Track[] = []
@@ -59,7 +95,8 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   let lastArticles: Article[] = []
   let lastClips: Clip[] = []
 
-  const need = <K extends keyof MediaDeps>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
+  type CpKey = Exclude<keyof MediaDeps, 'state'>
+  const need = <K extends CpKey>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
     const f = deps[k]
     if (!f) throw new Error(`${k} 能力未装配`)
     return (f as any)() 
@@ -163,13 +200,25 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
             store.set(k as string, v as any)
           return { status: 'ok', data: { stopped: true } }
         case 'next':
-        case 'prev':
+        case 'prev': {
           if (cur.source === 'radio') return radioNo('切上下首')
-          return {
+          const st = deps.state
+          if (!st || !st.queue.size()) return {
             status: 'unavailable', code: 'NO_QUEUE',
             message: '还没有播放列表，一次只放一首',
             suggestion: '直接说下一首想听什么',
           }
+          // 手动切换任何模式都前进——用户都开口了，单曲循环还重放同一首是抬杠
+          const qt = args.action === 'next' ? st.queue.next() : st.queue.prev()
+          if (!qt) return {
+            status: 'unavailable', code: 'QUEUE_END',
+            message: args.action === 'next' ? '已经是最后一首了' : '已经是第一首了',
+            suggestion: '想听别的直接点歌',
+          }
+          playQueueTrack(store, qt)
+          st.history.push(qt)
+          return { status: 'ok', data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` }
+        }
         default:
           return { status: 'rejected', code: 'INVALID_PARAMS', message: `不认识的动作 ${args.action}` }
       }
@@ -202,18 +251,28 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
       return { status: 'ok', data: { mode: args.mode }, changed: ['media.mode'] }
     },
 
-    mediaQueue: (): ToolResult => ({
-      status: 'unavailable', code: 'NO_QUEUE',
-      message: '这台车一次只放一首，没有播放列表',
-      suggestion: '想连着听的话，说个歌手或者风格，我一首一首放',
-    }),
+    mediaQueue: (): ToolResult => {
+      const st = deps.state
+      if (!st || !st.queue.size()) return {
+        status: 'unavailable', code: 'NO_QUEUE',
+        message: '现在没有播放列表',
+        suggestion: '点一首歌，同一批搜索结果会自动排进队列',
+      }
+      const upcoming = st.queue.peek(5)
+      return {
+        status: 'ok',
+        data: { current: st.queue.current(), upcoming, recent: st.history.recent(5), origin: st.queue.origin() },
+        message: upcoming.length
+          ? `接下来：${upcoming.map(x => x.track).join('、')}`
+          : '这是队列里最后一首了',
+      }
+    },
 
     mediaFavorite: (): ToolResult => {
       const cur = nowPlaying()
       if (!cur) return NOTHING
-      if (favorites.some(f => f.streamUrl === cur.streamUrl))
+      if (!favStore.add(cur))
         return { status: 'ok', data: { already: true }, message: `${cur.track} 已经在收藏里了` }
-      favorites.push(cur)
       return { status: 'ok', data: { saved: cur }, message: `收藏了 ${cur.track}` }
     },
 
@@ -241,6 +300,11 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           track = found[0]
         }
         playTrack(track)
+        // 同批搜索结果整批入队——"下一曲"从此有的放矢
+        deps.state?.queue.set(lastResults.map(t => ({
+          source: 'music', track: t.name, artist: t.artist, artwork: t.artwork, streamUrl: t.preview,
+        })), lastResults.indexOf(track), 'search')
+        deps.state?.history.push({ source: 'music', track: track.name, artist: track.artist, streamUrl: track.preview })
         dismissKey(CANDIDATES)   // 选完了，候选就翻篇了
         return {
           status: 'ok',
@@ -408,15 +472,15 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
     },
 
     mediaFavorites: (): ToolResult => {
-      if (favorites.length)
+      if (favStore.list().length)
         desk?.()?.render({
           key: 'favorites', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
           data: {
             title: '我的收藏',
-            items: favorites.map(f => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` })),
+            items: favStore.list().map(f => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` })),
           },
         })
-      return { status: 'ok', data: { items: favorites } }
+      return { status: 'ok', data: { items: favStore.list() } }
     },
   }
 }

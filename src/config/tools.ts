@@ -424,7 +424,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
   {
     name: 'media.control',
-    desc: '播放控制：继续/暂停/停止/上一首/下一首。跟正在放的是什么无关。注意 play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+    desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
     permission: '彩',
     params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev'], required: true, desc: '动作' } },
     handler: 'mediaControl',
@@ -458,7 +458,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.queue',
-    desc: '看接下来要播什么。这台车一次只放一首，所以基本都会告诉你没有播放列表。',
+    desc: '看播放队列：正在放什么、接下来几首、最近放过什么。点一首歌后同批搜索结果自动排队。',
     permission: '彩',
     params: {},
     handler: 'mediaQueue',

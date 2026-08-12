@@ -106,6 +106,7 @@ export const mediaForm: FormFn = (c, r) => {
   if (a >= 8) blocks.push('sub')
   if (c >= 6) blocks.push('bar')
   if (r >= 2 && a >= 12) blocks.push('hint')
+  if (a >= 16) blocks.push('next')   // "接下来：A · B"——队列的预告，大档才有地方
   return { blocks }
 }
 

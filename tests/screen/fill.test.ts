@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cardBody, blocksBody, tierClass, accentClass } from '../../src/screen/render'
+import { cardBody, blocksBody, tierClass, accentClass, fmtTime, progressPct } from '../../src/screen/render'
 
 const V = (template: string, data: any, size = '1/6') =>
   ({ template, size, title: data.title ?? '', data } as any)
@@ -102,5 +102,42 @@ describe('档位类与语义色类', () => {
 
   it('认不出的模板退到 sys，不会没有身份色', () => {
     expect(accentClass('从没见过的模板', {})).toBe('a-sys')
+  })
+})
+
+/**
+ * 播放进度**不进 store**。position 每秒变好几次，进信号系统就是每秒重评一遍规则。
+ * 所以它由车机屏本地的 <audio> 自己渲染 —— 这条守的是「状态 vs 遥测」的界线：
+ * store 存状态（在放什么、放不放），遥测（放到第几秒）走展示层。
+ */
+describe('播放进度是展示层的事', () => {
+  it('秒数格式化成 mm:ss', () => {
+    expect(fmtTime(0)).toBe('0:00')
+    expect(fmtTime(9)).toBe('0:09')
+    expect(fmtTime(75)).toBe('1:15')
+    expect(fmtTime(3599)).toBe('59:59')
+  })
+
+  it('超过一小时进位到 h:mm:ss —— 电台听两小时不该显示 125:30', () => {
+    expect(fmtTime(3600)).toBe('1:00:00')
+    expect(fmtTime(7530)).toBe('2:05:30')
+  })
+
+  it('拿不到时长时不显示乱码', () => {
+    expect(fmtTime(NaN)).toBe('--:--')
+    expect(fmtTime(Infinity)).toBe('--:--')
+    expect(fmtTime(-1)).toBe('--:--')
+  })
+
+  // 电台是直播流，duration 是 Infinity —— 画一条走到底的进度条是撒谎
+  it('直播流没有进度百分比', () => {
+    expect(progressPct(30, Infinity)).toBe(null)
+    expect(progressPct(30, 0)).toBe(null)
+  })
+
+  it('正常曲目算得出百分比，且不越界', () => {
+    expect(progressPct(30, 120)).toBe(25)
+    expect(progressPct(200, 120)).toBe(100)
+    expect(progressPct(-5, 120)).toBe(0)
   })
 })

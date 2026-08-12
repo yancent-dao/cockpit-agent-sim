@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { createStore } from '../../src/core/store'
 import { createDesk } from '../../src/cards/desk'
+import { sanitize } from '../../src/screen/sanitize'
 import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createRegistry } from '../../src/tools/registry'
 import { createAmapClient } from '../../src/integrations/amap'
@@ -130,6 +131,32 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   // 经纬度念出来是噪音
   if (/东经|北纬|\d{2,3}\.\d{4,}/.test(reply))
     out.push(`话术念了坐标数字（语音场景是噪音）：「${reply.slice(0, 40)}」`)
+  /* ── 生成式卡（2026-08-12 HMI 重设计新增）── */
+  for (const c of layout.cards) {
+    if (c.template !== 'canvas') continue
+    // 消毒后为空 = 模型写的全被剥了。用户看到的是纯文字兜底，
+    // 那还不如一开始就用 generic —— 这次 canvas 白开了
+    const r = sanitize(String(c.data?.html ?? ''))
+    if (r.empty)
+      out.push(`生成式卡消毒后为空（剥了 ${r.stripped.join(' ') || '全部'}），等于白开了一张 canvas`)
+    else if (r.stripped.length)
+      out.push(`提示 · 生成式卡被剥离 ${r.stripped.join(' ')}，模型可能不知道哪些不让写`)
+    // text 是必填的纯文字兜底。缺了就等于赌消毒器不会剥空
+    if (!String(c.data?.text ?? '').trim())
+      out.push('生成式卡没给 text 兜底，消毒剥空时会白屏')
+  }
+  // 能用 list 表达的内容用了 canvas —— 每次长得不一样，跟"可预测优先"正面冲突
+  if (layout.cards.some((c: any) => c.template === 'canvas'
+      && !/<(svg|table)\b/i.test(String(c.data?.html ?? ''))))
+    out.push('提示 · 生成式卡里既没有图也没有表，这种内容 list/generic 就够了')
+
+  /* ── urgency 滥用（新增）──
+     往高了报能让卡活得久，模型有动机这么干。真出安全事件时就没有更高一档了 */
+  for (const c of layout.cards) {
+    if (c.urgency === 'critical' && c.kind === 'task')
+      out.push(`卡片「${c.data?.title ?? c.template}」自报 critical —— 那一档是留给安全事件的`)
+  }
+
   // 语音播报念一百字要二十多秒，人设写的是"一般不超过两句"。
   // 只提示不判死：复杂问题的诚实回答本来就长
   if (reply.length > 100)

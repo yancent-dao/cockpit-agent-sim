@@ -44,6 +44,19 @@ input::placeholder{color:#4A5462}
 #trace .u{color:#fff}#trace .p{color:#4A5462}#trace .t{color:var(--brand)}
 #trace .k{color:var(--ok)}#trace .r{color:var(--warn)}#trace .e{color:var(--dg)}
 #trace .a{color:#C9D2E0}
+/* 卡片检查器：仲裁用到的字段全摊开 */
+.insp{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.insp .e{background:#0E141C;border:1px solid #1B2432;border-radius:8px;padding:8px 10px;
+  display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.insp .e b{color:#E2E8F0;font-weight:600;flex:none;min-width:5em}
+.insp .e span{color:#64748B;font-variant-numeric:tabular-nums}
+.insp .e span i{font-style:normal;color:#94A3B8}
+.insp .e.u-critical{border-color:#7F2222}
+.insp .e.u-urgent{border-color:#66491A}
+.insp .e.locked b::after{content:'🔒';margin-left:4px;font-size:10px}
+.insp .empty{color:#475569;padding:6px 2px}
+/* 消毒日志：生成式卡剥了什么。不说出来的话没人知道模型哪写错了 */
+.insp .strip{color:#F87171}
 .mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
 .mini div{background:var(--el);border-radius:9px;padding:8px;text-align:center}
 .mini span{display:block;font-size:10.5px;color:var(--t3)}
@@ -79,6 +92,13 @@ input::placeholder{color:#4A5462}
     <h2>对话</h2>
     <div class="row"><input id="say" placeholder="对主 Agent 说点什么，例如：把后排窗户开一半"><button class="pri" id="send">发送</button></div>
     <div class="note" id="busy"></div>
+  </section>
+
+  <section>
+    <h2>桌面卡片检查器 <span class="n" id="inspN">—</span></h2>
+    <!-- 演示时最常被问的是"为什么这张被挤掉了"。把仲裁用到的每个字段
+         摊开摆着，比事后翻 trace 快得多 -->
+    <div id="inspect" class="insp"></div>
   </section>
 
   <section>

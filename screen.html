@@ -260,6 +260,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
 .plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plbar{display:flex;align-items:center;gap:calc(12px*var(--u));margin-top:calc(4px*var(--u))}
+.pltrk{flex:1;height:calc(6px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));overflow:hidden}
+.plfl{height:100%;border-radius:99px;background:var(--acgr)}
+/* 直播流没有进度可言，轨道降成一条静态底纹，别假装在走 */
+.plbar.live .plfl{opacity:.28}
+.pltime{flex:none;font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
+  font-variant-numeric:tabular-nums}
 .pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 .pl-hint b{font-weight:500;color:var(--ac)}

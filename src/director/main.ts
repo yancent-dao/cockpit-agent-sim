@@ -23,6 +23,9 @@ import { MAIN_AGENT } from '../../agents/main-agent/manifest'
 injectTokens('director')
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
+/** 卡片标题来自模型，直接塞 innerHTML 会被注入 */
+const esc = (v: any) =>
+  String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
 
 /* ══════════ 底层装配 ══════════ */
@@ -63,6 +66,37 @@ function pushDesk() {
     overlay: l.overlay ? brief(l.overlay) : undefined, free: l.free,
   } } as any)
 }
+/** 生成式卡的自检结果。车机屏那边量的（Node 里没有 DOM 量不了），这里只做记录 */
+const canvasNotes = new Map<string, { stripped?: string[]; overflow?: boolean }>()
+
+/**
+ * 卡片检查器。演示时最常被问的是「为什么这张被挤掉了」——
+ * 把仲裁真正用到的每个字段摊开摆着（不是挑几个好看的），
+ * 比事后翻 trace 快得多。**只读不写，不许有业务逻辑。**
+ */
+function renderInspector() {
+  const l = desk.layout()
+  const el = $('inspect')
+  $('inspN').textContent = `${l.cards.length} 张`
+  if (!l.cards.length) { el.innerHTML = `<div class="empty">桌面为空</div>`; return }
+  el.innerHTML = l.cards.map((c: any) => {
+    const ttl = typeof c.ttl === 'number' ? `${c.ttl}s` : c.ttl
+    const note = canvasNotes.get(c.id)
+    return `<div class="e u-${c.urgency ?? 'normal'}${c.sizeLocked ? ' locked' : ''}">
+      <b>${esc(c.data?.title ?? c.template)}</b>
+      <span><i>${c.template}</i> ${c.size}</span>
+      <span>${c.kind} · <i>${c.urgency ?? 'normal'}</i></span>
+      <span>ttl <i>${ttl}</i></span>
+      <span>${c.evictable === false ? '不可挤' : '可挤'}</span>
+      <span>${c.row},${c.col} +${c.rowSpan}×${c.colSpan}</span>
+      ${note?.stripped?.length ? `<span class="strip">剥离 ${esc(note.stripped.join(' '))}</span>` : ''}
+      ${note?.overflow ? `<span class="strip">内容溢出</span>` : ''}
+    </div>`
+  }).join('')
+}
+desk.subscribe(renderInspector)
+renderInspector()
+
 desk.subscribe(pushDesk)
 // 卡片被挤出必须告诉用户 —— 静默消失不可接受。走横幅而不是塞一张卡：
 // 「我把天气收起来了」是对刚才那个动作的解释，不是内容
@@ -79,6 +113,18 @@ $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
 // 每次都推而不是只在首次推：刷新后控制面板这边并不知道对面换了个新页面。
 // 代价是 4 秒一次小 postMessage，车机屏那边按节点 diff，不会闪
 const bus = createBus(m => {
+  if (m.type === 'canvasNote') {
+    const prev = canvasNotes.get(m.cardId) ?? {}
+    canvasNotes.set(m.cardId, {
+      stripped: m.stripped ?? prev.stripped,
+      overflow: m.overflow ?? prev.overflow,
+    })
+    if (m.stripped?.length) log('r', `生成式卡剥离 ${m.stripped.join(' ')}`)
+    // 溢出是硬伤：屏幕不可滚动，超出等于用户永远看不到那部分
+    if (m.overflow) log('e', '生成式卡内容溢出，超出部分用户看不到')
+    renderInspector()
+    return
+  }
   if (m.type !== 'hello') return
   setConn(true)
   pushDesk(); push()

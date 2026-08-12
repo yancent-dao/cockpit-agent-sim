@@ -48,7 +48,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
 .card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
   border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
-@keyframes cardIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+/* 进场：从下方抬起并放大到位。车机 HMI 一律 ≤400ms */
+@keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:none}}
+/* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
+.card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
+@keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 多张卡同时进场时错峰 45ms，一起弹出来像抽搐 */
+.card:nth-child(2){animation-delay:45ms}
+.card:nth-child(3){animation-delay:90ms}
+.card:nth-child(4){animation-delay:135ms}
+.card:nth-child(5){animation-delay:180ms}
+.card:nth-child(6){animation-delay:225ms}
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
 .card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
@@ -66,6 +76,28 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .bd>.wxnow:only-child{flex:1;align-items:center}
 .bd>.wxnow:only-child b{font-size:calc(var(--t-mega)*var(--u))}
 .slot{border:2px dashed var(--hair,var(--hairline));border-radius:var(--r-m)}
+
+/* ── 待选态：整卡描边呼吸 ──
+   用户是用语音选的（"第二个"），屏上必须让他知道**现在轮到他说话了**。
+   描边而不是底色：底色会跟语义色晕打架 */
+.card.picking{box-shadow:0 0 0 3px var(--ac),var(--sh-1);animation:breathe 2.2s var(--ez,ease-in-out) infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 3px var(--ac),var(--sh-1)}
+  50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--ac) 35%,transparent),var(--sh-2)}}
+/* 倒计时：voice.ask 有超时时底部走条。数字倒数会让人紧张，走条只让人知道"要抓紧" */
+.card .cd{position:absolute;left:0;bottom:0;height:5px;background:var(--acgr);
+  animation:cdrun linear forwards}
+@keyframes cdrun{from{width:100%}to{width:0}}
+/* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
+#overlay.alert .card{border:3px solid var(--danger-bd);box-shadow:0 0 0 6px rgba(239,68,68,.12),var(--sh-2)}
+
+/* ── 生成式卡：紫色描边 + 角标 ──
+   角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，
+   用户有权知道自己在看的东西每次可能不一样 */
+.tpl-canvas{border:2px solid var(--acbd)}
+.genmark{margin-left:auto;font-size:calc(var(--t-cap)*var(--u)*.86);font-weight:500;
+  padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);letter-spacing:0}
+.cvhost{flex:1;min-height:0;overflow:hidden}
 
 /* ── 语义身份：八类各四件套 ──
    诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
@@ -228,6 +260,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
 .plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plbar{display:flex;align-items:center;gap:calc(12px*var(--u));margin-top:calc(4px*var(--u))}
+.pltrk{flex:1;height:calc(6px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));overflow:hidden}
+.plfl{height:100%;border-radius:99px;background:var(--acgr)}
+/* 直播流没有进度可言，轨道降成一条静态底纹，别假装在走 */
+.plbar.live .plfl{opacity:.28}
+.pltime{flex:none;font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
+  font-variant-numeric:tabular-nums}
 .pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 .pl-hint b{font-weight:500;color:var(--ac)}
@@ -311,14 +350,31 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 .cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
-#reject{position:absolute;left:80px;right:80px;bottom:328px;background:rgba(201,122,22,.12);
-  border:2px solid rgba(201,122,22,.4);border-radius:var(--r-md);padding:26px 34px;
-  display:none;gap:20px;align-items:flex-start;z-index:5}
-#reject.on{display:flex;animation:rise .32s var(--ease)}
+/* ══════════ 横幅：第二条通道 ══════════
+   一次一条排队，按语义色分色 —— 之前拒绝、条件不满足、系统提示、执行完成
+   全是同一个橙色，用户分不出「不让做」和「做完了」。
+
+   位置：紧贴语音区上沿，**跟着 --voiceH 走**。
+   放桌面区顶部试过，它会盖住导航卡的转向条 —— 那是导航的命根子，
+   任何临时提示都不该压它。放这里还有个好处：横幅和语音播报是同一类东西
+   （对某个动作的解释），挨着出现读起来是一句话。
+   原来那版硬编码 bottom:328px，语音区一变高就浮空，用 calc 跟住。 */
+#banner{position:absolute;left:60px;right:60px;bottom:calc(var(--voiceH) + 24px);z-index:5;display:none;
+  gap:calc(18px*var(--u,1));align-items:flex-start;
+  background:var(--acbg);border:2px solid var(--acbd);border-radius:var(--r-m);
+  padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06;
+  transition:bottom .32s var(--ez,var(--ease))}
+#banner.on{display:flex;animation:bannerIn var(--d3,.34s) var(--ez-pop,var(--ease))}
+@keyframes bannerIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+#banner .bico{flex:none;width:calc(44px*var(--u));height:calc(44px*var(--u));
+  border-radius:calc(12px*var(--u));background:var(--acgr);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:calc(24px*var(--u))}
+#banner .tt{font-size:calc(var(--t-body)*var(--u));color:var(--ac);font-weight:600;
+  margin-bottom:calc(4px*var(--u))}
+#banner .ds{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));line-height:1.5}
+#banner code{background:var(--acbg);border:1px solid var(--acbd);padding:2px 10px;
+  border-radius:8px;font-size:.86em;color:var(--ac)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-#reject .tt{font-size:32px;color:var(--warning);font-weight:600;margin-bottom:8px}
-#reject .ds{font-size:28px;color:var(--text-secondary);line-height:1.5}
-#reject code{background:rgba(0,0,0,.06);padding:3px 12px;border-radius:8px;font-size:24px;color:var(--warning)}
 #conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>
 </head>
@@ -337,8 +393,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   <div id="desk"></div>
   <div id="overlay"></div>
 
-  <div id="reject"><div style="font-size:34px">⚠️</div>
-    <div><div class="tt" id="rjT"></div><div class="ds" id="rjD"></div></div></div>
+  <div id="banner"><div class="bico" id="bnI">!</div>
+    <div><div class="tt" id="bnT"></div><div class="ds" id="bnD"></div></div></div>
 
   <div id="voice" data-s="idle">
     <div id="orbBox"><div id="ring"></div>
@@ -666,8 +722,359 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
 
+  // src/screen/banner.ts
+  var TONE = {
+    rejected: "danger",
+    // 不让做（黑名单、约束 reject）
+    constraint: "warn",
+    // 条件不满足（车速、挡位）——跟"不让做"不是一回事
+    limited: "warn",
+    evicted: "info",
+    // 卡片被挤出的告知，不是错误
+    unsupported: "info",
+    // 能力缺失
+    done: "ok"
+  };
+  var toneOf = (reason) => TONE[reason ?? ""] ?? "info";
+  function createBannerQueue(host) {
+    const clock = host.clock ?? Date.now;
+    const queue = [];
+    let current = null;
+    let shownAt = 0;
+    const advance = () => {
+      const next = queue.shift();
+      if (current) host.hide();
+      if (!next) {
+        current = null;
+        if (!current) host.hide();
+        return;
+      }
+      current = next;
+      shownAt = clock();
+      host.show(next);
+    };
+    return {
+      push(b) {
+        const same = (x) => x.text === b.text && x.title === b.title;
+        if (current && same(current)) return;
+        if (queue.some(same)) return;
+        if (b.jump) queue.unshift(b);
+        else queue.push(b);
+        if (!current) advance();
+      },
+      /** 由 rAF 或定时器驱动：到点就让位给下一条 */
+      tick() {
+        if (!current?.ttl) return;
+        if (clock() - shownAt >= current.ttl) advance();
+      },
+      clear() {
+        queue.length = 0;
+        current = null;
+        host.hide();
+      },
+      pending: () => queue.length,
+      current: () => current
+    };
+  }
+
+  // src/screen/flip.ts
+  function flipDelta(first, last2, scale = 1) {
+    const k = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    return {
+      dx: (first.left - last2.left) / k,
+      dy: (first.top - last2.top) / k,
+      // 新宽高为 0 说明还没布局完，退回 1 而不是产生 Infinity
+      sx: last2.width > 0 ? first.width / last2.width : 1,
+      sy: last2.height > 0 ? first.height / last2.height : 1
+    };
+  }
+  var posKey = (c) => `${c.row},${c.col},${c.rowSpan},${c.colSpan}`;
+  var isNoop = (prev, next) => prev === void 0 || prev === next;
+  function commitMoves(moves, scale, duration = 380, ease = "cubic-bezier(.22,.61,.36,1)") {
+    const deltas = moves.map((m) => ({ m, d: flipDelta(m.first, m.node.getBoundingClientRect(), scale) }));
+    for (const { m, d } of deltas) {
+      if (!d.dx && !d.dy && d.sx === 1 && d.sy === 1) continue;
+      m.node.style.transition = "none";
+      m.node.style.transform = `translate(${d.dx}px,${d.dy}px) scale(${d.sx},${d.sy})`;
+    }
+    requestAnimationFrame(() => {
+      for (const { m } of deltas) {
+        if (!m.node.style.transform) continue;
+        m.node.style.transition = `transform ${duration}ms ${ease}`;
+        m.node.style.transform = "";
+      }
+    });
+  }
+
+  // src/screen/sanitize.ts
+  var DROP_WITH_CONTENT = /* @__PURE__ */ new Set([
+    "script",
+    "style",
+    "iframe",
+    "object",
+    "embed",
+    "noscript",
+    "form",
+    "input",
+    "button",
+    "select",
+    "textarea",
+    "option",
+    "link",
+    "meta",
+    "base",
+    "template",
+    "title",
+    "head"
+  ]);
+  var ALLOW = /* @__PURE__ */ new Set([
+    "div",
+    "span",
+    "p",
+    "b",
+    "i",
+    "em",
+    "strong",
+    "small",
+    "h4",
+    "h5",
+    "ul",
+    "ol",
+    "li",
+    "table",
+    "thead",
+    "tbody",
+    "tr",
+    "td",
+    "th",
+    "br",
+    "hr",
+    "img",
+    "figure",
+    "figcaption",
+    "code",
+    // SVG 全族：图表画不出来的话模型就只能堆文字
+    "svg",
+    "g",
+    "path",
+    "rect",
+    "circle",
+    "ellipse",
+    "line",
+    "polyline",
+    "polygon",
+    "text",
+    "tspan",
+    "defs",
+    "lineargradient",
+    "radialgradient",
+    "stop",
+    "clippath",
+    "use"
+  ]);
+  var CASE = {
+    lineargradient: "linearGradient",
+    radialgradient: "radialGradient",
+    clippath: "clipPath",
+    viewbox: "viewBox",
+    gradientunits: "gradientUnits",
+    "stroke-width": "stroke-width",
+    "stop-color": "stop-color",
+    "text-anchor": "text-anchor",
+    "font-size": "font-size",
+    "font-weight": "font-weight",
+    "stroke-linecap": "stroke-linecap",
+    "stroke-dasharray": "stroke-dasharray",
+    "fill-opacity": "fill-opacity",
+    "stroke-opacity": "stroke-opacity",
+    "dominant-baseline": "dominant-baseline",
+    preserveaspectratio: "preserveAspectRatio"
+  };
+  var ATTR = /* @__PURE__ */ new Set([
+    "class",
+    "style",
+    "width",
+    "height",
+    "viewbox",
+    "d",
+    "fill",
+    "stroke",
+    "stroke-width",
+    "stroke-linecap",
+    "stroke-dasharray",
+    "fill-opacity",
+    "stroke-opacity",
+    "opacity",
+    "transform",
+    "x",
+    "y",
+    "cx",
+    "cy",
+    "r",
+    "rx",
+    "ry",
+    "points",
+    "offset",
+    "stop-color",
+    "gradientunits",
+    "x1",
+    "y1",
+    "x2",
+    "y2",
+    "text-anchor",
+    "dominant-baseline",
+    "font-size",
+    "font-weight",
+    "alt",
+    "src",
+    "colspan",
+    "rowspan",
+    "preserveaspectratio"
+  ]);
+  var VOID = /* @__PURE__ */ new Set(["br", "hr", "img"]);
+  var CSS_BAN = /url\s*\(|expression\s*\(|@import|position\s*:\s*(fixed|sticky)/i;
+  var esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function cleanStyle(v) {
+    return v.split(";").map((d) => d.trim()).filter((d) => d && !CSS_BAN.test(d)).join(";");
+  }
+  function cleanSrc(v) {
+    const t = v.trim().toLowerCase();
+    if (t.startsWith("https://")) return v.trim();
+    if (t.startsWith("data:image/")) return v.trim();
+    return null;
+  }
+  function sanitize(input) {
+    const src = String(input ?? "");
+    const out = [];
+    const stripped = /* @__PURE__ */ new Set();
+    const open = [];
+    let dropping = 0;
+    let dropTag = "";
+    let text = "";
+    let i = 0;
+    const push = (s) => {
+      if (!dropping) out.push(s);
+    };
+    while (i < src.length) {
+      const lt = src.indexOf("<", i);
+      if (lt < 0) {
+        const t = src.slice(i);
+        if (!dropping) {
+          text += t;
+          push(esc(t));
+        }
+        break;
+      }
+      if (lt > i) {
+        const t = src.slice(i, lt);
+        if (!dropping) {
+          text += t;
+          push(esc(t));
+        }
+      }
+      if (src.startsWith("<!--", lt)) {
+        const end = src.indexOf("-->", lt + 4);
+        i = end < 0 ? src.length : end + 3;
+        continue;
+      }
+      if (src.startsWith("<!", lt) || src.startsWith("<?", lt)) {
+        const end = src.indexOf(">", lt);
+        i = end < 0 ? src.length : end + 1;
+        continue;
+      }
+      const gt = src.indexOf(">", lt);
+      if (gt < 0) {
+        i = src.length;
+        break;
+      }
+      const raw = src.slice(lt + 1, gt);
+      i = gt + 1;
+      const closing = raw.startsWith("/");
+      const body = closing ? raw.slice(1) : raw;
+      const selfClose = body.trimEnd().endsWith("/");
+      const nameEnd = body.search(/[\s/>]/);
+      const tag = (nameEnd < 0 ? body : body.slice(0, nameEnd)).toLowerCase().trim();
+      if (!tag) continue;
+      if (DROP_WITH_CONTENT.has(tag)) {
+        stripped.add(tag);
+        if (closing) {
+          if (dropTag === tag && dropping > 0) {
+            dropping--;
+            if (!dropping) dropTag = "";
+          }
+        } else if (!selfClose && !VOID.has(tag)) {
+          if (!dropping) dropTag = tag;
+          if (dropTag === tag) dropping++;
+        }
+        continue;
+      }
+      if (dropping) continue;
+      if (closing) {
+        if (!ALLOW.has(tag)) {
+          stripped.add(tag);
+          continue;
+        }
+        const at = open.lastIndexOf(tag);
+        if (at < 0) continue;
+        while (open.length > at) {
+          const t = open.pop();
+          push(`</${CASE[t] ?? t}>`);
+        }
+        continue;
+      }
+      if (!ALLOW.has(tag)) {
+        stripped.add(tag);
+        continue;
+      }
+      const attrs = [];
+      const rest = nameEnd < 0 ? "" : body.slice(nameEnd);
+      const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g;
+      let m;
+      while (m = re.exec(rest)) {
+        const an = m[1].toLowerCase();
+        let av = (m[2] ?? "").replace(/^["']|["']$/g, "");
+        if (an.startsWith("on") || an.includes(":") || an === "href") {
+          stripped.add("@" + an);
+          continue;
+        }
+        if (!ATTR.has(an)) {
+          stripped.add("@" + an);
+          continue;
+        }
+        if (an === "style") {
+          const cleaned = cleanStyle(av);
+          if (cleaned !== av) stripped.add("@style");
+          if (!cleaned) continue;
+          av = cleaned;
+        }
+        if (an === "src") {
+          const ok2 = cleanSrc(av);
+          if (!ok2) {
+            stripped.add("@src");
+            continue;
+          }
+          av = ok2;
+        }
+        attrs.push(`${CASE[an] ?? an}="${esc(av).replace(/"/g, "&quot;")}"`);
+      }
+      const name = CASE[tag] ?? tag;
+      if (VOID.has(tag) || selfClose) push(`<${name}${attrs.length ? " " + attrs.join(" ") : ""}/>`);
+      else {
+        push(`<${name}${attrs.length ? " " + attrs.join(" ") : ""}>`);
+        open.push(tag);
+      }
+    }
+    while (open.length) {
+      const t = open.pop();
+      out.push(`</${CASE[t] ?? t}>`);
+    }
+    const html = out.join("");
+    const hasVisual = /<(img|svg|path|circle|rect|line|polyline|polygon|ellipse|hr)\b/i.test(html);
+    return { html, empty: !text.trim() && !hasVisual, stripped: [...stripped] };
+  }
+
   // src/screen/render.ts
-  var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  var esc2 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   function listBody(items, opts = {}) {
     const all = items ?? [];
     const max = opts.maxItems ?? all.length;
@@ -676,7 +1083,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const shown = all.slice(0, max);
     const rest = all.length - shown.length;
     return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i) => `
-    <li><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
+    <li><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
   var tierClass = (size) => `t-${normalizeTier(size)}`;
   var ACCENT = {
@@ -692,7 +1099,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     capability: "sys",
     generic: "sys",
     info: "sys",
-    canvas: "sys"
+    canvas: "media"
+    // 紫色描边——生成式卡跟固定模板要一眼分得出
   };
   var URGENCY = { critical: "danger", warn: "warn" };
   var accentClass = (template, d = {}) => `a-${URGENCY[d?.urgency] ?? ACCENT[template] ?? "sys"}`;
@@ -703,8 +1111,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const shown = typeof raw === "boolean" ? raw ? "开" : "关" : typeof raw === "number" ? String(Math.round(raw)) : raw === void 0 || raw === null ? "--" : String(raw);
       const pct = typeof it.pct === "number" ? it.pct : typeof raw === "number" && it.unit === "%" ? raw : void 0;
       return `<div class="blk${it.hot ? " hot" : ""}">
-      <div class="lb">${esc(it.label)}</div>
-      <div class="num">${esc(shown)}${it.unit ? `<i>${esc(it.unit)}</i>` : ""}</div>
+      <div class="lb">${esc2(it.label)}</div>
+      <div class="num">${esc2(shown)}${it.unit ? `<i>${esc2(it.unit)}</i>` : ""}</div>
       ${pct !== void 0 ? `<div class="trk"><div class="fl" style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%"></div>${typeof it.target === "number" ? `<div class="tg" style="left:${Math.max(0, Math.min(100, Math.round(it.target)))}%"></div>` : ""}</div>` : ""}
     </div>`;
     }).join("")}</div>`;
@@ -720,9 +1128,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         return blocksBody((d.items ?? []).slice(0, form.maxItems).map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols });
       }
       case "confirm":
-        return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
+        return `<div class="sub">${esc2(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc2(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
       case "notice":
-        return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
+        return `<div class="sub">${esc2(d.text)}</div>${d.suggestion ? `<div class="sug">${esc2(d.suggestion)}</div>` : ""}`;
       case "list":
         return listBody(d.items, formOf("list", ...dimsOf(c.size)));
       case "capability": {
@@ -730,7 +1138,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const form = capForm(...dimsOf(c.size));
         if (form.mode === "count")
           return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`;
-        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>`;
+        return `<div class="cap ${form.mode}">${items.map((i) => `<div class="${i.off ? "off" : ""}">${esc2(i.label)}<small>${esc2(i.desc ?? "")}</small></div>`).join("")}</div>`;
       }
       case "weather": {
         const w = weatherForm(...dimsOf(c.size));
@@ -738,7 +1146,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const cast = (d.forecast ?? []).slice(0, w.maxItems ?? 0);
         return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
-          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+          <div class="wxmeta"><span>${esc2(d.now.weather)}</span><small>${esc2(sub)}</small></div>
         </div>` : ""}${cast.length ? blocksBody(cast.map((f) => ({
           label: dayLabel(f.date),
           value: `${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°`
@@ -749,15 +1157,25 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       default: {
         const form = formOf("generic", ...dimsOf(c.size));
         const parts = [];
-        if (d.text) parts.push(`<div class="sub">${esc(d.text)}</div>`);
+        if (d.text) parts.push(`<div class="sub">${esc2(d.text)}</div>`);
         if (d.items?.length)
           parts.push(`<div class="glist">${d.items.slice(0, form.maxItems).map((i) => `
-          <div class="gi"><span>${esc(i.label ?? i)}</span>${i.value !== void 0 ? `<b>${esc(i.value)}${i.unit ? `<i>${esc(i.unit)}</i>` : ""}</b>` : ""}</div>`).join("")}</div>`);
+          <div class="gi"><span>${esc2(i.label ?? i)}</span>${i.value !== void 0 ? `<b>${esc2(i.value)}${i.unit ? `<i>${esc2(i.unit)}</i>` : ""}</b>` : ""}</div>`).join("")}</div>`);
         if (d.actions?.length)
-          parts.push(`<div class="gacts">${d.actions.map((a, n) => `<span class="opt">${n + 1} ${esc(a)}</span>`).join("")}</div>`);
+          parts.push(`<div class="gacts">${d.actions.map((a, n) => `<span class="opt">${n + 1} ${esc2(a)}</span>`).join("")}</div>`);
         return parts.join("") || `<div class="sub"></div>`;
       }
     }
+  }
+  function fmtTime(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return "--:--";
+    const s = Math.floor(sec % 60), m = Math.floor(sec / 60) % 60, h = Math.floor(sec / 3600);
+    const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+    return `${h > 0 ? `${h}:` : ""}${mm}:${String(s).padStart(2, "0")}`;
+  }
+  function progressPct(cur2, dur) {
+    if (!Number.isFinite(dur) || dur <= 0) return null;
+    return Math.max(0, Math.min(100, Math.round(cur2 / dur * 100)));
   }
 
   // src/screen/mapView.ts
@@ -915,6 +1333,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       audio.volume = x;
       if (video) video.volume = x;
     };
+    const progress = () => {
+      const el = video && !video.paused ? video : audio;
+      return { current: el.currentTime, duration: el.duration };
+    };
     return {
       unlock,
       play,
@@ -922,6 +1344,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       stop,
       setVolume,
       attachVideo,
+      progress,
       get unlocked() {
         return unlocked;
       },
@@ -937,8 +1360,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
   var CN = { driver: "主驾", passenger: "副驾", rearLeft: "左后", rearRight: "右后" };
   var stage = $("stage");
+  var stageScale = 1;
   var fit = () => {
-    stage.style.transform = `scale(${Math.min(innerWidth / 2560, innerHeight / 1440)})`;
+    stageScale = Math.min(innerWidth / 2560, innerHeight / 1440);
+    stage.style.transform = `scale(${stageScale})`;
   };
   addEventListener("resize", fit);
   fit();
@@ -953,7 +1378,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var TRANSIT = 4e3;
   var deskState = { cards: [], free: 6 };
   var hotCards = /* @__PURE__ */ new Set();
-  var esc2 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  var esc3 = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -1005,6 +1430,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       node.innerHTML = `<div class="plwrap">
       <div class="plart"></div>
       <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+        <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
+          <span class="pltime"></span></div>
         <div class="pl-hint"></div></div>
     </div>`;
     }
@@ -1013,6 +1440,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     art.style.display = form.blocks.includes("art") ? "" : "none";
     const sub = node.querySelector(".plartist");
     sub.style.display = form.blocks.includes("sub") ? "" : "none";
+    const barEl = node.querySelector(".plbar");
+    barEl.style.display = form.blocks.includes("bar") ? "" : "none";
     const hint = node.querySelector(".pl-hint");
     hint.style.display = form.blocks.includes("hint") ? "" : "none";
     hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`;
@@ -1024,7 +1453,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       if (url) {
         if (img) {
           if (img.src !== url) img.src = url;
-        } else art.innerHTML = `<img src="${esc2(url)}" alt="">`;
+        } else art.innerHTML = `<img src="${esc3(url)}" alt="">`;
       } else if (!img) {
         art.innerHTML = `<div class="plicon">${d.source === "radio" ? "📻" : "♪"}</div>`;
       }
@@ -1034,6 +1463,30 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     node.classList.toggle("is-video", isVideo);
     if (d.playing && d.streamUrl) player.play({ url: String(d.streamUrl), source: d.source, volume: Number(d.volume ?? 40) });
     else if (!d.playing) player.pause();
+  }
+  function renderCanvasCard(node, c) {
+    const d = c.data ?? {};
+    const host = node.querySelector(".cvhost");
+    if (!host) return;
+    const root = host.__shadow ?? host.attachShadow({ mode: "open" });
+    host.__shadow = root;
+    const r = sanitize(String(d.html ?? ""));
+    if (r.stripped.length) bus.send({ type: "canvasNote", cardId: c.id, stripped: r.stripped });
+    root.innerHTML = `<style>${tokensFor("screen")}
+    :host{display:block;height:100%;overflow:hidden;color:var(--tx-1);
+      font-family:inherit;font-size:var(--t-cap)}
+    *{box-sizing:border-box;margin:0;max-width:100%}
+    table{border-collapse:collapse;width:100%}
+    td,th{padding:8px 12px;border-bottom:1px solid var(--hair);text-align:left}
+    th{color:var(--tx-3);font-weight:500}
+    svg{max-height:100%}
+  </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${String(d.text ?? "").replace(/[<>&]/g, (ch) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[ch])}</div>` : r.html}`;
+    requestAnimationFrame(() => {
+      const el = root.firstElementChild?.nextElementSibling;
+      const over = host.scrollHeight > host.clientHeight + 2;
+      if (over) bus.send({ type: "canvasNote", cardId: c.id, overflow: true });
+      void el;
+    });
   }
   function renderNavCard(node, c) {
     const d = c.data ?? {};
@@ -1050,15 +1503,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const bar = node.querySelector(".turnbar");
     bar.style.display = turn && form.blocks.includes("turn") ? "" : "none";
     if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
-    <div class="turntext"><b>${esc2(turn.dist)}</b><span>${esc2(turn.action)}</span></div>
-    ${turn.road ? `<div class="turnroad">${esc2(turn.road)}</div>` : ""}`;
-    const via = (d.via ?? []).length ? `<em>经 ${esc2(d.via.join("、"))}</em>` : "";
+    <div class="turntext"><b>${esc3(turn.dist)}</b><span>${esc3(turn.action)}</span></div>
+    ${turn.road ? `<div class="turnroad">${esc3(turn.road)}</div>` : ""}`;
+    const via = (d.via ?? []).length ? `<em>经 ${esc3(d.via.join("、"))}</em>` : "";
     const foot = node.querySelector(".navfoot");
     foot.style.display = form.blocks.includes("foot") ? "" : "none";
     foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
-    <div class="navdest">${via}${esc2(d.destination ?? "")}</div>`;
+    <div class="navdest">${via}${esc3(d.destination ?? "")}</div>`;
     const box = node.querySelector(".mapbox");
     const hasMap = form.blocks.includes("map");
     node.classList.toggle("no-map", !hasMap);
@@ -1074,7 +1527,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const img = box.querySelector("img");
       if (img) {
         if (img.src !== d.mapUrl) img.src = d.mapUrl;
-      } else box.innerHTML = `<img class="mapimg" src="${esc2(d.mapUrl)}" alt="路线地图">`;
+      } else box.innerHTML = `<img class="mapimg" src="${esc3(d.mapUrl)}" alt="路线地图">`;
     });
   }
   var cardNodes = /* @__PURE__ */ new Map();
@@ -1084,6 +1537,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const seen = /* @__PURE__ */ new Set();
     desk.querySelectorAll(".slot").forEach((el) => el.remove());
     const occupied = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false));
+    const moves = [];
     for (const c of deskState.cards) {
       seen.add(c.id);
       for (let dr = 0; dr < c.rowSpan; dr++)
@@ -1094,15 +1548,22 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         cardNodes.set(c.id, node);
         desk.appendChild(node);
       }
+      const pos = posKey(c);
+      if (!isNoop(node.dataset.pos, pos)) moves.push({ node, first: node.getBoundingClientRect() });
+      node.dataset.pos = pos;
       node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
       node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
-      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}`;
+      const picking = c.template === "confirm" || c.template === "list" && c.data?.picking;
+      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}${picking ? " picking" : ""}`;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
         else if (c.template === "media") renderPlayerCard(node, c);
-        else {
-          node.innerHTML = `<h3>${esc2(c.title)}</h3><div class="bd">${cardBody(c)}</div>`;
+        else if (c.template === "canvas") {
+          node.innerHTML = `<h3>${esc3(c.title)}<span class="genmark">生成式</span></h3><div class="bd"><div class="cvhost"></div></div>`;
+          renderCanvasCard(node, c);
+        } else {
+          node.innerHTML = `<h3>${esc3(c.title)}</h3><div class="bd">${cardBody(c)}</div>`;
           const slot = node.querySelector(".vehslot");
           if (slot) slot.innerHTML = CAR_SVG;
         }
@@ -1128,15 +1589,18 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
         if (node.classList.contains("tpl-media")) player.stop();
-        node.remove();
         cardNodes.delete(id);
+        node.classList.add("leaving");
+        node.addEventListener("animationend", () => node.remove(), { once: true });
+        setTimeout(() => node.remove(), 400);
       }
     }
+    if (moves.length) commitMoves(moves, stageScale);
     const ov = $("overlay");
     if (deskState.overlay) {
       ov.className = "on";
       ov.innerHTML = `<div class="card tpl-${deskState.overlay.template}">
-      <h3>${esc2(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`;
+      <h3>${esc3(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`;
     } else {
       ov.className = "";
       ov.innerHTML = "";
@@ -1207,6 +1671,33 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     el.className = who === "user" ? "user" : "";
     el.textContent = text ?? "";
   }
+  var BAN_ICON = { danger: "⨯", warn: "!", info: "i", ok: "✓" };
+  var banners = createBannerQueue({
+    show: (b) => {
+      const el = $("banner");
+      $("bnT").textContent = b.title ?? "";
+      $("bnD").innerHTML = b.text;
+      $("bnI").textContent = BAN_ICON[b.tone ?? "info"] ?? "i";
+      el.className = `a-${b.tone ?? "info"} on`;
+    },
+    hide: () => {
+      $("banner").classList.remove("on");
+    }
+  });
+  setInterval(() => banners.tick(), 200);
+  function tickProgress() {
+    requestAnimationFrame(tickProgress);
+    const meta2 = document.querySelector(".tpl-media .plbar");
+    if (!meta2 || meta2.style.display === "none") return;
+    const { current, duration } = player.progress();
+    const pct = progressPct(current, duration);
+    const fl = meta2.querySelector(".plfl");
+    const t = meta2.querySelector(".pltime");
+    meta2.classList.toggle("live", pct === null);
+    fl.style.width = pct === null ? "100%" : `${pct}%`;
+    t.textContent = pct === null ? `● 直播中 · 已收听 ${fmtTime(current)}` : `${fmtTime(current)} / ${fmtTime(duration)}`;
+  }
+  requestAnimationFrame(tickProgress);
   var bus = createBus((m) => {
     connected();
     switch (m.type) {
@@ -1233,17 +1724,13 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           renderDesk();
         }, 2e3);
         break;
-      case "reject": {
-        const el = $("reject");
+      case "banner":
         if (!m.on) {
-          el.classList.remove("on");
+          banners.clear();
           break;
         }
-        $("rjT").textContent = m.title ?? "";
-        $("rjD").innerHTML = m.desc ?? "";
-        el.classList.add("on");
+        banners.push({ title: m.title, text: m.desc ?? "", tone: toneOf(m.reason), ttl: m.ttl, jump: m.jump });
         break;
-      }
     }
   });
   var ok = false;

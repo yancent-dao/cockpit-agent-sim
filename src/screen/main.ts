@@ -7,7 +7,7 @@ import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { sanitize } from './sanitize'
 import { tokensFor } from '../design/tokens'
 import { dimsOf, GRID, TIERS } from '../config/grid'
-import { cardBody, tierClass, accentClass } from './render'
+import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 
@@ -113,6 +113,8 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
     node.innerHTML = `<div class="plwrap">
       <div class="plart"></div>
       <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+        <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
+          <span class="pltime"></span></div>
         <div class="pl-hint"></div></div>
     </div>`
   }
@@ -124,6 +126,8 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   sub.style.display = form.blocks.includes('sub') ? '' : 'none'
   // 控制条是**状态指示不是按钮**——屏幕不可交互，画成图标就有诱导点击的风险。
   // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
+  const barEl = node.querySelector('.plbar') as HTMLElement
+  barEl.style.display = form.blocks.includes('bar') ? '' : 'none'
   const hint = node.querySelector('.pl-hint') as HTMLElement
   hint.style.display = form.blocks.includes('hint') ? '' : 'none'
   hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`
@@ -428,6 +432,27 @@ const banners = createBannerQueue({
   hide: () => { $('banner').classList.remove('on') },
 })
 setInterval(() => banners.tick(), 200)
+
+/**
+ * 进度条自更新。读 <audio> 的 currentTime，**不经过 store 也不经过 bus** ——
+ * 它每秒变好几次，进信号系统就是每秒重评一遍全部规则。
+ * 只在播放器卡在场时才跑，待机时是零开销。
+ */
+function tickProgress() {
+  requestAnimationFrame(tickProgress)
+  const meta = document.querySelector('.tpl-media .plbar') as HTMLElement | null
+  if (!meta || meta.style.display === 'none') return
+  const { current, duration } = player.progress()
+  const pct = progressPct(current, duration)
+  const fl = meta.querySelector('.plfl') as HTMLElement
+  const t = meta.querySelector('.pltime') as HTMLElement
+  // 电台是直播流：没有百分比，画一条走到底的进度条是撒谎。改说"已收听多久"
+  meta.classList.toggle('live', pct === null)
+  fl.style.width = pct === null ? '100%' : `${pct}%`
+  t.textContent = pct === null ? `● 直播中 · 已收听 ${fmtTime(current)}`
+    : `${fmtTime(current)} / ${fmtTime(duration)}`
+}
+requestAnimationFrame(tickProgress)
 
 /* ── 消息处理 ── */
 const bus = createBus((m: BusMsg | any) => {

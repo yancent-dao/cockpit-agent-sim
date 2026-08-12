@@ -44,6 +44,19 @@ input::placeholder{color:#4A5462}
 #trace .u{color:#fff}#trace .p{color:#4A5462}#trace .t{color:var(--brand)}
 #trace .k{color:var(--ok)}#trace .r{color:var(--warn)}#trace .e{color:var(--dg)}
 #trace .a{color:#C9D2E0}
+/* 卡片检查器：仲裁用到的字段全摊开 */
+.insp{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.insp .e{background:#0E141C;border:1px solid #1B2432;border-radius:8px;padding:8px 10px;
+  display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.insp .e b{color:#E2E8F0;font-weight:600;flex:none;min-width:5em}
+.insp .e span{color:#64748B;font-variant-numeric:tabular-nums}
+.insp .e span i{font-style:normal;color:#94A3B8}
+.insp .e.u-critical{border-color:#7F2222}
+.insp .e.u-urgent{border-color:#66491A}
+.insp .e.locked b::after{content:'🔒';margin-left:4px;font-size:10px}
+.insp .empty{color:#475569;padding:6px 2px}
+/* 消毒日志：生成式卡剥了什么。不说出来的话没人知道模型哪写错了 */
+.insp .strip{color:#F87171}
 .mini{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
 .mini div{background:var(--el);border-radius:9px;padding:8px;text-align:center}
 .mini span{display:block;font-size:10.5px;color:var(--t3)}
@@ -79,6 +92,13 @@ input::placeholder{color:#4A5462}
     <h2>对话</h2>
     <div class="row"><input id="say" placeholder="对主 Agent 说点什么，例如：把后排窗户开一半"><button class="pri" id="send">发送</button></div>
     <div class="note" id="busy"></div>
+  </section>
+
+  <section>
+    <h2>桌面卡片检查器 <span class="n" id="inspN">—</span></h2>
+    <!-- 演示时最常被问的是"为什么这张被挤掉了"。把仲裁用到的每个字段
+         摊开摆着，比事后翻 trace 快得多 -->
+    <div id="inspect" class="insp"></div>
   </section>
 
   <section>
@@ -469,8 +489,86 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return { get, getTarget, canSet, set, setDirect, subscribe, tick, snapshot, checkInvariants, signals };
   }
 
+  // src/config/grid.ts
+  var GRID = { cols: 12, rows: 4 };
+  var TIERS = {
+    chip: { w: 2, h: 1 },
+    // 一个数字，比如车速、剩余电量
+    strip: { w: 4, h: 1 },
+    // 一行字
+    bar: { w: 6, h: 1 },
+    // 一行字 + 一条进度
+    card: { w: 4, h: 2 },
+    // 基准档：天气、单条反馈
+    wide: { w: 6, h: 2 },
+    panel: { w: 8, h: 2 },
+    // 导航小卡、候选列表
+    banner: { w: 12, h: 2 },
+    // 横跨整屏的提醒
+    tower: { w: 4, h: 4 },
+    // 竖着的：车身图、电台节目单
+    stage: { w: 8, h: 4 },
+    // 导航主卡
+    full: { w: 12, h: 4 }
+    // 铺满
+  };
+  var ALIAS = {
+    "1/6": "card",
+    "1/3": "panel",
+    "1/2": "banner",
+    "2/3": "stage",
+    full: "full"
+  };
+  function normalizeTier(size) {
+    if (size in TIERS) return size;
+    return ALIAS[size] ?? "card";
+  }
+  function dimsOf(size) {
+    const t = TIERS[normalizeTier(size)];
+    return [t.w, t.h];
+  }
+  function cellsOfTier(size) {
+    const t = TIERS[normalizeTier(size)];
+    return t.w * t.h;
+  }
+  var contentCols = (c) => c >= 12 ? 3 : c >= 8 ? 2 : 1;
+  function listCapacity(c, r) {
+    if (r < 2) return 0;
+    return contentCols(c) * r * 2;
+  }
+  var SCREEN = {
+    w: 2560,
+    h: 1440,
+    statusH: 96,
+    // 状态栏
+    voiceH: 300,
+    // 语音区（待机时收到 148，按大的算才不会撑破）
+    padX: 60,
+    padY: 24,
+    // #desk 的内边距
+    gap: 24,
+    /** 卡片自己的内边距（左右各一次，上下各一次），--u 取 1 的基准值 */
+    cardPadX: 26,
+    cardPadY: 22
+  };
+  function pixelsOf(size) {
+    const [cw, ch] = dimsOf(size);
+    const deskW = SCREEN.w - SCREEN.padX * 2;
+    const deskH = SCREEN.h - SCREEN.statusH - SCREEN.voiceH - SCREEN.padY * 2;
+    const colW = (deskW - SCREEN.gap * (GRID.cols - 1)) / GRID.cols;
+    const rowH = (deskH - SCREEN.gap * (GRID.rows - 1)) / GRID.rows;
+    return {
+      w: Math.round(cw * colW + (cw - 1) * SCREEN.gap - SCREEN.cardPadX * 2),
+      h: Math.round(ch * rowH + (ch - 1) * SCREEN.gap - SCREEN.cardPadY * 2)
+    };
+  }
+
   // src/config/cards.ts
   var COMMON_SIZES = ["1/6", "1/3", "1/2"];
+  var CANVAS_SIZES = ["1/6", "1/3", "1/2", "2/3", "full"].map((z) => {
+    const p = pixelsOf(z);
+    return `${z} ${p.w}×${p.h}`;
+  }).join("，");
   var CARD_TEMPLATES = [
     {
       id: "control",
@@ -556,6 +654,17 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "通用卡",
       defaultSize: "1/3",
       desc: "兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}"
+    },
+    /**
+     * 生成式卡。**先确认别的模板真的装不下再用它** —— 它每次长得都不一样，
+     * 跟「同一场景每次演示长得一样」是正面冲突的，产品已知并接受这个代价。
+     */
+    {
+      id: "canvas",
+      label: "生成式卡",
+      defaultSize: "1/2",
+      desc: "前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
+      fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
   var TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id);
@@ -1617,7 +1726,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           ttl: parseTtl(args.ttl),
           key: args.key,
           data: args.data,
-          kind: args.kind
+          kind: args.kind,
+          urgency: args.urgency
         }));
       },
       cardUpdate: (args) => {
@@ -2356,53 +2466,28 @@ ${extras.desktop}`);
     };
   }
 
-  // src/config/grid.ts
-  var GRID = { cols: 12, rows: 4 };
-  var TIERS = {
-    chip: { w: 2, h: 1 },
-    // 一个数字，比如车速、剩余电量
-    strip: { w: 4, h: 1 },
-    // 一行字
-    bar: { w: 6, h: 1 },
-    // 一行字 + 一条进度
-    card: { w: 4, h: 2 },
-    // 基准档：天气、单条反馈
-    wide: { w: 6, h: 2 },
-    panel: { w: 8, h: 2 },
-    // 导航小卡、候选列表
-    banner: { w: 12, h: 2 },
-    // 横跨整屏的提醒
-    tower: { w: 4, h: 4 },
-    // 竖着的：车身图、电台节目单
-    stage: { w: 8, h: 4 },
-    // 导航主卡
-    full: { w: 12, h: 4 }
-    // 铺满
+  // src/config/priority.ts
+  var URGENCY = {
+    ambient: 0,
+    // 背景信息：天气、播放器
+    normal: 10,
+    // 常规反馈：车控、列表
+    urgent: 20,
+    // 需要用户回应：确认、待选
+    critical: 30
+    // 安全相关：车门未关、约束拒绝
   };
-  var ALIAS = {
-    "1/6": "card",
-    "1/3": "panel",
-    "1/2": "banner",
-    "2/3": "stage",
-    full: "full"
+  var KIND_WEIGHT = { task: 1, rule: 2, system: 3 };
+  var normalizeUrgency = (u) => u in URGENCY ? u : "normal";
+  var priorityOf = (kind, urgency) => URGENCY[normalizeUrgency(urgency)] + (KIND_WEIGHT[kind] ?? 1);
+  var evictableAt = (urgency) => URGENCY[normalizeUrgency(urgency)] < URGENCY.urgent;
+  var MIN_TIER = {
+    critical: "panel",
+    urgent: "card",
+    normal: "chip",
+    ambient: "chip"
   };
-  function normalizeTier(size) {
-    if (size in TIERS) return size;
-    return ALIAS[size] ?? "card";
-  }
-  function dimsOf(size) {
-    const t = TIERS[normalizeTier(size)];
-    return [t.w, t.h];
-  }
-  function cellsOfTier(size) {
-    const t = TIERS[normalizeTier(size)];
-    return t.w * t.h;
-  }
-  var contentCols = (c) => c >= 12 ? 3 : c >= 8 ? 2 : 1;
-  function listCapacity(c, r) {
-    if (r < 2) return 0;
-    return contentCols(c) * r * 2;
-  }
+  var minTierFor = (urgency) => MIN_TIER[normalizeUrgency(urgency)];
 
   // src/cards/desk.ts
   var ROWS = GRID.rows;
@@ -2412,9 +2497,14 @@ ${extras.desktop}`);
     return { w, h };
   };
   var LADDER = ["1/6", "1/3", "1/2"];
-  var floorIdx = (c) => Math.max(0, LADDER.indexOf(c.minSize ?? "1/6"));
+  var floorIdx = (c) => {
+    if (c.minSize) return Math.max(0, LADDER.indexOf(c.minSize));
+    const floor = minTierFor(c.urgency);
+    const bySize = LADDER.findIndex((s) => cellsOfTier(s) >= cellsOfTier(floor));
+    return Math.max(0, bySize);
+  };
   var canShrink = (c) => LADDER.indexOf(c.size) > floorIdx(c);
-  var PRIORITY = { task: 2, rule: 3, system: 4 };
+  var PRIO = (c) => priorityOf(c.kind, c.urgency);
   var titleOf = (c) => c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template;
   function createDesk(clock = Date.now) {
     const cards = /* @__PURE__ */ new Map();
@@ -2422,11 +2512,12 @@ ${extras.desktop}`);
     let seq = 0;
     const listeners = [];
     const emit = () => listeners.forEach((l) => l());
+    const noticeListeners = [];
     function tryPlace(list) {
       const order = [...list].sort((a, b) => {
         const ha = shapeOf(a.size).h, hb = shapeOf(b.size).h;
         if (ha !== hb) return hb - ha;
-        const pa = PRIORITY[a.kind], pb = PRIORITY[b.kind];
+        const pa = PRIO(a), pb = PRIO(b);
         if (pa !== pb) return pb - pa;
         return a.createdAt - b.createdAt;
       });
@@ -2465,9 +2556,9 @@ ${extras.desktop}`);
       const titles = [];
       const existing = others();
       let size = candidate.size;
-      const alive = () => existing.filter((c) => c.evictable && !shrunkOut.has(c.id));
-      const byPriorityLRU = (a, b) => PRIORITY[a.kind] - PRIORITY[b.kind] || a.touchedAt - b.touchedAt;
-      const victims = () => alive().filter((c) => PRIORITY[c.kind] <= PRIORITY[candidate.kind]).sort(byPriorityLRU);
+      const alive = () => existing.filter((c) => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id));
+      const byPriorityLRU = (a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt;
+      const victims = () => alive().filter((c) => PRIO(c) <= PRIO(candidate)).sort(byPriorityLRU);
       const shrunkOut = /* @__PURE__ */ new Set();
       for (; ; ) {
         const trial = { ...candidate, size };
@@ -2478,6 +2569,7 @@ ${extras.desktop}`);
           for (const id of evicted) cards.delete(id);
           cards.set(candidate.id, candidate);
           const note = titles.length ? `我把${titles.map((t) => `「${t}」`).join("、")}收起来了` : void 0;
+          if (note) noticeListeners.forEach((l) => l({ note, titles: [...titles] }));
           emit();
           return {
             status: "ok",
@@ -2525,6 +2617,7 @@ ${extras.desktop}`);
         template: input.template,
         size,
         kind: input.kind ?? "task",
+        urgency: normalizeUrgency(input.urgency),
         data: input.data ?? {},
         ttl: input.ttl,
         evictable: input.evictable ?? true,
@@ -2640,10 +2733,14 @@ ${extras.desktop}`);
       get: (id) => cards.get(id),
       findByKey: (key) => [...cards.values()].find((c) => c.key === key),
       cellsOf: (s) => cellsOfTier(s),
-      priorityOf: (k) => PRIORITY[k],
+      priorityOf: (k, u) => priorityOf(k, u),
       subscribe: (cb) => {
         listeners.push(cb);
         return () => listeners.splice(listeners.indexOf(cb), 1);
+      },
+      onNotice: (cb) => {
+        noticeListeners.push(cb);
+        return () => noticeListeners.splice(noticeListeners.indexOf(cb), 1);
       }
     };
   }
@@ -2662,6 +2759,7 @@ ${extras.desktop}`);
         size,
         kind: "rule",
         evictable: r.card.evictable,
+        urgency: r.card.urgency,
         ttl: r.card.ttl ?? "untilDismissed",
         refreshTtl: r.card.ttl !== void 0,
         data: build ? build(deps) : {}
@@ -4129,7 +4227,12 @@ ${extras.desktop}`);
         ttl: { type: "string", required: true, desc: "生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数" },
         key: { type: "string", desc: "逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建" },
         data: { type: "object", desc: "卡片内容，字段取决于模板" },
-        kind: { type: "enum", values: ["task", "system"], desc: "卡片类别，默认 task" }
+        kind: { type: "enum", values: ["task", "system"], desc: "卡片类别，默认 task" },
+        urgency: {
+          type: "enum",
+          values: ["ambient", "normal", "urgent", "critical"],
+          desc: "这事有多急，默认 normal。ambient 背景信息（可以被挤掉）/ normal 常规 / urgent 等着用户回应（不会被挤掉）/ critical 安全相关（不会被挤掉，也不会被缩小，会盖住整屏）。别为了让卡活得久就往高了报——真出安全事件时就没有更高一档了。"
+        }
       },
       handler: "cardShow"
     },
@@ -4212,7 +4315,7 @@ ${extras.desktop}`);
       id: "media-playing",
       when: [["media.playing", "==", true], ["media.source", "!=", "video"]],
       watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode"],
-      card: { key: "player", template: "media", evictable: true, data: "playerCard" }
+      card: { key: "player", template: "media", evictable: true, urgency: "ambient", data: "playerCard" }
     },
     {
       id: "media-playing-video",
@@ -4264,7 +4367,7 @@ ${extras.desktop}`);
     {
       id: "opening-feedback",
       watch: ["cabin.door.*.isOpen", "cabin.trunk.isOpen", "cabin.chargePort.isOpen"],
-      card: { key: "openings", template: "control", ttl: 30, data: "openingCard" }
+      card: { key: "openings", template: "control", ttl: 30, urgency: "urgent", data: "openingCard" }
     }
   ];
   var WIN_POS = ["driver", "passenger", "rearLeft", "rearRight"];
@@ -4466,6 +4569,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
   var import_meta = {};
   injectTokens("director");
   var $ = (id) => document.getElementById(id);
+  var esc = (v) => String(v ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var POS = ["driver", "passenger", "rearLeft", "rearRight"];
   var store = createStore(SIGNALS, CONSTRAINTS);
   var desk = createDesk();
@@ -4500,6 +4604,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
     template: c.template,
     size: c.size,
     kind: c.kind,
+    urgency: c.urgency,
     row: c.row,
     col: c.col,
     rowSpan: c.rowSpan,
@@ -4515,10 +4620,55 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
       free: l.free
     } });
   }
+  var canvasNotes = /* @__PURE__ */ new Map();
+  function renderInspector() {
+    const l = desk.layout();
+    const el = $("inspect");
+    $("inspN").textContent = `${l.cards.length} 张`;
+    if (!l.cards.length) {
+      el.innerHTML = `<div class="empty">桌面为空</div>`;
+      return;
+    }
+    el.innerHTML = l.cards.map((c) => {
+      const ttl = typeof c.ttl === "number" ? `${c.ttl}s` : c.ttl;
+      const note = canvasNotes.get(c.id);
+      return `<div class="e u-${c.urgency ?? "normal"}${c.sizeLocked ? " locked" : ""}">
+      <b>${esc(c.data?.title ?? c.template)}</b>
+      <span><i>${c.template}</i> ${c.size}</span>
+      <span>${c.kind} · <i>${c.urgency ?? "normal"}</i></span>
+      <span>ttl <i>${ttl}</i></span>
+      <span>${c.evictable === false ? "不可挤" : "可挤"}</span>
+      <span>${c.row},${c.col} +${c.rowSpan}×${c.colSpan}</span>
+      ${note?.stripped?.length ? `<span class="strip">剥离 ${esc(note.stripped.join(" "))}</span>` : ""}
+      ${note?.overflow ? `<span class="strip">内容溢出</span>` : ""}
+    </div>`;
+    }).join("");
+  }
+  desk.subscribe(renderInspector);
+  renderInspector();
   desk.subscribe(pushDesk);
+  desk.onNotice((n) => bus.send({
+    type: "banner",
+    on: true,
+    reason: "evicted",
+    title: "腾了个位置",
+    desc: n.note,
+    ttl: 5e3
+  }));
   setInterval(() => desk.tick(), 500);
   $("toolCount").textContent = `${registry.list(MAIN_AGENT.tools).length} tools`;
   var bus = createBus((m) => {
+    if (m.type === "canvasNote") {
+      const prev = canvasNotes.get(m.cardId) ?? {};
+      canvasNotes.set(m.cardId, {
+        stripped: m.stripped ?? prev.stripped,
+        overflow: m.overflow ?? prev.overflow
+      });
+      if (m.stripped?.length) log("r", `生成式卡剥离 ${m.stripped.join(" ")}`);
+      if (m.overflow) log("e", "生成式卡内容溢出，超出部分用户看不到");
+      renderInspector();
+      return;
+    }
     if (m.type !== "hello") return;
     setConn(true);
     pushDesk();
@@ -4586,7 +4736,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
         break;
       case "rejected":
         bus.send({ type: "voice", s: "rejected" });
-        bus.send({ type: "reject", on: true, title: "已拒绝执行", desc: e.text });
+        bus.send({ type: "banner", on: true, reason: "rejected", title: "已拒绝执行", desc: e.text, ttl: 6e3 });
         break;
       case "done":
         setTimeout(() => bus.send({ type: "voice", s: "idle", text: "" }), 3e3);
@@ -4610,7 +4760,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
     }
     busy = true;
     $("busy").textContent = "思考中…";
-    bus.send({ type: "reject", on: false });
+    bus.send({ type: "banner", on: false });
     bus.send({ type: "card", action: "dismiss", id: "confirm" });
     bus.send({ type: "voice", s: "listening", text, who: "user" });
     log("u", `
@@ -4627,7 +4777,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
         if (res.status === "ok" && res.changed?.length) {
           const ids = res.changed.filter((p) => p.startsWith("cabin.window.")).map((p) => p.split(".")[2]);
           if (ids.length) bus.send({ type: "highlight", ids });
-          if (res.code === "SPEED_LIMITED") bus.send({ type: "reject", on: true, title: "已限位", desc: `${res.message} · <code>${res.code}</code>` });
+          if (res.code === "SPEED_LIMITED") bus.send({ type: "banner", on: true, reason: "constraint", title: "已限位", desc: `${res.message} · <code>${res.code}</code>`, ttl: 6e3 });
           const cid = res.data?.cardId;
           if (cid) bus.send({ type: "highlight", ids: [], cards: [cid] });
         }

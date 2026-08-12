@@ -189,3 +189,24 @@ export function cardBody(c: CardView): string {
     }
   }
 }
+
+/**
+ * 秒 → mm:ss（超过一小时进位到 h:mm:ss）。
+ *
+ * 播放进度**不进 store** —— position 每秒变好几次，进信号系统就是每秒重评一遍规则。
+ * 它由车机屏本地的 `<audio>` 自己渲染，走展示层不走信号。
+ * 这条守的是「状态 vs 遥测」的界线：store 存**在放什么、放不放**，
+ * **放到第几秒**是遥测。
+ */
+export function fmtTime(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '--:--'
+  const s = Math.floor(sec % 60), m = Math.floor(sec / 60) % 60, h = Math.floor(sec / 3600)
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
+}
+
+/** 进度百分比。电台是直播流 duration=Infinity —— 画一条走到底的进度条是撒谎，返回 null */
+export function progressPct(cur: number, dur: number): number | null {
+  if (!Number.isFinite(dur) || dur <= 0) return null
+  return Math.max(0, Math.min(100, Math.round((cur / dur) * 100)))
+}

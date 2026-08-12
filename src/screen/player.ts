@@ -93,7 +93,17 @@ export function createPlayer({ report }: PlayerDeps) {
     if (video) video.volume = x
   }
 
-  return { unlock, play, pause, stop, setVolume, attachVideo,
+  /**
+   * 播放进度。**不进 store，不上 bus** —— position 每秒变好几次，
+   * 进信号系统就是每秒重评一遍全部规则。这里直接读元素，走展示层。
+   * 这条守的是「状态 vs 遥测」的界线，以后容易被侵蚀。
+   */
+  const progress = () => {
+    const el: HTMLMediaElement = video && !video.paused ? video : audio
+    return { current: el.currentTime, duration: el.duration }
+  }
+
+  return { unlock, play, pause, stop, setVolume, attachVideo, progress,
     get unlocked() { return unlocked },
     get playingUrl() { return current } }
 }

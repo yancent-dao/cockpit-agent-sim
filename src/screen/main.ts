@@ -342,14 +342,32 @@ function renderDesk() {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
       else if (c.template === 'canvas') {
-        // 角标是诚实标注：这张卡是临场生成的，跟固定模板不是一回事
-        node.innerHTML = `<h3>${esc(c.title)}<span class="genmark">生成式</span></h3>` +
-          `<div class="bd"><div class="cvhost"></div></div>`
+        /**
+         * mount/fill：骨架建一次，之后只填。之前每次 sig 变都整刷 innerHTML，
+         * cvhost（和它的 Shadow root）被反复摧毁重建。
+         */
+        if (!node.dataset.shell) {
+          // 角标是诚实标注：这张卡是临场生成的，跟固定模板不是一回事
+          node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3>` +
+            `<div class="bd"><div class="cvhost"></div></div>`
+          node.dataset.shell = '1'
+        }
+        node.querySelector('.cvtitle')!.textContent = c.title ?? ''
         renderCanvasCard(node, c)
       }
       else {
-        // .bd 认领全部剩余高度并让内容贴底——诊断 1「内容缩在左上角」的修法
-        node.innerHTML = `<h3>${esc(c.title)}</h3><div class="bd">${cardBody(c)}</div>`
+        /**
+         * mount/fill：骨架（h3 + .bd）建一次，数据变了只重填 .bd 的**内容**。
+         * .bd 元素身份稳定是触控的前置——它是将来的滚动容器，
+         * 整卡 innerHTML 重刷会把 scrollTop 和按压态一起清零。
+         * （.bd 认领剩余高度让内容贴底——诊断 1 的修法不变）
+         */
+        if (!node.dataset.shell) {
+          node.innerHTML = `<h3></h3><div class="bd"></div>`
+          node.dataset.shell = '1'
+        }
+        node.querySelector('h3')!.textContent = c.title ?? ''
+        node.querySelector('.bd')!.innerHTML = cardBody(c)
         // 车身图形是资源不是逻辑，留在这里填进 render 层给的占位
         const slot = node.querySelector('.vehslot')
         if (slot) slot.innerHTML = CAR_SVG
@@ -397,11 +415,17 @@ function renderDesk() {
     // 视觉要分开——一张全屏能力目录跟一条「车门没关」不该长得一样
     const alert = o.data?.urgency === 'critical' || (o as any).urgency === 'critical'
     ov.className = `on${alert ? ' alert' : ''}`
-    // 走跟桌面卡同一套档位类和语义色类，否则 --u 没定义、字号全塌
-    ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass('full')} ${
-      accentClass(o.template, { ...o.data, urgency: alert ? 'critical' : o.data?.urgency })}">
-      <h3>${esc(o.title)}</h3><div class="bd">${cardBody({ ...o, size: 'full' })}</div></div>`
-  } else { ov.className = ''; ov.innerHTML = '' }
+    // 指纹护栏：数据没变不重刷。renderDesk 会被频繁调用（车窗过渡每帧一次），
+    // 覆盖层每次整刷会摧毁将来的滚动容器
+    const sig = `${o.id}|${JSON.stringify(o.data)}`
+    if (ov.dataset.sig !== sig) {
+      ov.dataset.sig = sig
+      // 走跟桌面卡同一套档位类和语义色类，否则 --u 没定义、字号全塌
+      ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass('full')} ${
+        accentClass(o.template, { ...o.data, urgency: alert ? 'critical' : o.data?.urgency })}">
+        <h3>${esc(o.title)}</h3><div class="bd">${cardBody({ ...o, size: 'full' })}</div></div>`
+    }
+  } else { ov.className = ''; ov.innerHTML = ''; delete ov.dataset.sig }
 
   // 车辆示意图里的车窗
   const g = document.getElementById('wins')

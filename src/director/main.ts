@@ -1,3 +1,4 @@
+import { injectTokens } from '../design/tokens'
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
 import { createAmapClient } from '../integrations/amap'
@@ -17,6 +18,9 @@ import { TOOLS } from '../config/tools'
 import { CARD_TEMPLATES } from '../config/cards'
 import { CARD_RULES, DATA_BUILDERS } from '../config/cardRules'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
+
+// Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
+injectTokens('director')
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const

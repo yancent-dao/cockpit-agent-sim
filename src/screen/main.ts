@@ -1,8 +1,12 @@
+import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm, capForm, weatherForm } from './layout'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
+
+// Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
+injectTokens('screen')
 
 const $ = (id: string) => document.getElementById(id)!
 const POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const

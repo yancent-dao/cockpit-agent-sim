@@ -6,6 +6,7 @@
 import type { Store } from '../core/store'
 import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
+import type { Track, ItunesClient } from './itunes'
 
 export interface Favorite {
   source: string
@@ -28,9 +29,60 @@ const radioNo = (what: string): ToolResult => ({
   suggestion: '想换台的话说个台名，或者让我给你放歌',
 })
 
-export function createMediaHandlers(store: Store, desk?: () => Desk | undefined) {
+export interface MediaDeps {
+  itunes?: () => ItunesClient
+}
+
+export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
   /** 收藏跨源统一：歌和电台放一份里，用户说"我收藏的"不用分是哪类 */
   const favorites: Favorite[] = []
+
+  /** 上一次搜索结果，用来把"第二个"翻译成具体条目 */
+  let lastResults: Track[] = []
+
+  const need = <K extends keyof MediaDeps>(k: K): NonNullable<ReturnType<NonNullable<MediaDeps[K]>>> => {
+    const f = deps[k]
+    if (!f) throw new Error(`${k} 能力未装配`)
+    return (f as any)() 
+  }
+
+  /** 三方失败一律 unavailable —— 语义是"服务不可用"，不是"车不让做" */
+  const cpFail = (e: unknown, what: string): ToolResult => ({
+    status: 'unavailable', code: 'CP_ERROR',
+    message: `${what}暂时不可用：${e instanceof Error ? e.message : String(e)}`,
+    suggestion: '稍后再试，或者换个说法',
+  })
+
+  const noResult = (q: string): ToolResult => ({
+    status: 'unavailable', code: 'NO_RESULT',
+    message: `没搜到「${q}」`,
+    suggestion: '换个歌名或者歌手名试试',
+  })
+
+  const brief = (t: Track) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, duration: t.duration })
+
+  const dismissKey = (key: string) => {
+    const d = desk?.()
+    const c = d?.findByKey(key)
+    if (c) d!.dismiss(c.id)
+  }
+
+  const showTracks = (tracks: Track[]) => {
+    desk?.()?.render({
+      key: 'music-candidates', template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+      data: { title: '搜到这些歌', items: tracks.map(t => ({ label: t.name, sub: `${t.artist} · ${t.album}` })) },
+    })
+  }
+
+  /** 一次写齐播放状态。少写一个字段，播放器卡就缺一块 */
+  const playTrack = (t: Track) => {
+    store.set('media.source', 'music')
+    store.set('media.track', t.name)
+    store.set('media.artist', t.artist)
+    store.set('media.artwork', t.artwork)
+    store.set('media.streamUrl', t.preview)
+    store.set('media.playing', true)
+  }
 
   const nowPlaying = (): Favorite | null =>
     store.get('media.source') === 'none' || !store.get('media.track')
@@ -113,6 +165,40 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined)
         return { status: 'ok', data: { already: true }, message: `${cur.track} 已经在收藏里了` }
       favorites.push(cur)
       return { status: 'ok', data: { saved: cur }, message: `收藏了 ${cur.track}` }
+    },
+
+    /* ══════════ 音乐（iTunes） ══════════ */
+
+    musicSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const tracks = await need('itunes').search(args.query, args.limit ?? 8)
+        if (!tracks.length) return noResult(args.query)
+        lastResults = tracks
+        showTracks(tracks)
+        return { status: 'ok', data: { tracks: tracks.map(brief) } }
+      } catch (e) { return cpFail(e, '音乐搜索') }
+    },
+
+    musicPlay: async (args: any): Promise<ToolResult> => {
+      try {
+        // 给了关键词就现搜现播，省掉"先 search 再 play"的一轮往返
+        let track = args.trackId ? lastResults.find(t => t.id === Number(args.trackId)) : undefined
+        if (!track) {
+          const q = args.query ?? String(args.trackId ?? '')
+          const found = await need('itunes').search(q, 5)
+          if (!found.length) return noResult(q)
+          lastResults = found
+          track = found[0]
+        }
+        playTrack(track)
+        dismissKey('music-candidates')   // 选完了，候选就翻篇了
+        return {
+          status: 'ok',
+          data: { playing: brief(track) },
+          // 只有 30 秒是 iTunes 的硬限制。不在返回里说清楚，Agent 会以为能放整首
+          message: `在放${track.name}（${track.artist}）。iTunes 只提供 30 秒预览，放完就停`,
+        }
+      } catch (e) { return cpFail(e, '音乐播放') }
     },
 
     mediaFavorites: (): ToolResult => {

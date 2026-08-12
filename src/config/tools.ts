@@ -461,6 +461,28 @@ export const TOOLS: ToolDef[] = [
     handler: 'mediaFavorites',
   },
 
+  /* ══════════ 音乐（iTunes，30 秒预览） ══════════ */
+  {
+    name: 'music.search',
+    desc: '搜歌。可以搜歌名、歌手、专辑。结果自动上屏带编号，你只说一句"搜到几首"就行，别逐条念。**iTunes 只提供 30 秒预览，放不了整首**，这是版权限制，用户问起来就照实说。',
+    permission: '彩',
+    params: {
+      query: { type: 'string', required: true, desc: '歌名/歌手/专辑，中英文都行' },
+      limit: { type: 'number', range: [1, 20], desc: '最多返回几首，默认 8' },
+    },
+    handler: 'musicSearch',
+  },
+  {
+    name: 'music.play',
+    desc: '放歌。用户说"放周杰伦的晴天"就直接传 query，不用先 search——搜到会自动播第一首，省一轮。用户从搜索结果里选了第几个，传那一条的 trackId。',
+    permission: '彩',
+    params: {
+      trackId: { type: 'number', desc: 'music.search 返回的 id' },
+      query: { type: 'string', desc: '没有 id 时按关键词现搜现播' },
+    },
+    handler: 'musicPlay',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

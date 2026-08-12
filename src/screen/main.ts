@@ -190,10 +190,9 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
     : r.html}`
   // 溢出检测：屏幕不可滚动，超出等于用户永远看不到
   requestAnimationFrame(() => {
-    const el = root.firstElementChild?.nextElementSibling as HTMLElement | null
-    const over = host.scrollHeight > host.clientHeight + 2
-    if (over) bus.send({ type: 'canvasNote', cardId: c.id, overflow: true } as any)
-    void el
+    // +2 是留给亚像素舍入的。屏幕不可滚动，溢出等于用户永远看不到那部分
+    if (host.scrollHeight > host.clientHeight + 2)
+      bus.send({ type: 'canvasNote', cardId: c.id, overflow: true } as any)
   })
 }
 

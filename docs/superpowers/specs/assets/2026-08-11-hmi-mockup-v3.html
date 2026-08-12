@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>车机屏 HMI 重设计 · 视觉稿 v3</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Design Token —— 将来的 src/design/tokens.ts
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --n0:#FFFFFF; --n1:#F6F8FB; --n2:#EEF2F7; --n3:#E2E8F0; --n4:#CBD5E1;
+  --n5:#94A3B8; --n6:#64748B; --n7:#475569; --n8:#334155; --n9:#1E293B; --n10:#0F172A;
+
+  --brand-fg:#2563EB; --brand-bg:#EFF6FF; --brand-bd:#BFDBFE; --brand-gr:linear-gradient(145deg,#3B82F6,#2563EB);
+  --info-fg:#0E7490;  --info-bg:#ECFEFF;  --info-bd:#A5F3FC; --info-gr:linear-gradient(145deg,#22B8CF,#0E7490);
+  --ok-fg:#047857;    --ok-bg:#ECFDF5;    --ok-bd:#A7F3D0;  --ok-gr:linear-gradient(145deg,#10B981,#047857);
+  --warn-fg:#B45309;  --warn-bg:#FFFBEB;  --warn-bd:#FDE68A;--warn-gr:linear-gradient(145deg,#F59E0B,#B45309);
+  --danger-fg:#B91C1C;--danger-bg:#FEF2F2;--danger-bd:#FECACA;--danger-gr:linear-gradient(145deg,#EF4444,#B91C1C);
+  --media-fg:#6D28D9; --media-bg:#F5F3FF; --media-bd:#DDD6FE;--media-gr:linear-gradient(145deg,#8B5CF6,#6D28D9);
+  --pick-fg:#4338CA;  --pick-bg:#EEF2FF;  --pick-bd:#C7D2FE;--pick-gr:linear-gradient(145deg,#6366F1,#4338CA);
+  --sys-fg:#475569;   --sys-bg:#F1F5F9;   --sys-bd:#CBD5E1; --sys-gr:linear-gradient(145deg,#64748B,#475569);
+
+  --sf-base:#E7ECF3; --sf-card:#FFFFFF; --sf-raised:#F6F8FB; --sf-sunken:#DCE3EC;
+  --tx-1:#0F172A; --tx-2:#475569; --tx-3:#94A3B8; --tx-inv:#FFFFFF;
+  --hair:rgba(15,23,42,.07); --hair-strong:rgba(15,23,42,.13);
+
+  --sh-1:0 1px 2px rgba(15,23,42,.05), 0 6px 18px rgba(15,23,42,.055);
+  --sh-2:0 2px 6px rgba(15,23,42,.06), 0 18px 44px rgba(15,23,42,.09);
+  --gloss:inset 0 1px 0 rgba(255,255,255,.92);
+
+  --t-cap:22px; --t-body:26px; --t-title:24px; --t-lead:38px;
+  --t-num:52px; --t-hero:76px; --t-mega:100px;
+
+  --r-s:20px; --r-m:28px; --r-l:36px; --r-blk:18px; --r-pill:999px;
+  /* 动效：进场轻微过冲，其余纯 ease-out；车机上一律 ≤400ms */
+  --ez:cubic-bezier(.22,.61,.36,1); --ez-in:cubic-bezier(.4,0,1,1); --ez-pop:cubic-bezier(.34,1.26,.64,1);
+  --d1:120ms; --d2:240ms; --d3:340ms; --d4:380ms;
+
+  --u:1; --ac:var(--brand-fg); --acbg:var(--brand-bg); --acgr:var(--brand-gr);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0B0F16;color:#E2E8F0;font-family:"PingFang SC","Noto Sans CJK SC",-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;padding:32px 24px 90px}
+.doc{max-width:1360px;margin:0 auto}
+.doc h1{font-size:22px;font-weight:600;margin-bottom:6px}
+.doc .lede{font-size:13px;color:#7C8AA0;line-height:1.75;margin-bottom:10px}
+.rule{background:#131A25;border:1px solid #1F2937;border-left:3px solid #6D28D9;border-radius:8px;
+  padding:14px 18px;font-size:13px;line-height:1.8;color:#94A3B8;margin-bottom:26px}
+.rule b{color:#E2E8F0} .rule code{color:#A5B4FC;font-size:12px}
+.sec{margin:36px 0 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.sec b{font-size:15px;font-weight:600;color:#F1F5F9}
+.sec span{font-size:12px;color:#64748B;line-height:1.6}
+.frame{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);background:#000}
+.frame.live{box-shadow:0 0 0 2px #6D28D9,0 20px 60px rgba(109,40,217,.35)}
+
+/* ═══════════════════════════════════════════════════════════════
+   车机屏
+   ═══════════════════════════════════════════════════════════════ */
+.stage{width:2560px;height:1440px;transform-origin:0 0;position:absolute;left:0;top:0;
+  color:var(--tx-1);display:flex;flex-direction:column;
+  /* ★ 环境底板渐变：模拟座舱环境光，幅度控制在 ΔL<4%，否则白卡会显脏 */
+  background:
+    radial-gradient(1400px 900px at 16% 4%,  #F4F7FC 0%, rgba(244,247,252,0) 62%),
+    radial-gradient(1100px 800px at 92% 96%, #D6DFEA 0%, rgba(214,223,234,0) 58%),
+    var(--sf-base)}
+
+/* ── 状态条 ── */
+.statusbar{height:104px;flex:none;padding:0 60px;display:flex;align-items:center;gap:40px;
+  border-bottom:1px solid var(--hair);
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.06))}
+.statusbar .clock{font-size:42px;font-weight:500;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.statusbar .amb{display:flex;align-items:center;gap:14px;font-size:27px;color:var(--tx-2)}
+.statusbar .amb b{color:var(--tx-1);font-weight:600;font-variant-numeric:tabular-nums}
+.statusbar .sp{flex:1}
+.pill{display:flex;align-items:center;gap:10px;padding:9px 22px;border-radius:var(--r-pill);
+  font-size:26px;background:linear-gradient(180deg,#F4F7FB,#E9EEF5);color:var(--tx-2);
+  border:1px solid var(--hair);box-shadow:var(--gloss)}
+.pill b{color:var(--tx-1);font-weight:600;font-variant-numeric:tabular-nums}
+.pill.drive{background:linear-gradient(180deg,#F0F7FF,#DEEBFE);border-color:var(--brand-bd);color:var(--brand-fg)}
+.pill.drive b{color:var(--brand-fg)}
+.pill.warnp{background:linear-gradient(180deg,#FFFBF0,#FEF2DC);border-color:var(--warn-bd);color:var(--warn-fg)}
+.batt{display:flex;align-items:center;gap:12px;font-size:27px;color:var(--tx-2)}
+.batt .cell{width:52px;height:26px;border:2.5px solid var(--n5);border-radius:7px;position:relative;padding:2.5px}
+.batt .cell::after{content:'';position:absolute;right:-7px;top:7px;width:4px;height:9px;background:var(--n5);border-radius:0 2px 2px 0}
+.batt .cell i{display:block;height:100%;background:var(--ok-gr);border-radius:3px}
+.batt b{color:var(--tx-1);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ── 桌面 12×4 ── */
+.desk{flex:1;min-height:0;padding:24px 60px;display:grid;
+  grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(4,1fr);gap:16px}
+
+/* ── 卡片：瓷面渐变 + 顶部高光 + 右上语义色晕 ── */
+.card{border:1px solid var(--hair);border-radius:var(--r-m);
+  background:linear-gradient(162deg,#FFFFFF 0%,#FCFDFF 55%,#F7FAFD 100%);
+  box-shadow:var(--sh-1),var(--gloss);
+  padding:24px 28px;display:flex;flex-direction:column;overflow:hidden;position:relative;
+  will-change:transform}
+.card::after{content:'';position:absolute;right:-70px;top:-70px;width:280px;height:280px;border-radius:50%;
+  background:radial-gradient(circle,var(--ac) 0%,transparent 68%);opacity:.075;pointer-events:none}
+.hd{display:flex;align-items:center;gap:calc(12px*var(--u));flex:none;margin-bottom:calc(14px*var(--u));position:relative;z-index:1}
+/* ★ 图标块取代小圆点 —— 这是"素"的主因之一 */
+.hd .ic{width:calc(40px*var(--u));height:calc(40px*var(--u));border-radius:12px;flex:none;
+  background:var(--acbg);color:var(--ac);display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,.04)}
+.hd .ic svg{width:62%;height:62%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hd .ic.solidg{background:var(--acgr);color:#fff;box-shadow:0 4px 12px rgba(37,99,235,.28)}
+.hd h3{font-size:calc(var(--t-title)*var(--u));font-weight:500;color:var(--tx-3);
+  letter-spacing:.09em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hd .tail{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);flex:none}
+.bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;position:relative;z-index:1}
+.bd.split{justify-content:space-between}
+
+.s-chip  {grid-column:span 2 ;grid-row:span 1;--u:.86;border-radius:var(--r-s);padding:18px 20px}
+.s-strip {grid-column:span 4 ;grid-row:span 1;--u:.92;border-radius:var(--r-s);padding:18px 22px}
+.s-bar   {grid-column:span 6 ;grid-row:span 1;--u:.96;border-radius:var(--r-s);padding:18px 24px}
+.s-card  {grid-column:span 4 ;grid-row:span 2;--u:1}
+.s-wide  {grid-column:span 6 ;grid-row:span 2;--u:1.06}
+.s-panel {grid-column:span 8 ;grid-row:span 2;--u:1.12}
+.s-banner{grid-column:span 12;grid-row:span 2;--u:1.18}
+.s-tower {grid-column:span 4 ;grid-row:span 4;--u:1.06;border-radius:var(--r-l);padding:28px 30px}
+.s-stage {grid-column:span 8 ;grid-row:span 4;--u:1.30;border-radius:var(--r-l)}
+.s-chip .hd,.s-strip .hd,.s-bar .hd{margin-bottom:6px}
+.slot{border:2px dashed var(--hair-strong);border-radius:var(--r-m);opacity:.45}
+
+/* ── 块状均分 ── */
+.blocks{flex:1;min-height:0;display:grid;gap:calc(11px*var(--u));grid-auto-rows:1fr}
+.blocks.c1{grid-template-columns:1fr}
+.blocks.c2{grid-template-columns:1fr 1fr}
+.blocks.c3{grid-template-columns:repeat(3,1fr)}
+.blk{background:linear-gradient(150deg,#F9FBFD,#EFF4F9);border:1px solid var(--hair);border-radius:var(--r-blk);
+  box-shadow:var(--gloss);padding:calc(13px*var(--u)) calc(16px*var(--u));display:flex;flex-direction:column;
+  justify-content:space-between;gap:calc(8px*var(--u));min-height:0;overflow:hidden;position:relative}
+.blk.span2{grid-column:span 2}
+.blk .lbl{display:flex;align-items:center;gap:calc(8px*var(--u));font-size:calc(23px*var(--u));color:var(--tx-2)}
+.blk .lbl svg{width:calc(24px*var(--u));height:calc(24px*var(--u));flex:none;fill:none;stroke:currentColor;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.62}
+.blk>b{font-size:calc(48px*var(--u));font-weight:600;line-height:1;letter-spacing:-1.5px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.blk>b i{font-style:normal;font-size:.44em;font-weight:400;color:var(--tx-3);margin-left:3px;letter-spacing:0}
+.blk.big>b{font-size:calc(var(--t-hero)*var(--u))}
+.blk .trk{height:calc(7px*var(--u));border-radius:var(--r-pill);background:var(--n3);overflow:hidden;flex:none;
+  box-shadow:inset 0 1px 2px rgba(15,23,42,.08)}
+.blk .trk i{display:block;height:100%;border-radius:var(--r-pill);background:var(--brand-gr);
+  box-shadow:0 0 10px rgba(37,99,235,.4);transition:width var(--d4) var(--ez)}
+.blk .tag{align-self:flex-start;display:inline-flex;padding:6px 16px;border-radius:var(--r-pill);
+  font-size:calc(26px*var(--u));font-weight:500;background:var(--brand-bg);color:var(--brand-fg);
+  border:1px solid var(--brand-bd)}
+.blk .sw{display:flex;align-items:center;gap:10px}
+.blk .swatch{width:calc(34px*var(--u));height:calc(34px*var(--u));border-radius:10px;flex:none;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.08),0 4px 12px rgba(124,58,237,.35)}
+.blk .sw em{font-style:normal;font-size:calc(30px*var(--u));font-weight:600}
+
+/* ── 单值卡 ── */
+.solo{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:calc(6px*var(--u))}
+.solo b{font-size:calc(var(--t-hero)*var(--u));font-weight:600;line-height:.95;letter-spacing:-2.5px;
+  font-variant-numeric:tabular-nums}
+.solo b i{font-style:normal;font-size:.4em;font-weight:400;color:var(--tx-3);margin-left:4px;letter-spacing:0}
+.solo span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.solo .trk{height:calc(7px*var(--u));border-radius:var(--r-pill);background:var(--n3);overflow:hidden;
+  box-shadow:inset 0 1px 2px rgba(15,23,42,.08);margin-top:calc(4px*var(--u))}
+.solo .trk i{display:block;height:100%;border-radius:var(--r-pill);background:var(--brand-gr);
+  box-shadow:0 0 10px rgba(37,99,235,.4);transition:width var(--d4) var(--ez)}
+.lead{font-size:calc(var(--t-lead)*var(--u));font-weight:500;line-height:1.26;color:var(--tx-1)}
+.body{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);line-height:1.5}
+
+/* ── 导航卡 ── */
+.s-stage.nav,.s-tower.nav{padding:0}
+.navwrap{display:flex;flex-direction:column;height:100%;position:relative;z-index:1}
+.turnbar{flex:none;display:flex;align-items:center;gap:26px;padding:26px 34px}
+.turnbar .arw{width:96px;height:96px;flex:none;border-radius:26px;background:var(--brand-gr);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 10px 26px rgba(37,99,235,.38),inset 0 1px 0 rgba(255,255,255,.45)}
+.turnbar .arw svg{width:56px;height:56px;fill:none;stroke:#fff;stroke-width:7;stroke-linecap:round;stroke-linejoin:round}
+.turnbar .dist{display:flex;align-items:baseline;gap:7px}
+.turnbar .dist b{font-size:64px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-2px}
+.turnbar .dist i{font-style:normal;font-size:28px;color:var(--tx-3)}
+.turnbar .act{font-size:34px;font-weight:500}
+.turnbar .road{margin-left:auto;text-align:right;max-width:38%}
+.turnbar .road span{display:block;font-size:21px;color:var(--tx-3);letter-spacing:.08em;margin-bottom:3px}
+.turnbar .road b{font-size:30px;font-weight:500;color:var(--tx-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.mapbox{flex:1;min-height:0;position:relative;overflow:hidden;background:#E8EDF2;margin:0 8px;border-radius:22px;
+  box-shadow:inset 0 0 0 1px rgba(15,23,42,.06)}
+.navfoot{flex:none;display:flex;align-items:flex-end;gap:44px;padding:20px 34px 24px}
+.navfoot .big{display:flex;align-items:baseline;gap:8px}
+.navfoot .big b{font-size:52px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-1.5px}
+.navfoot .big i{font-style:normal;font-size:26px;color:var(--tx-3)}
+.navfoot .dest{margin-left:auto;text-align:right;max-width:46%}
+.navfoot .dest span{display:block;font-size:21px;color:var(--tx-3);margin-bottom:4px}
+.navfoot .dest b{font-size:29px;font-weight:500;color:var(--tx-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+
+/* ── 播放器 ── */
+.plw{flex:1;min-height:0;display:flex;flex-direction:column;gap:calc(15px*var(--u))}
+.plhead{flex:1;min-height:0;display:flex;align-items:center;gap:calc(22px*var(--u))}
+.art{flex:none;aspect-ratio:1;height:100%;max-height:calc(180px*var(--u));border-radius:20px;overflow:hidden;
+  background:var(--media-gr);box-shadow:0 12px 30px rgba(109,40,217,.32),inset 0 1px 0 rgba(255,255,255,.3);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:calc(52px*var(--u))}
+.art.radio{background:var(--info-gr);box-shadow:0 12px 30px rgba(14,116,144,.32),inset 0 1px 0 rgba(255,255,255,.3)}
+.plm{min-width:0;display:flex;flex-direction:column;gap:calc(8px*var(--u))}
+.plm b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plm span{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plm .src{display:inline-flex;align-items:center;gap:7px;font-size:calc(var(--t-cap)*var(--u));
+  color:var(--media-fg);background:var(--media-bg);border:1px solid var(--media-bd);
+  padding:4px 14px;border-radius:var(--r-pill);width:fit-content}
+.plm .src.radio{color:var(--info-fg);background:var(--info-bg);border-color:var(--info-bd)}
+.prg{flex:none;display:flex;align-items:center;gap:calc(14px*var(--u))}
+.prg span{font-size:calc(21px*var(--u));color:var(--tx-3);font-variant-numeric:tabular-nums;flex:none}
+.prg .trk{flex:1;height:calc(6px*var(--u));border-radius:var(--r-pill);background:var(--n3);overflow:hidden;
+  box-shadow:inset 0 1px 2px rgba(15,23,42,.08)}
+.prg .trk i{display:block;height:100%;border-radius:var(--r-pill);background:var(--media-gr);
+  box-shadow:0 0 10px rgba(109,40,217,.45)}
+.live{flex:none;display:flex;align-items:center;gap:10px;font-size:calc(23px*var(--u));color:var(--info-fg)}
+.live s{text-decoration:none;width:11px;height:11px;border-radius:50%;background:var(--danger-fg);flex:none;
+  box-shadow:0 0 0 0 rgba(220,38,38,.5);animation:beat 1.8s var(--ez) infinite}
+@keyframes beat{0%{box-shadow:0 0 0 0 rgba(220,38,38,.55)}70%,100%{box-shadow:0 0 0 12px rgba(220,38,38,0)}}
+.live em{font-style:normal;margin-left:auto;color:var(--tx-3);font-variant-numeric:tabular-nums}
+.ctl{flex:none;display:flex;align-items:center;gap:calc(24px*var(--u))}
+.ctl svg{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ctl .ic{width:calc(38px*var(--u));height:calc(38px*var(--u));color:var(--tx-3);flex:none}
+.ctl .ic.on{color:var(--media-fg)}
+.ctl .main{width:calc(64px*var(--u));height:calc(64px*var(--u));border-radius:50%;flex:none;
+  background:var(--media-gr);color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 10px 24px rgba(109,40,217,.38),inset 0 1px 0 rgba(255,255,255,.4)}
+.ctl .main svg{width:52%;height:52%;fill:#fff;stroke:none}
+.ctl .main.radio{background:var(--info-gr);box-shadow:0 10px 24px rgba(14,116,144,.38),inset 0 1px 0 rgba(255,255,255,.4)}
+.ctl .vol{margin-left:auto;display:flex;align-items:center;gap:calc(9px*var(--u));color:var(--tx-3)}
+.ctl .vol svg{width:calc(32px*var(--u));height:calc(32px*var(--u))}
+.ctl .vol b{font-size:calc(26px*var(--u));font-weight:600;color:var(--tx-2);font-variant-numeric:tabular-nums}
+.sayhint{flex:none;font-size:calc(20px*var(--u));color:var(--tx-3);display:flex;align-items:center;gap:8px}
+.sayhint s{text-decoration:none;color:var(--media-fg)}
+
+/* ── 天气 ── */
+.wxnow{display:flex;align-items:flex-end;gap:calc(20px*var(--u));flex:1;min-height:0}
+.wxnow .ico{width:calc(92px*var(--u));height:calc(92px*var(--u));flex:none}
+.wxnow .t{display:flex;align-items:flex-start;gap:2px}
+.wxnow .t b{font-size:calc(var(--t-mega)*var(--u));font-weight:500;line-height:.86;
+  font-variant-numeric:tabular-nums;letter-spacing:-4px;
+  background:linear-gradient(155deg,#0F172A 10%,#0E7490 130%);-webkit-background-clip:text;
+  background-clip:text;color:transparent}
+.wxnow .t i{font-style:normal;font-size:calc(36px*var(--u));color:var(--tx-3);margin-top:6px}
+.wxnow .m{display:flex;flex-direction:column;gap:5px;min-width:0;margin-bottom:6px}
+.wxnow .m span{font-size:calc(30px*var(--u));font-weight:500}
+.wxnow .m small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.wxcast{flex:none;display:grid;grid-template-columns:repeat(3,1fr);gap:calc(11px*var(--u));margin-top:calc(14px*var(--u))}
+.wxcast>div{background:linear-gradient(150deg,#F9FBFD,#EDF3F9);border:1px solid var(--hair);border-radius:var(--r-blk);
+  box-shadow:var(--gloss);padding:calc(13px*var(--u)) calc(15px*var(--u));display:flex;flex-direction:column;gap:calc(6px*var(--u))}
+.wxcast span{font-size:calc(21px*var(--u));color:var(--tx-3)}
+.wxcast em{font-style:normal;font-size:calc(23px*var(--u));color:var(--tx-2)}
+.wxcast b{font-size:calc(26px*var(--u));font-weight:600;font-variant-numeric:tabular-nums}
+
+/* ── 列表 ── */
+.list{list-style:none;counter-reset:p;display:grid;grid-auto-rows:1fr;flex:1;min-height:0}
+.list.two{grid-template-columns:1fr 1fr;column-gap:40px}
+.list li{counter-increment:p;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--hair);min-height:0}
+.list.two li:nth-last-child(-n+2){border-bottom:none}
+.list li::before{content:counter(p);flex:none;width:42px;height:42px;border-radius:50%;
+  border:2px solid var(--pick-bd);color:var(--pick-fg);font-size:23px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;
+  background:linear-gradient(150deg,#FFFFFF,#F4F6FE)}
+.list li .tx{min-width:0;display:flex;flex-direction:column;gap:3px}
+.list li b{font-size:calc(28px*var(--u));font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list li small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.list li .rt{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);
+  font-variant-numeric:tabular-nums;flex:none}
+.more{flex:none;margin-top:10px;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.card.await{border-color:var(--pick-bd);animation:awaitGlow 2.2s var(--ez) infinite}
+@keyframes awaitGlow{
+  0%,100%{box-shadow:0 0 0 3px rgba(67,56,202,.10),var(--sh-1),var(--gloss)}
+  50%    {box-shadow:0 0 0 7px rgba(67,56,202,.05),0 0 34px rgba(67,56,202,.18),var(--sh-2),var(--gloss)}}
+.card.await .list li::before{background:var(--pick-gr);border-color:transparent;color:#fff;
+  box-shadow:0 4px 12px rgba(67,56,202,.32)}
+.cd{position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--pick-bg);z-index:2}
+.cd i{display:block;height:100%;background:var(--pick-gr);border-radius:0 3px 3px 0;
+  animation:countdown 9s linear infinite}
+@keyframes countdown{from{width:100%}to{width:0}}
+
+/* ── 确认 ── */
+.opts{display:flex;gap:14px;flex-wrap:wrap}
+.opt{display:flex;align-items:center;gap:11px;padding:14px 28px;border-radius:var(--r-pill);
+  background:linear-gradient(180deg,#F7F9FC,#EBF0F6);border:1px solid var(--hair);
+  box-shadow:var(--gloss);font-size:calc(28px*var(--u));font-weight:500}
+.opt s{text-decoration:none;width:30px;height:30px;border-radius:50%;background:var(--pick-gr);color:#fff;
+  font-size:19px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.opt.pri{background:linear-gradient(180deg,#F0F7FF,#DDEBFE);border-color:var(--brand-bd);color:var(--brand-fg)}
+.opt.pri s{background:var(--brand-gr);box-shadow:0 4px 10px rgba(37,99,235,.34)}
+
+/* ── 提示 / 拒绝 ── */
+.card.accentbar{padding-left:28px}
+.card.accentbar::before{content:'';position:absolute;left:0;top:18px;bottom:18px;width:5px;
+  border-radius:0 5px 5px 0;background:var(--acgr);z-index:2}
+.card.tone-warn  {background:linear-gradient(105deg,#FFF8EC 0%,#FFFDF8 38%,#FCFDFF 100%)}
+.card.tone-danger{background:linear-gradient(105deg,#FEF1F1 0%,#FFF9F9 38%,#FCFDFF 100%)}
+.card.tone-ok    {background:linear-gradient(105deg,#EDFDF5 0%,#F8FEFB 38%,#FCFDFF 100%)}
+.sug{margin-top:10px;font-size:calc(var(--t-cap)*var(--u));color:var(--brand-fg);display:flex;align-items:center;gap:8px}
+
+.card.canvas{border-color:var(--media-bd)}
+.card.canvas .hd .tail{color:var(--media-fg);background:var(--media-bg);border:1px solid var(--media-bd);
+  padding:3px 12px;border-radius:var(--r-pill);font-size:19px}
+.genwrap{flex:1;min-height:0;overflow:hidden}
+
+/* ── 横幅 ── */
+.banner{position:absolute;left:60px;right:60px;top:128px;z-index:5;display:flex;align-items:center;gap:20px;
+  padding:20px 28px;border-radius:var(--r-m);border:1px solid var(--warn-bd);box-shadow:var(--sh-2),var(--gloss);
+  background:linear-gradient(105deg,#FFF8EC 0%,#FFFDF9 44%,#FFFFFF 100%);
+  animation:bannerIn var(--d3) var(--ez-pop) both}
+@keyframes bannerIn{from{opacity:0;transform:translateY(-22px) scale(.98)}to{opacity:1;transform:none}}
+.banner .ic{width:56px;height:56px;flex:none;border-radius:16px;background:var(--warn-gr);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 8px 20px rgba(180,83,9,.32),inset 0 1px 0 rgba(255,255,255,.4)}
+.banner .ic svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
+.banner .tx b{display:block;font-size:29px;font-weight:600;color:var(--warn-fg);margin-bottom:4px}
+.banner .tx span{font-size:25px;color:var(--tx-2)}
+
+/* ── 语音区 ── */
+.voice{flex:none;height:300px;display:flex;align-items:center;gap:44px;padding:0 72px;
+  border-top:1px solid var(--hair-strong);box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+  background:linear-gradient(180deg,#E3E9F1 0%,#D7DFEA 100%);
+  transition:height var(--d3) var(--ez)}
+.voice.idle{height:152px}
+.orbwrap{width:172px;height:172px;flex:none;position:relative;display:flex;align-items:center;justify-content:center}
+.orbwrap::before{content:'';position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,transparent 0deg,rgba(37,99,235,.55) 90deg,transparent 200deg);
+  animation:spin 1.6s linear infinite;opacity:0;transition:opacity var(--d2)}
+.orbwrap::after{content:'';position:absolute;inset:8px;border-radius:50%;background:var(--sf-sunken)}
+.voice.thinking .orbwrap::before{opacity:1}
+@keyframes spin{to{transform:rotate(360deg)}}
+.orb{width:132px;height:132px;flex:none;border-radius:50%;position:relative;z-index:1;
+  background:radial-gradient(circle at 33% 28%,#BFDBFE 0%,#3B82F6 42%,#1D4ED8 78%,#1E3A8A 100%);
+  box-shadow:0 0 0 14px rgba(37,99,235,.06),0 0 60px rgba(37,99,235,.42),
+             inset 0 -10px 26px rgba(0,0,0,.22),inset 0 10px 20px rgba(255,255,255,.42);
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  animation:breathe 3.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(.97)}50%{transform:scale(1.03)}}
+.voice.idle .orb{width:84px;height:84px;animation:breathe 4.4s ease-in-out infinite;
+  background:radial-gradient(circle at 33% 28%,#E2E8F0,#94A3B8 55%,#64748B);
+  box-shadow:0 0 0 10px rgba(100,116,139,.06),inset 0 -6px 16px rgba(0,0,0,.16)}
+.voice.idle .orbwrap{width:112px;height:112px}
+.orb i{width:8px;border-radius:99px;background:rgba(255,255,255,.95);display:block;
+  box-shadow:0 0 8px rgba(255,255,255,.7);animation:wave .9s ease-in-out infinite}
+.orb i:nth-child(1){height:20px;animation-delay:0s}
+.orb i:nth-child(2){height:44px;animation-delay:.11s}
+.orb i:nth-child(3){height:58px;animation-delay:.22s}
+.orb i:nth-child(4){height:36px;animation-delay:.33s}
+.orb i:nth-child(5){height:18px;animation-delay:.44s}
+@keyframes wave{0%,100%{transform:scaleY(.42)}50%{transform:scaleY(1)}}
+.voice.idle .orb i{display:none}
+.sub{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.sub .tg{font-size:24px;color:var(--tx-3);letter-spacing:.16em;display:flex;align-items:center;gap:12px}
+.sub .tg s{text-decoration:none;width:9px;height:9px;border-radius:50%;background:var(--brand-gr);
+  box-shadow:0 0 0 0 rgba(37,99,235,.5);animation:beat 1.8s var(--ez) infinite}
+.sub .tx{font-size:46px;line-height:1.35;font-weight:500;color:var(--tx-1)}
+.voice.idle .sub .tx{font-size:28px;color:var(--tx-3);font-weight:400}
+.voice.idle .sub .tg{display:none}
+
+/* 图鉴 */
+.gal{border:1px solid var(--hair);border-radius:var(--r-m);box-shadow:var(--sh-1),var(--gloss);
+  background:linear-gradient(162deg,#FFFFFF,#F7FAFD);display:flex;flex-direction:column;
+  align-items:flex-start;justify-content:center;padding:22px 26px;gap:6px}
+.gal b{font-size:calc(32px*var(--u));font-weight:600;letter-spacing:-.5px;line-height:1.1}
+.gal span{font-size:calc(21px*var(--u));color:var(--tx-3);font-variant-numeric:tabular-nums;line-height:1.35}
+.gal small{font-size:calc(19px*var(--u));color:var(--brand-fg);line-height:1.35}
+.gal.s-chip{padding:16px 18px;gap:3px}
+
+/* 动效演示的旁白 */
+.narr{position:absolute;left:60px;bottom:24px;z-index:8;display:flex;align-items:center;gap:14px;
+  padding:14px 26px;border-radius:var(--r-pill);background:rgba(15,23,42,.86);color:#fff;
+  font-size:26px;backdrop-filter:blur(8px);box-shadow:0 12px 34px rgba(0,0,0,.3)}
+.narr s{text-decoration:none;width:10px;height:10px;border-radius:50%;background:#A78BFA}
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>车机屏 HMI 重设计 · 视觉稿 v3</h1>
+  <div class="lede">2560×1440 · 12 列 × 4 行 · gutter 16px · 单元 188.7×237px</div>
+  <div class="rule">
+    <b>v3 补的三件事 —— 针对「素」</b><br>
+    ① <b>图标系统</b>：标题行的 9px 小圆点换成 <b>40px 语义色图标块</b>（浅色底 + 线性图标），车控卡每个数据块也带图标。这是最大的一处。<br>
+    ② <b>渐变分四层，各有规矩</b>：<code>环境底板</code>（两个径向光晕，ΔL&lt;4%，再大白卡就显脏）→ <code>卡片瓷面</code>（162° 微渐变 + 顶部 1px 高光内阴影）→ <code>语义色晕</code>（每卡右上角一团 7.5% 的身份色）→ <code>强调渐变</code>（进度条 / 主控按钮 / 转向箭头 / 图标块，带同色发光）。<br>
+    ③ <b>动效体系</b>：下面第一屏<b>会自己动</b>，循环演示进场 / 退场 / 移位 / 改档四种过渡。移位用 <b>FLIP</b> —— CSS Grid 的 <code>grid-row/column</code> 不能 transition，现在卡片是瞬移的。
+  </div>
+
+  <div class="sec"><b>① 动效演示（自动循环播放）</b><span>看四种过渡：新卡进场 · 旧卡退场 · 栅格移位 · 档位缩放。左下角有旁白</span></div>
+  <div class="frame live"><div class="stage" id="anim">
+    <div class="statusbar">
+      <span class="clock" id="aclock">14:32</span>
+      <span class="amb"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A3.7 3.7 0 0 0 6.5 19z"/></svg>多云 · 车外 <b>3</b>°C</span>
+      <span class="sp"></span>
+      <span class="pill drive">D 挡 · <b id="aspd">46</b> km/h</span>
+      <span class="batt"><span class="cell"><i style="width:68%"></i></span><b>68</b>%</span>
+    </div>
+    <div class="desk" id="adesk"></div>
+    <div class="narr"><s></s><span id="anarr">桌面为空</span></div>
+    <div class="voice" id="avoice">
+      <div class="orbwrap"><div class="orb"><i></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="sub"><div class="tg"><s></s><span id="atag">聆听中</span></div><div class="tx" id="atx"></div></div>
+    </div>
+  </div></div>
+
+  <div class="sec"><b>② 场景 A · 导航中</b><span>图标块 + 语义色晕 + 强调渐变全部就位</span></div>
+  <div class="frame"><div class="stage">
+    <div class="statusbar">
+      <span class="clock">14:32</span>
+      <span class="amb"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A3.7 3.7 0 0 0 6.5 19z"/></svg>多云 · 车外 <b>3</b>°C</span>
+      <span class="sp"><span></span></span>
+      <span class="pill drive">D 挡 · <b>46</b> km/h</span>
+      <span class="batt"><span class="cell"><i style="width:68%"></i></span><b>68</b>%</span>
+    </div>
+    <div class="desk">
+      <div class="card s-stage nav">
+        <div class="navwrap">
+          <div class="turnbar">
+            <div class="arw"><svg viewBox="0 0 48 48"><path d="M14 40V22a8 8 0 0 1 8-8h12"/><path d="M27 7l9 7-9 7"/></svg></div>
+            <div class="dist"><b>300</b><i>米</i></div>
+            <div class="act">右转</div>
+            <div class="road"><span>进入</span><b>天府大道北段</b></div>
+          </div>
+          <div class="mapbox">
+            <svg width="100%" height="100%" viewBox="0 0 1600 620" preserveAspectRatio="xMidYMid slice">
+              <defs><linearGradient id="mg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#EDF2F7"/><stop offset="1" stop-color="#E2E9F1"/></linearGradient>
+                <linearGradient id="rg" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#3B82F6"/><stop offset="1" stop-color="#1D4ED8"/></linearGradient></defs>
+              <rect width="1600" height="620" fill="url(#mg)"/>
+              <g stroke="#D7DFE8" stroke-width="26" fill="none" stroke-linecap="round">
+                <path d="M-40 180H1640"/><path d="M-40 470H1640"/><path d="M300 -40V660"/><path d="M980 -40V660"/><path d="M1380 -40V660"/></g>
+              <g fill="#DCE6DE"><rect x="360" y="230" width="240" height="180" rx="18"/><rect x="1040" y="220" width="290" height="200" rx="18"/></g>
+              <g fill="#E4E9EF"><rect x="60" y="230" width="200" height="180" rx="14"/><rect x="360" y="510" width="560" height="150" rx="14"/></g>
+              <path d="M180 560 L180 470 L980 470 L980 180 L1500 180" stroke="#93B8F5" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>
+              <path d="M180 560 L180 470 L980 470 L980 180 L1500 180" stroke="url(#rg)" stroke-width="17" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="980" cy="470" r="17" fill="#fff" stroke="#2563EB" stroke-width="7"/>
+              <g transform="translate(180 560)"><circle r="30" fill="#2563EB" opacity=".16"/><circle r="15" fill="#2563EB" stroke="#fff" stroke-width="5"/></g>
+              <g transform="translate(1500 180)"><path d="M0 -34c-13 0-23 10-23 23 0 17 23 41 23 41s23-24 23-41c0-13-10-23-23-23z" fill="#DC2626"/><circle cy="-11" r="8" fill="#fff"/></g>
+            </svg>
+          </div>
+          <div class="navfoot">
+            <div class="big"><b>28</b><i>分钟</i></div>
+            <div class="big"><b>14.2</b><i>公里</i></div>
+            <div class="dest"><span>经 国贸充电站</span><b>成都远洋太古里</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card s-card" style="--ac:var(--media-fg);--acbg:var(--media-bg);--acgr:var(--media-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span><h3>正在播放</h3><span class="tail">列表循环</span></div>
+        <div class="bd"><div class="plw">
+          <div class="plhead"><div class="art">♪</div>
+            <div class="plm"><b>起风了</b><span>买辣椒也用券</span><span class="src">♪ 音乐</span></div></div>
+          <div class="prg"><span>1:12</span><div class="trk"><i style="width:38%"></i></div><span>3:11</span></div>
+          <div class="ctl">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 6 8 12l10 6z" fill="currentColor" stroke="none"/><path d="M6 6v12"/></svg></span>
+            <span class="main"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.4"/><rect x="14" y="5" width="4" height="14" rx="1.4"/></svg></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M6 6l10 6-10 6z" fill="currentColor" stroke="none"/><path d="M18 6v12"/></svg></span>
+            <span class="ic on"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+            <span class="vol"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg><b>40</b></span>
+          </div>
+        </div></div>
+      </div>
+
+      <div class="card s-chip">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 18V9l4-4h9a3 3 0 0 1 3 3v10"/><path d="M4 13.5h16"/></svg></span><h3>主驾车窗</h3></div>
+        <div class="bd"><div class="solo"><b>60<i>%</i></b><div class="trk"><i style="width:60%"></i></div></div></div>
+      </div>
+
+      <div class="card s-chip">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span><h3>空调</h3></div>
+        <div class="bd"><div class="solo"><span>3 档 · 吹面</span><b>22<i>°C</i></b></div></div>
+      </div>
+
+      <div class="card s-strip" style="--ac:var(--info-fg);--acbg:var(--info-bg);--acgr:var(--info-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A3.7 3.7 0 0 0 6.5 19z"/></svg></span><h3>成都</h3><span class="tail">多云</span></div>
+        <div class="bd"><div class="wxnow" style="align-items:flex-end">
+          <div class="t"><b style="font-size:76px">7</b><i style="font-size:28px">°</i></div>
+          <div class="m"><small>东北风 2 级</small><small>湿度 64%</small></div>
+        </div></div>
+      </div>
+    </div>
+    <div class="voice">
+      <div class="orbwrap"><div class="orb"><i></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="sub"><div class="tg"><s></s>播报中</div>
+        <div class="tx">好的，已经把国贸充电站加进路线，全程 14.2 公里，预计 28 分钟到。</div></div>
+    </div>
+  </div></div>
+
+  <div class="sec"><b>③ 场景 B · 车控反馈</b><span>每个数据块带图标；块底渐变 + 高光；进度条带同色发光</span></div>
+  <div class="frame"><div class="stage">
+    <div class="statusbar">
+      <span class="clock">22:07</span>
+      <span class="amb"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>晴 · 车外 <b>-2</b>°C</span>
+      <span class="sp"></span>
+      <span class="pill">P 挡 · 静止</span>
+      <span class="pill warnp">🔒 儿童锁开启</span>
+      <span class="batt"><span class="cell"><i style="width:41%;background:linear-gradient(145deg,#F59E0B,#B45309)"></i></span><b>41</b>%</span>
+    </div>
+    <div class="desk">
+      <div class="card s-card">
+        <div class="hd"><span class="ic solidg"><svg viewBox="0 0 24 24"><path d="M4 18V9l4-4h9a3 3 0 0 1 3 3v10"/><path d="M4 13.5h16"/></svg></span><h3>车窗</h3></div>
+        <div class="bd"><div class="blocks c2">
+          <div class="blk"><span class="lbl">主驾</span><b>60<i>%</i></b><div class="trk"><i style="width:60%"></i></div></div>
+          <div class="blk"><span class="lbl">副驾</span><b>60<i>%</i></b><div class="trk"><i style="width:60%"></i></div></div>
+          <div class="blk"><span class="lbl">左后</span><b>0<i>%</i></b><div class="trk"><i style="width:0"></i></div></div>
+          <div class="blk"><span class="lbl">右后</span><b>0<i>%</i></b><div class="trk"><i style="width:0"></i></div></div>
+        </div></div>
+      </div>
+
+      <div class="card s-card">
+        <div class="hd"><span class="ic solidg"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></svg></span><h3>空调</h3><span class="tail">已开启</span></div>
+        <div class="bd"><div class="blocks c2">
+          <div class="blk span2 big"><span class="lbl"><svg viewBox="0 0 24 24"><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0z"/></svg>温度</span><b>24<i>°C</i></b></div>
+          <div class="blk"><span class="lbl"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 0 0 4-4 4 4 0 0 0-8 0M12 12a4 4 0 0 1 4 4 4 4 0 0 1-8 0M12 12H8a4 4 0 0 1 0-8"/></svg>风量</span><b>3<i>档</i></b><div class="trk"><i style="width:43%"></i></div></div>
+          <div class="blk"><span class="lbl"><svg viewBox="0 0 24 24"><path d="M4 8h11a3 3 0 1 0-3-3M4 13h14a3 3 0 1 1-3 3"/></svg>出风</span><span class="tag">吹脚</span></div>
+        </div></div>
+      </div>
+
+      <div class="card s-chip">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 3h3a2 2 0 0 1 2 2v7H8a2 2 0 0 1-2-2z"/><path d="M6 14h9a3 3 0 0 1 3 3v4"/></svg></span><h3>座椅加热</h3></div>
+        <div class="bd"><div class="solo"><span>主驾</span><b>2<i>档</i></b></div></div>
+      </div>
+      <div class="card s-chip">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 15v6M9.2 10.5 3.6 8.6M14.8 10.5l5.6-1.9"/></svg></span><h3>方向盘</h3></div>
+        <div class="bd"><div class="solo"><span>加热</span><b>1<i>档</i></b></div></div>
+      </div>
+
+      <div class="card s-strip" style="--ac:var(--media-fg);--acbg:var(--media-bg);--acgr:var(--media-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg></span><h3>氛围灯</h3></div>
+        <div class="bd"><div class="blocks c3">
+          <div class="blk"><span class="lbl">颜色</span><div class="sw"><span class="swatch" style="background:linear-gradient(145deg,#A78BFA,#7C3AED)"></span><em>紫</em></div></div>
+          <div class="blk"><span class="lbl">灯效</span><b style="font-size:calc(30px*var(--u))">呼吸</b></div>
+          <div class="blk"><span class="lbl">亮度</span><b>70<i>%</i></b></div>
+        </div></div>
+      </div>
+
+      <div class="card s-wide" style="--ac:var(--info-fg);--acbg:var(--info-bg);--acgr:var(--info-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg></span><h3>成都 · 天气</h3><span class="tail">22:00 更新</span></div>
+        <div class="bd">
+          <div class="wxnow">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#0E7490" stroke-width="1.4" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+            <div class="t"><b>-2</b><i>°</i></div>
+            <div class="m"><span>晴</span><small>北风 3 级 · 湿度 42%</small></div>
+          </div>
+          <div class="wxcast">
+            <div><span>明天</span><em>多云</em><b>6°/-1°</b></div>
+            <div><span>周三</span><em>小雨</em><b>9°/3°</b></div>
+            <div><span>周四</span><em>阴</em><b>11°/5°</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card s-card" style="--ac:var(--info-fg);--acbg:var(--info-bg);--acgr:var(--info-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="8" width="20" height="13" rx="2.5"/><path d="m6 2 12 4"/><circle cx="8" cy="14.5" r="3"/><path d="M15 12h4M15 17h4"/></svg></span><h3>正在收听</h3><span class="tail">电台</span></div>
+        <div class="bd"><div class="plw">
+          <div class="plhead"><div class="art radio">📻</div>
+            <div class="plm"><b>成都交通广播</b><span>FM 91.4 · 路况播报中</span><span class="src radio">📻 电台</span></div></div>
+          <div class="live"><s></s>直播中<em>已收听 12:08</em></div>
+          <div class="ctl">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 6 8 12l10 6z" fill="currentColor" stroke="none"/><path d="M6 6v12"/></svg></span>
+            <span class="main radio"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.4"/><rect x="14" y="5" width="4" height="14" rx="1.4"/></svg></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M6 6l10 6-10 6z" fill="currentColor" stroke="none"/><path d="M18 6v12"/></svg></span>
+            <span class="vol"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg><b>55</b></span>
+          </div>
+          <div class="sayhint"><s>◎</s>说「换一台」「大点声」都可以</div>
+        </div></div>
+      </div>
+
+      <div class="card s-chip accentbar tone-ok" style="--ac:var(--ok-fg);--acbg:var(--ok-bg);--acgr:var(--ok-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span><h3>已执行</h3></div>
+        <div class="bd"><div class="lead">四扇窗<br>已关好</div></div>
+      </div>
+      <div class="card s-chip accentbar tone-warn" style="--ac:var(--warn-fg);--acbg:var(--warn-bg);--acgr:var(--warn-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="7" width="17" height="10" rx="2.5"/><path d="M22 10.5v3M6 11v2"/></svg></span><h3>续航</h3></div>
+        <div class="bd"><div class="solo"><b style="font-size:calc(56px*var(--u))">210<i>km</i></b><span>电量 41%</span></div></div>
+      </div>
+    </div>
+    <div class="voice idle">
+      <div class="orbwrap"><div class="orb"></div></div>
+      <div class="sub"><div class="tx">说「你好」开始对话</div></div>
+    </div>
+  </div></div>
+
+  <div class="sec"><b>④ 场景 C · 选择 · 确认 · 拒绝 · 生成式</b><span>待选卡描边呼吸 + 倒计时走条；横幅从上方滑入</span></div>
+  <div class="frame"><div class="stage">
+    <div class="statusbar">
+      <span class="clock">09:15</span>
+      <span class="amb"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/></svg>晴 · 车外 <b>18</b>°C</span>
+      <span class="sp"></span>
+      <span class="pill drive">D 挡 · <b>72</b> km/h</span>
+      <span class="batt"><span class="cell"><i style="width:83%"></i></span><b>83</b>%</span>
+    </div>
+    <div class="banner">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+      <div class="tx"><b>行驶中不能播放视频</b><span>已为你切到这个视频的音频轨，停车后说「看视频」可以切回画面</span></div>
+    </div>
+    <div class="desk">
+      <div class="card s-panel await" style="--ac:var(--pick-fg);--acbg:var(--pick-bg);--acgr:var(--pick-gr)">
+        <div class="hd"><span class="ic solidg" style="box-shadow:0 4px 12px rgba(67,56,202,.3)"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span><h3>附近充电站</h3><span class="tail">按距离排序</span></div>
+        <div class="bd">
+          <ul class="list two">
+            <li><div class="tx"><b>国贸充电站</b><small>快充 12 桩 · 空闲 8</small></div><span class="rt">1.2 km</span></li>
+            <li><div class="tx"><b>特来电·武侯</b><small>快充 8 桩 · 空闲 2</small></div><span class="rt">2.6 km</span></li>
+            <li><div class="tx"><b>星星充电·中海</b><small>慢充 20 桩 · 空闲 15</small></div><span class="rt">3.1 km</span></li>
+            <li><div class="tx"><b>小鹏超充·天府</b><small>超充 6 桩 · 空闲 4</small></div><span class="rt">4.4 km</span></li>
+            <li><div class="tx"><b>蔚来换电·锦江</b><small>换电站 · 空闲 3</small></div><span class="rt">5.0 km</span></li>
+            <li><div class="tx"><b>国家电网·高新</b><small>快充 10 桩 · 空闲 6</small></div><span class="rt">5.8 km</span></li>
+          </ul>
+          <div class="more">还有 6 个更远的没显示</div>
+        </div>
+        <div class="cd"><i></i></div>
+      </div>
+
+      <div class="card s-card">
+        <div class="hd"><span class="ic solidg"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .9-1 1.6v.3"/><path d="M12 17h.01"/></svg></span><h3>需要确认</h3></div>
+        <div class="bd split">
+          <div class="lead" style="font-size:calc(46px*var(--u))">要把主驾车门<br>解锁吗？</div>
+          <div class="opts"><span class="opt pri"><s>1</s>确认</span><span class="opt"><s>2</s>取消</span></div>
+        </div>
+      </div>
+
+      <div class="card s-wide canvas" style="--ac:var(--media-fg);--acbg:var(--media-bg);--acgr:var(--media-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.2 15.2 19 17.4l2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></span><h3>本周充电花费</h3><span class="tail">生成式</span></div>
+        <div class="bd"><div class="genwrap">
+          <svg width="100%" height="100%" viewBox="0 0 620 210" preserveAspectRatio="none">
+            <defs><linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#DDD6FE"/><stop offset="1" stop-color="#EDE9FE"/></linearGradient>
+              <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#6D28D9"/></linearGradient></defs>
+            <g font-family="PingFang SC" font-size="17" fill="#94A3B8"><text x="0" y="14">单位：元</text><text x="530" y="14">共 ¥248</text></g>
+            <g fill="url(#bg1)">
+              <rect x="10" y="100" width="58" height="80" rx="9"/><rect x="98" y="126" width="58" height="54" rx="9"/>
+              <rect x="186" y="62" width="58" height="118" rx="9"/><rect x="274" y="148" width="58" height="32" rx="9"/>
+              <rect x="362" y="88" width="58" height="92" rx="9"/><rect x="450" y="116" width="58" height="64" rx="9"/></g>
+            <rect x="538" y="44" width="58" height="136" rx="9" fill="url(#bg2)"/>
+            <g font-family="PingFang SC" font-size="18" fill="#64748B" text-anchor="middle">
+              <text x="39" y="203">一</text><text x="127" y="203">二</text><text x="215" y="203">三</text>
+              <text x="303" y="203">四</text><text x="391" y="203">五</text><text x="479" y="203">六</text>
+              <text x="567" y="203" fill="#6D28D9" font-weight="600">日</text></g>
+          </svg>
+        </div></div>
+      </div>
+
+      <div class="card s-bar accentbar tone-danger" style="--ac:var(--danger-fg);--acbg:var(--danger-bg);--acgr:var(--danger-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m6.4 6.4 11.2 11.2"/></svg></span><h3>做不到</h3></div>
+        <div class="bd">
+          <div class="body">这车不会自己记住偏好，下次还得你说一声</div>
+          <div class="sug">→ 可以把它存成常用设置，用一句话调出来</div>
+        </div>
+      </div>
+
+      <div class="card s-chip accentbar tone-ok" style="--ac:var(--ok-fg);--acbg:var(--ok-bg);--acgr:var(--ok-gr)">
+        <div class="hd"><span class="ic"><svg viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></svg></span><h3>已执行</h3></div>
+        <div class="bd"><div class="solo"><span>音量</span><b>30<i>%</i></b></div></div>
+      </div>
+      <div class="slot s-strip"></div>
+    </div>
+    <div class="voice">
+      <div class="orbwrap"><div class="orb"><i></i><i></i><i></i><i></i><i></i></div></div>
+      <div class="sub"><div class="tg"><s></s>待确认</div><div class="tx">屏幕上六个充电站，说个编号就行。</div></div>
+    </div>
+  </div></div>
+
+  <div class="sec"><b>⑤ 档位图鉴</b><span>10 档，每档一种形状；宽度全为偶数列、列起点限偶数 —— 空隙必为偶数宽</span></div>
+  <div class="frame"><div class="stage">
+    <div class="statusbar"><span class="clock">档位图鉴</span><span class="amb">12 列 × 4 行 = 48 单元 · 单元 188.7 × 237 px · gutter 16</span><span class="sp"></span><span class="pill">32 + 16 = 48</span></div>
+    <div class="desk">
+      <div class="gal s-stage"><b>stage</b><span>8 × 4 单元　1621 × 996 px　66.7%</span><small>导航地图 · 视频（旧名 2/3，左锚定）</small></div>
+      <div class="gal s-tower"><b>tower</b><span>4 × 4 单元<br>803 × 996 px<br>33.3%</span><small>全高窄<br>导航旁的播放器</small></div>
+    </div>
+    <div class="voice idle"><div class="orbwrap"><div class="orb"></div></div><div class="sub"><div class="tx">全高档不进降级阶梯 —— 导航与视频的专用档</div></div></div>
+  </div></div>
+  <div class="frame" style="margin-top:16px"><div class="stage">
+    <div class="statusbar"><span class="clock">通栏 / 单行</span><span class="amb">banner 24 + bar×2 + strip×2 + chip×2 = 48</span><span class="sp"></span><span class="pill">24 + 12 + 12 = 48</span></div>
+    <div class="desk">
+      <div class="gal s-banner"><b>banner</b><span>12 × 2 单元　2440 × 490 px　50%（旧名 1/2）</span><small>通栏</small></div>
+      <div class="gal s-bar"><b>bar</b><span>6 × 1　1212 × 237　12.5%</span><small>通栏提示</small></div>
+      <div class="gal s-bar"><b>bar</b><span>6 × 1　12.5%</span><small>新闻标题条</small></div>
+      <div class="gal s-strip"><b>strip</b><span>4 × 1　803 × 237　8.3%</span><small>单行结果</small></div>
+      <div class="gal s-strip"><b>strip</b><span>4 × 1　8.3%</span><small>小转向条</small></div>
+      <div class="gal s-chip"><b>chip</b><span>2 × 1<br>393 × 237<br>4.2%</span><small>最小档</small></div>
+      <div class="gal s-chip"><b>chip</b><span>2 × 1<br>4.2%</span><small>单值反馈</small></div>
+    </div>
+    <div class="voice idle"><div class="orbwrap"><div class="orb"></div></div><div class="sub"><div class="tx">chip 只有屏幕的 4.2% —— 今天最小的卡（1/6）是它的 4 倍</div></div></div>
+  </div></div>
+  <div class="frame" style="margin-top:16px"><div class="stage">
+    <div class="statusbar"><span class="clock">半高档</span><span class="amb">降级阶梯　chip ← strip ← bar ← card ← wide ← panel ← banner（7 档，今天只有 3 档）</span><span class="sp"></span><span class="pill">16 + 8 + 12 + 12 = 48</span></div>
+    <div class="desk">
+      <div class="gal s-panel"><b>panel</b><span>8 × 2 单元　1621 × 490 px　33.3%（旧名 1/3）</span><small>大列表 · 确认卡</small></div>
+      <div class="gal s-card"><b>card</b><span>4 × 2　803 × 490　16.7%</span><small>车控组 · 天气 · 播放器<br>（旧名 1/6，今天的最小档）</small></div>
+      <div class="gal s-wide"><b>wide</b><span>6 × 2 单元　1212 × 490 px　25%</span><small>列表双列 · 大天气</small></div>
+      <div class="gal s-wide"><b>wide</b><span>6 × 2 单元　25%</span><small>生成式卡的默认档</small></div>
+    </div>
+    <div class="voice idle"><div class="orbwrap"><div class="orb"></div></div><div class="sub"><div class="tx">full（12 × 4，整屏覆盖层）不在桌面栅格里</div></div></div>
+  </div></div>
+</div>
+
+<script>
+/* ── 舞台等比缩放 ── */
+const fit = () => document.querySelectorAll('.frame').forEach(f => {
+  const s = f.querySelector('.stage'); if (!s) return
+  s.style.transform = `scale(${f.clientWidth / 2560})`
+})
+addEventListener('resize', fit); fit()
+
+/* ═══════════════════════════════════════════════════════════════
+   动效演示 —— 这段就是将来 src/screen/ 里 FLIP 重排的参考实现
+   ═══════════════════════════════════════════════════════════════ */
+const ICON = {
+  win:'<path d="M4 18V9l4-4h9a3 3 0 0 1 3 3v10"/><path d="M4 13.5h16"/>',
+  ac:'<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>',
+  wx:'<path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A3.7 3.7 0 0 0 6.5 19z"/>',
+  music:'<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+  nav:'<path d="M12 2 4 20l8-4 8 4z"/>',
+  ok:'<path d="m5 13 4 4L19 7"/>',
+}
+const ic = (k, solid) => `<span class="ic${solid?' solidg':''}"><svg viewBox="0 0 24 24">${ICON[k]}</svg></span>`
+const AC = {
+  brand:'--ac:var(--brand-fg);--acbg:var(--brand-bg);--acgr:var(--brand-gr)',
+  info:'--ac:var(--info-fg);--acbg:var(--info-bg);--acgr:var(--info-gr)',
+  media:'--ac:var(--media-fg);--acbg:var(--media-bg);--acgr:var(--media-gr)',
+  ok:'--ac:var(--ok-fg);--acbg:var(--ok-bg);--acgr:var(--ok-gr)',
+}
+const solo = (label, val, unit, trk) =>
+  `<div class="bd"><div class="solo">${label?`<span>${label}</span>`:''}<b>${val}<i>${unit}</i></b>${
+    trk!=null?`<div class="trk"><i style="width:${trk}%"></i></div>`:''}</div></div>`
+
+const NAVHTML = `<div class="navwrap">
+  <div class="turnbar">
+    <div class="arw"><svg viewBox="0 0 48 48" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 40V22a8 8 0 0 1 8-8h12"/><path d="M27 7l9 7-9 7"/></svg></div>
+    <div class="dist"><b>300</b><i>米</i></div><div class="act">右转</div>
+    <div class="road"><span>进入</span><b>天府大道北段</b></div></div>
+  <div class="mapbox"><svg width="100%" height="100%" viewBox="0 0 1600 620" preserveAspectRatio="xMidYMid slice">
+    <rect width="1600" height="620" fill="#EDF2F7"/>
+    <g stroke="#D7DFE8" stroke-width="26" fill="none" stroke-linecap="round">
+      <path d="M-40 180H1640"/><path d="M-40 470H1640"/><path d="M300 -40V660"/><path d="M980 -40V660"/></g>
+    <g fill="#DCE6DE"><rect x="360" y="230" width="240" height="180" rx="18"/><rect x="1040" y="220" width="290" height="200" rx="18"/></g>
+    <path d="M180 560 L180 470 L980 470 L980 180 L1500 180" stroke="#93B8F5" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity=".5"/>
+    <path d="M180 560 L180 470 L980 470 L980 180 L1500 180" stroke="#2563EB" stroke-width="17" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(180 560)"><circle r="30" fill="#2563EB" opacity=".16"/><circle r="15" fill="#2563EB" stroke="#fff" stroke-width="5"/></g>
+    <g transform="translate(1500 180)"><path d="M0 -34c-13 0-23 10-23 23 0 17 23 41 23 41s23-24 23-41c0-13-10-23-23-23z" fill="#DC2626"/><circle cy="-11" r="8" fill="#fff"/></g>
+  </svg></div>
+  <div class="navfoot"><div class="big"><b>28</b><i>分钟</i></div><div class="big"><b>14.2</b><i>公里</i></div>
+    <div class="dest"><span>目的地</span><b>成都远洋太古里</b></div></div></div>`
+
+const PLAYERHTML = `<div class="bd"><div class="plw">
+  <div class="plhead"><div class="art">♪</div>
+    <div class="plm"><b>起风了</b><span>买辣椒也用券</span><span class="src">♪ 音乐</span></div></div>
+  <div class="prg"><span>1:12</span><div class="trk"><i style="width:38%"></i></div><span>3:11</span></div>
+  <div class="ctl">
+    <span class="ic"><svg viewBox="0 0 24 24"><path d="M18 6 8 12l10 6z" fill="currentColor" stroke="none"/><path d="M6 6v12"/></svg></span>
+    <span class="main"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1.4"/><rect x="14" y="5" width="4" height="14" rx="1.4"/></svg></span>
+    <span class="ic"><svg viewBox="0 0 24 24"><path d="M6 6l10 6-10 6z" fill="currentColor" stroke="none"/><path d="M18 6v12"/></svg></span>
+    <span class="ic on"><svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg></span>
+    <span class="vol"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor" stroke="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/></svg><b>40</b></span>
+  </div></div></div>`
+
+const C = {
+  wxCard:{id:'wx', s:'card', ac:AC.info, html:`<div class="hd">${ic('wx')}<h3>成都 · 天气</h3><span class="tail">今天</span></div>
+    <div class="bd"><div class="wxnow"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#0E7490" stroke-width="1.4" stroke-linecap="round">${ICON.wx}</svg>
+      <div class="t"><b>7</b><i>°</i></div><div class="m"><span>多云</span><small>东北风 2 级</small></div></div>
+      <div class="wxcast"><div><span>明天</span><em>晴</em><b>12°/4°</b></div><div><span>周三</span><em>小雨</em><b>9°/3°</b></div><div><span>周四</span><em>阴</em><b>11°/5°</b></div></div></div>`},
+  wxStrip:{id:'wx', s:'strip', ac:AC.info, html:`<div class="hd">${ic('wx')}<h3>成都</h3><span class="tail">多云</span></div>
+    <div class="bd"><div class="wxnow" style="align-items:flex-end"><div class="t"><b style="font-size:72px">7</b><i style="font-size:26px">°</i></div>
+      <div class="m"><small>东北风 2 级</small><small>湿度 64%</small></div></div></div>`},
+  win:{id:'win', s:'chip', html:`<div class="hd">${ic('win')}<h3>主驾车窗</h3></div>${solo('', '60', '%', 60)}`},
+  ac:{id:'ac', s:'chip', html:`<div class="hd">${ic('ac')}<h3>空调</h3></div>${solo('3 档 · 吹面','22','°C')}`},
+  nav:{id:'nav', s:'stage', cls:'nav', html:NAVHTML},
+  player:{id:'pl', s:'card', ac:AC.media, html:`<div class="hd">${ic('music')}<h3>正在播放</h3><span class="tail">列表循环</span></div>${PLAYERHTML}`},
+  done:{id:'dn', s:'chip', ac:AC.ok, cls:'accentbar tone-ok', html:`<div class="hd">${ic('ok')}<h3>已执行</h3></div>${solo('音量','30','%')}`},
+}
+const SCENES = [
+  {n:'桌面为空 —— 无常驻卡，一切按需出现', v:{tag:'聆听中', tx:'成都今天天气怎么样？'}, cards:[]},
+  {n:'① 进场：天气卡从下方浮起（340ms，轻微过冲）', v:{tag:'播报中', tx:'成都今天多云，7 度，东北风 2 级。'}, cards:[C.wxCard]},
+  {n:'① 进场：两张 chip 依次加入，天气卡原地不动', v:{tag:'执行中', tx:'好的，车窗开到 60%，空调 22 度。'}, cards:[C.wxCard, C.win, C.ac]},
+  {n:'②③ 导航 stage 进场 → 天气卡被降档到 strip 并移位（FLIP，380ms）', v:{tag:'播报中', tx:'去太古里，14.2 公里，28 分钟到。'}, cards:[C.nav, C.win, C.ac, C.wxStrip]},
+  {n:'④ 播放器进场，车窗 chip 被 LRU 挤出（退场 220ms）', v:{tag:'播报中', tx:'放一首《起风了》。'}, cards:[C.nav, C.player, C.ac, C.wxStrip]},
+  {n:'⑤ 导航结束 → stage 退场，剩余卡重新排布（全体 FLIP）', v:{tag:'播报中', tx:'到了，太古里到了。'}, cards:[C.player, C.ac, C.wxStrip, C.done]},
+]
+
+const adesk = document.getElementById('adesk')
+const stageEl = document.getElementById('anim')
+const scaleOf = () => stageEl.getBoundingClientRect().width / 2560
+
+function paint(cards){
+  const k = scaleOf()
+  const first = new Map()
+  for (const n of adesk.children) if (n.dataset.id && !n.dataset.out) first.set(n.dataset.id, n.getBoundingClientRect())
+  const keep = new Set(cards.map(c => c.id))
+
+  // 退场：先缩后隐，动画结束才真正移除
+  for (const n of [...adesk.children])
+    if (n.dataset.id && !keep.has(n.dataset.id) && !n.dataset.out){
+      n.dataset.out = '1'
+      n.animate([{opacity:1, transform:'scale(1)'},{opacity:0, transform:'scale(.94)'}],
+        {duration:220, easing:'cubic-bezier(.4,0,1,1)', fill:'forwards'}).onfinish = () => n.remove()
+    }
+
+  // 建 / 更
+  cards.forEach((c, i) => {
+    let n = adesk.querySelector(`[data-id="${c.id}"]:not([data-out])`)
+    const isNew = !n
+    if (isNew){ n = document.createElement('div'); n.dataset.id = c.id; adesk.appendChild(n) }
+    n.className = `card s-${c.s}${c.cls ? ' ' + c.cls : ''}`
+    n.setAttribute('style', c.ac || '')
+    const sig = c.s + '|' + c.html.length
+    if (n.dataset.sig !== sig){ n.innerHTML = c.html; n.dataset.sig = sig }
+    if (isNew) n.animate([{opacity:0, transform:'translateY(20px) scale(.95)'},{opacity:1, transform:'none'}],
+      {duration:340, delay:i*45, easing:'cubic-bezier(.34,1.26,.64,1)', fill:'backwards'})
+  })
+
+  // FLIP：栅格位置/尺寸变了就补一段反向动画（Grid 的 row/column 本身不能 transition）
+  requestAnimationFrame(() => {
+    for (const c of cards){
+      const n = adesk.querySelector(`[data-id="${c.id}"]:not([data-out])`)
+      const f = first.get(c.id); if (!n || !f) continue
+      const l = n.getBoundingClientRect()
+      const dx = (f.left - l.left) / k, dy = (f.top - l.top) / k
+      const sx = f.width / l.width, sy = f.height / l.height
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx-1) < .01 && Math.abs(sy-1) < .01) continue
+      n.animate([{transform:`translate(${dx}px,${dy}px) scale(${sx},${sy})`, transformOrigin:'top left'},
+                 {transform:'none', transformOrigin:'top left'}],
+        {duration:380, easing:'cubic-bezier(.22,.61,.36,1)'})
+    }
+  })
+}
+
+let si = 0
+const step = () => {
+  const s = SCENES[si]
+  document.getElementById('anarr').textContent = s.n
+  document.getElementById('atag').textContent = s.v.tag
+  document.getElementById('atx').textContent = s.v.tx
+  document.getElementById('avoice').className = 'voice' + (s.v.tag === '思考中' ? ' thinking' : '')
+  paint(s.cards)
+  si = (si + 1) % SCENES.length
+}
+step(); setInterval(step, 3400)
+setInterval(() => {
+  const d = new Date()
+  document.getElementById('aclock').textContent =
+    `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}, 1000)
+</script>
+</body>
+</html>

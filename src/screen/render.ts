@@ -6,7 +6,8 @@
  * "模板声明了 items 却静默不画"的 bug 只能靠肉眼发现。
  */
 import { dayLabel } from './turn'
-import { navForm, capForm, weatherForm } from './layout'
+import { capForm, weatherForm, formOf } from './layout'
+import { dimsOf } from '../config/grid'
 
 export const esc = (s: any) =>
   String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
@@ -79,10 +80,12 @@ export function cardBody(c: CardView): string {
     case 'list':
       // 序号是刚需：用户是用语音选的（"第二个"），屏上必须能对上号。
       // maxItems 由形态函数按档位给，这里只负责画
-      return listBody(d.items, { maxItems: d.maxItems, overflow: d.overflow, cols: d.cols })
+      // 放几条由卡片**自己的档位**算，不信 data 里带的数字——
+      // 卡被仲裁改小了 data 不会跟着变，那样就会画出放不下的东西
+      return listBody(d.items, formOf('list', ...dimsOf(c.size)))
     case 'capability': {
       const items = d.items ?? []
-      const form = capForm(c.size)
+      const form = capForm(...dimsOf(c.size))
       // 33 项塞进一格是不可能的，老实报个数
       if (form.mode === 'count')
         return `<div class="capcount"><b>${items.length}</b><span>项能力</span></div>`
@@ -90,17 +93,17 @@ export function cardBody(c: CardView): string {
         `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>`
     }
     case 'weather': {
-      const w = weatherForm(c.size)
+      const w = weatherForm(...dimsOf(c.size))
       // 风力和湿度任一缺失都不该留下孤零零一个分隔点
       const sub = d.now
         ? [d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · ')
         : ''
-      const cast = (d.forecast ?? []).slice(0, w.forecast)
+      const cast = (d.forecast ?? []).slice(0, w.maxItems ?? 0)
       return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
           <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
         </div>` : ''}
-        ${cast.length ? `<div class="wxcast${w.forecastRow ? ' row' : ''}">${cast.map((f: any) => `
+        ${cast.length ? `<div class="wxcast${(w.cols ?? 1) > 1 ? ' row' : ''}">${cast.map((f: any) => `
           <div><span>${esc(dayLabel(f.date))}</span><em>${esc(f.dayWeather)}</em><b>${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°</b></div>`).join('')}</div>` : ''}`
     }
     case 'nav':
@@ -109,10 +112,11 @@ export function cardBody(c: CardView): string {
     default: {
       // 诊断 8：模板声明了 items/actions 却只画 text，静默丢数据。
       // 不修的话模型会因为 generic 不好用而滥用生成式卡
+      const form = formOf('generic', ...dimsOf(c.size))
       const parts: string[] = []
       if (d.text) parts.push(`<div class="sub">${esc(d.text)}</div>`)
       if (d.items?.length)
-        parts.push(`<div class="glist">${d.items.map((i: any) => `
+        parts.push(`<div class="glist">${d.items.slice(0, form.maxItems).map((i: any) => `
           <div class="gi"><span>${esc(i.label ?? i)}</span>${
             i.value !== undefined ? `<b>${esc(i.value)}${i.unit ? `<i>${esc(i.unit)}</i>` : ''}</b>` : ''}</div>`).join('')}</div>`)
       if (d.actions?.length)

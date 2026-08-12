@@ -2,6 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm } from './layout'
+import { dimsOf } from '../config/grid'
 import { cardBody, esc as escR } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
@@ -142,11 +143,11 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
     </div>`
   }
   // 尺寸决定形态：一格宽的地图看不出路，不如把空间让给转向指令
-  const form = navForm(c.size)
+  const form = navForm(...dimsOf(c.size))
   const step = d.steps?.[0]?.instruction as string | undefined
   const turn = step ? parseTurn(step) : undefined
   const bar = node.querySelector('.turnbar') as HTMLElement
-  bar.style.display = turn && form.turnbar ? '' : 'none'
+  bar.style.display = turn && form.blocks.includes('turn') ? '' : 'none'
   if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ''}`
@@ -154,15 +155,15 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
   // 途经点要写出来：语音说了"先去充电站再去太古里"，屏幕只写终点的话用户不知道要绕路
   const via = (d.via ?? []).length ? `<em>经 ${esc((d.via as string[]).join('、'))}</em>` : ''
   const foot = node.querySelector('.navfoot') as HTMLElement
-  foot.style.display = form.foot ? '' : 'none'
+  foot.style.display = form.blocks.includes('foot') ? '' : 'none'
   foot.innerHTML = `
     <div class="navbig"><b>${d.eta ?? '--'}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? '--'}</b><span>公里</span></div>
     <div class="navdest">${via}${esc(d.destination ?? '')}</div>`
 
   const box = node.querySelector('.mapbox') as HTMLElement
-  box.style.display = form.map ? '' : 'none'
-  if (!form.map) { disposeRoute(box); return }   // 小卡不画地图，实例留着会错位还白占 WebGL context
+  box.style.display = form.blocks.includes('map') ? '' : 'none'
+  if (!form.blocks.includes('map')) { disposeRoute(box); return }   // 小卡不画地图，实例留着会错位还白占 WebGL context
   // 还是显示地图但格子变了（2/3 ↔ 1/2）：实例留着，通知它重算视口
   if (node.dataset.mapSize && node.dataset.mapSize !== c.size) resizeRoute(box)
   node.dataset.mapSize = c.size

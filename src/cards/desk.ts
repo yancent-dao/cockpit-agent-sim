@@ -1,4 +1,5 @@
-import { CARD_TEMPLATES, listCapacity } from '../config/cards'
+import { CARD_TEMPLATES } from '../config/cards'
+import { listCapacity, dimsOf } from '../config/grid'
 
 /**
  * 卡片桌面（无APP化）—— 2026-08-10 重设计，见 docs/superpowers/specs/2026-08-10-card-orchestration-design.md
@@ -316,7 +317,7 @@ export function createDesk(clock: () => number = Date.now) {
     for (const c of l.cards) {
       // 优先用卡片自己声明的 moreCount；没声明就按档位容量算
       const total = Array.isArray(c.data?.items) ? c.data.items.length : 0
-      const n = Number(c.data?.moreCount ?? Math.max(0, total - listCapacity(c.size)))
+      const n = Number(c.data?.moreCount ?? Math.max(0, total - listCapacity(...dimsOf(c.size))))
       if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`)
     }
     return lines.join('\n')

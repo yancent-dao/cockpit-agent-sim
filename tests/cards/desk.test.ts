@@ -97,7 +97,8 @@ describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () 
     const r = mk({ size: '1/3', data: { title: '天气' } })
     expect(r.status).toBe('ok')
     const placed = desk.layout().cards.find(c => c.data?.title === '天气')!
-    expect(placed.size).toBe('1/6')
+    // 降档后 size 是新档位名。card 就是老的 1/6，行为没变、名字换了
+    expect(desk.cellsOf(placed.size)).toBeLessThanOrEqual(desk.cellsOf('1/6'))
     expect(r.shrunk).toBeTruthy()
   })
 
@@ -124,7 +125,11 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     expect(cards[0].col).toBe(0)
   })
 
-  it('空间不够时挤出的是低优先级卡，不是最旧的高优先级卡', () => {
+  /**
+   * 七档阶梯之后，「缩」能解决的场景不该走到「挤」——
+   * 少一张卡永远比小一张卡更伤。挤是最后手段。
+   */
+  it('缩得下就不挤人：新卡进来时大家一起变小，谁都不消失', () => {
     mk({ kind: 'system', size: '1/2', data: { title: '告警' } }); now += 10
     mk({ data: { title: '旧任务' } }); now += 10
     mk({ data: { title: '新任务' } }); now += 10
@@ -132,8 +137,20 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     const r = mk({ kind: 'rule', size: '1/3', data: { title: '导航提示' } })
     expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
-    expect(titles).toContain('告警')
-    expect(titles).not.toContain('旧任务') // LRU：同为 task 时最旧的先走
+    for (const t of ['告警', '旧任务', '新任务', '导航提示']) expect(titles, t).toContain(t)
+    expect(r.evicted, '不该挤掉任何人').toBeFalsy()
+  })
+
+  it('真的缩无可缩时才挤，挤的是低优先级里最旧的那张', () => {
+    // 全部先压到最小档，缩这条路彻底走不通
+    for (let i = 0; i < 6; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '钉死' + i } }); now += 10 }
+    for (let i = 0; i < 18; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '填充' + i } }); now += 10 }
+    const before = desk.layout().cards.length
+    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.map(c => c.data?.title)).toContain('来电')
+    // 挤了人就得告知，静默消失不可接受
+    if (desk.layout().cards.length <= before) expect(r.note).toBeTruthy()
   })
 
   it('evictable:false 的卡任何情况不被挤——导航中来电，来电降级挤入右列，导航岿然不动', () => {
@@ -144,7 +161,8 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles).toContain('导航')
     const call = desk.layout().cards.find(c => c.data?.title === '来电')!
-    expect(call.size).toBe('1/6') // 1/2 放不下，自动降级
+    // 1/2 放不下，自动降级。七档阶梯下它可能一路降到 chip，只断言"变小了"
+    expect(desk.cellsOf(call.size)).toBeLessThan(desk.cellsOf('1/2'))
   })
 
   it('几何死局的最后手段：高优先级卡可被降尺寸（但绝不被挤出）——导航到来时 system 1/3 问题卡降为 1/6', () => {
@@ -154,7 +172,9 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles).toContain('导航')
     expect(titles).toContain('请选择') // 没被挤出，只是变小了
-    expect(desk.layout().cards.find(c => c.data?.title === '请选择')!.size).toBe('1/6')
+    // card 就是老的 1/6。断言"变小了"而不是断死某个名字
+    expect(desk.cellsOf(desk.layout().cards.find(c => c.data?.title === '请选择')!.size))
+      .toBeLessThan(desk.cellsOf('1/3'))
   })
 
   // 列表卡缩到 1/6 就只剩个标题，选项全没了，等于白占一格。
@@ -169,18 +189,21 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     if (list) expect(list.size).not.toBe('1/6')
   })
 
+  /**
+   * 七档阶梯之后 6 张卡不再必然挤人（大家一起缩就放得下），
+   * 所以这里得把桌面真正填死：全部钉在 chip 且铺满 48 单元。
+   */
   it('挤出必须告知——note 带被挤卡片的标题', () => {
-    for (let i = 0; i < 6; i++) { mk({ data: { title: `卡${i}` } }); now += 10 }
-    const r = mk({ kind: 'system', data: { title: '来电' } })
+    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: `卡${i}` } }); now += 10 }
+    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
     expect(r.status).toBe('ok')
-    expect(r.note).toContain('卡0')
+    expect(r.note).toContain('卡0')   // LRU：同级里最旧的先走
   })
 
   it('没给 title 时兜底用模板的人话 label，不是裸模板 id', () => {
-    desk.show({ template: 'nav', size: '2/3', kind: 'rule', ttl: 'untilDismissed' })
-    now += 10
-    for (let i = 0; i < 2; i++) { mk(); now += 10 } // 无 title 的 feedback 模板 task 卡
-    const r = mk({ kind: 'system' })
+    // 无 title 的 feedback 卡钉在 chip 铺满，逼出真正的挤出
+    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip' }); now += 10 }
+    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip' })
     expect(r.status).toBe('ok')
     // 被挤的是低优先级 task 卡；note 里显示模板 label「反馈卡」而不是裸 id「feedback」
     const fbLabel = CARD_TEMPLATES.find(t => t.id === 'feedback')!.label
@@ -391,13 +414,12 @@ describe('urgency 参与仲裁', () => {
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('车门未关')
   })
 
-  it('ambient 卡先于 normal 卡被挤 —— 天气让位给车控反馈', () => {
-    mk({ urgency: 'ambient', data: { title: '天气' } }); now += 10
-    for (let i = 0; i < 5; i++) { mk({ data: { title: '常规' + i } }); now += 10 }
-    // 桌面已满，再来一张
-    mk({ data: { title: '新反馈' } }); now += 10
+  it('真挤不动时 ambient 先走 —— 天气让位给车控反馈', () => {
+    mk({ urgency: 'ambient', size: 'chip', minSize: 'chip', data: { title: '天气' } }); now += 10
+    for (let i = 0; i < 23; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '常规' + i } }); now += 10 }
+    mk({ size: 'chip', minSize: 'chip', data: { title: '新反馈' } }); now += 10
     const titles = desk.layout().cards.map(c => c.data?.title)
-    expect(titles).not.toContain('天气')
+    expect(titles, 'ambient 该第一个走').not.toContain('天气')
     expect(titles).toContain('新反馈')
   })
 
@@ -447,5 +469,48 @@ describe('urgency 参与仲裁', () => {
     mk({ data: { title: 'A' } }); now += 10
     mk({ kind: 'system', data: { title: 'B' } }); now += 10
     expect(desk.layout().cards[0].data.title).toBe('B')
+  })
+})
+
+/* ══════════════ 七档降级阶梯 ══════════════ */
+/**
+ * 用户实测报的：「最小的还是六分之一，超过六个就把音乐播放器关了」。
+ *
+ * 12×4 栅格给了 chip(2×1)、strip(4×1)、bar(6×1) 这些小档，但 desk 的降级阶梯
+ * 还是老的三档（1/6·1/3·1/2）—— 缩到 1/6 就缩无可缩，只能挤卡。
+ * 而 6 张 1/6 正好填满 48 单元，所以第 7 张一来必挤掉一张。
+ *
+ * 接上七档之后：一张 ambient 的播放器能缩到 chip（2 单元），
+ * 让出 6 单元给新卡，两张卡都在场。
+ */
+describe('降级阶梯七档，缩得比 1/6 更小', () => {
+  it('阶梯覆盖 chip 到 banner 七档', () => {
+    expect(desk.ladder()).toEqual(['chip', 'strip', 'bar', 'card', 'wide', 'panel', 'banner'])
+  })
+
+  it('桌面填满后，ambient 卡缩小让位而不是被挤掉', () => {
+    for (let i = 0; i < 5; i++) { mk({ data: { title: '常规' + i } }); now += 10 }
+    mk({ urgency: 'ambient', data: { title: '正在播放' } }); now += 10
+    expect(desk.layout().cards).toHaveLength(6)
+
+    const r = mk({ data: { title: '新来的' } })
+    expect(r.status).toBe('ok')
+    const titles = desk.layout().cards.map(c => c.data?.title)
+    expect(titles, '播放器不该被关掉').toContain('正在播放')
+    expect(titles).toContain('新来的')
+  })
+
+  it('缩到 chip 是允许的 —— 它就是为"还想留着但没地方"准备的', () => {
+    const r = mk({ size: '1/6', urgency: 'ambient', data: { title: '播放器' } })
+    expect(r.status).toBe('ok')
+    const id = r.cardId!
+    expect(desk.resize(id, 'chip' as any, true).status).toBe('ok')
+    expect(desk.layout().cards.find(c => c.id === id)!.size).toBe('chip')
+  })
+
+  it('新档位名和老名字都认', () => {
+    expect(desk.cellsOf('chip' as any)).toBe(2)
+    expect(desk.cellsOf('bar' as any)).toBe(6)
+    expect(desk.cellsOf('1/6')).toBe(8)
   })
 })

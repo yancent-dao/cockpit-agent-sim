@@ -89,17 +89,21 @@ describe('卡片调度 Tool', () => {
     expect(r.code).toBe('DATA_SHAPE_MISMATCH')
   })
 
+  /**
+   * 七档阶梯之后 6 张卡不再必然挤人（大家一起缩就放得下），
+   * 要测挤出机制就得把桌面真正填死：全部钉在 chip 且铺满 48 单元。
+   */
   it('挤出时把 note 透传给 Agent，让它能告诉用户', async () => {
-    await show({ data: { title: '搜索结果' } }); now += 10
-    for (let i = 0; i < 5; i++) { await show(); now += 10 }
-    const r = await show({ kind: 'system', data: { title: '来电' } })
+    await show({ size: 'chip', minSize: 'chip', data: { title: '搜索结果' } }); now += 10
+    for (let i = 0; i < 23; i++) { await show({ size: 'chip', minSize: 'chip' }); now += 10 }
+    const r = await show({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     expect(r.message).toContain('搜索结果')
   })
 
   it('桌面满且无可让位时返回 rejected + 可读原因', async () => {
-    for (let i = 0; i < 6; i++) { await show({ kind: 'system' }); now += 10 }
-    const r = await show({ kind: 'task' })
+    for (let i = 0; i < 24; i++) { await show({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
+    const r = await show({ kind: 'task', size: 'chip', minSize: 'chip' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DESKTOP_FULL')
     expect(r.message).toBeTruthy()

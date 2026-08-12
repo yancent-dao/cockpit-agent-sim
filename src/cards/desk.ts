@@ -1,5 +1,5 @@
 import { CARD_TEMPLATES } from '../config/cards'
-import { GRID, listCapacity, dimsOf, cellsOfTier } from '../config/grid'
+import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency } from '../config/priority'
 
 /**
@@ -21,26 +21,52 @@ import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeU
  *   挤出必须告知（note 带人话标题），静默消失不可接受
  */
 
-export type Size = '1/6' | '1/3' | '1/2' | '2/3' | 'full'
+/**
+ * 尺寸。老名字（1/6…）和新档位名（chip / strip / bar / card / wide / panel / banner /
+ * tower / stage / full）都认，内部一律归一到档位名 —— 见 src/config/grid.ts 的 ALIAS。
+ */
+export type Size = '1/6' | '1/3' | '1/2' | '2/3' | 'full' | TierName
 export type Kind = 'task' | 'rule' | 'system'
 export type Ttl = 'untilDismissed' | 'untilTaskEnd' | number
 
 const ROWS = GRID.rows, COLS = GRID.cols
 const shapeOf = (size: string) => { const [w, h] = dimsOf(size); return { w, h } }
-/** 阶梯降尺寸。2/3 不参与——只有规则导航卡用它且不可挤 */
-const LADDER: Size[] = ['1/6', '1/3', '1/2']
+/**
+ * 阶梯降尺寸，七档 —— 出处是 grid.ts，不在这儿抄第二份。
+ *
+ * 之前这里写死了老的三档（1/6·1/3·1/2），缩到 1/6 就缩无可缩。
+ * 而 6 张 1/6 正好填满 48 单元，所以第 7 张卡一来必挤掉一张 ——
+ * 用户看到的现象就是「超过六个就把音乐播放器关了」。
+ * chip(2×1) 这些小档存在的意义正是「还想留着但没那么多地方」。
+ *
+ * tower/stage/full 是专用档不进阶梯：导航卡退成 tower 会变成一条竖缝。
+ */
+const LADDER: Size[] = [...TIER_LADDER]
+/** 阶梯里的位置。老名字先归一，否则 '1/6' 查不到 */
+const rung = (s: Size) => LADDER.indexOf(normalizeTier(s))
 /** 卡片能缩到的最低档；没声明 minSize 就一路缩到 1/6 */
 /**
  * 能缩到的最低档。显式 minSize 优先；没写就按 urgency 兜底 ——
  * critical 缩到只剩一个标题等于没显示。
  */
-const floorIdx = (c: { minSize?: Size; urgency?: Urgency }) => {
-  if (c.minSize) return Math.max(0, LADDER.indexOf(c.minSize))
-  const floor = minTierFor(c.urgency)
-  const bySize = LADDER.findIndex(s => cellsOfTier(s) >= cellsOfTier(floor))
-  return Math.max(0, bySize)
+const floorIdx = (c: { minSize?: Size; urgency?: Urgency; template?: string }) => {
+  const rungs: number[] = [0]
+  // ① 调用方显式声明的下限
+  if (c.minSize) rungs.push(rung(c.minSize))
+  // ② 模板自己的下限：列表类缩到 chip 只剩标题、选项全丢，那一格还不如让给别人
+  const tmpl = c.template ? CARD_TEMPLATES.find(t => t.id === c.template) : undefined
+  if (tmpl?.sizes?.length) {
+    const smallest = tmpl.sizes.reduce((a, b) => (cellsOfTier(a) <= cellsOfTier(b) ? a : b))
+    const i = LADDER.indexOf(normalizeTier(smallest))
+    if (i >= 0) rungs.push(i)
+  }
+  // ③ 紧急度下限：critical 缩到只剩一个标题等于没显示
+  const i2 = LADDER.findIndex(t => cellsOfTier(t) >= cellsOfTier(minTierFor(c.urgency)))
+  if (i2 >= 0) rungs.push(i2)
+  // 三个都是"不能再小"，取最严的那个
+  return Math.max(...rungs)
 }
-const canShrink = (c: { size: Size; minSize?: Size; urgency?: Urgency }) => LADDER.indexOf(c.size) > floorIdx(c)
+const canShrink = (c: { size: Size; minSize?: Size; urgency?: Urgency; template?: string }) => rung(c.size) > floorIdx(c)
 /**
  * 优先级 = kind 权重 + urgency 权重，表在 src/config/priority.ts。
  * kind 描述「谁建的卡」，urgency 描述「这事有多急」—— 两个维度正交。
@@ -227,9 +253,9 @@ export function createDesk(clock: () => number = Date.now) {
       }
       // ② 降一张已有低优先级卡
       const shrinkable = victims().find(canShrink)
-      if (shrinkable) { shrinkable.size = LADDER[LADDER.indexOf(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
+      if (shrinkable) { shrinkable.size = LADDER[rung(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
       // ③ 降新卡自己
-      const selfIdx = LADDER.indexOf(size)
+      const selfIdx = rung(size)
       if (selfIdx > floorIdx(candidate)) { size = LADDER[selfIdx - 1]; continue }
       // ④ LRU 挤出（只挤优先级不高于来者的）
       const victim = victims()[0]
@@ -243,7 +269,9 @@ export function createDesk(clock: () => number = Date.now) {
       // ⑤ 几何死局最后手段：高优先级卡也可降尺寸（如 2/3 导航到来时 system 1/3 放不进右列）
       const highShrinkable = alive().filter(canShrink).sort(byPriorityLRU)[0]
       if (highShrinkable) {
-        highShrinkable.size = LADDER[LADDER.indexOf(highShrinkable.size) - 1]
+        // 必须走 rung()：LADDER 存的是新档位名，直接 indexOf('1/3') 是 -1，
+        // 再减一取到 LADDER[-2] = undefined，卡片的 size 就没了
+        highShrinkable.size = LADDER[rung(highShrinkable.size) - 1]
         shrunk.push(highShrinkable.id)
         continue
       }
@@ -411,6 +439,7 @@ export function createDesk(clock: () => number = Date.now) {
     get: (id: string) => cards.get(id),
     findByKey: (key: string) => [...cards.values()].find(c => c.key === key),
     cellsOf: (s: Size) => cellsOfTier(s),
+    ladder: () => [...LADDER],
     priorityOf: (k: Kind, u?: Urgency) => prioOf(k, u),
     subscribe: (cb: () => void) => { listeners.push(cb); return () => listeners.splice(listeners.indexOf(cb), 1) },
     onNotice: (cb: (n: { note: string; titles: string[] }) => void) => {

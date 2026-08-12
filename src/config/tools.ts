@@ -1,6 +1,13 @@
 import type { Permission, Op, Value } from '../core/types'
 import { TEMPLATE_IDS } from './cards'
 
+/**
+ * Agent 能选的全部档位，从小到大。
+ * 之前这里只写了老的五档，chip/strip/bar/wide 这些小档虽然在栅格里存在，
+ * Agent 却选不到 —— 桌面一满就只能挤卡，用户看到的就是"超过六个就把播放器关了"。
+ */
+const ALL_SIZES = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', '2/3', 'full'] as const
+
 export interface ParamDef {
   type: 'number' | 'string' | 'boolean' | 'enum' | 'array' | 'object'
   values?: string[]
@@ -584,7 +591,14 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       template: { type: 'enum', values: TEMPLATE_IDS, required: true, desc: '卡片模板' },
-      size: { type: 'enum', values: ['1/6', '1/3', '1/2', '2/3', 'full'], required: true, desc: '尺寸：1/6 单格 / 1/3 两格 / 1/2 整行 / 2/3 左侧大方块（地图专用）/ full 全屏（临时征用，关闭后自动还原）。每个模板有自己的可用档位，用不了会告诉你支持哪些。' },
+      size: {
+        type: 'enum', values: [...ALL_SIZES], required: true,
+        desc: '尺寸，从小到大：chip 一个数字（车速、电量这种）/ strip 一行字 / bar 一行字加条进度 / ' +
+          '1/6 基准卡（天气、单条反馈）/ wide 略宽 / 1/3 两格 / 1/2 整行 / ' +
+          '2/3 左侧大方块（地图专用）/ full 全屏（临时征用，关闭后自动还原）。' +
+          '**桌面挤的时候小档位很有用**：一张 chip 只占 1/24 屏，够写清"还在放什么歌"，' +
+          '比整张卡被收起来强。每个模板有自己的可用档位，用不了会告诉你支持哪些。',
+      },
       ttl: { type: 'string', required: true, desc: '生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数' },
       key: { type: 'string', desc: '逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建' },
       data: { type: 'object', desc: '卡片内容，字段取决于模板' },
@@ -612,7 +626,10 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       cardId: { type: 'string', required: true, desc: '卡片 id' },
-      size: { type: 'enum', values: ['1/6', '1/3', '1/2', '2/3'], required: true, desc: '目标尺寸。每张卡只接受自己模板声明过的那几种，改不了的会告诉你支持哪些' },
+      size: {
+        type: 'enum', values: [...ALL_SIZES.filter(z => z !== 'full')], required: true,
+        desc: '目标尺寸（chip 最小 → 2/3 最大）。每张卡只接受自己模板声明过的那几种，改不了的会告诉你支持哪些',
+      },
     },
     handler: 'cardResize',
   },

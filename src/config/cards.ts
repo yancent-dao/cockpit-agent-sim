@@ -18,7 +18,15 @@ export interface FieldSpec {
  * - full 是整屏覆盖层，任意卡都能 full 意味着天气卡能盖住导航
  * 需要它们的模板自己在 sizes 里写出来。
  */
-export const COMMON_SIZES = ['1/6', '1/3', '1/2'] as const
+export const COMMON_SIZES = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2'] as const
+
+/**
+ * 放得下若干条目才有意义的模板，下限设在 `card`（老的 1/6）。
+ *
+ * chip 是 393×237，实测放不下一条带副标题的候选；用户被"第 4 个"点到
+ * 而屏上只有三条就是事故。这靠现有的 `sizes` 机制表达，不新增字段。
+ */
+export const LIST_SIZES = ['1/6', 'wide', '1/3', '1/2'] as const
 
 
 
@@ -57,7 +65,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'control', label: '车控卡', defaultSize: '1/6',
     desc: '通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。',
     fields: { items: { type: 'array', required: true } } },
-  { id: 'confirm', label: '确认卡', defaultSize: '1/3',
+  { id: 'confirm', label: '确认卡', defaultSize: '1/3', sizes: [...LIST_SIZES],
     desc: '二次确认。data: {title, question, options:[string]}',
     fields: { question: { type: 'string', required: true } } },
   { id: 'feedback', label: '反馈卡', defaultSize: '1/6',
@@ -66,7 +74,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'notice', label: '提示/拒绝卡', defaultSize: '1/6',
     desc: '拒绝原因与替代方案。data: {title, text, suggestion}',
     fields: { text: { type: 'string', required: true } } },
-  { id: 'list', label: '列表卡', defaultSize: '1/2',
+  { id: 'list', label: '列表卡', defaultSize: '1/2', sizes: [...LIST_SIZES],
     desc: '搜索结果或候选项。data: {title, items:[{label, sub}]}',
     fields: { items: { type: 'array', required: true } } },
   { id: 'info', label: '信息卡', defaultSize: '1/6',

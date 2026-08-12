@@ -3,6 +3,7 @@ import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
 import { navForm, mediaForm } from './layout'
 import { createBannerQueue, toneOf } from './banner'
+import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { dimsOf, GRID, TIERS } from '../config/grid'
 import { cardBody, tierClass, accentClass } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
@@ -17,7 +18,12 @@ const CN: Record<string, string> = { driver: '主驾', passenger: '副驾', rear
 
 /* ── 等比缩放：设计稿 2560×1440 ── */
 const stage = $('stage')
-const fit = () => { stage.style.transform = `scale(${Math.min(innerWidth / 2560, innerHeight / 1440)})` }
+/** 舞台缩放比。FLIP 要用它换算 —— getBoundingClientRect 给的是缩放后像素 */
+let stageScale = 1
+const fit = () => {
+  stageScale = Math.min(innerWidth / 2560, innerHeight / 1440)
+  stage.style.transform = `scale(${stageScale})`
+}
 addEventListener('resize', fit); fit()
 addEventListener('keydown', e => {
   if (e.key.toLowerCase() === 'f')
@@ -212,6 +218,9 @@ function renderDesk() {
   desk.querySelectorAll('.slot').forEach(el => el.remove())
 
   const occupied: boolean[][] = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false))
+  // FLIP：位置真的变了才记 first rect。车窗过渡每帧调 renderDesk()，
+  // 每帧都跑 FLIP 会打架，卡片抖得像坏掉的
+  const moves: Move[] = []
   for (const c of deskState.cards) {
     seen.add(c.id)
     for (let dr = 0; dr < c.rowSpan; dr++)
@@ -222,6 +231,9 @@ function renderDesk() {
       cardNodes.set(c.id, node)
       desk.appendChild(node)
     }
+    const pos = posKey(c)
+    if (!isNoop(node.dataset.pos, pos)) moves.push({ node, first: node.getBoundingClientRect() })
+    node.dataset.pos = pos
     node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
     node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
     // 档位类给 --u（字号 = 字阶 × --u），语义色类给 --ac 一族。
@@ -266,9 +278,17 @@ function renderDesk() {
     if (!seen.has(id)) {
       // 播放器卡退场意味着 media.playing 变 false，声音得跟着停
       if (node.classList.contains('tpl-media')) player.stop()
-      node.remove(); cardNodes.delete(id)
+      // 退场：先缩到 .94 再淡出，动画结束才真正移除节点。
+      // 直接 remove 的话卡片是"啪"地不见的，用户不知道刚才那儿有过东西
+      cardNodes.delete(id)
+      node.classList.add('leaving')
+      node.addEventListener('animationend', () => node.remove(), { once: true })
+      setTimeout(() => node.remove(), 400)   // 动画被打断（切标签页）时的兜底
     }
   }
+
+  // FLIP 收尾：位置真变了的卡片滑过去，不是瞬移
+  if (moves.length) commitMoves(moves, stageScale)
 
   const ov = $('overlay')
   if (deskState.overlay) {

@@ -48,7 +48,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 语义色晕：右上角一团身份色。7.5% 是上限——再浓就变成"这张卡在报警" */
 .card::after{content:'';position:absolute;right:-70px;top:-70px;width:230px;height:230px;
   border-radius:50%;background:var(--acgr);opacity:.075;pointer-events:none}
-@keyframes cardIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+/* 进场：从下方抬起并放大到位。车机 HMI 一律 ≤400ms */
+@keyframes cardIn{from{opacity:0;transform:translateY(20px) scale(.95)}to{opacity:1;transform:none}}
+/* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
+.card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
+@keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 多张卡同时进场时错峰 45ms，一起弹出来像抽搐 */
+.card:nth-child(2){animation-delay:45ms}
+.card:nth-child(3){animation-delay:90ms}
+.card:nth-child(4){animation-delay:135ms}
+.card:nth-child(5){animation-delay:180ms}
+.card:nth-child(6){animation-delay:225ms}
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
 .card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
@@ -325,15 +335,21 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 /* ══════════ 横幅：第二条通道 ══════════
-   锚定桌面区顶部（跟着状态栏走，不浮在语音区上方空着一块）。
    一次一条排队，按语义色分色 —— 之前拒绝、条件不满足、系统提示、执行完成
-   全是同一个橙色，用户分不出「不让做」和「做完了」。 */
-#banner{position:absolute;left:60px;right:60px;top:120px;z-index:5;display:none;
+   全是同一个橙色，用户分不出「不让做」和「做完了」。
+
+   位置：紧贴语音区上沿，**跟着 --voiceH 走**。
+   放桌面区顶部试过，它会盖住导航卡的转向条 —— 那是导航的命根子，
+   任何临时提示都不该压它。放这里还有个好处：横幅和语音播报是同一类东西
+   （对某个动作的解释），挨着出现读起来是一句话。
+   原来那版硬编码 bottom:328px，语音区一变高就浮空，用 calc 跟住。 */
+#banner{position:absolute;left:60px;right:60px;bottom:calc(var(--voiceH) + 24px);z-index:5;display:none;
   gap:calc(18px*var(--u,1));align-items:flex-start;
   background:var(--acbg);border:2px solid var(--acbd);border-radius:var(--r-m);
-  padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06}
+  padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06;
+  transition:bottom .32s var(--ez,var(--ease))}
 #banner.on{display:flex;animation:bannerIn var(--d3,.34s) var(--ez-pop,var(--ease))}
-@keyframes bannerIn{from{opacity:0;transform:translateY(-24px)}to{opacity:1;transform:none}}
+@keyframes bannerIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
 #banner .bico{flex:none;width:calc(44px*var(--u));height:calc(44px*var(--u));
   border-radius:calc(12px*var(--u));background:var(--acgr);color:#fff;
   display:flex;align-items:center;justify-content:center;font-size:calc(24px*var(--u))}

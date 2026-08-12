@@ -434,7 +434,7 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       cardId: { type: 'string', required: true, desc: '卡片 id' },
-      size: { type: 'enum', values: ['1/6', '1/3', '1/2'], required: true, desc: '目标尺寸' },
+      size: { type: 'enum', values: ['1/6', '1/3', '1/2', '2/3'], required: true, desc: '目标尺寸。每张卡只接受自己模板声明过的那几种，改不了的会告诉你支持哪些' },
     },
     handler: 'cardResize',
   },

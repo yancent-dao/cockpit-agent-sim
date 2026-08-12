@@ -99,7 +99,8 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.update / card.resize / card.focus / card.dismiss', async () => {
-    const id = ((await show()).data as any).cardId
+    // 用车控卡：feedback 只声明了 1/6，resize 到 1/3 现在会被模板校验挡住
+    const id = ((await show({ template: 'control', data: { items: [{ label: '温度', value: 24 }] } })).data as any).cardId
     expect((await reg.invoke('card.update', { cardId: id, data: { title: '新标题' } })).status).toBe('ok')
     expect(desk.get(id)!.data.title).toBe('新标题')
     expect((await reg.invoke('card.resize', { cardId: id, size: '1/3' })).status).toBe('ok')
@@ -107,6 +108,27 @@ describe('卡片调度 Tool', () => {
     expect((await reg.invoke('card.focus', { cardId: id })).status).toBe('ok')
     expect((await reg.invoke('card.dismiss', { cardId: id })).status).toBe('ok')
     expect(desk.layout().cards).toHaveLength(0)
+  })
+
+  /**
+   * 实测："地图小一点" → resize 把只支持 2/3 的导航卡缩成了 1/3，成功；
+   * 再想调回去 → "size 不支持取值 2/3"，卡永久困在 1/3。
+   * card.show 一直有模板尺寸校验，resize 漏了。
+   */
+  it('card.resize 也要认模板声明的尺寸，不能把导航卡缩成 1/3', async () => {
+    // 导航卡由规则驱动，测试里直接建一张
+    const id = desk.show({ template: 'nav', size: '2/3', kind: 'rule',
+      ttl: 'untilDismissed', data: { destination: '春熙路' } }).cardId!
+    const r = await reg.invoke('card.resize', { cardId: id, size: '1/3' })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(r.message).toContain('2/3')
+    expect(desk.get(id)!.size).toBe('2/3')  // 没被改动
+  })
+
+  it('card.resize 的参数枚举得含 2/3，否则连表达都表达不了', async () => {
+    const size = TOOLS.find(t => t.name === 'card.resize')!.params!.size
+    expect(size.values).toContain('2/3')
   })
 
   it('操作不存在的卡片返回可读错误，不抛异常', async () => {

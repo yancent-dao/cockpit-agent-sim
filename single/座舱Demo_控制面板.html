@@ -1068,12 +1068,8 @@ input::placeholder{color:#4A5462}
       /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
       cardShow: (args) => {
         const tmpl = CARD_TEMPLATES.find((t) => t.id === args.template);
-        if (tmpl && !tmpl.sizes.includes(args.size))
-          return {
-            status: "rejected",
-            code: "SIZE_NOT_SUPPORTED",
-            message: `${tmpl.label}不支持 ${args.size} 尺寸，支持：${tmpl.sizes.join("、")}`
-          };
+        const sizeErr = tmpl && checkSize(tmpl, args.size);
+        if (sizeErr) return sizeErr;
         const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false });
         if (shapeErr) return shapeErr;
         return toResult(need().show({
@@ -1092,7 +1088,13 @@ input::placeholder{color:#4A5462}
         if (shapeErr) return shapeErr;
         return toResult(need().update(args.cardId, args.data));
       },
-      cardResize: (args) => toResult(need().resize(args.cardId, args.size)),
+      cardResize: (args) => {
+        const card = need().get(args.cardId);
+        const tmpl = card && CARD_TEMPLATES.find((t) => t.id === card.template);
+        const sizeErr = tmpl && checkSize(tmpl, args.size);
+        if (sizeErr) return sizeErr;
+        return toResult(need().resize(args.cardId, args.size));
+      },
       cardDismiss: (args) => toResult(need().dismiss(args.cardId)),
       cardFocus: (args) => toResult(need().focus(args.cardId)),
       deskLayout: () => {
@@ -1154,6 +1156,11 @@ input::placeholder{color:#4A5462}
       ...r.shrunk && { code: "CARD_SHRUNK" },
       ...r.note && { message: r.note }
     } : { status: "rejected", code: r.code, message: r.message };
+    const checkSize = (tmpl, size) => tmpl.sizes.includes(size) ? null : {
+      status: "rejected",
+      code: "SIZE_NOT_SUPPORTED",
+      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${tmpl.sizes.join("、")}`
+    };
     const checkDataShape = (tmpl, data, opts) => {
       if (!tmpl.fields) return null;
       const isType = (v, t) => t === "array" ? Array.isArray(v) : t === "object" ? typeof v === "object" && v !== null && !Array.isArray(v) : typeof v === t;
@@ -3006,7 +3013,7 @@ ${extras.desktop}`);
       permission: "彩",
       params: {
         cardId: { type: "string", required: true, desc: "卡片 id" },
-        size: { type: "enum", values: ["1/6", "1/3", "1/2"], required: true, desc: "目标尺寸" }
+        size: { type: "enum", values: ["1/6", "1/3", "1/2", "2/3"], required: true, desc: "目标尺寸。每张卡只接受自己模板声明过的那几种，改不了的会告诉你支持哪些" }
       },
       handler: "cardResize"
     },

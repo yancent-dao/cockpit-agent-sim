@@ -88,11 +88,8 @@ export function createRegistry(
     /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
     cardShow: args => {
       const tmpl = CARD_TEMPLATES.find(t => t.id === args.template)
-      if (tmpl && !tmpl.sizes.includes(args.size))
-        return {
-          status: 'rejected', code: 'SIZE_NOT_SUPPORTED',
-          message: `${tmpl.label}不支持 ${args.size} 尺寸，支持：${tmpl.sizes.join('、')}`,
-        }
+      const sizeErr = tmpl && checkSize(tmpl, args.size)
+      if (sizeErr) return sizeErr
       const shapeErr = tmpl && checkDataShape(tmpl, args.data ?? {}, { partial: false })
       if (shapeErr) return shapeErr
       return toResult(need().show({
@@ -107,7 +104,15 @@ export function createRegistry(
       if (shapeErr) return shapeErr
       return toResult(need().update(args.cardId, args.data))
     },
-    cardResize: args => toResult(need().resize(args.cardId, args.size)),
+    cardResize: args => {
+      // 模板声明的尺寸这里也得认。之前只有 cardShow 校验，于是"地图小一点"
+      // 把只支持 2/3 的导航卡缩成了 1/3，再也调不回去
+      const card = need().get(args.cardId)
+      const tmpl = card && CARD_TEMPLATES.find(t => t.id === card.template)
+      const sizeErr = tmpl && checkSize(tmpl, args.size)
+      if (sizeErr) return sizeErr
+      return toResult(need().resize(args.cardId, args.size))
+    },
     cardDismiss: args => toResult(need().dismiss(args.cardId)),
     cardFocus: args => toResult(need().focus(args.cardId)),
     deskLayout: () => {
@@ -170,6 +175,13 @@ export function createRegistry(
           ...(r.shrunk && { code: 'CARD_SHRUNK' }),
           ...(r.note && { message: r.note }) }
       : { status: 'rejected', code: r.code, message: r.message }
+
+  /** 模板只允许它声明过的形状。show 和 resize 共用一份，别再漏一处 */
+  const checkSize = (tmpl: CardTemplate, size: string): ToolResult | null =>
+    tmpl.sizes.includes(size) ? null : {
+      status: 'rejected', code: 'SIZE_NOT_SUPPORTED',
+      message: `${tmpl.label}不支持 ${size} 尺寸，支持：${tmpl.sizes.join('、')}`,
+    }
 
   /**
    * 校验 data 是否匹配模板声明的 fields。没声明 fields（如 generic）就放行。

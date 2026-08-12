@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { flipDelta, posKey, isNoop } from '../../src/screen/flip'
+import { flipDelta, posKey, isNoop, commitMoves } from '../../src/screen/flip'
 
 /**
  * CSS Grid 的 grid-row/grid-column **不能 transition** ——
@@ -92,5 +92,28 @@ describe('只在栅格坐标真变化时触发', () => {
   // 卡刚建出来时没有旧位置，直接播进场动画，不要 FLIP
   it('没有旧位置时算 noop —— 新卡走进场动画不走 FLIP', () => {
     expect(isNoop(undefined, posKey({ row: 0, col: 0, rowSpan: 1, colSpan: 2 }))).toBe(true)
+  })
+})
+
+/**
+ * 坑 ③（实测撞出来的）：transform-origin 必须是 top left。
+ * 默认 center 下 scale 把元素往两边同时撑开，而 dx/dy 是按左上角算的 ——
+ * 两者对不上，1/6 → 1/2 缩放时天气卡直接飞出屏幕右上角。
+ */
+describe('位移和缩放必须锚在同一个点', () => {
+  it('commitMoves 把 transformOrigin 设成 top left', () => {
+    const calls: string[] = []
+    const node = {
+      style: {
+        set transformOrigin(v: string) { calls.push(v) },
+        get transformOrigin() { return calls[calls.length - 1] ?? '' },
+        transition: '', transform: '',
+      },
+      getBoundingClientRect: () => ({ left: 100, top: 50, width: 200, height: 100 }),
+      addEventListener: () => {},
+    } as any
+    ;(globalThis as any).requestAnimationFrame = () => 0
+    commitMoves([{ node, first: { left: 0, top: 0, width: 100, height: 100 } }], 1)
+    expect(calls).toContain('top left')
   })
 })

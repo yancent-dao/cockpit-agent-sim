@@ -61,6 +61,15 @@ export function commitMoves(moves: Move[], scale: number, duration = 380,
   for (const { m, d } of deltas) {
     if (!d.dx && !d.dy && d.sx === 1 && d.sy === 1) continue
     m.node.style.transition = 'none'
+    /**
+     * **坑 ③**：`transform-origin` 必须是 `top left`。
+     *
+     * 默认的 `center` 下，scale 会把元素往两边同时撑开，而 dx/dy 是按
+     * **左上角**算出来的 —— 两者对不上，档位缩放时卡片会整个飞出屏幕。
+     * 实测 1/6 → 1/2 时天气卡直接跑到右上角外面。
+     * 位移和缩放必须锚在同一个点上。
+     */
+    m.node.style.transformOrigin = 'top left'
     m.node.style.transform = `translate(${d.dx}px,${d.dy}px) scale(${d.sx},${d.sy})`
   }
   requestAnimationFrame(() => {
@@ -68,6 +77,8 @@ export function commitMoves(moves: Move[], scale: number, duration = 380,
       if (!m.node.style.transform) continue
       m.node.style.transition = `transform ${duration}ms ${ease}`
       m.node.style.transform = ''
+      // 动画跑完把 origin 也还回去，别留给下一次别的 transform 用
+      m.node.addEventListener('transitionend', () => { m.node.style.transformOrigin = '' }, { once: true })
     }
   })
 }

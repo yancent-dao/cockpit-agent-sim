@@ -559,6 +559,15 @@ export const TOOLS: ToolDef[] = [
     handler: 'videoPlay',
   },
 
+  /* ══════════ 联网搜索 ══════════ */
+  {
+    name: 'web.search',
+    desc: '联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**',
+    permission: '彩',
+    params: { query: { type: 'string', required: true, desc: '要查的问题，一句话说清' } },
+    handler: 'webSearch',
+  },
+
   {
     name: 'card.show',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',

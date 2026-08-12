@@ -10,6 +10,7 @@ import type { Track, ItunesClient } from './itunes'
 import type { Station, RadioClient } from './radio'
 import type { Article, NewsClient } from './news'
 import type { Clip, PexelsClient } from './pexels'
+import type { WebSearchClient } from './websearch'
 
 export interface Favorite {
   source: string
@@ -37,6 +38,7 @@ export interface MediaDeps {
   radio?: () => RadioClient
   news?: () => NewsClient
   pexels?: () => PexelsClient
+  websearch?: () => WebSearchClient
 }
 
 export function createMediaHandlers(store: Store, desk?: () => Desk | undefined, deps: MediaDeps = {}) {
@@ -378,6 +380,20 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         dismissKey('video-candidates')
         return { status: 'ok', data: { playing: cBrief(clip) }, message: `在放${clip.title}` }
       } catch (e) { return cpFail(e, '短视频播放') }
+    },
+
+    /* ══════════ 联网搜索（OpenRouter :online） ══════════ */
+
+    webSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const { answer } = await need('websearch').search(args.query)
+        // 上屏是为了让用户能回看——语音念完就没了，数字和人名尤其记不住
+        desk?.()?.render({
+          key: 'websearch', template: 'generic', size: '1/2', kind: 'task', ttl: 180, refreshTtl: true,
+          data: { title: args.query, text: answer },
+        })
+        return { status: 'ok', data: { answer } }
+      } catch (e) { return cpFail(e, '联网搜索') }
     },
 
     mediaFavorites: (): ToolResult => {

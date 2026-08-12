@@ -5,8 +5,9 @@ import { createItunesClient } from '../integrations/itunes'
 import { createRadioClient } from '../integrations/radio'
 import { createNewsClient } from '../integrations/news'
 import { createPexelsClient } from '../integrations/pexels'
+import { createWebSearch } from '../integrations/websearch'
 import { createAgent } from '../agent/runtime'
-import { createOpenRouter, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
+import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
 import { createDesk } from '../cards/desk'
 import { createOrchestrator } from '../cards/orchestrator'
@@ -32,7 +33,8 @@ if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weathe
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
 const registry = createRegistry(store, TOOLS, Date.now, { desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   news: createNewsClient(fetch.bind(window), () => newsKey),
-  pexels: createPexelsClient(fetch.bind(window), () => pexelsKey) })
+  pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
+  websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)) })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
 createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()

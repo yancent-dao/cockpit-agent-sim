@@ -64,6 +64,30 @@ export const FALLBACK_MODELS: ModelInfo[] = [
  * OpenRouter 适配器。零后端：直接从浏览器调用。
  * Key 由控制面板注入，不写入任何交付文件。
  */
+/**
+ * 带联网能力的单轮问答。给 web.search 用——模型名加 `:online` 后缀，
+ * OpenRouter 会先跑一次搜索（底层 Exa）再让模型作答。
+ *
+ * 独立于主对话：主对话常开 web 插件的话每轮都可能触发计费，而且模型会在
+ * 不需要的时候搜。做成"调用时才发一次"，计费和触发时机都可控。
+ */
+export function createOnlineChat(getKey: () => string, getModel: () => string) {
+  return async (system: string, prompt: string): Promise<string> => {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getKey()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: `${getModel()}:online`,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
+      }),
+    })
+    if (!res.ok) throw new Error(`联网搜索失败 ${res.status}: ${(await res.text()).slice(0, 120)}`)
+    const json = await res.json()
+    // 走 toSpeech：这段会被主 Agent 转述出去，Markdown 和思考标签都是噪音
+    return toSpeech(stripThinking(json.choices?.[0]?.message?.content ?? ''))
+  }
+}
+
 export function createOpenRouter(getKey: () => string, getModel: () => string): LLM {
   const base = 'https://openrouter.ai/api/v1'
 

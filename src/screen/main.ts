@@ -345,9 +345,15 @@ function renderDesk() {
 
   const ov = $('overlay')
   if (deskState.overlay) {
-    ov.className = 'on'
-    ov.innerHTML = `<div class="card tpl-${deskState.overlay.template}">
-      <h3>${esc(deskState.overlay.title)}</h3>${cardBody(deskState.overlay)}</div>`
+    const o = deskState.overlay
+    // 覆盖层有两种：full 档的内容卡，和放不下的 critical 告警。
+    // 视觉要分开——一张全屏能力目录跟一条「车门没关」不该长得一样
+    const alert = o.data?.urgency === 'critical' || (o as any).urgency === 'critical'
+    ov.className = `on${alert ? ' alert' : ''}`
+    // 走跟桌面卡同一套档位类和语义色类，否则 --u 没定义、字号全塌
+    ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass('full')} ${
+      accentClass(o.template, { ...o.data, urgency: alert ? 'critical' : o.data?.urgency })}">
+      <h3>${esc(o.title)}</h3><div class="bd">${cardBody({ ...o, size: 'full' })}</div></div>`
   } else { ov.className = ''; ov.innerHTML = '' }
 
   // 车辆示意图里的车窗

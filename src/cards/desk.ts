@@ -250,7 +250,7 @@ export function createDesk(clock: () => number = Date.now) {
       createdAt: clock(), touchedAt: clock(),
     }
 
-    const toOverlay = () => { // 整屏覆盖：不占栅格，退出还原
+    const toOverlay = (): DeskResult => { // 整屏覆盖：不占栅格，退出还原
       cards.set(id, card)
       overlay = id
       emit()

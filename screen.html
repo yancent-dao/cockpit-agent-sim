@@ -88,7 +88,20 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
   animation:cdrun linear forwards}
 @keyframes cdrun{from{width:100%}to{width:0}}
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
+/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟着 --voiceH 走，
+   跟桌面区同一块地方 —— 语音区不该被盖住，用户还得听得见 Agent 在说什么 */
+#overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
+  display:none;z-index:6;transition:bottom .32s var(--ez,var(--ease))}
+#overlay.on{display:block;animation:cardIn var(--d3,.34s) var(--ez,var(--ease))}
+#overlay .card{height:100%}
+/* alert 态：安全告警要一眼看出跟「一张全屏能力目录」不是一回事 */
 #overlay.alert .card{border:3px solid var(--danger-bd);box-shadow:0 0 0 6px rgba(239,68,68,.12),var(--sh-2)}
+#overlay.alert .card>h3{color:var(--danger-fg)}
+/* 全屏了就该用全屏的字号。照卡片档位渲染的话，一条占满 2560×1044 的安全告警
+   正文只有 55px —— 开着车扫一眼根本读不到 */
+#overlay .card .sub{font-size:calc(var(--t-hero)*var(--u)*.72);line-height:1.25;
+  color:var(--tx-1,var(--text-primary))}
+#overlay .card .sug{font-size:calc(var(--t-lead)*var(--u)*.8)}
 
 /* ── 生成式卡：紫色描边 + 角标 ──
    角标是**诚实标注**：这张卡是临场生成的，跟固定模板不是一回事，

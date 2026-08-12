@@ -1705,7 +1705,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           template: "capability",
           size: "full",
           kind: "task",
-          ttl: 60,
+          ttl: "untilDismissed",
           data: { title: "我能做的事", items }
         });
         return { status: "ok", data: { items } };
@@ -4256,7 +4256,11 @@ ${extras.desktop}`);
           required: true,
           desc: '尺寸，从小到大：chip 一个数字（车速、电量这种）/ strip 一行字 / bar 一行字加条进度 / 1/6 基准卡（天气、单条反馈）/ wide 略宽 / 1/3 两格 / 1/2 整行 / 2/3 左侧大方块（地图专用）/ full 全屏（临时征用，关闭后自动还原）。**桌面挤的时候小档位很有用**：一张 chip 只占 1/24 屏，够写清"还在放什么歌"，比整张卡被收起来强。每个模板有自己的可用档位，用不了会告诉你支持哪些。'
         },
-        ttl: { type: "string", required: true, desc: "生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数" },
+        ttl: {
+          type: "string",
+          required: true,
+          desc: '这张卡该活多久。**默认用 untilDismissed**（一直留着，桌面满了会自动腾位）—— 天气、续航、播放器、执行结果这类"看一眼就知道"的内容都用它，别给它们设秒数，用户还在看的时候卡片自己消失是最招人烦的事。只有**在等用户回应**的卡才设秒数：你问了"要哪个"、"确认吗"，而用户可能压根不打算答 —— 挂在那儿就是一直在问一个他早就跳过的问题。这种给 20~60 秒，问句越短给得越少。另外还有 untilTaskEnd（本轮任务一结束就退，适合中间步骤的临时提示）和 persistent（常驻，几乎用不到）。'
+        },
         key: { type: "string", desc: "逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建" },
         data: { type: "object", desc: "卡片内容，字段取决于模板" },
         kind: { type: "enum", values: ["task", "system"], desc: "卡片类别，默认 task" },
@@ -4364,47 +4368,47 @@ ${extras.desktop}`);
     {
       id: "window-feedback",
       watch: ["cabin.window.*.position"],
-      card: { key: "windows", template: "control", ttl: 30, data: "windowCard" }
+      card: { key: "windows", template: "control", data: "windowCard" }
     },
     {
       id: "climate-feedback",
       watch: ["cabin.climate.*"],
-      card: { key: "climate", template: "control", ttl: 30, data: "climateCard" }
+      card: { key: "climate", template: "control", data: "climateCard" }
     },
     {
       id: "seat-feedback",
       watch: ["seat.*.*"],
-      card: { key: "seats", template: "control", ttl: 30, data: "seatCard" }
+      card: { key: "seats", template: "control", data: "seatCard" }
     },
     {
       id: "steering-feedback",
       watch: ["cabin.steeringWheel.heating"],
-      card: { key: "steering", template: "control", ttl: 30, data: "steeringCard" }
+      card: { key: "steering", template: "control", data: "steeringCard" }
     },
     {
       id: "ambient-feedback",
       watch: ["cabin.ambientLight.*"],
-      card: { key: "ambient", template: "control", ttl: 30, data: "ambientCard" }
+      card: { key: "ambient", template: "control", data: "ambientCard" }
     },
     {
       id: "fragrance-feedback",
       watch: ["cabin.fragrance.*"],
-      card: { key: "fragrance", template: "control", ttl: 30, data: "fragranceCard" }
+      card: { key: "fragrance", template: "control", data: "fragranceCard" }
     },
     {
       id: "light-feedback",
       watch: ["cabin.light.*.state"],
-      card: { key: "lights", template: "control", ttl: 30, data: "lightCard" }
+      card: { key: "lights", template: "control", data: "lightCard" }
     },
     {
       id: "drive-feedback",
       watch: ["vehicle.driveMode", "vehicle.regenLevel", "vehicle.suspensionHeight"],
-      card: { key: "drive", template: "control", ttl: 30, data: "driveCard" }
+      card: { key: "drive", template: "control", data: "driveCard" }
     },
     {
       id: "opening-feedback",
       watch: ["cabin.door.*.isOpen", "cabin.trunk.isOpen", "cabin.chargePort.isOpen"],
-      card: { key: "openings", template: "control", ttl: 30, urgency: "urgent", data: "openingCard" }
+      card: { key: "openings", template: "control", urgency: "urgent", data: "openingCard" }
     }
   ];
   var WIN_POS = ["driver", "passenger", "rearLeft", "rearRight"];

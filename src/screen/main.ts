@@ -93,13 +93,50 @@ const WIN = [
  * 距离 + 动作 + 箭头，好让转向条像真车导航那样一眼可读。
  * 纯展示层的文本解析，不是业务逻辑。
  */
-const player = createPlayer({ report: (event, detail) => bus.send({ type: 'mediaEvent', event, detail } as any) })
+/**
+ * 横幅队列。三条提示同时来时只显示一条、其余排队 —— 队列逻辑在 banner.ts（可测），
+ * 这里只负责把它接到 DOM 上。
+ */
+const BAN_ICON: Record<string, string> = { danger: '⨯', warn: '!', info: 'i', ok: '✓' }
+const banners = createBannerQueue({
+  show: b => {
+    const el = $('banner')
+    $('bnT').textContent = b.title ?? ''
+    // desc 里允许 <code> 标记错误码——这段由平台自己拼，不是模型输出
+    $('bnD').innerHTML = b.text
+    $('bnI').textContent = BAN_ICON[b.tone ?? 'info'] ?? 'i'
+    el.className = `a-${b.tone ?? 'info'} on`
+  },
+  hide: () => { $('banner').classList.remove('on') },
+})
+setInterval(() => banners.tick(), 200)
 
-// 必须在点击的事件处理函数里同步 unlock()，塞进 await 之后就不算用户手势了
-$('unlock').addEventListener('click', () => {
+const player = createPlayer({
+  report: (event, detail) => {
+    bus.send({ type: 'mediaEvent', event, detail } as any)
+    // 被浏览器的自动播放策略拦下来了。这是**唯一**需要用户动手的时刻，
+    // 所以到这一步才说 —— 不必开屏就先摆一张遮罩
+    if (event === 'blocked')
+      banners.push({ title: '声音被浏览器拦住了', text: '在屏幕上点一下就能放出声', tone: 'warn', ttl: 8000 })
+  },
+})
+
+/**
+ * 自动播放解锁。
+ *
+ * **不再用全屏遮罩挡着**——它是演示时第一眼看到的东西，而 95% 的场合
+ * 根本用不到声音。改成：屏幕上任何一次点击都拿来换播放权限（多数演示者
+ * 打开窗口时总会点一下），真被浏览器拦下来时再走横幅说一句。
+ *
+ * 浏览器的自动播放策略是硬的，去掉遮罩不等于问题消失 ——
+ * 区别只是「默认假设有问题」变成「出问题时才说」。
+ *
+ * 必须在事件处理函数里**同步**调用 unlock()，塞进 await 之后就不算用户手势了。
+ */
+addEventListener('pointerdown', () => {
+  if (player.unlocked) return
   player.unlock()
-  $('unlock').classList.add('gone')
-}, { once: true })
+}, { capture: true })
 
 /**
  * 播放器卡。跟导航卡同一个道理——<video> 元素不能跟着文字一起重绘，
@@ -426,23 +463,6 @@ function setSub(text: string | null | undefined, who?: string) {
   el.textContent = text ?? ''
 }
 
-/**
- * 横幅队列。三条提示同时来时只显示一条、其余排队 —— 队列逻辑在 banner.ts（可测），
- * 这里只负责把它接到 DOM 上。
- */
-const BAN_ICON: Record<string, string> = { danger: '⨯', warn: '!', info: 'i', ok: '✓' }
-const banners = createBannerQueue({
-  show: b => {
-    const el = $('banner')
-    $('bnT').textContent = b.title ?? ''
-    // desc 里允许 <code> 标记错误码——这段由平台自己拼，不是模型输出
-    $('bnD').innerHTML = b.text
-    $('bnI').textContent = BAN_ICON[b.tone ?? 'info'] ?? 'i'
-    el.className = `a-${b.tone ?? 'info'} on`
-  },
-  hide: () => { $('banner').classList.remove('on') },
-})
-setInterval(() => banners.tick(), 200)
 
 /**
  * 进度条自更新。读 <audio> 的 currentTime，**不经过 store 也不经过 bus** ——

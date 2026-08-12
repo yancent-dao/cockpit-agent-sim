@@ -86,8 +86,10 @@ export function createRegistry(
           desc: t.desc,
           off: t.requires ? store.signals.find(s => s.alias === t.requires)?.equipped === false : false,
         }))
-      autoCard({ key: 'capabilities', template: 'capability', size: 'full', kind: 'task', ttl: 60,
-        data: { title: '我能做的事', items } })
+      // 能力目录是**内容**不是问题，不该定时消失 —— 用户正对着屏念
+      // "你还会什么"的时候它自己关掉最气人。挤掉它的应该是下一张卡，不是秒表
+      autoCard({ key: 'capabilities', template: 'capability', size: 'full', kind: 'task',
+        ttl: 'untilDismissed', data: { title: '我能做的事', items } })
       return { status: 'ok', data: { items } }
     },
 

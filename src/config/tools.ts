@@ -599,7 +599,18 @@ export const TOOLS: ToolDef[] = [
           '**桌面挤的时候小档位很有用**：一张 chip 只占 1/24 屏，够写清"还在放什么歌"，' +
           '比整张卡被收起来强。每个模板有自己的可用档位，用不了会告诉你支持哪些。',
       },
-      ttl: { type: 'string', required: true, desc: '生命周期：persistent 常驻 / untilDismissed 直到关闭 / untilTaskEnd 本轮任务结束即退 / 数字表示秒数' },
+      ttl: {
+        type: 'string', required: true,
+        desc: '这张卡该活多久。' +
+          '**默认用 untilDismissed**（一直留着，桌面满了会自动腾位）—— 天气、续航、' +
+          '播放器、执行结果这类"看一眼就知道"的内容都用它，别给它们设秒数，' +
+          '用户还在看的时候卡片自己消失是最招人烦的事。' +
+          '只有**在等用户回应**的卡才设秒数：你问了"要哪个"、"确认吗"，' +
+          '而用户可能压根不打算答 —— 挂在那儿就是一直在问一个他早就跳过的问题。' +
+          '这种给 20~60 秒，问句越短给得越少。' +
+          '另外还有 untilTaskEnd（本轮任务一结束就退，适合中间步骤的临时提示）' +
+          '和 persistent（常驻，几乎用不到）。',
+      },
       key: { type: 'string', desc: '逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建' },
       data: { type: 'object', desc: '卡片内容，字段取决于模板' },
       kind: { type: 'enum', values: ['task', 'system'], desc: '卡片类别，默认 task' },

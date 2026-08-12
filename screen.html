@@ -295,12 +295,6 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 
 
 /* ── 自动播放解锁遮罩 ── */
-#unlock{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;
-  background:rgba(238,241,246,.94);backdrop-filter:blur(6px);cursor:pointer}
-#unlock.gone{display:none}
-#unlock div{text-align:center;display:flex;flex-direction:column;gap:12px}
-#unlock b{font-size:44px;font-weight:600}
-#unlock span{font-size:24px;color:var(--text-secondary)}
 
 /* ── 天气：温度当主角 ── */
 .wxnow{display:flex;align-items:center;gap:20px;margin-top:14px}
@@ -428,7 +422,6 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 <div id="conn">等待控制面板连接…（按 F 全屏）</div>
 <!-- 自动播放解锁。浏览器要求页面被交互过才允许出声，而车机屏是被动弹出的窗口，
      不点这一下，第一首歌会被静默拒绝，只在控制台留一句 NotAllowedError -->
-<div id="unlock"><div><b>点击激活声音</b><span>车机屏需要一次点击才能播放音频</span></div></div>
 <script type="module" src="/src/screen/main.ts"></script>
 </body>
 </html>

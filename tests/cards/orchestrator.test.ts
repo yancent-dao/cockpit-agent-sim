@@ -173,7 +173,7 @@ describe('车控事件卡：调什么显示什么，全部规则驱动', () => {
 })
 
 /* ══════════════ 事件卡规则：车窗反馈 ══════════════ */
-describe('车窗事件卡：位置一动就出现，ttl 自动过期', () => {
+describe('车窗事件卡：位置一动就出现，之后一直留着', () => {
   it('车窗位置变化 → 车控卡出现', () => {
     boot()
     store.setDirect('cabin.window.driver.position', 60)
@@ -183,15 +183,33 @@ describe('车窗事件卡：位置一动就出现，ttl 自动过期', () => {
     expect(w.data.items.find((i: any) => i.key === 'driver').value).toBe(60)
   })
 
-  it('活动持续期间寿命被刷新，停止活动 ttl 秒后消失', () => {
+  /**
+   * 2026-08-12 改：车控反馈卡不再 30 秒定时退场。
+   * 演示时最常见的抱怨是「我还没讲到它就没了」，而 30 这个数字本来就是拍的 ——
+   * 瞟一眼车窗开度要 3 秒，讲解一段要 2 分钟，同一个数字伺候不了两种场合。
+   * 桌面满了自然会挤（七档缩放 + LRU），让空间竞争决定谁退场。
+   */
+  it('放着不管也不会自己消失', () => {
     boot()
     store.setDirect('cabin.window.driver.position', 60)
+    now += 10 * 60_000; desk.tick()
+    expect(desk.findByKey('windows'), '十分钟后还在').toBeTruthy()
+  })
+
+  /** refreshTtl 机制本身还在，只是暂时没有规则用它 —— 留着给真会过期的卡 */
+  it('机制还在：给了秒数的卡活动期间刷新寿命，停下才过期', () => {
+    boot()
+    const push = (v: number) => desk.render({
+      key: 'q', template: 'confirm', size: '1/3', ttl: 30, refreshTtl: true,
+      data: { title: '要哪个', question: 'q' + v },
+    })
+    push(1)
     now += 25_000
-    store.setDirect('cabin.window.driver.position', 80) // 再动一下 → 刷新寿命
+    push(2)                    // 再动一下 → 刷新寿命
     now += 25_000; desk.tick()
-    expect(desk.findByKey('windows')).toBeTruthy() // 距上次活动才 25s
+    expect(desk.findByKey('q'), '距上次活动才 25s').toBeTruthy()
     now += 10_000; desk.tick()
-    expect(desk.findByKey('windows')).toBeUndefined() // 35s > 30s ttl
+    expect(desk.findByKey('q'), '35s > 30s').toBeUndefined()
   })
 })
 

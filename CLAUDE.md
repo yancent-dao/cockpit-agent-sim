@@ -6,7 +6,7 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 221 个，必须全绿才算完成）
+- 测试：`npm test`（当前 398 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
 - 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173
@@ -46,7 +46,14 @@
 src/config/    signals · constraints · tools · cards —— 数据，越多越好
 src/core/      State Store · 约束引擎 · 过渡仿真 · 不变量断言    < 800 行（现 242）
 src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流        < 600 行（现 401）
-src/integrations/  三方适配：高德 REST 客户端 + 导航/天气 handler  < 800 行（现 737）
+src/integrations/  三方适配。分两层，预算口径不同：
+               ① 协议客户端 —— **每个 < 200 行**，超了通常是业务逻辑漏进来了
+                  radio 100 · news 93 · itunes 71 · pexels 66 · websearch 49
+                  ⚠ amap 363 **超标**：高德一家提供搜索/路径/天气/行政区/静态图/公交
+                    十几个接口，接口数量本身就比别家高一个量级。要拆的话按接口族
+                    分文件（amap/place.ts、amap/route.ts…），暂时记在这里不装看不见
+               ② handler 层 —— 业务逻辑，行数跟 Tool 数量成正比，按**每 Tool < 40 行**看
+                  mediaHandlers 413 / 17 Tool = 24 · navHandlers 376 / 11 Tool = 34
 src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 399）
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
@@ -61,6 +68,11 @@ agents/        Agent 实例：manifest + 人设
 （注册表、授权、契约、MRTR），写下它时"接三方"这件事整个不在设计里。高德接进来之后
 `src/tools/` 一度到 1098 行，拆开才看清超的全是协议适配——registry.ts 本身 375 行，
 一直在预算内。分开记也逼出一条边界：**平台不该认识高德**，就像它不认识任何具体 Agent。
+
+> 2026-08-11：接媒体域（5 个 CP）时把总量上限拆成了上面那两层口径。
+> 三方数量是业务决定的（产品要接几个 CP），用总量卡它等于用架构预算限制产品范围，
+> 卡错了地方。单个适配的复杂度才是架构问题——超过 200 行通常说明业务逻辑漏进适配层了。
+> handler 层则跟 Tool 数量成正比，用固定行数卡它同样卡错了地方，所以按人均看。
 
 ## 复杂度的三个落点，各有上限
 
@@ -79,6 +91,26 @@ agents/        Agent 实例：manifest + 人设
 - 桌面统一 6 格无分区、无常驻卡、默认为空；导航中导航卡 2/3 左锚定且不可被挤，导航结束自动退场
 - Agent 只为规则覆盖不到的临场内容建卡（候选列表、临时提醒），走同一布局仲裁
 - 业界对标：Generative UI 的 Static 模式 + CarPlay/Android Auto 模板方法论
+
+## 媒体域（2026-08-11，详见 docs/superpowers/specs/2026-08-11-media-domain-design.md）
+
+音乐 · 电台 · 新闻 · 联网搜索 · 短视频，17 个 Tool，**卡片模板新增 0 个**（列表类全部复用 `list`）。
+
+- **传输控制共用，内容源各自**：`media.*`（播放/音量/进度/模式/收藏）不认内容源，
+  `music.* / radio.* / news.* / video.*` 各归各的 CP。对标 MediaSession 与 MPRemoteCommandCenter
+- **播放进度不进 store**。position 每秒变好几次，进信号系统就是每秒重评规则。
+  **状态 vs 遥测**这条界线不划清，以后车速转速电流都会往里挤
+- **bus 双向**，但车机屏只上报设备事实（放完了/放不出来），不上报决定
+- **自动播放要先解锁**：车机屏是被动弹出的窗口，没交互过第一首歌会被静默拒绝
+- 行驶禁播视频走**约束引擎**（`media.videoActive` 专用信号——约束的 target 只匹配路径
+  不看值，打在 `media.source` 上会连音乐一起拦）
+
+CP 全是实测选出来的，几个坑记在设计文档里：iTunes 不支持 CORS 得走 JSONP；
+Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；NewsAPI 的 `country=cn`
+返回 0 条、免费层只对 localhost 开放且禁止部署。
+
+**没有任何个人可注册的免费 CP 能提供华语流行乐完整播放**，iTunes 只给 30 秒。
+做 Demo 脚本时就得知道。
 
 ## 权限分级：黑 / 灰 / 彩
 
@@ -116,8 +148,8 @@ agents/        Agent 实例：manifest + 人设
 
 - **机器人只负责说人话，不做判断**。好不好、对不对由人对着 `tests/pilot/RUBRIC.md` 四维清单评审：
   产品设计 · 用户交互 · 架构 · 界面
-- `tests/pilot/scenarios.ts` 是纯数据，加场景 = 加一条。46 条分 nav/ctrl/chat 三组，
-  可以按组跑（`npm run pilot -- nav`）也可以按 id 跑
+- `tests/pilot/scenarios.ts` 是纯数据，加场景 = 加一条。55 条分 nav/ctrl/chat/media 四组，
+  可以按组跑（`npm run pilot -- nav`）也可以按 id 跑。四组：nav / ctrl / chat / media
 - run.ts 的检测分两级：**硬伤**（DESKTOP_FULL、导航中无导航卡、话术声称"屏幕上有"但桌面空、
   thinking 标签泄漏、让用户"点"屏幕、泄漏模型身份、说"第几个"但屏上没编号……）
   和**提示**（话术偏长这类，需要人看一眼再判断）。混在一起报会让真问题被淹掉

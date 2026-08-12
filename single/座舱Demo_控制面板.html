@@ -150,6 +150,16 @@ input::placeholder{color:#4A5462}
       message: "当前车速 {vehicle.speed}km/h，车窗最多开到 {value}%"
     },
     {
+      // 行车安全，跟"行驶中不能开车门"同一类。放约束引擎而不是 handler 里的 if——
+      // 判据一改（比如允许副驾看），只动这一条数据
+      id: "VIDEO_WHILE_DRIVING",
+      when: ["vehicle.speed", ">", 0],
+      target: "media.videoActive",
+      action: "reject",
+      message: "车在动，视频画面不能开",
+      suggestion: "停稳了再看；想听点东西的话我可以放音乐或者电台"
+    },
+    {
       id: "CHILD_LOCK_ON",
       when: ["cabin.childLock", "==", true],
       target: "cabin.window.rear*.position",
@@ -1025,6 +1035,398 @@ input::placeholder{color:#4A5462}
     };
   }
 
+  // src/integrations/mediaHandlers.ts
+  var NOTHING = {
+    status: "rejected",
+    code: "NOTHING_PLAYING",
+    message: "现在没在放东西",
+    suggestion: "说个歌名或者电台名，我放给你听"
+  };
+  var radioNo = (what) => ({
+    status: "rejected",
+    code: "NOT_APPLICABLE",
+    message: `在放电台，${what}对直播流没用`,
+    suggestion: "想换台的话说个台名，或者让我给你放歌"
+  });
+  function createMediaHandlers(store2, desk2, deps = {}) {
+    const favorites = [];
+    let lastResults = [];
+    let lastStations = [];
+    let lastArticles = [];
+    let lastClips = [];
+    const need = (k) => {
+      const f = deps[k];
+      if (!f) throw new Error(`${k} 能力未装配`);
+      return f();
+    };
+    const cpFail = (e, what) => ({
+      status: "unavailable",
+      code: "CP_ERROR",
+      message: `${what}暂时不可用：${e instanceof Error ? e.message : String(e)}`,
+      suggestion: "稍后再试，或者换个说法"
+    });
+    const noResult = (q) => ({
+      status: "unavailable",
+      code: "NO_RESULT",
+      message: `没搜到「${q}」`,
+      suggestion: "换个歌名或者歌手名试试"
+    });
+    const brief2 = (t) => ({ id: t.id, name: t.name, artist: t.artist, album: t.album, duration: t.duration });
+    const sBrief = (s) => ({ id: s.id, name: s.name, country: s.country, tags: s.tags, bitrate: s.bitrate });
+    const stationSub = (s) => [s.country, s.tags.split(",")[0]].filter(Boolean).join(" · ");
+    const cBrief = (c) => ({ id: c.id, title: c.title, author: c.author, duration: c.duration });
+    const aBrief = (a) => ({ title: a.title, source: a.source, publishedAt: a.publishedAt });
+    const noNews = (q) => ({
+      status: "unavailable",
+      code: "NO_RESULT",
+      message: q ? `没搜到关于「${q}」的新闻` : "这会儿没拿到新闻",
+      suggestion: "换个说法或者换个话题试试"
+    });
+    const showNews = (articles, title) => {
+      lastArticles = articles;
+      desk2?.()?.render({
+        key: "news",
+        template: "list",
+        kind: "task",
+        ttl: 180,
+        refreshTtl: true,
+        data: { title, items: articles.map((a) => ({ label: a.title, sub: a.source })) }
+      });
+    };
+    const noStation = (q) => ({
+      status: "unavailable",
+      code: "NO_RESULT",
+      message: `没找到能放的「${q}」。有些台只提供不加密的流，车机放不了`,
+      suggestion: '换个台名试试，或者说个分类，比如"来个新闻台""放点爵士"'
+    });
+    const dismissKey = (key) => {
+      const d = desk2?.();
+      const c = d?.findByKey(key);
+      if (c) d.dismiss(c.id);
+    };
+    const showTracks = (tracks) => {
+      desk2?.()?.render({
+        key: "music-candidates",
+        template: "list",
+        kind: "task",
+        ttl: 120,
+        refreshTtl: true,
+        data: { title: "搜到这些歌", items: tracks.map((t) => ({ label: t.name, sub: `${t.artist} · ${t.album}` })) }
+      });
+    };
+    const playTrack = (t) => {
+      store2.set("media.source", "music");
+      store2.set("media.track", t.name);
+      store2.set("media.artist", t.artist);
+      store2.set("media.artwork", t.artwork);
+      store2.set("media.streamUrl", t.preview);
+      store2.set("media.playing", true);
+    };
+    const nowPlaying = () => store2.get("media.source") === "none" || !store2.get("media.track") ? null : {
+      source: String(store2.get("media.source")),
+      track: String(store2.get("media.track")),
+      artist: String(store2.get("media.artist")),
+      streamUrl: String(store2.get("media.streamUrl")),
+      artwork: String(store2.get("media.artwork"))
+    };
+    return {
+      mediaControl: (args) => {
+        const cur = nowPlaying();
+        if (!cur) return NOTHING;
+        switch (args.action) {
+          case "play":
+            store2.set("media.playing", true);
+            return { status: "ok", data: { playing: true }, changed: ["media.playing"] };
+          case "pause":
+            store2.set("media.playing", false);
+            return { status: "ok", data: { playing: false }, changed: ["media.playing"] };
+          case "stop":
+            for (const [k, v] of [
+              ["media.playing", false],
+              ["media.source", "none"],
+              ["media.streamUrl", ""],
+              ["media.track", ""],
+              ["media.artist", ""],
+              ["media.artwork", ""],
+              ["media.videoActive", false]
+            ])
+              store2.set(k, v);
+            return { status: "ok", data: { stopped: true } };
+          case "next":
+          case "prev":
+            if (cur.source === "radio") return radioNo("切上下首");
+            return {
+              status: "unavailable",
+              code: "NO_QUEUE",
+              message: "还没有播放列表，一次只放一首",
+              suggestion: "直接说下一首想听什么"
+            };
+          default:
+            return { status: "rejected", code: "INVALID_PARAMS", message: `不认识的动作 ${args.action}` };
+        }
+      },
+      mediaVolume: (args) => {
+        const cur = Number(store2.get("media.volume"));
+        const next = Math.max(0, Math.min(
+          100,
+          args.level !== void 0 ? Number(args.level) : cur + Number(args.delta ?? 0)
+        ));
+        store2.set("media.volume", next);
+        return { status: "ok", data: { volume: next }, changed: ["media.volume"] };
+      },
+      mediaSeek: (args) => {
+        const cur = nowPlaying();
+        if (!cur) return NOTHING;
+        if (cur.source === "radio") return radioNo("快进快退");
+        return {
+          status: "ok",
+          data: { seek: args.position !== void 0 ? { to: args.position } : { by: args.delta } },
+          message: "好"
+        };
+      },
+      mediaMode: (args) => {
+        if (store2.get("media.source") === "radio") return radioNo("播放模式");
+        store2.set("media.mode", args.mode);
+        return { status: "ok", data: { mode: args.mode }, changed: ["media.mode"] };
+      },
+      mediaQueue: () => ({
+        status: "unavailable",
+        code: "NO_QUEUE",
+        message: "这台车一次只放一首，没有播放列表",
+        suggestion: "想连着听的话，说个歌手或者风格，我一首一首放"
+      }),
+      mediaFavorite: () => {
+        const cur = nowPlaying();
+        if (!cur) return NOTHING;
+        if (favorites.some((f) => f.streamUrl === cur.streamUrl))
+          return { status: "ok", data: { already: true }, message: `${cur.track} 已经在收藏里了` };
+        favorites.push(cur);
+        return { status: "ok", data: { saved: cur }, message: `收藏了 ${cur.track}` };
+      },
+      /* ══════════ 音乐（iTunes） ══════════ */
+      musicSearch: async (args) => {
+        try {
+          const tracks = await need("itunes").search(args.query, args.limit ?? 8);
+          if (!tracks.length) return noResult(args.query);
+          lastResults = tracks;
+          showTracks(tracks);
+          return { status: "ok", data: { tracks: tracks.map(brief2) } };
+        } catch (e) {
+          return cpFail(e, "音乐搜索");
+        }
+      },
+      musicPlay: async (args) => {
+        try {
+          let track = args.trackId ? lastResults.find((t) => t.id === Number(args.trackId)) : void 0;
+          if (!track) {
+            const q = args.query ?? String(args.trackId ?? "");
+            const found = await need("itunes").search(q, 5);
+            if (!found.length) return noResult(q);
+            lastResults = found;
+            track = found[0];
+          }
+          playTrack(track);
+          dismissKey("music-candidates");
+          return {
+            status: "ok",
+            data: { playing: brief2(track) },
+            // 只有 30 秒是 iTunes 的硬限制。不在返回里说清楚，Agent 会以为能放整首
+            message: `在放${track.name}（${track.artist}）。iTunes 只提供 30 秒预览，放完就停`
+          };
+        } catch (e) {
+          return cpFail(e, "音乐播放");
+        }
+      },
+      /* ══════════ 电台（Radio Browser） ══════════ */
+      radioSearch: async (args) => {
+        try {
+          const stations = await need("radio").search({
+            name: args.query,
+            tag: args.category,
+            country: args.country,
+            language: args.language,
+            limit: args.limit ?? 10
+          });
+          if (!stations.length) return noStation(args.query ?? args.category ?? "");
+          lastStations = stations;
+          desk2?.()?.render({
+            key: "radio-candidates",
+            template: "list",
+            kind: "task",
+            ttl: 120,
+            refreshTtl: true,
+            data: {
+              title: "搜到这些台",
+              items: stations.map((s) => ({ label: s.name, sub: stationSub(s) }))
+            }
+          });
+          return { status: "ok", data: { stations: stations.map(sBrief) } };
+        } catch (e) {
+          return cpFail(e, "电台搜索");
+        }
+      },
+      radioPlay: async (args) => {
+        try {
+          let st = args.stationId ? lastStations.find((s) => s.id === args.stationId) : void 0;
+          if (!st) {
+            const q = args.query ?? String(args.stationId ?? "");
+            const found = await need("radio").search({ name: q, limit: 5 });
+            if (!found.length) return noStation(q);
+            lastStations = found;
+            st = found[0];
+          }
+          store2.set("media.source", "radio");
+          store2.set("media.track", st.name);
+          store2.set("media.artist", stationSub(st));
+          store2.set("media.artwork", st.favicon);
+          store2.set("media.streamUrl", st.url);
+          store2.set("media.playing", true);
+          dismissKey("radio-candidates");
+          return { status: "ok", data: { playing: sBrief(st) }, message: `在放 ${st.name}` };
+        } catch (e) {
+          return cpFail(e, "电台播放");
+        }
+      },
+      /* ══════════ 新闻（NewsAPI） ══════════ */
+      newsHeadlines: async (args) => {
+        try {
+          const lang = args.language ?? "zh";
+          const { articles, real } = await need("news").headlines(args.category ?? "general", lang);
+          if (!articles.length) return noNews();
+          showNews(articles, real ? "今日头条" : "今天的新闻");
+          return {
+            status: "ok",
+            data: { real, articles: articles.map(aBrief) },
+            // real=false 时必须说清楚，否则 Agent 会张口就是"这是今天的头条"
+            message: real ? void 0 : '这不是编辑推荐的头条，是按关键词搜出来、按时间排的最新几条，播报时别说"头条"'
+          };
+        } catch (e) {
+          return cpFail(e, "新闻");
+        }
+      },
+      newsSearch: async (args) => {
+        try {
+          const articles = await need("news").search(args.query, args.language ?? "zh");
+          if (!articles.length) return noNews(args.query);
+          showNews(articles, `关于「${args.query}」`);
+          return { status: "ok", data: { articles: articles.map(aBrief) } };
+        } catch (e) {
+          return cpFail(e, "新闻搜索");
+        }
+      },
+      newsRead: (args) => {
+        if (!lastArticles.length)
+          return {
+            status: "rejected",
+            code: "NO_LIST",
+            message: "还没列过新闻",
+            suggestion: "先说想看哪方面的新闻，我列出来再读给你听"
+          };
+        const i = Number(args.index ?? 1);
+        const a = lastArticles[i - 1];
+        if (!a)
+          return {
+            status: "rejected",
+            code: "OUT_OF_RANGE",
+            message: `只有 ${lastArticles.length} 条`,
+            suggestion: `说 1 到 ${lastArticles.length} 之间的序号`
+          };
+        return {
+          status: "ok",
+          data: {
+            title: a.title,
+            source: a.source,
+            // NewsAPI 免费层只给 200 字正文，摘要往往比它完整，两个都给
+            text: [a.description, a.content].filter(Boolean).join(" ")
+          }
+        };
+      },
+      /* ══════════ 短视频（Pexels） ══════════ */
+      videoSearch: async (args) => {
+        try {
+          const clips = await need("pexels").search(args.query, args.limit ?? 8);
+          if (!clips.length) return noResult(args.query);
+          lastClips = clips;
+          desk2?.()?.render({
+            key: "video-candidates",
+            template: "list",
+            kind: "task",
+            ttl: 120,
+            refreshTtl: true,
+            data: { title: "找到这些视频", items: clips.map((c) => ({ label: c.title, sub: `${c.author} · ${c.duration}秒` })) }
+          });
+          return { status: "ok", data: { clips: clips.map(cBrief) } };
+        } catch (e) {
+          return cpFail(e, "短视频搜索");
+        }
+      },
+      videoPlay: async (args) => {
+        try {
+          let clip = args.videoId ? lastClips.find((c) => c.id === Number(args.videoId)) : void 0;
+          if (!clip) {
+            const q = args.query ?? String(args.videoId ?? "");
+            const found = await need("pexels").search(q, 5);
+            if (!found.length) return noResult(q);
+            lastClips = found;
+            clip = found[0];
+          }
+          const gate = store2.set("media.videoActive", true);
+          if (gate.status !== "ok")
+            return {
+              status: "rejected",
+              code: gate.code ?? "VIDEO_WHILE_DRIVING",
+              message: gate.message ?? "车在动，视频画面不能开",
+              suggestion: gate.suggestion
+            };
+          store2.set("media.source", "video");
+          store2.set("media.track", clip.title);
+          store2.set("media.artist", clip.author);
+          store2.set("media.artwork", clip.cover);
+          store2.set("media.streamUrl", clip.url);
+          store2.set("media.playing", true);
+          dismissKey("video-candidates");
+          return { status: "ok", data: { playing: cBrief(clip) }, message: `在放${clip.title}` };
+        } catch (e) {
+          return cpFail(e, "短视频播放");
+        }
+      },
+      /* ══════════ 联网搜索（OpenRouter :online） ══════════ */
+      webSearch: async (args) => {
+        try {
+          const { answer } = await need("websearch").search(args.query);
+          desk2?.()?.render({
+            key: "websearch",
+            template: "generic",
+            size: "1/2",
+            kind: "task",
+            ttl: 180,
+            refreshTtl: true,
+            data: { title: args.query, text: answer }
+          });
+          return { status: "ok", data: { answer } };
+        } catch (e) {
+          return cpFail(e, "联网搜索");
+        }
+      },
+      mediaFavorites: () => {
+        if (favorites.length)
+          desk2?.()?.render({
+            key: "favorites",
+            template: "list",
+            kind: "task",
+            ttl: 120,
+            refreshTtl: true,
+            data: {
+              title: "我的收藏",
+              items: favorites.map((f) => ({ label: f.track, sub: `${f.artist} · ${SRC_CN[f.source] ?? f.source}` }))
+            }
+          });
+        return { status: "ok", data: { items: favorites } };
+      }
+    };
+  }
+  var SRC_CN = { music: "音乐", radio: "电台", video: "视频" };
+
   // src/tools/registry.ts
   var compare2 = (a, op, b) => op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : op === "<=" ? a <= b : op === "==" ? a === b : a !== b;
   var CONFIRM_TTL = 6e4;
@@ -1129,7 +1531,8 @@ input::placeholder{color:#4A5462}
         };
       },
       /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
-      ...createNavHandlers(store2, () => needAmap(), () => sizedDesk())
+      ...createNavHandlers(store2, () => needAmap(), () => sizedDesk()),
+      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch") })
     };
     const sizedDesk = () => {
       const d = deps.desk;
@@ -1154,6 +1557,11 @@ input::placeholder{color:#4A5462}
         sizedDesk()?.render(input);
       } catch {
       }
+    };
+    const needCp = (k) => {
+      const c = deps[k];
+      if (!c) throw new Error(`${k} 能力未装配：createRegistry 缺少 ${k}`);
+      return c;
     };
     const needAmap = () => {
       if (!deps.amap) throw new Error("高德能力未装配：createRegistry 缺少 amap");
@@ -1336,6 +1744,229 @@ input::placeholder{color:#4A5462}
     return { list, schemas, invoke, permissionOf, canonicalName, tools };
   }
 
+  // src/integrations/itunes.ts
+  var ItunesError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var browserJsonp = (url, cbParam) => new Promise((resolve, reject) => {
+    const name = `__itunes_cb_${Math.floor(performance.now() * 1e3)}`;
+    const el = document.createElement("script");
+    const done = (fn) => {
+      delete window[name];
+      el.remove();
+      clearTimeout(timer);
+      fn();
+    };
+    const timer = setTimeout(() => done(() => reject(new ItunesError("iTunes 没有响应", "TIMEOUT"))), 8e3);
+    window[name] = (data) => done(() => resolve(data));
+    el.onerror = () => done(() => reject(new ItunesError("iTunes 连不上", "NETWORK")));
+    el.src = `${url}&${cbParam}=${name}`;
+    document.head.appendChild(el);
+  });
+  var toTrack = (r) => ({
+    id: r.trackId,
+    name: r.trackName,
+    artist: r.artistName,
+    album: r.collectionName ?? "",
+    // 100x100 太糊，换成 300——URL 里是尺寸约定，官方一直这么用
+    artwork: String(r.artworkUrl100 ?? "").replace("100x100", "300x300"),
+    preview: r.previewUrl ?? "",
+    duration: Math.round((r.trackTimeMillis ?? 0) / 1e3)
+  });
+  function createItunesClient(jsonp = browserJsonp) {
+    const search = async (term, limit = 8, country = "CN") => {
+      const q = new URLSearchParams({ term, media: "music", entity: "song", limit: String(limit), country });
+      const json = await jsonp(`https://itunes.apple.com/search?${q}`, "callback");
+      return (json?.results ?? []).map(toTrack).filter((t) => t.preview);
+    };
+    return { search };
+  }
+
+  // src/integrations/radio.ts
+  var RadioError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var NODES = [
+    "https://de1.api.radio-browser.info/json",
+    "https://de2.api.radio-browser.info/json",
+    "https://nl1.api.radio-browser.info/json",
+    "https://at1.api.radio-browser.info/json"
+  ];
+  function createRadioClient(fetcher) {
+    let preferred = 0;
+    async function viaNodes(path) {
+      const order = [...NODES.slice(preferred), ...NODES.slice(0, preferred)];
+      let last;
+      for (const base of order) {
+        try {
+          const res = await fetcher(base + path);
+          if (!res.ok) {
+            last = new RadioError("节点没响应");
+            continue;
+          }
+          preferred = NODES.indexOf(base);
+          return await res.json();
+        } catch (e) {
+          last = e;
+        }
+      }
+      throw new RadioError(
+        `电台服务连不上了（试了 ${NODES.length} 个节点）：${last instanceof Error ? last.message : ""}`,
+        "ALL_NODES_DOWN"
+      );
+    }
+    async function search(q) {
+      const p = new URLSearchParams({
+        limit: String(q.limit ?? 10),
+        hidebroken: "true",
+        // 挂掉的台不要
+        order: "clickcount",
+        // 热度排序，最可能能听的排前面
+        reverse: "true"
+      });
+      for (const k of ["name", "tag", "country", "language"])
+        if (q[k]) p.set(k, q[k]);
+      const list = await viaNodes(`/stations/search?${p}`);
+      return (Array.isArray(list) ? list : []).map((s) => ({
+        id: s.stationuuid,
+        name: s.name?.trim() ?? "",
+        url: s.url_resolved ?? s.url ?? "",
+        country: s.country ?? "",
+        language: s.language ?? "",
+        tags: s.tags ?? "",
+        favicon: s.favicon ?? "",
+        codec: s.codec ?? "",
+        bitrate: Number(s.bitrate ?? 0)
+      })).filter((s) => s.name && s.url.startsWith("https:"));
+    }
+    return { search };
+  }
+
+  // src/integrations/news.ts
+  var NewsError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var ZH_TOPIC = {
+    general: "中国 OR 国际 OR 社会",
+    technology: "科技 OR 人工智能 OR 互联网",
+    business: "经济 OR 市场 OR 财经",
+    sports: "体育 OR 比赛",
+    entertainment: "娱乐 OR 电影 OR 明星",
+    health: "健康 OR 医疗",
+    science: "科学 OR 研究"
+  };
+  var toArticle = (a) => ({
+    title: a.title ?? "",
+    description: a.description ?? "",
+    // content 被 NewsAPI 截断成 200 字并带 "[+1234 chars]" 尾巴，去掉更干净
+    content: String(a.content ?? "").replace(/\s*\[\+\d+\s*chars\]\s*$/, ""),
+    source: a.source?.name ?? "",
+    url: a.url ?? "",
+    image: a.urlToImage ?? "",
+    publishedAt: a.publishedAt ?? ""
+  });
+  function createNewsClient(fetcher, key) {
+    async function get(path, params) {
+      const k = key();
+      if (!k) throw new NewsError("没配新闻服务的 Key", "NO_KEY");
+      const p = new URLSearchParams({ ...params, apiKey: k, pageSize: params.pageSize ?? "8" });
+      const res = await fetcher(`https://newsapi.org/v2/${path}?${p}`);
+      const json = await res.json();
+      if (json.status !== "ok")
+        throw new NewsError(json.message ?? "新闻服务返回异常", json.code ?? "NEWS_ERROR");
+      return json;
+    }
+    return {
+      /** 分类头条。中文降级成关键词搜索并如实标注 */
+      async headlines(category = "general", lang = "zh") {
+        if (lang === "zh") {
+          const json2 = await get("everything", {
+            q: ZH_TOPIC[category] ?? ZH_TOPIC.general,
+            language: "zh",
+            sortBy: "publishedAt"
+          });
+          return { articles: (json2.articles ?? []).map(toArticle), real: false };
+        }
+        const json = await get("top-headlines", { category, language: "en" });
+        return { articles: (json.articles ?? []).map(toArticle), real: true };
+      },
+      async search(query, lang = "zh") {
+        const json = await get("everything", { q: query, language: lang, sortBy: "publishedAt" });
+        return (json.articles ?? []).map(toArticle);
+      }
+    };
+  }
+
+  // src/integrations/pexels.ts
+  var PexelsError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  function createPexelsClient(fetcher, key) {
+    async function search(query, limit = 8) {
+      const k = key();
+      if (!k) throw new PexelsError("没配短视频服务的 Key", "NO_KEY");
+      const p = new URLSearchParams({
+        query,
+        per_page: String(limit),
+        orientation: "portrait",
+        // 竖版更像短视频
+        size: "small"
+      });
+      const res = await fetcher(`https://api.pexels.com/videos/search?${p}`, { headers: { Authorization: k } });
+      if (!res.ok) throw new PexelsError("短视频服务没响应", "HTTP_ERROR");
+      const json = await res.json();
+      return (json.videos ?? []).map((v) => {
+        const file = [...v.video_files ?? []].filter((f) => f.link && /mp4/i.test(f.file_type ?? "mp4")).sort((a, b) => (a.width ?? 0) - (b.width ?? 0))[0];
+        return {
+          id: v.id,
+          // Pexels 没有标题字段，用 url 尾巴凑一个能念的名字
+          title: String(v.url ?? "").replace(/\/$/, "").split("/").pop()?.replace(/-\d+$/, "").replace(/-/g, " ") || "短视频",
+          author: v.user?.name ?? "",
+          duration: Number(v.duration ?? 0),
+          cover: v.image ?? "",
+          url: file?.link ?? "",
+          width: file?.width ?? 0,
+          height: file?.height ?? 0
+        };
+      }).filter((c) => c.url);
+    }
+    return { search };
+  }
+
+  // src/integrations/websearch.ts
+  var WebSearchError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  function createWebSearch(chat) {
+    return {
+      async search(query) {
+        const answer = await chat(
+          // 这是给"搜索模型"的指令，跟主 Agent 的人设无关——
+          // 它的产出会成为主 Agent 的 Tool 返回值，再由主 Agent 转成车里的话
+          '你是搜索助手。用联网结果回答问题，简明扼要，只讲事实。答案会被车载语音助手转述给正在开车的人，所以：不要 Markdown、不要列表符号、不要"根据搜索结果"这类套话，直接给结论。查不到就说查不到。',
+          query
+        );
+        if (!answer.trim()) throw new WebSearchError("没搜到什么", "EMPTY");
+        return { answer: answer.trim() };
+      }
+    };
+  }
+
   // src/agent/context.ts
   var cn = (store2, alias) => {
     const v = store2.get(alias);
@@ -1481,6 +2112,21 @@ ${extras.desktop}`);
     { id: "openai/gpt-5-nano", name: "GPT-5 nano（快）", tools: true, promptPrice: 5e-8 },
     { id: "google/gemini-3.6-flash", name: "Gemini 3.6 Flash（稳）", tools: true, promptPrice: 3e-7 }
   ];
+  function createOnlineChat(getKey, getModel) {
+    return async (system, prompt) => {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getKey()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: `${getModel()}:online`,
+          messages: [{ role: "system", content: system }, { role: "user", content: prompt }]
+        })
+      });
+      if (!res.ok) throw new Error(`联网搜索失败 ${res.status}: ${(await res.text()).slice(0, 120)}`);
+      const json = await res.json();
+      return toSpeech(stripThinking(json.choices?.[0]?.message?.content ?? ""));
+    };
+  }
   function createOpenRouter(getKey, getModel) {
     const base = "https://openrouter.ai/api/v1";
     return {
@@ -2665,6 +3311,24 @@ ${extras.desktop}`);
       permission: "彩",
       initial: ""
     },
+    /**
+     * 视频画面是否开着。跟 media.source='video' 不冗余——
+     * source 是"在放什么"，这个是"画面开着"，真车机里确实是两回事
+     * （行驶中常见的处理是画面关掉、声音继续）。
+     * 单独成信号是为了让"行驶中禁止看视频"能写成一条约束，
+     * 而不是塞进 handler 里的 if——约束引擎的 target 只匹配路径不看值，
+     * 打在 media.source 上会连音乐一起拦掉。
+     */
+    {
+      alias: "media.videoActive",
+      vssPath: "Vehicle.X-Ext.Media.VideoActive",
+      type: "boolean",
+      label: "视频画面",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
     {
       alias: "media.volume",
       vssPath: "Vehicle.Cabin.Infotainment.Media.Volume",
@@ -3094,6 +3758,164 @@ ${extras.desktop}`);
       handler: "ask"
     },
     /* ── 卡片调度（无APP化核心） ── */
+    /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
+    {
+      name: "media.control",
+      desc: '播放控制：继续/暂停/停止/上一首/下一首。跟正在放的是什么无关。注意 play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+      permission: "彩",
+      params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev"], required: true, desc: "动作" } },
+      handler: "mediaControl"
+    },
+    {
+      name: "media.volume",
+      desc: '媒体音量。level 传绝对值（0-100），delta 传增减量（"大声点"用 +10 这种）。超出范围会自动夹住而不是报错。',
+      permission: "彩",
+      params: {
+        level: { type: "number", range: [0, 100], desc: "目标音量" },
+        delta: { type: "number", range: [-100, 100], desc: "相对增减" }
+      },
+      handler: "mediaVolume"
+    },
+    {
+      name: "media.seek",
+      desc: "跳到某个时间点或快进快退。电台是直播流，会返回 rejected。",
+      permission: "彩",
+      params: {
+        position: { type: "number", range: [0, 86400], desc: "目标秒数" },
+        delta: { type: "number", desc: "相对秒数，快退传负数" }
+      },
+      handler: "mediaSeek"
+    },
+    {
+      name: "media.mode",
+      desc: "播放模式：顺序/随机/单曲循环。电台没有播放模式，会返回 rejected。",
+      permission: "彩",
+      params: { mode: { type: "enum", values: ["sequential", "shuffle", "repeatOne"], required: true, desc: "模式" } },
+      handler: "mediaMode"
+    },
+    {
+      name: "media.queue",
+      desc: "看接下来要播什么。这台车一次只放一首，所以基本都会告诉你没有播放列表。",
+      permission: "彩",
+      params: {},
+      handler: "mediaQueue"
+    },
+    {
+      name: "media.favorite",
+      desc: '收藏正在播的内容。歌和电台存在同一份收藏里，用户说"收藏"不用分类型。',
+      permission: "彩",
+      params: {},
+      handler: "mediaFavorite"
+    },
+    {
+      name: "media.favorites",
+      desc: '列出收藏过的内容，列表会自动显示到屏幕上带编号，你说一句"你收藏了几个"就行，别逐条念。',
+      permission: "彩",
+      params: {},
+      handler: "mediaFavorites"
+    },
+    /* ══════════ 音乐（iTunes，30 秒预览） ══════════ */
+    {
+      name: "music.search",
+      desc: '搜歌。可以搜歌名、歌手、专辑。结果自动上屏带编号，你只说一句"搜到几首"就行，别逐条念。**iTunes 只提供 30 秒预览，放不了整首**，这是版权限制，用户问起来就照实说。',
+      permission: "彩",
+      params: {
+        query: { type: "string", required: true, desc: "歌名/歌手/专辑，中英文都行" },
+        limit: { type: "number", range: [1, 20], desc: "最多返回几首，默认 8" }
+      },
+      handler: "musicSearch"
+    },
+    {
+      name: "music.play",
+      desc: '放歌。用户说"放周杰伦的晴天"就直接传 query，不用先 search——搜到会自动播第一首，省一轮。用户从搜索结果里选了第几个，传那一条的 trackId。',
+      permission: "彩",
+      params: {
+        trackId: { type: "number", desc: "music.search 返回的 id" },
+        query: { type: "string", desc: "没有 id 时按关键词现搜现播" }
+      },
+      handler: "musicPlay"
+    },
+    /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
+    {
+      name: "radio.search",
+      desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',
+      permission: "彩",
+      params: {
+        query: { type: "string", desc: '台名，比如"中国之声"' },
+        category: { type: "string", desc: "英文分类 tag，如 news / jazz / pop / classical" },
+        country: { type: "string", desc: "国家英文名，如 China" },
+        language: { type: "string", desc: "语言英文名，如 chinese" },
+        limit: { type: "number", range: [1, 20], desc: "最多返回几个，默认 10" }
+      },
+      handler: "radioSearch"
+    },
+    {
+      name: "radio.play",
+      desc: '放电台。用户说"放中国之声"直接传 query，不用先 search。从搜索结果里选的传 stationId。',
+      permission: "彩",
+      params: {
+        stationId: { type: "string", desc: "radio.search 返回的 id" },
+        query: { type: "string", desc: "没有 id 时按台名现搜现播" }
+      },
+      handler: "radioPlay"
+    },
+    /* ══════════ 新闻（NewsAPI） ══════════ */
+    {
+      name: "news.headlines",
+      desc: '看某个领域的最新新闻。**中文拿不到编辑推荐的头条**（数据源限制），返回的是按关键词搜、按时间排的最新几条，返回里的 real=false 就是这个意思——播报时说"我给你找了今天的科技新闻"，**不要说"这是今天的头条"**。列表自动上屏带编号，你说一句有几条就行，别逐条念标题。',
+      permission: "彩",
+      params: {
+        category: { type: "enum", values: ["general", "technology", "business", "sports", "entertainment", "health", "science"], desc: "领域，默认 general" },
+        language: { type: "enum", values: ["zh", "en"], desc: "语言，默认 zh" }
+      },
+      handler: "newsHeadlines"
+    },
+    {
+      name: "news.search",
+      desc: "按关键词搜新闻。列表自动上屏带编号。",
+      permission: "彩",
+      params: {
+        query: { type: "string", required: true, desc: "关键词" },
+        language: { type: "enum", values: ["zh", "en"], desc: "语言，默认 zh" }
+      },
+      handler: "newsSearch"
+    },
+    {
+      name: "news.read",
+      desc: '把列表里第几条的正文取出来念给用户听——车机场景是听不是看，用户说"读第二条"就用这个。要先调过 headlines 或 search 才有列表。',
+      permission: "彩",
+      params: { index: { type: "number", range: [1, 20], required: true, desc: "第几条，从 1 开始" } },
+      handler: "newsRead"
+    },
+    /* ══════════ 短视频（Pexels） ══════════ */
+    {
+      name: "video.search",
+      desc: "找短视频。素材库风格（风景、城市、动物、美食这类），**不是社交平台的推荐流**，没有点赞评论。用英文关键词命中率高得多。结果自动上屏带编号。",
+      permission: "彩",
+      params: {
+        query: { type: "string", required: true, desc: "关键词，英文命中率更高，如 city drive / cat / cooking" },
+        limit: { type: "number", range: [1, 15], desc: "最多几条，默认 8" }
+      },
+      handler: "videoSearch"
+    },
+    {
+      name: "video.play",
+      desc: '播短视频。**车一动就会被拒**（行车安全），拒绝时把原因和替代方案告诉用户——可以改放音乐或电台。用户说"放个视频"直接传 query 即可。',
+      permission: "彩",
+      params: {
+        videoId: { type: "number", desc: "video.search 返回的 id" },
+        query: { type: "string", desc: "没有 id 时按关键词现搜现播" }
+      },
+      handler: "videoPlay"
+    },
+    /* ══════════ 联网搜索 ══════════ */
+    {
+      name: "web.search",
+      desc: "联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**",
+      permission: "彩",
+      params: { query: { type: "string", required: true, desc: "要查的问题，一句话说清" } },
+      handler: "webSearch"
+    },
     {
       name: "card.show",
       desc: "在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。",
@@ -3444,9 +4266,19 @@ ${extras.desktop}`);
   var store = createStore(SIGNALS, CONSTRAINTS);
   var desk = createDesk();
   var amapWebKey = import_meta.env?.VITE_AMAP_WEB_KEY || "";
+  var newsKey = import_meta.env?.VITE_NEWSAPI_KEY || "";
+  var pexelsKey = import_meta.env?.VITE_PEXELS_KEY || "";
   var amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : void 0;
   if (!amapWebKey) console.warn("未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable");
-  var registry = createRegistry(store, TOOLS, Date.now, { desk, amap });
+  var registry = createRegistry(store, TOOLS, Date.now, {
+    desk,
+    amap,
+    itunes: createItunesClient(),
+    radio: createRadioClient(fetch.bind(window)),
+    news: createNewsClient(fetch.bind(window), () => newsKey),
+    pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
+    websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId))
+  });
   createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start();
   var apiKey = "";
   var modelId = "";

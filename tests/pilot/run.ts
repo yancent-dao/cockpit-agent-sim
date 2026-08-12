@@ -11,7 +11,12 @@ import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createRegistry } from '../../src/tools/registry'
 import { createAmapClient } from '../../src/integrations/amap'
 import { createAgent } from '../../src/agent/runtime'
-import { createOpenRouter } from '../../src/agent/llm'
+import { createOpenRouter, createOnlineChat } from '../../src/agent/llm'
+import { createItunesClient } from '../../src/integrations/itunes'
+import { createRadioClient } from '../../src/integrations/radio'
+import { createNewsClient } from '../../src/integrations/news'
+import { createPexelsClient } from '../../src/integrations/pexels'
+import { createWebSearch } from '../../src/integrations/websearch'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
@@ -36,6 +41,8 @@ loadEnvLocal()
 
 const OPENROUTER_KEY = process.env.VITE_OPENROUTER_KEY ?? ''
 const AMAP_KEY = process.env.VITE_AMAP_WEB_KEY ?? ''
+const NEWS_KEY = process.env.VITE_NEWSAPI_KEY ?? ''
+const PEXELS_KEY = process.env.VITE_PEXELS_KEY ?? ''
 const AGENT_MODEL = process.env.PILOT_AGENT_MODEL ?? 'minimax/minimax-m3'
 const BOT_MODEL = process.env.PILOT_BOT_MODEL ?? 'minimax/minimax-m3'
 
@@ -140,7 +147,16 @@ async function runScenario(s: Scenario) {
   const store = createStore(SIGNALS, CONSTRAINTS)
   const desk = createDesk()
   const amap = AMAP_KEY ? createAmapClient(fetch as any, { webKey: AMAP_KEY }) : undefined
-  const registry = createRegistry(store, TOOLS, Date.now, { desk, amap })
+  const registry = createRegistry(store, TOOLS, Date.now, {
+    desk, amap,
+    // iTunes 走 JSONP（浏览器 script 标签），Node 里没有 document——
+    // 这里用 fetch 直连，它对服务端请求是放行的，只有浏览器才被 CORS 挡
+    itunes: createItunesClient(async url => (await fetch(url)).json()),
+    radio: createRadioClient(fetch as any),
+    ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
+    ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),
+    websearch: createWebSearch(createOnlineChat(() => OPENROUTER_KEY, () => AGENT_MODEL)),
+  })
   createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap } }).start()
 
   // 兜底给个车位置。忘了设的场景会用信号默认值（北京），于是"导航去双流机场"

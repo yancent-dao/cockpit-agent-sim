@@ -119,10 +119,10 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
   if (/<\/?\w*:?think>/.test(reply)) out.push(`话术含思考标签泄漏：「${reply.slice(0, 40)}」`)
   // 语音播报不该有 Markdown
   if (/^\s*[-*#]\s|\*\*/.test(reply)) out.push(`话术含 Markdown 标记（语音场景是噪音）：「${reply.slice(0, 40)}」`)
-  // 车机屏是纯展示，用户在开车只能说话——让用户"点"是骗人
-  // "随你点"（点播）不算，只抓真正指向屏幕操作的说法
-  if (/点一下|点击|点选|按一下|点[这那]个|在屏幕上[点按选]/.test(reply))
-    out.push(`话术让用户点屏幕，但车机屏不可交互：「${reply.slice(0, 40)}」`)
+  // 触控落地（2026-08-12）：屏幕可点选，"点一下也行"不再是硬伤。
+  // 但语音是主通道，**催促**用户去点仍然要看一眼——他可能在开车
+  if (/必须点|只能点|请点击.*才能/.test(reply))
+    out.push(`提示 · 话术在催用户点屏幕（语音才是主通道）：「${reply.slice(0, 40)}」`)
   // 说"你说第几个"就得真有编号可数。实测出现过问是非题却让用户报序号
   if (/第几个|说编号|报个号/.test(reply)
       && !layout.cards.some((c: any) => (c.data?.items?.length ?? c.data?.options?.length ?? 0) >= 2)

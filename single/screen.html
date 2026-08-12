@@ -13,7 +13,7 @@
   --r-sm:12px;--r-md:20px;--r-lg:32px;--ease:cubic-bezier(.4,0,.2,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
+html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
 #vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
@@ -64,7 +64,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 诊断 1：内容缩在左上角，下半张脸空着。
    .bd 认领全部剩余高度，主数值贴底 —— 空白被推到标题与数据之间，而不是堆在底部。 */
 .bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
-  gap:calc(8px*var(--u))}
+  gap:calc(8px*var(--u));overflow-y:auto;overscroll-behavior:contain}
+/* 可点目标的按压反馈。车规命中目标 ≥96px（stage 像素） */
+[data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
+[data-act]:active{transform:scale(.94);opacity:.75}
+.plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
+.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:calc(16px*var(--u));
+  display:flex;align-items:center;justify-content:center;font-size:calc(var(--t-lead)*var(--u));
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac)}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -177,7 +184,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* ── 候选列表：序号让语音选择（"第一个"）和屏幕对得上号 ── */
 .listcard{list-style:none;counter-reset:pick;margin:0;padding:0;
   display:grid;gap:calc(7px*var(--u));align-content:start;grid-auto-rows:max-content}
-/* 屏幕 cursor:none 滚不动 —— 列表一律截断，绝不留 overflow:auto */
+/* 触控后卡内可滚（.bd overflow:auto），但截断与"还有 N 条"保留——
+   滚动位置模型看不见，模型的世界观仍以 summary 的可见条数为准 */
 .listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
 .listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
 .listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(12px*var(--u));
@@ -996,6 +1004,18 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     });
   }
 
+  // src/screen/gestures.ts
+  var TAP_SLOP = 10;
+  var SWIPE_MIN = 80;
+  var TAP_MAX_MS = 800;
+  function classifyGesture(m) {
+    const ax = Math.abs(m.dx), ay = Math.abs(m.dy);
+    if (ax < TAP_SLOP && ay < TAP_SLOP) return m.dt <= TAP_MAX_MS ? "tap" : null;
+    if (ax >= SWIPE_MIN && ax > ay * 2) return "swipe-x";
+    if (ay >= TAP_SLOP * 3) return "scroll";
+    return null;
+  }
+
   // src/screen/sanitize.ts
   var DROP_WITH_CONTENT = /* @__PURE__ */ new Set([
     "script",
@@ -1310,8 +1330,8 @@ ${BRIDGE}
     if (opts.overflow === "count" || max <= 0)
       return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`;
     const { shown, rest } = truncate(all, max);
-    return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i) => `
-    <li><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
+    return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i, n) => `
+    <li data-act="tap:item" data-value="${esc2(`第${n + 1}个：${i.label ?? i}`)}"><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
   var tierClass = (size) => `t-${normalizeTier(size)}`;
   var ACCENT = {
@@ -1357,7 +1377,7 @@ ${BRIDGE}
         return blocksBody((d.items ?? []).slice(0, form.maxItems).map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols });
       }
       case "confirm":
-        return `<div class="sub">${esc2(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o) => `<li><b>${esc2(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
+        return `<div class="sub">${esc2(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o, n) => `<li data-act="tap:item" data-value="${esc2(`第${n + 1}个：${o}`)}"><b>${esc2(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
       case "notice":
         return `<div class="sub">${esc2(d.text)}</div>${d.suggestion ? `<div class="sug">${esc2(d.suggestion)}</div>` : ""}`;
       case "list":
@@ -1676,6 +1696,31 @@ ${BRIDGE}
     if (player.unlocked) return;
     player.unlock();
   }, { capture: true });
+  var gStart = null;
+  addEventListener("pointerdown", (e) => {
+    const card = e.target.closest?.(".card");
+    gStart = { x: e.clientX, y: e.clientY, t: Date.now(), card, target: e.target };
+  });
+  addEventListener("pointerup", (e) => {
+    if (!gStart) return;
+    const s0 = gStart;
+    gStart = null;
+    const g = classifyGesture({
+      dx: (e.clientX - s0.x) / stageScale,
+      dy: (e.clientY - s0.y) / stageScale,
+      dt: Date.now() - s0.t
+    });
+    if (!g || !s0.card) return;
+    const cardId = [...cardNodes.entries()].find(([, n]) => n === s0.card)?.[0];
+    if (!cardId) return;
+    if (g === "tap") {
+      const hit = s0.target?.closest?.("[data-act]");
+      if (!hit || !s0.card.contains(hit)) return;
+      bus.send({ type: "userAction", cardId, act: hit.dataset.act, value: hit.dataset.value });
+    } else if (g === "swipe-x") {
+      bus.send({ type: "userAction", cardId, act: "swipe:away" });
+    }
+  });
   function renderPlayerCard(node, c) {
     const d = c.data ?? {};
     const isVideo = d.source === "video";
@@ -1687,6 +1732,9 @@ ${BRIDGE}
         <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
           <span class="pltime"></span></div>
         <div class="pl-next"></div>
+        <div class="plctl">
+          <span data-act="tap:prev">⏮</span><span data-act="tap:toggle">⏯</span><span data-act="tap:next">⏭</span>
+        </div>
         <div class="pl-hint"></div></div>
     </div>`;
     }
@@ -1697,6 +1745,10 @@ ${BRIDGE}
     sub.style.display = form.blocks.includes("sub") ? "" : "none";
     const barEl = node.querySelector(".plbar");
     barEl.style.display = form.blocks.includes("bar") ? "" : "none";
+    const ctl = node.querySelector(".plctl");
+    ctl.style.display = form.blocks.includes("bar") ? "" : "none";
+    for (const el of Array.from(ctl.children))
+      el.style.visibility = d.source === "radio" && el.dataset.act !== "tap:toggle" ? "hidden" : "";
     barEl.classList.toggle("live", d.source === "radio");
     const nxt = node.querySelector(".pl-next");
     const upcoming = d.nextUp ?? [];

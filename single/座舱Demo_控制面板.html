@@ -2263,6 +2263,32 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return null;
   }
 
+  // src/config/interactions.ts
+  var SWIPE_AWAY = { on: "swipe:away", route: "desk", op: "dismiss" };
+  var INTERACTIONS = {
+    media: [
+      { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
+      { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "pause" } },
+      { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
+      SWIPE_AWAY
+    ],
+    list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
+    confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
+    capability: [SWIPE_AWAY],
+    weather: [SWIPE_AWAY],
+    feedback: [SWIPE_AWAY],
+    notice: [SWIPE_AWAY],
+    info: [SWIPE_AWAY],
+    generic: [SWIPE_AWAY],
+    control: [SWIPE_AWAY],
+    canvas: [SWIPE_AWAY],
+    /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
+    "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY],
+    /** 导航卡刻意没有 swipe:away——导航中把导航划掉是事故 */
+    nav: []
+  };
+  var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
+
   // src/integrations/itunes.ts
   var ItunesError = class extends Error {
     constructor(message, code) {
@@ -5080,8 +5106,8 @@ ${extras.desktop}`);
     maxRounds: 6,
     persona: `你是这台车的车载助手，能直接操作车辆功能。
 说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。这是**语音播报**，不要用
-Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用户在开车，**只能用说的、
-不能点屏幕**，永远别说"点一下""你选一个点击"。别提自己是什么模型、哪家公司做的。
+Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏幕**可以点选**（候选、确认、
+播放键），但语音永远可用——默认按语音对话走，别催人点屏幕；用户点了什么你会收到。别提自己是什么模型、哪家公司做的。
 做不到就说做不到，**别把人支到车外**——"装个 App""连蓝牙"，这车都没有，骗人白忙一趟更糟。
 
 行为准则：
@@ -5234,7 +5260,23 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。用
       return;
     }
     if (m.type === "userAction") {
-      log("u", `[屏幕] ${m.act}${m.value ? "：" + m.value : ""}`);
+      const card = desk.get(m.cardId);
+      if (!card) return;
+      const decl = routeOf(card.template, m.act);
+      if (!decl) return;
+      if (decl.route === "desk") {
+        desk.dismiss(m.cardId, { byUser: true });
+        log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
+      } else if (decl.route === "tool") {
+        log("u", `[屏幕] ${m.act} → ${decl.tool}`);
+        registry.invoke(decl.tool, decl.args ?? {}).then((r) => {
+          if (r.status !== "ok") log("r", `${decl.tool}: ${r.message ?? r.code}`);
+        });
+      } else {
+        const said = `（用户在屏幕上点选）${m.value ?? m.act}`;
+        log("u", `[屏幕] ${said}`);
+        ask(said);
+      }
       return;
     }
     if (m.type !== "hello") return;

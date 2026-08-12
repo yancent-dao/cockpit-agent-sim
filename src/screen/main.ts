@@ -4,6 +4,7 @@ import { parseTurn, dayLabel } from './turn'
 import { navForm, mediaForm } from '../config/forms'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
+import { classifyGesture } from './gestures'
 import { sanitize } from './sanitize'
 import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
 import { tokensFor } from '../design/tokens'
@@ -148,6 +149,38 @@ addEventListener('pointerdown', () => {
 }, { capture: true })
 
 /**
+ * 手势层：命中测试 → 查交互声明 → 上报 userAction。
+ * 这里不做任何路由决策（那是 director 对着声明表干的事）——
+ * 屏幕上报的是"用户做了什么"这个**事实**，跟 mediaEvent 同一条边界。
+ * 位移阈值按 stage 像素算：client 位移要除以舞台缩放比（FLIP 踩过的同一个坑）。
+ */
+let gStart: { x: number; y: number; t: number; card: HTMLElement | null; target: HTMLElement | null } | null = null
+addEventListener('pointerdown', e => {
+  const card = (e.target as HTMLElement).closest?.('.card') as HTMLElement | null
+  gStart = { x: e.clientX, y: e.clientY, t: Date.now(), card, target: e.target as HTMLElement }
+})
+addEventListener('pointerup', e => {
+  if (!gStart) return
+  const s0 = gStart; gStart = null
+  const g = classifyGesture({
+    dx: (e.clientX - s0.x) / stageScale,
+    dy: (e.clientY - s0.y) / stageScale,
+    dt: Date.now() - s0.t,
+  })
+  if (!g || !s0.card) return
+  const cardId = [...cardNodes.entries()].find(([, n]) => n === s0.card)?.[0]
+  if (!cardId) return
+  if (g === 'tap') {
+    const hit = s0.target?.closest?.('[data-act]') as HTMLElement | null
+    if (!hit || !s0.card.contains(hit)) return
+    bus.send({ type: 'userAction', cardId, act: hit.dataset.act!, value: hit.dataset.value } as any)
+  } else if (g === 'swipe-x') {
+    bus.send({ type: 'userAction', cardId, act: 'swipe:away' } as any)
+  }
+  // scroll 交给浏览器原生（.bd overflow:auto），手势层不管
+})
+
+/**
  * 播放器卡。跟导航卡同一个道理——<video> 元素不能跟着文字一起重绘，
  * 重建就从头开始播了，所以容器建一次就长在那儿。
  */
@@ -162,6 +195,9 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
         <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
           <span class="pltime"></span></div>
         <div class="pl-next"></div>
+        <div class="plctl">
+          <span data-act="tap:prev">⏮</span><span data-act="tap:toggle">⏯</span><span data-act="tap:next">⏭</span>
+        </div>
         <div class="pl-hint"></div></div>
     </div>`
   }
@@ -175,6 +211,12 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
   const barEl = node.querySelector('.plbar') as HTMLElement
   barEl.style.display = form.blocks.includes('bar') ? '' : 'none'
+  // 控制条从"状态指示"变成真按钮（触控落地，§10 的约定反转）。
+  // 电台没有上下曲，藏掉两端只留播放/暂停
+  const ctl = node.querySelector('.plctl') as HTMLElement
+  ctl.style.display = form.blocks.includes('bar') ? '' : 'none'
+  for (const el of Array.from(ctl.children) as HTMLElement[])
+    el.style.visibility = d.source === 'radio' && el.dataset.act !== 'tap:toggle' ? 'hidden' : ''
   // 直播与否是**音源**的属性，不是"这一刻 duration 是多少"能猜的
   barEl.classList.toggle('live', d.source === 'radio')
   const nxt = node.querySelector('.pl-next') as HTMLElement

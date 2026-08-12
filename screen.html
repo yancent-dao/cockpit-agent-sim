@@ -13,7 +13,7 @@
   --r-sm:12px;--r-md:20px;--r-lg:32px;--ease:cubic-bezier(.4,0,.2,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
+html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
 #vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
@@ -64,7 +64,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* 诊断 1：内容缩在左上角，下半张脸空着。
    .bd 认领全部剩余高度，主数值贴底 —— 空白被推到标题与数据之间，而不是堆在底部。 */
 .bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
-  gap:calc(8px*var(--u))}
+  gap:calc(8px*var(--u));overflow-y:auto;overscroll-behavior:contain}
+/* 可点目标的按压反馈。车规命中目标 ≥96px（stage 像素） */
+[data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
+[data-act]:active{transform:scale(.94);opacity:.75}
+.plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
+.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:calc(16px*var(--u));
+  display:flex;align-items:center;justify-content:center;font-size:calc(var(--t-lead)*var(--u));
+  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac)}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -177,7 +184,8 @@ html,body{height:100%;background:#14171C;overflow:hidden;cursor:none;
 /* ── 候选列表：序号让语音选择（"第一个"）和屏幕对得上号 ── */
 .listcard{list-style:none;counter-reset:pick;margin:0;padding:0;
   display:grid;gap:calc(7px*var(--u));align-content:start;grid-auto-rows:max-content}
-/* 屏幕 cursor:none 滚不动 —— 列表一律截断，绝不留 overflow:auto */
+/* 触控后卡内可滚（.bd overflow:auto），但截断与"还有 N 条"保留——
+   滚动位置模型看不见，模型的世界观仍以 summary 的可见条数为准 */
 .listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
 .listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
 .listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(12px*var(--u));

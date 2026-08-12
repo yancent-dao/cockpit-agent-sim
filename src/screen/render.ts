@@ -23,7 +23,7 @@ export interface CardView {
 }
 
 export interface ListOpts {
-  /** 最多显示几条。超出部分截断——屏幕 cursor:none，overflow:auto 等于永远看不到 */
+  /** 最多显示几条。截断保留（模型世界观以 summary 为准），触控后卡内另可滚动 */
   maxItems?: number
   /** more 截断并报剩余 · count 只报总数 · none 不限 */
   overflow?: 'more' | 'count' | 'none'
@@ -50,8 +50,10 @@ export function listBody(items: any[], opts: ListOpts = {}): string {
     return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`
 
   const { shown, rest } = truncate(all, max)
-  return `<ol class="listcard${opts.cols === 2 ? ' c2' : ''}">${shown.map((i: any) => `
-    <li><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
+  // data-act/-value：触控命中目标。点第 2 项 = 说"第二个"（回答类路由），
+  // value 带序号和名字，模型收到的合成输入跟语音说法同构
+  return `<ol class="listcard${opts.cols === 2 ? ' c2' : ''}">${shown.map((i: any, n: number) => `
+    <li data-act="tap:item" data-value="${esc(`第${n + 1}个：${i.label ?? i}`)}"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
       i.right ? `<em class="rr">${esc(i.right)}</em>` : ''}</li>`).join('')}</ol>${
     rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ''}`
 }
@@ -139,7 +141,8 @@ export function cardBody(c: CardView): string {
       // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
       return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (
         d.options?.length
-          ? `<ol class="listcard opts">${d.options.map((o: string) => `<li><b>${esc(o)}</b></li>`).join('')}</ol>`
+          ? `<ol class="listcard opts">${d.options.map((o: string, n: number) =>
+              `<li data-act="tap:item" data-value="${esc(`第${n + 1}个：${o}`)}"><b>${esc(o)}</b></li>`).join('')}</ol>`
           : `<div>${['确认', '取消'].map(o => `<span class="opt">${o}</span>`).join('')}</div>`)
     case 'notice':
       return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ''}`

@@ -7,6 +7,7 @@ import { createPrefs } from '../state/prefs'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
+import { routeOf } from '../config/interactions'
 import { createAmapClient } from '../integrations/amap'
 import { createItunesClient } from '../integrations/itunes'
 import { createRadioClient } from '../integrations/radio'
@@ -158,9 +159,31 @@ const bus = createBus(m => {
     renderInspector()
     return
   }
-  // 用户在屏上的动作。I 组接三类路由，这里先落 trace 不丢事件
+  /**
+   * 用户在屏上的动作 → 按**交互声明**分三类路由（全部已拍板）：
+   *   answer 合成用户输入进对话（点第 2 项 = 说"第二个"，语音触控可混用）
+   *   tool   直调，不叫醒模型（按暂停等 LLM 转一圈是灾难）
+   *   desk   桌面管理，记入意愿层（滑掉的卡规则不许诈尸）
+   * 声明查不到 → 丢弃，不瞎猜。
+   */
   if (m.type === 'userAction') {
-    log('u', `[屏幕] ${m.act}${m.value ? '：' + m.value : ''}`)
+    const card = desk.get(m.cardId)
+    if (!card) return
+    const decl = routeOf(card.template, m.act)
+    if (!decl) return
+    if (decl.route === 'desk') {
+      desk.dismiss(m.cardId, { byUser: true })
+      log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
+    } else if (decl.route === 'tool') {
+      log('u', `[屏幕] ${m.act} → ${decl.tool}`)
+      registry.invoke(decl.tool!, (decl.args ?? {}) as any).then(r => {
+        if (r.status !== 'ok') log('r', `${decl.tool}: ${r.message ?? r.code}`)
+      })
+    } else {
+      const said = `（用户在屏幕上点选）${m.value ?? m.act}`
+      log('u', `[屏幕] ${said}`)
+      ask(said)
+    }
     return
   }
   if (m.type !== 'hello') return

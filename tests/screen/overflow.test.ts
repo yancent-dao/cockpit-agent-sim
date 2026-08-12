@@ -70,7 +70,7 @@ describe('列表截断与「还有 N 条」', () => {
   it('用 <ol> 让序号由 CSS 连续生成，截断后不会跳号', () => {
     const h = listBody(items, { maxItems: 3 })
     expect(h).toContain('<ol')
-    expect((h.match(/<li>/g) ?? []).length).toBe(3)
+    expect((h.match(/<li[ >]/g) ?? []).length).toBe(3)
   })
 })
 

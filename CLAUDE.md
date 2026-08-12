@@ -56,6 +56,7 @@ src/integrations/  三方适配。分两层，预算口径不同：
                   mediaHandlers 413 / 17 Tool = 24 · navHandlers 376 / 11 Tool = 34
 src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占        < 700 行（现 399）
 src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
+src/state/     记忆系统：域仓（队列/历史/收藏）· 偏好 · 会话摘要        < 300 行
 src/design/    Design Token（CSS 文本常量）—— 算数据不算代码，不占预算
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
                展示逻辑（转向条文案、日期人性化、档位→形态、HTML 消毒、
@@ -130,6 +131,17 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 **没有任何个人可注册的免费 CP 能提供华语流行乐完整播放**，iTunes 只给 30 秒。
 做 Demo 脚本时就得知道。
 
+## 记忆系统（2026-08-12，四级）
+
+瞬时（信号 store，VSS）→ 会话（`src/state/session.ts`，注入 ≤3 行结论）→
+领域（`src/state/domain.ts`：播放队列/历史/收藏，localStorage）→
+长期（`src/state/prefs.ts`：显式偏好，注入 system ≤10 条）。
+
+- **域数据不进信号 store**——store 对齐 VSS，"这条界线不划清，车速转速电流都会往里挤"
+- **队列刻意不持久化**：跟播放态绑定，刷新后恢复一条悬空队列只会让"下一曲"播错
+- `ended` → 机制自动续播（`createAutoplay`，零模型）——iTunes 30 秒试听因此像电台一样流动
+- 偏好 handler **一个 if 都不解析内容**，落实靠模型对着 system 注入做（机制/策略分界）
+
 ## 权限分级：黑 / 灰 / 彩
 
 - **彩** auto，可直接执行
@@ -140,16 +152,22 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 
 ## 明确不做
 
-后端 · 数据库 · 多屏 · 日夜切换（`screen.setTheme` 这类运行时主题切换）· 完整设计系统 · Tool 路由（14 个直接全量挂载）· CAN 时延与报文级仿真 · monorepo · 触控交互（屏幕保持纯投屏，`cursor:none`）· 屏幕形态多样化（竖屏 / 超宽——栅格常量写死在 `src/config/grid.ts`，将来要加时改这一处）
+后端 · 数据库 · 多屏 · 日夜切换（`screen.setTheme` 这类运行时主题切换）· 完整设计系统 · Tool 路由（14 个直接全量挂载）· CAN 时延与报文级仿真 · monorepo · 屏幕形态多样化（竖屏 / 超宽——栅格常量写死在 `src/config/grid.ts`，将来要加时改这一处）· **偏好的自动学习**（"他连续三次调 24 就记住"——显式记忆是数据，自动学习是策略，策略进代码违反"不许意图分支"）
+
+> 2026-08-12：**触控交互从"明确不做"移除**（产品决策变更）。屏幕可点选：三类路由
+> （回答类→合成用户输入进对话 / 操控类→直调 Tool 不叫醒模型 / 管理类→直调 desk 记入意愿层），
+> 交互靠模板契约里的**声明**（`src/config/interactions.ts`）分发，手势层零路由决策。
+> 语音仍是主通道，pilot 检测从"让点屏幕=硬伤"反转为"催促点屏幕=提示"。
 
 > 2026-08-10：车机屏已改为单一**日间**配色（之前是单一夜间配色），这是一次性重绘 Design Token，不是加了主题切换能力——「不做日夜切换」这条约束本身没变。
 
 ## 已知待办
 
 - `src/config/signals.ts` 的 `vssPath` 是**待核验的推定路径**，VSS v6.0 有破坏性变更（座椅信号重构、Left/Right → DriverSide/PassengerSide、单位大小写），冻结前必须对着官方 catalog 逐条核对
-- 主动式触发、长期记忆、能力曝光度统计未做。**这两条会被用户直接撞上**：
-  他说"等我降下速你就给我开窗"、"以后别对着脸吹你记住"，Agent 只能老实说
-  "你降下来喊我一声""这车不会自己记"。人设里已经写死不许打包票，但能力缺口还在
+- 主动式触发、能力曝光度统计未做。"等我降下速你就给我开窗"仍只能答"你降下来喊我一声"——
+  落地路径已定（触发器 = 向用户开放的规则引擎，CardRule 形状 + `src/state/` 存储），见
+  `docs/superpowers/specs/2026-08-12-agent-centric-cockpit-design.md` §1.5。
+  长期记忆的**显式半边已做**（memory.remember/forget/list + system 注入）；自动学习明确不做
 - 单文件版（`node build-single.mjs`）读不到 `import.meta.env`——esbuild 打成 iife 后它恒为空。
   高德和 OpenRouter 的 Key 全部拿不到，导航/天气/地图在双击打开的那个版本里等于没有。
   修法是控制面板加输入框 + localStorage，**不能靠 build 时 define 注入**（产物要提交，

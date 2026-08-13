@@ -71,14 +71,17 @@ export const CARD_RULES: CardRule[] = [
   // when 互斥保证两张卡不会同时在场
   {
     id: 'media-playing',
-    when: [['media.playing', '==', true], ['media.source', '!=', 'video']],
-    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode'],
+    // 用户实拍 bug：条件曾是 playing==true，点暂停规则判死刑直接撤卡。
+    // **暂停是状态不是退场理由**——有内容加载着卡就在场（显示 ▶ 等继续），
+    // stop 清掉内容（source=none）才退场。watch 带 playing 让暂停态刷进卡片
+    when: [['media.source', '!=', 'none'], ['media.source', '!=', 'video']],
+    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode', 'media.playing'],
     card: { key: 'player', template: 'media', evictable: true, urgency: 'ambient', data: 'playerCard' },
   },
   {
     id: 'media-playing-video',
-    when: [['media.playing', '==', true], ['media.source', '==', 'video']],
-    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode'],
+    when: [['media.source', '==', 'video']],
+    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode', 'media.playing'],
     card: { key: 'player-video', template: 'media', size: '2/3', evictable: true, data: 'playerCard' },
   },
   /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */

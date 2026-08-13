@@ -237,10 +237,14 @@ describe('播放器卡：media.playing 驱动', () => {
     expect(c.data.source).toBe('music')
   })
 
-  it('停止播放 → 卡片自动退场', () => {
+  // 2026-08-13 语义修正（用户实拍 bug）：暂停是状态不是退场理由。
+  // 有内容加载着卡就在场（显示 ▶ 等继续），stop 清掉内容才退场
+  it('暂停 → 卡片留着；stop（source=none）→ 退场', () => {
     play()
     expect(desk.findByKey('player')).toBeTruthy()
     store.setDirect('media.playing', false)
+    expect(desk.findByKey('player'), '暂停不退卡').toBeTruthy()
+    store.setDirect('media.source', 'none')
     expect(desk.findByKey('player')).toBeUndefined()
   })
 

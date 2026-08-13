@@ -193,6 +193,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .blk.hot .num{color:var(--ac)}
 .blk .lb{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 布尔值 → 状态胶囊（"开"不配占一整块大黑字） */
+.blk .pillv{align-self:flex-start;padding:calc(6px*var(--u)) calc(16px*var(--u));
+  border-radius:var(--r-pill,999px);font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  background:var(--n2,#EEF2F7);color:var(--tx-3,var(--text-secondary))}
+.blk .pillv.on{background:var(--acgr);color:#fff;box-shadow:0 4px 12px -4px var(--ac)}
+/* 枚举/文本值 → 降一级排版，不跟数值抢主角 */
+.blk .txtv{font-size:calc(var(--t-lead)*var(--u)*.82);font-weight:600;color:var(--tx-1,var(--text-primary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 7px 细轨。目标位刻度是过渡仿真已有能力的可视化——车窗正在开到 60% 时看得见终点 */
 .trk{position:relative;height:calc(7px*var(--u));border-radius:99px;
   background:var(--n3,var(--bg-elevated));overflow:visible}
@@ -1381,6 +1389,7 @@ ${BRIDGE}
   };
   var ICON_PREV = svg('<path d="M6 5v14M20 5l-11 7 11 7V5z"/>');
   var ICON_PLAY = svg('<path d="M7 4.5l13 7.5-13 7.5v-15z"/>');
+  var ICON_PAUSE = svg('<path d="M8 5v14M16 5v14"/>');
   var ICON_NEXT = svg('<path d="M18 5v14M4 5l11 7-11 7V5z"/>');
   var W = {
     sun: svg('<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5 5l1.6 1.6M17.4 17.4L19 19M19 5l-1.6 1.6M6.6 17.4L5 19"/>'),
@@ -1445,11 +1454,11 @@ ${BRIDGE}
     const cls = opts.cols === 3 ? " c3" : opts.cols === 2 ? " c2" : "";
     return `<div class="blocks${cls}">${(items ?? []).map((it) => {
       const raw = it.value;
-      const shown = typeof raw === "boolean" ? raw ? "开" : "关" : typeof raw === "number" ? String(Math.round(raw)) : raw === void 0 || raw === null ? "--" : String(raw);
       const pct = typeof it.pct === "number" ? it.pct : typeof raw === "number" && it.unit === "%" ? raw : void 0;
+      const body = typeof raw === "boolean" ? `<div class="pillv${raw ? " on" : ""}">${raw ? "已开启" : "已关闭"}</div>` : typeof raw === "number" ? `<div class="num">${Math.round(raw)}${it.unit ? `<i>${esc2(it.unit)}</i>` : ""}</div>` : `<div class="txtv">${esc2(raw ?? "--")}</div>`;
       return `<div class="blk${it.hot ? " hot" : ""}">
       <div class="lb">${esc2(it.label)}</div>
-      <div class="num">${esc2(shown)}${it.unit ? `<i>${esc2(it.unit)}</i>` : ""}</div>
+      ${body}
       ${pct !== void 0 ? `<div class="trk"><div class="fl" style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%"></div>${typeof it.target === "number" ? `<div class="tg" style="left:${Math.max(0, Math.min(100, Math.round(it.target)))}%"></div>` : ""}</div>` : ""}
     </div>`;
     }).join("")}</div>`;
@@ -1462,7 +1471,9 @@ ${BRIDGE}
       case "control": {
         const form = formOf("control", ...dimsOf(c.size));
         const hot = d.hot ?? [];
-        return blocksBody((d.items ?? []).slice(0, form.maxItems).map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols });
+        const shown = (d.items ?? []).slice(0, form.maxItems);
+        const cols = shown.length >= 4 && (form.cols ?? 1) === 1 ? 2 : form.cols;
+        return blocksBody(shown.map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols });
       }
       case "confirm":
         return `<div class="sub">${esc2(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o, n) => `<li data-act="tap:item" data-value="${esc2(`第${n + 1}个：${o}`)}"><b>${esc2(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
@@ -1835,6 +1846,8 @@ ${BRIDGE}
     const barEl = node.querySelector(".plbar");
     barEl.style.display = form.blocks.includes("bar") ? "" : "none";
     const ctl = node.querySelector(".plctl");
+    const mid = ctl.children[1];
+    mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY;
     ctl.style.display = form.blocks.includes("bar") ? "" : "none";
     for (const el of Array.from(ctl.children))
       el.style.visibility = d.source === "radio" && el.dataset.act !== "tap:toggle" ? "hidden" : "";

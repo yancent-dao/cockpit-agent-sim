@@ -4,7 +4,7 @@ import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createStore } from '../../src/core/store'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
-import type { CardRule } from '../../src/config/cardRules'
+import { CARD_RULES, type CardRule } from '../../src/config/cardRules'
 
 /**
  * 公理 3：降级与恢复必须对称。
@@ -137,5 +137,37 @@ describe('规则卡补回：桌面回到 f(车辆状态)', () => {
     // 换了首歌（watch 信号变化）→ 规则重新断言 → 回来
     store.setDirect('media.track', '成都')
     expect(desk.findByKey('player'), '信号再变才回来').toBeTruthy()
+  })
+})
+
+describe('播放器卡：暂停留卡，停止退卡（用户实拍 bug）', () => {
+  const RULES2: CardRule[] = CARD_RULES.filter(r => r.id.startsWith('media-playing'))
+
+  const boot2 = () => {
+    const store = createStore(SIGNALS, CONSTRAINTS)
+    const desk = createDesk()
+    createOrchestrator({ store, desk, rules: RULES2,
+      builders: { playerCard: () => ({ title: '正在播放' }) }, deps: { store } }).start()
+    return { store, desk }
+  }
+
+  it('暂停后卡还在——用户要看着 ▶ 才知道能继续', () => {
+    const { store, desk } = boot2()
+    store.setDirect('media.source', 'music')
+    store.setDirect('media.playing', true)
+    store.setDirect('media.track', '晴天')
+    expect(desk.findByKey('player')).toBeTruthy()
+    store.setDirect('media.playing', false)   // 暂停
+    expect(desk.findByKey('player'), '暂停不是退场理由').toBeTruthy()
+  })
+
+  it('stop 清掉内容（source=none）→ 卡退场', () => {
+    const { store, desk } = boot2()
+    store.setDirect('media.source', 'music')
+    store.setDirect('media.playing', true)
+    store.setDirect('media.track', '晴天')
+    store.setDirect('media.playing', false)
+    store.setDirect('media.source', 'none')
+    expect(desk.findByKey('player')).toBeUndefined()
   })
 })

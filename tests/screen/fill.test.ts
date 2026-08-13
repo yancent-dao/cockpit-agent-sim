@@ -141,3 +141,40 @@ describe('播放进度是展示层的事', () => {
     expect(progressPct(-5, 120)).toBe(0)
   })
 })
+
+/**
+ * 空调卡实拍暴露的三个问题（用户截图）：
+ * 4 块单列堆叠、布尔值"开"占一整块大黑字、枚举文本"吹面+吹脚"跟数值同级。
+ * 修法 = 按**值类型**分级渲染——这是展示映射（同 CN 枚举表），不是意图分支。
+ */
+describe('块状渲染按值类型分级', () => {
+  it('布尔值渲染成状态胶囊，不是大黑字数值', () => {
+    const h = blocksBody([{ label: '开关', value: true }], {})
+    expect(h).toContain('pillv')
+    expect(h).not.toMatch(/class="num"[^>]*>开/)
+    expect(h).toContain('已开启')
+    expect(blocksBody([{ label: '开关', value: false }], {})).toContain('已关闭')
+  })
+
+  it('枚举/文本值降一级排版（txtv），不跟数值抢主角', () => {
+    const h = blocksBody([{ label: '出风', value: '吹面+吹脚' }], {})
+    expect(h).toContain('txtv')
+    expect(h).not.toContain('class="num"')
+  })
+
+  it('数值照旧大数字', () => {
+    expect(blocksBody([{ label: '温度', value: 22, unit: '°C' }], {})).toContain('class="num"')
+  })
+
+  it('4 块以上在单栏形态下自动升 2 栏——1/6 卡是 4×2 比例，单列堆四块每块都被压扁', () => {
+    const items4 = [
+      { label: '开关', value: true }, { label: '温度', value: 22, unit: '°C' },
+      { label: '风量', value: 3, unit: '档' }, { label: '出风', value: '吹脚' },
+    ]
+    const h = cardBody(V('control', { items: items4 }, '1/6'))
+    expect(h).toContain('c2')
+    // 3 块以内维持单栏——两块并排半空更难看
+    const h3 = cardBody(V('control', { items: items4.slice(0, 3) }, '1/6'))
+    expect(h3).not.toMatch(/\bc2\b/)
+  })
+})

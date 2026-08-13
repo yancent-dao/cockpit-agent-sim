@@ -4,6 +4,7 @@
  * 单独一个文件才不会把通用机制（registry.ts）冲垮。
  */
 import type { Store } from '../core/store'
+import { shortPlace } from '../text'
 import type { Desk } from '../cards/desk'
 import { AmapError, thinPolyline, type AmapClient, type CarType } from './amap'
 import type { ToolResult } from '../tools/registry'
@@ -378,7 +379,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         desk?.()?.render({
           key: `weather:${g.adcode}`, family: 'weather', round: round?.(),
           template: 'weather', size: '1/3', kind: 'task', ttl: 'untilDismissed',
-          data: { title: `${g.formattedAddress}天气`, now, forecast },
+          data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast },
         })
         return { status: 'ok', data: { city: g.formattedAddress, now, forecast } }
       } catch (e) {

@@ -29,6 +29,7 @@ export const TPL_ICONS: Record<string, string> = {
 /* 播放器控制键（不用 ⏮⏯⏭ emoji） */
 export const ICON_PREV = svg('<path d="M6 5v14M20 5l-11 7 11 7V5z"/>')
 export const ICON_PLAY = svg('<path d="M7 4.5l13 7.5-13 7.5v-15z"/>')
+export const ICON_PAUSE = svg('<path d="M8 5v14M16 5v14"/>')
 export const ICON_NEXT = svg('<path d="M18 5v14M4 5l11 7-11 7V5z"/>')
 
 /**

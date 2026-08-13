@@ -13,7 +13,7 @@ import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
-import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_NEXT } from './icons'
+import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT } from './icons'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('screen')
@@ -215,6 +215,9 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   // 控制条从"状态指示"变成真按钮（触控落地，§10 的约定反转）。
   // 电台没有上下曲，藏掉两端只留播放/暂停
   const ctl = node.querySelector('.plctl') as HTMLElement
+  // 中键随状态换脸：播放中显 ⏸（按了会停），暂停显 ▶（按了会继续）
+  const mid = ctl.children[1] as HTMLElement
+  mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY
   ctl.style.display = form.blocks.includes('bar') ? '' : 'none'
   for (const el of Array.from(ctl.children) as HTMLElement[])
     el.style.visibility = d.source === 'radio' && el.dataset.act !== 'tap:toggle' ? 'hidden' : ''

@@ -193,6 +193,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .blk.hot .num{color:var(--ac)}
 .blk .lb{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 布尔值 → 状态胶囊（"开"不配占一整块大黑字） */
+.blk .pillv{align-self:flex-start;padding:calc(6px*var(--u)) calc(16px*var(--u));
+  border-radius:var(--r-pill,999px);font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  background:var(--n2,#EEF2F7);color:var(--tx-3,var(--text-secondary))}
+.blk .pillv.on{background:var(--acgr);color:#fff;box-shadow:0 4px 12px -4px var(--ac)}
+/* 枚举/文本值 → 降一级排版，不跟数值抢主角 */
+.blk .txtv{font-size:calc(var(--t-lead)*var(--u)*.82);font-weight:600;color:var(--tx-1,var(--text-primary));
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 7px 细轨。目标位刻度是过渡仿真已有能力的可视化——车窗正在开到 60% 时看得见终点 */
 .trk{position:relative;height:calc(7px*var(--u));border-radius:99px;
   background:var(--n3,var(--bg-elevated));overflow:visible}

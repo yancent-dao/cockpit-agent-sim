@@ -23,7 +23,7 @@ const SWIPE_AWAY: InteractionDecl = { on: 'swipe:away', route: 'desk', op: 'dism
 export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   media: [
     { on: 'tap:prev', route: 'tool', tool: 'media.control', args: { action: 'prev' } },
-    { on: 'tap:toggle', route: 'tool', tool: 'media.control', args: { action: 'pause' } },
+    { on: 'tap:toggle', route: 'tool', tool: 'media.control', args: { action: 'toggle' } },
     { on: 'tap:next', route: 'tool', tool: 'media.control', args: { action: 'next' } },
     SWIPE_AWAY,
   ],

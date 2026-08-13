@@ -426,7 +426,7 @@ export const TOOLS: ToolDef[] = [
     name: 'media.control',
     desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
     permission: '彩',
-    params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev'], required: true, desc: '动作' } },
+    params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev', 'toggle'], required: true, desc: '动作。toggle 是播放/暂停切换（屏幕按钮用它）' } },
     handler: 'mediaControl',
   },
   {

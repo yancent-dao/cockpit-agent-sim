@@ -57,3 +57,15 @@ describe('weatherIcon', () => {
     expect(weatherIcon(undefined)).toContain('svg')   // 兜底晴天，不给空
   })
 })
+
+/** 逆地理全称"四川省成都市青羊区"当卡片标题太长（用户实拍）——截到最末两级 */
+describe('shortPlace：地名截短', () => {
+  it('去省级前缀，保留市+区', async () => {
+    const { shortPlace } = await import('../../src/text')
+    expect(shortPlace('四川省成都市青羊区')).toBe('成都市青羊区')
+    expect(shortPlace('北京市朝阳区')).toBe('北京市朝阳区')
+    expect(shortPlace('内蒙古自治区阿拉善盟阿拉善左旗')).toBe('阿拉善盟阿拉善左旗')
+    expect(shortPlace('拉萨市')).toBe('拉萨市')
+    expect(shortPlace('')).toBe('')
+  })
+})

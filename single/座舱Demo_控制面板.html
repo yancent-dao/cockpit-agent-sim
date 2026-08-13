@@ -257,6 +257,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
 
   // src/text.ts
   var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  var shortPlace = (name) => String(name ?? "").replace(/^.{2,8}?(省|自治区)/, "");
 
   // src/core/glob.ts
   var cache = /* @__PURE__ */ new Map();
@@ -1072,6 +1073,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const cur = nowPlaying();
         if (!cur) return NOTHING;
         switch (args.action) {
+          case "toggle": {
+            const to = !store2.get("media.playing");
+            store2.set("media.playing", to);
+            return { status: "ok", data: { playing: to }, message: to ? "继续放" : "先停一下" };
+          }
           case "play":
             store2.set("media.playing", true);
             return { status: "ok", data: { playing: true }, changed: ["media.playing"] };
@@ -1725,7 +1731,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             size: "1/3",
             kind: "task",
             ttl: "untilDismissed",
-            data: { title: `${g.formattedAddress}天气`, now, forecast }
+            data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast }
           });
           return { status: "ok", data: { city: g.formattedAddress, now, forecast } };
         } catch (e) {
@@ -2268,7 +2274,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var INTERACTIONS = {
     media: [
       { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
-      { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "pause" } },
+      { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "toggle" } },
       { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
       SWIPE_AWAY
     ],
@@ -4595,7 +4601,7 @@ ${extras.desktop}`);
       name: "media.control",
       desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
       permission: "彩",
-      params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev"], required: true, desc: "动作" } },
+      params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev", "toggle"], required: true, desc: "动作。toggle 是播放/暂停切换（屏幕按钮用它）" } },
       handler: "mediaControl"
     },
     {
@@ -4880,14 +4886,17 @@ ${extras.desktop}`);
     // when 互斥保证两张卡不会同时在场
     {
       id: "media-playing",
-      when: [["media.playing", "==", true], ["media.source", "!=", "video"]],
-      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode"],
+      // 用户实拍 bug：条件曾是 playing==true，点暂停规则判死刑直接撤卡。
+      // **暂停是状态不是退场理由**——有内容加载着卡就在场（显示 ▶ 等继续），
+      // stop 清掉内容（source=none）才退场。watch 带 playing 让暂停态刷进卡片
+      when: [["media.source", "!=", "none"], ["media.source", "!=", "video"]],
+      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode", "media.playing"],
       card: { key: "player", template: "media", evictable: true, urgency: "ambient", data: "playerCard" }
     },
     {
       id: "media-playing-video",
-      when: [["media.playing", "==", true], ["media.source", "==", "video"]],
-      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode"],
+      when: [["media.source", "==", "video"]],
+      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode", "media.playing"],
       card: { key: "player-video", template: "media", size: "2/3", evictable: true, data: "playerCard" }
     },
     /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */

@@ -101,3 +101,20 @@ describe('收藏走域仓', () => {
     expect(state.favorites.list().map(f => f.track)).toContain('歌1')
   })
 })
+
+/**
+ * 用户实拍 bug：点暂停播放器卡直接消失。
+ * 根因：规则条件写的是 media.playing == true——暂停一落信号规则判死刑撤卡。
+ * **暂停是状态不是退场理由**：有内容加载着（source != none）卡就该在，
+ * 显示 ▶ 等着继续；stop（整个清掉）才退场。真车机都是这个语义。
+ */
+describe('暂停不退卡', () => {
+  it('media.control toggle：播放中按一下变暂停，再按恢复——按钮语义是切换', async () => {
+    await reg.invoke('music.play', { query: '歌' })
+    expect(store.get('media.playing')).toBe(true)
+    await reg.invoke('media.control', { action: 'toggle' })
+    expect(store.get('media.playing')).toBe(false)
+    await reg.invoke('media.control', { action: 'toggle' })
+    expect(store.get('media.playing')).toBe(true)
+  })
+})

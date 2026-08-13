@@ -107,14 +107,22 @@ export function blocksBody(items: any[], opts: BlockOpts = {}): string {
   return `<div class="blocks${cls}">${(items ?? []).map(it => {
     // 0 是有效值（车窗全关），不能被当成空
     const raw = it.value
-    const shown = typeof raw === 'boolean' ? (raw ? '开' : '关')
-      : typeof raw === 'number' ? String(Math.round(raw))
-      : raw === undefined || raw === null ? '--' : String(raw)
     const pct = typeof it.pct === 'number' ? it.pct
       : (typeof raw === 'number' && it.unit === '%' ? raw : undefined)
+    /**
+     * 按**值类型**分级（展示映射，同 CN 枚举表待遇）：
+     *   布尔  → 状态胶囊。"开"渲染成大黑字占一整块是空调卡实拍抓到的丑
+     *   文本  → 降一级排版（txtv），"吹面+吹脚"不跟温度抢主角
+     *   数值  → 大数字照旧
+     */
+    const body = typeof raw === 'boolean'
+      ? `<div class="pillv${raw ? ' on' : ''}">${raw ? '已开启' : '已关闭'}</div>`
+      : typeof raw === 'number'
+        ? `<div class="num">${Math.round(raw)}${it.unit ? `<i>${esc(it.unit)}</i>` : ''}</div>`
+        : `<div class="txtv">${esc(raw ?? '--')}</div>`
     return `<div class="blk${it.hot ? ' hot' : ''}">
       <div class="lb">${esc(it.label)}</div>
-      <div class="num">${esc(shown)}${it.unit ? `<i>${esc(it.unit)}</i>` : ''}</div>
+      ${body}
       ${pct !== undefined
         ? `<div class="trk"><div class="fl" style="width:${Math.max(0, Math.min(100, Math.round(pct)))}%"></div>${
             typeof it.target === 'number'
@@ -134,8 +142,11 @@ export function cardBody(c: CardView): string {
       // 四扇窗的开度是典型的"并列数据"，走块状均分
       const form = formOf('control', ...dimsOf(c.size))
       const hot = d.hot ?? []
-      return blocksBody((d.items ?? []).slice(0, form.maxItems)
-        .map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols: form.cols })
+      const shown = (d.items ?? []).slice(0, form.maxItems)
+      // 1/6 卡是 4×2 的比例，4 块单列堆叠每块都被压扁——4 块起在单栏形态下升 2 栏。
+      // 只动排布不动 maxItems，跟 summary 的可见条数不冲突
+      const cols = shown.length >= 4 && (form.cols ?? 1) === 1 ? 2 : form.cols
+      return blocksBody(shown.map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols })
     }
     case 'confirm':
       // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。

@@ -186,6 +186,13 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
       const cur = nowPlaying()
       if (!cur) return NOTHING
       switch (args.action) {
+        case 'toggle': {
+          // 屏幕按钮的语义是"切换"——播放中按一下暂停，暂停中按一下继续。
+          // 声明表是静态数据写不了条件，切换逻辑收在机制层这一处
+          const to = !store.get('media.playing')
+          store.set('media.playing', to)
+          return { status: 'ok', data: { playing: to }, message: to ? '继续放' : '先停一下' }
+        }
         case 'play':
           store.set('media.playing', true)
           return { status: 'ok', data: { playing: true }, changed: ['media.playing'] }

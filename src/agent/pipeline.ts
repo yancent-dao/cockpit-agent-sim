@@ -35,6 +35,8 @@ export interface PipelineDeps {
   prefsList?: () => string[]
   recentSummary?: () => string
   onTurnStart?: () => void
+  /** "上回说到"的落盘口（localStorage 由装配方给）。缺省 = 不跨会话 */
+  memory?: { load(): string | null; save(text: string): void }
 }
 
 export interface TurnResult {
@@ -67,6 +69,16 @@ const LOAD_SCHEMA = {
 }
 const isMeta = (name: string, meta: string) => name === meta || name === meta.replace(/\./g, '_')
 
+/** epoch 摘要消息的识别标 */
+const SUM_MARK = '【前情摘要】'
+/** 滑动窗口：最近 K 轮全文，更早的折叠进摘要 */
+const KEEP_ROUNDS = 4
+const COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成前情摘要：
+- 不超过 10 行，只写结论与未完成的事（谁要了什么、办到哪一步、定了什么偏好）
+- 最后一行固定写「提到过：xxx、yyy」——列出出现过的地名/人名/歌名/店名，
+  这是检索索引：用户以后说"刚才那个加油站"要靠它找锚点
+- 只输出摘要正文，不解释`
+
 export function createPipeline(deps: PipelineDeps) {
   const { registry, store, clock = Date.now } = deps
   const listeners: Array<(e: PipelineEvent) => void> = []
@@ -82,6 +94,9 @@ export function createPipeline(deps: PipelineDeps) {
   /** 最新 turn 的用户消息位置：旧代慢层的迟到消息插它前面——时间线不交错（§4.1） */
   let boundary = 0
   let toolRound = 0
+  // 上回说到：跨会话留一行，"接着昨天那个路线"接得上（§7.5）
+  const lastTime = deps.memory?.load()
+  if (lastTime) thread.push({ role: 'assistant', content: `${SUM_MARK}上回说到：${lastTime}` })
 
   const stale = (g: number) => g !== gen
   /** 落 thread：当前代直接追加；旧代插到最新 turn 的用户输入之前 */
@@ -249,6 +264,8 @@ export function createPipeline(deps: PipelineDeps) {
     else fast.suggested = [pending.tool]
 
     const slow = await runSlow(g, fast.suggested, trace)
+    // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
+    if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
     return {
       reply: [fast.said, slow.said].filter(Boolean).join(' '),
       trace, rounds: fast.rounds + slow.rounds,
@@ -256,9 +273,33 @@ export function createPipeline(deps: PipelineDeps) {
     }
   }
 
+  /* ── 异步记忆压缩：thread = 摘要头 + 最近 K 轮全文 ── */
+  let compaction: Promise<void> = Promise.resolve()
+  async function doCompact(g: number) {
+    const userIdx = thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0)
+    if (userIdx.length <= KEEP_ROUNDS) return
+    const cutAt = userIdx[userIdx.length - KEEP_ROUNDS]
+    const head = thread.slice(0, cutAt)
+    // 旧摘要参与重压——摘要是滚动的，不是一摞
+    const folded = head.map(m =>
+      `${m.role}: ${(m.content || (m.tool_calls?.length ? `[调用 ${m.tool_calls.map(c => c.function.name).join('、')}]` : '')).slice(0, 300)}`,
+    ).join('\n')
+    const reply = await deps.fastLlm.chat({
+      system: COMPACT_PROMPT,
+      messages: [{ role: 'user', content: folded }], tools: [],
+    })
+    // 压缩期间用户又开口了 → 本次作废，宁可下轮重压也不改写正在用的现场
+    if (stale(g)) return
+    const text = (reply.text ?? '').trim()
+    if (!text) return
+    thread.splice(0, cutAt, { role: 'assistant', content: `${SUM_MARK}\n${text}` })
+    boundary = Math.max(thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0).pop() ?? 0, 0)
+    deps.memory?.save(text)
+  }
+
   const reset = () => { thread.length = 0; boundary = 0 }
 
-  return { run, on, reset, thread, get generation() { return gen } }
+  return { run, on, reset, thread, get generation() { return gen }, get compaction() { return compaction } }
 }
 
 export type Pipeline = ReturnType<typeof createPipeline>

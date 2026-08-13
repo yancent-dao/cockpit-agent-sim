@@ -721,7 +721,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式卡",
       defaultSize: "1/2",
       sizes: [...CANVAS_ALLOWED],
-      desc: "前面那些模板都装不下时才用：你直接写 HTML/SVG 片段放进 data.html。只有对比表、简单图表、带版式的说明这类内容值得走它——能用 list/generic 表达的就别用。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
+      desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     },
     /**
@@ -1336,7 +1336,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。",
       permission: "彩",
       params: {
-        template: { type: "enum", values: TEMPLATE_IDS, required: true, desc: "卡片模板" },
+        template: {
+          type: "enum",
+          values: TEMPLATE_IDS,
+          required: true,
+          // 模板说明书必须随 schema 到达模型——之前这里只有"卡片模板"三个字，
+          // canvas 的 html/text 契约和像素画布模型根本看不到，等于模板不存在
+          // （实拍：调研报告没走生成式卡）。systemOnly 的不教——模型建不了
+          desc: "卡片模板。各模板用途与 data 形状：\n" + CARD_TEMPLATES.filter((t) => !t.systemOnly).map((t) => `- ${t.id}：${t.desc}`).join("\n")
+        },
         size: {
           type: "enum",
           values: [...ALL_SIZES],
@@ -3921,7 +3929,7 @@ ${text}` });
     return (text ?? "").replace(/<(\w+:)?think>[\s\S]*?<\/(\w+:)?think>/g, "").replace(/<\/?(\w+:)?think>/g, "").trim();
   }
   function toSpeech(text) {
-    return stripThinking(text).replace(/\*\*|__|`/g, "").replace(/^\s*#{1,6}\s*/gm, "").replace(/^\s*[-*+]\s+/gm, "").replace(/\s*\n+\s*/g, " ").trim();
+    return stripThinking(text).replace(/(\]<\]\w*\[>\[|<tool_call\b|<invoke\b|<function_call\b)[\s\S]*$/, "").replace(/\*\*|__|`/g, "").replace(/^\s*#{1,6}\s*/gm, "").replace(/^\s*[-*+]\s+/gm, "").replace(/\s*\n+\s*/g, " ").trim();
   }
 
   // src/bus.ts
@@ -5700,7 +5708,9 @@ ${text}` });
 4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。
 5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。`,
     context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
-    maxRounds: 6,
+    // 6→8（2026-08-13）：调研报告实测要 7+ 轮（skill 取剧本 + 查证若干轮 +
+    // 看桌面 + 建 canvas 卡 + 话术），6 轮在建卡前就被掐断
+    maxRounds: 8,
     persona: `你是这台车的车载助手，能直接操作车辆功能。
 说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。这是**语音播报**，不要用
 Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏幕**可以点选**（候选、确认、
@@ -5804,8 +5814,30 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
    放收藏直接 music.play 收藏里的曲名。`
   };
 
+  // agents/main-agent/skills/report.ts
+  var REPORT_SKILL = {
+    name: "调研报告",
+    whenToUse: "调研/股价/行情/分析报告",
+    tools: ["web.search", "news.search", "card.show"],
+    inject: `调研报告的章法：
+1. 查证：**一次 web.search 通常就够**（问句写全："XX 最近股价走势 涨跌原因"），
+   最多补一次 news.search——每次联网搜索要 15 秒以上，搜三四次用户等不起。
+   查证过程自动上屏的结果卡不用管，报告卡建好后用 card.dismiss 把它们收掉。
+2. 别把长篇报告念出来——语音只说三句以内的结论（涨了跌了、为什么、要不要留意什么）。
+3. **交付必须用 canvas 卡（card.show, template=canvas, size=1/2）**：
+   报告要排版，list/generic 装不下。骨架：
+   <div style="font-size:34px;font-weight:600">标题</div>
+   <div style="font-size:64px;font-weight:700">关键数字（涨跌幅/最新价）</div>
+   <div style="font-size:26px;color:#5C6675">三到五条结论要点（<div> 逐行，别用 <ul>）</div>
+   有时间序列就画一条 SVG 折线（polyline，画布像素见模板说明）。
+   data.text 必填：把结论压成两句话当纯文字兜底。
+4. 数据没查到就说没查到，报告里绝不编数字——宁可少一节。
+5. 用户说"仔细/深入调研"这类大活，用 task.delegate(background:true) 转后台，
+   完成会自动通知，别让他干等。`
+  };
+
   // agents/main-agent/skills/index.ts
-  var SKILLS = [NAV_SKILL, MEDIA_SKILL];
+  var SKILLS = [NAV_SKILL, MEDIA_SKILL, REPORT_SKILL];
 
   // src/director/main.ts
   var import_meta = {};

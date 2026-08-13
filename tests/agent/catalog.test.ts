@@ -41,6 +41,26 @@ describe('brief 数据位：目录的原料', () => {
   })
 })
 
+describe('card.show 携带模板说明书', () => {
+  // 用户实拍：调研报告没走生成式卡。根因：CARD_TEMPLATES 里每个模板的 desc
+  // （canvas 的 html/text 契约、像素画布）从没注入过任何 prompt——
+  // 模型不知道 canvas 怎么用，等于这个模板不存在
+  it('template 参数描述含各模板用途，canvas 的 html 契约与像素在内', () => {
+    const schema = reg().schemas('openai', ['card.show'])[0]
+    const desc: string = schema.function.parameters.properties.template.description
+    expect(desc).toContain('canvas')
+    expect(desc).toContain('html')
+    expect(desc).toContain('对比表')
+    expect(desc, '像素契约在内').toMatch(/\d{3,}×\d{3,}/)
+  })
+
+  it('systemOnly 模板（时钟/导航/播放器）不进说明书——模型建不了的别教', () => {
+    const schema = reg().schemas('openai', ['card.show'])[0]
+    const desc: string = schema.function.parameters.properties.template.description
+    expect(desc).not.toContain('clock')
+  })
+})
+
 describe('registry.briefCatalog：目录生成', () => {
   it('一行一工具，含 brief，不含黑级', () => {
     const cat = reg().briefCatalog()

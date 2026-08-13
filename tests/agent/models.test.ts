@@ -90,3 +90,15 @@ describe('快速模型筛选', () => {
     expect(pickFastModels(FALLBACK_MODELS)).toHaveLength(FALLBACK_MODELS.length)
   })
 })
+
+describe('toSpeech：伪工具调用残片剥离', () => {
+  // 实拍：MiniMax 最后一轮被撤了工具，把调用写成私有格式文本
+  // "]<]minimax[>[<tool_call>..." 并被整段念给用户
+  it('从第一个残片标记起截断，前面的话保留', async () => {
+    const { toSpeech } = await import('../../src/agent/llm')
+    expect(toSpeech('新闻卡我先收一下。]<]minimax[>[<tool_call> ]<]minimax[>[<invoke name="card_dismiss">'))
+      .toBe('新闻卡我先收一下。')
+    expect(toSpeech('好了<tool_call>{"name":"x"}</tool_call>')).toBe('好了')
+    expect(toSpeech('正常的话术不受影响')).toBe('正常的话术不受影响')
+  })
+})

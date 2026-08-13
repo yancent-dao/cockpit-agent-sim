@@ -168,6 +168,9 @@ export function stripThinking(text?: string): string {
  */
 export function toSpeech(text?: string): string {
   return stripThinking(text)
+    // 伪工具调用残片：模型（实测 MiniMax）被撤工具后会把调用写成私有格式文本
+    // （"]<]minimax[>[<tool_call>…"），整段被念给用户。从第一个标记起截断
+    .replace(/(\]<\]\w*\[>\[|<tool_call\b|<invoke\b|<function_call\b)[\s\S]*$/, '')
     .replace(/\*\*|__|`/g, '')            // 加粗与代码标记
     .replace(/^\s*#{1,6}\s*/gm, '')        // 标题井号
     .replace(/^\s*[-*+]\s+/gm, '')         // 列表符号

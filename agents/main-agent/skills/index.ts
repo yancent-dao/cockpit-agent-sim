@@ -1,5 +1,6 @@
 import { NAV_SKILL } from './nav'
 import { MEDIA_SKILL } from './media'
+import { REPORT_SKILL } from './report'
 
 /**
  * Skill：过程性知识的第三个家（设计文档 §9）。
@@ -17,4 +18,4 @@ export interface Skill {
   tools?: string[]
 }
 
-export const SKILLS: Skill[] = [NAV_SKILL, MEDIA_SKILL]
+export const SKILLS: Skill[] = [NAV_SKILL, MEDIA_SKILL, REPORT_SKILL]

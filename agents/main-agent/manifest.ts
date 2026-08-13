@@ -37,7 +37,9 @@ export const MAIN_AGENT: AgentManifest = {
 4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。
 5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。`,
   context: ['vehicleState', 'capabilities', 'speaker', 'environment', 'desktop'],
-  maxRounds: 6,
+  // 6→8（2026-08-13）：调研报告实测要 7+ 轮（skill 取剧本 + 查证若干轮 +
+  // 看桌面 + 建 canvas 卡 + 话术），6 轮在建卡前就被掐断
+  maxRounds: 8,
   persona: `你是这台车的车载助手，能直接操作车辆功能。
 说话像坐在副驾的朋友：简短、口语、不客套，一般不超过两句。这是**语音播报**，不要用
 Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏幕**可以点选**（候选、确认、

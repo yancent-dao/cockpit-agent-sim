@@ -45,10 +45,15 @@ const mk = (slowFn: (req: LLMRequest, n: number) => LLMReply | Promise<LLMReply>
 }
 
 describe('首批两个 skill 是数据', () => {
-  it('导航、媒体各一个，正文 ≤40 行、whenToUse ≤20 字', () => {
+  it('导航、媒体、调研报告各一个，正文 ≤40 行、whenToUse ≤20 字', () => {
     const names = SKILLS.map(s => s.name)
     expect(names).toContain('导航')
     expect(names).toContain('媒体')
+    expect(names).toContain('调研报告')
+    const report = SKILLS.find(s => s.name === '调研报告')!
+    expect(report.inject, '交付章法指向生成式卡').toContain('canvas')
+    expect(report.tools).toContain('web.search')
+    expect(report.tools).toContain('card.show')
     for (const s of SKILLS) {
       expect(s.whenToUse.length, `${s.name} whenToUse 超长`).toBeLessThanOrEqual(20)
       expect(s.inject.split('\n').length, `${s.name} 正文超 40 行`).toBeLessThanOrEqual(40)

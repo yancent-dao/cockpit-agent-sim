@@ -160,7 +160,7 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 - **barge-in**：turn 世代戳。旧慢层活照干完、话术降级 lateNote 走横幅、消息插新输入前。
   pending MRTR 确认时新输入直达慢层（状态分支不是意图分支）。
 - **Skill**（agents/main-agent/skills/）：目录行常驻 + skill.use 注入正文（≤40 行）。
-  首批导航、媒体。Tool=能力 Skill=章法 persona=品格 记忆=事实，四不相混。
+  首批导航、媒体、调研报告（canvas 交付）。Tool=能力 Skill=章法 persona=品格 记忆=事实，四不相混。
 - 实测经验：快层最后一轮必须撤工具逼话术（GLM-flash 会两轮全用来重复调用）；
   快层模型别选最便宜档（裸小模型调不动工具）；数值参数要宽容 "24" 字符串。
 

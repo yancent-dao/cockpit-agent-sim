@@ -1,5 +1,5 @@
 import type { Permission, Op, Value } from '../core/types'
-import { TEMPLATE_IDS } from './cards'
+import { TEMPLATE_IDS, CARD_TEMPLATES } from './cards'
 
 /**
  * Agent 能选的全部档位，从小到大。
@@ -669,7 +669,16 @@ export const TOOLS: ToolDef[] = [
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',
     permission: '彩',
     params: {
-      template: { type: 'enum', values: TEMPLATE_IDS, required: true, desc: '卡片模板' },
+      template: {
+        type: 'enum', values: TEMPLATE_IDS, required: true,
+        // 模板说明书必须随 schema 到达模型——之前这里只有"卡片模板"三个字，
+        // canvas 的 html/text 契约和像素画布模型根本看不到，等于模板不存在
+        // （实拍：调研报告没走生成式卡）。systemOnly 的不教——模型建不了
+        desc: '卡片模板。各模板用途与 data 形状：\n' + CARD_TEMPLATES
+          .filter(t => !t.systemOnly)
+          .map(t => `- ${t.id}：${t.desc}`)
+          .join('\n'),
+      },
       size: {
         type: 'enum', values: [...ALL_SIZES], required: true,
         desc: '尺寸，从小到大：chip 一个数字（车速、电量这种）/ strip 一行字 / bar 一行字加条进度 / ' +

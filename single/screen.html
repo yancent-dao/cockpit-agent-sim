@@ -78,8 +78,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
 /* 错峰 45ms 由 JS 按「这一批第几张新卡」设 style.animationDelay。
-   用 nth-child 不行：桌面里卡片和占位块（.slot）混在一起，
-   序号对不上，而且节点复用时 append 顺序不等于视觉顺序 */
+   用 nth-child 不行：节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
 .card>h3{flex:none;display:flex;align-items:center;gap:calc(12px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
@@ -114,7 +113,6 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    一个 76px 的数字挂在 562px 高的卡底部，看着像没加载完 */
 .bd>.wxnow:only-child{flex:1;align-items:center}
 .bd>.wxnow:only-child b{font-size:calc(var(--t-mega)*var(--u))}
-.slot{border:2px dashed var(--hair,var(--hairline));border-radius:var(--r-m)}
 
 /* ── 待选态：整卡描边呼吸 ──
    用户是用语音选的（"第二个"），屏上必须让他知道**现在轮到他说话了**。
@@ -2028,13 +2026,10 @@ ${BRIDGE}
   function renderDesk() {
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();
-    const occupied = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false));
     const moves = [];
     let fresh = 0;
     for (const c of deskState.cards) {
       seen.add(c.id);
-      for (let dr = 0; dr < c.rowSpan; dr++)
-        for (let dc = 0; dc < c.colSpan; dc++) occupied[c.row + dr]?.splice(c.col + dc, 1, true);
       let node = cardNodes.get(c.id);
       if (!node) {
         node = document.createElement("div");
@@ -2099,31 +2094,6 @@ ${BRIDGE}
         }
         node.dataset.sig = sig;
       }
-    }
-    const [bw, bh] = [TIERS.card.w, TIERS.card.h];
-    const wantSlots = /* @__PURE__ */ new Set();
-    for (let r = 0; r + bh <= GRID.rows; r += bh)
-      for (let col = 0; col + bw <= GRID.cols; col += bw) {
-        let free = true;
-        for (let dr = 0; dr < bh && free; dr++)
-          for (let dc = 0; dc < bw; dc++) if (occupied[r + dr][col + dc]) {
-            free = false;
-            break;
-          }
-        if (free) wantSlots.add(`${r},${col}`);
-      }
-    for (const el of Array.from(desk.querySelectorAll(".slot"))) {
-      if (wantSlots.has(el.dataset.at)) wantSlots.delete(el.dataset.at);
-      else el.remove();
-    }
-    for (const at of wantSlots) {
-      const [r, col] = at.split(",").map(Number);
-      const slot = document.createElement("div");
-      slot.className = "slot";
-      slot.dataset.at = at;
-      slot.style.gridRow = `${r + 1} / span ${bh}`;
-      slot.style.gridColumn = `${col + 1} / span ${bw}`;
-      desk.appendChild(slot);
     }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {

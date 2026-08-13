@@ -415,17 +415,12 @@ const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stri
 function renderDesk() {
   const desk = $('desk')
   const seen = new Set<string>()
-  // 占位符零状态，直接整体重建最简单，不需要跟卡片一样按身份复用
-
-  const occupied: boolean[][] = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false))
   // FLIP：位置真的变了才记 first rect。车窗过渡每帧调 renderDesk()，
   // 每帧都跑 FLIP 会打架，卡片抖得像坏掉的
   const moves: Move[] = []
   let fresh = 0            // 这一批新建了第几张，用来错峰
   for (const c of deskState.cards) {
     seen.add(c.id)
-    for (let dr = 0; dr < c.rowSpan; dr++)
-      for (let dc = 0; dc < c.colSpan; dc++) occupied[c.row + dr]?.splice(c.col + dc, 1, true)
     let node = cardNodes.get(c.id)
     if (!node) {
       node = document.createElement('div')
@@ -522,31 +517,8 @@ function renderDesk() {
       node.dataset.sig = sig
     }
   }
-  // 占位符按**基准卡大小**（4×2）画，不是按单元格。48 个 1×1 小方块的空桌面
-  // 看着像坏掉的棋盘；6 个基准块才读得出"这儿能放一张卡"。
-  // **复用不删建**：hello 心跳每 4 秒重推，占位符每次删建就是整屏周期闪烁
-  const [bw, bh] = [TIERS.card.w, TIERS.card.h]
-  const wantSlots = new Set<string>()
-  for (let r = 0; r + bh <= GRID.rows; r += bh)
-    for (let col = 0; col + bw <= GRID.cols; col += bw) {
-      let free = true
-      for (let dr = 0; dr < bh && free; dr++)
-        for (let dc = 0; dc < bw; dc++) if (occupied[r + dr][col + dc]) { free = false; break }
-      if (free) wantSlots.add(`${r},${col}`)
-    }
-  for (const el of Array.from(desk.querySelectorAll('.slot')) as HTMLElement[]) {
-    if (wantSlots.has(el.dataset.at!)) wantSlots.delete(el.dataset.at!)
-    else el.remove()
-  }
-  for (const at of wantSlots) {
-    const [r, col] = at.split(',').map(Number)
-    const slot = document.createElement('div')
-    slot.className = 'slot'
-    slot.dataset.at = at
-    slot.style.gridRow = `${r + 1} / span ${bh}`
-    slot.style.gridColumn = `${col + 1} / span ${bw}`
-    desk.appendChild(slot)
-  }
+  // 占位虚线框曾按基准卡大小画过 6 块，产品拍板删掉——壁纸本身就是"空"，
+  // 虚线框反而让空桌面像张没画完的表格
 
   // 卡片被移除时（不再出现在新状态里），才真正清掉对应 DOM 节点
   for (const [id, node] of cardNodes) {

@@ -189,6 +189,24 @@ describe('快层越权调用：转交的常态，不是用户脸上的错误', (
   })
 })
 
+describe('自纠错误不上横幅', () => {
+  // 实拍：慢层建卡缺 ttl/data.html 被拒，横幅弹"有错误做不了"，下一轮它自己
+  // 就补对了——参数自纠是模型内部过程，用户只该看到最终结果
+  it('INVALID_PARAMS/DATA_SHAPE 这类自纠码静默；业务性 unavailable 照常上横幅', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('climate.set', { targetTemp: '很热' })] }),   // INVALID_PARAMS
+      () => ({ toolCalls: [call('media.control', { action: 'next' })] }),     // NO_QUEUE（业务性）
+      () => ({ text: '好了' }),
+    )
+    const { p, events } = mk(fast, slow)
+    await p.run('随便干点什么')
+    const rejects = events.filter(e => e.type === 'rejected') as any[]
+    expect(rejects, '自纠码不上横幅，业务拒绝保留').toHaveLength(1)
+    expect(rejects[0].text).toContain('没在放')
+  })
+})
+
 describe('barge-in：turn 世代戳', () => {
   it('旧 turn 的慢层迟到话术不抢麦，降级为 lateNote；活照干完', async () => {
     let release!: (r: LLMReply) => void

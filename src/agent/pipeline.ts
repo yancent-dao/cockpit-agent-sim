@@ -127,6 +127,16 @@ const SKILL_SCHEMA = {
 }
 const isMeta = (name: string, meta: string) => name === meta || name === meta.replace(/\./g, '_')
 
+/**
+ * 自纠错误码：参数写错、形状不对这类**模型下一轮自己就能修**的拒绝，
+ * 不上横幅（实拍：建卡缺 ttl 被拒弹"有错误做不了"，下一轮它就补对了）。
+ * 业务性拒绝（约束拦截、没有队列）仍然要让用户听到——那是事实不是笔误。
+ */
+const SELF_FIX_CODES = new Set([
+  'INVALID_PARAMS', 'DATA_SHAPE_MISMATCH', 'TTL_REQUIRED', 'SIZE_NOT_SUPPORTED',
+  'UNKNOWN_TOOL', 'UNKNOWN_SKILL', 'EMPTY_CARD', 'TASK_NOT_FOUND', 'SYSTEM_TEMPLATE',
+])
+
 /** epoch 摘要消息的识别标 */
 const SUM_MARK = '【前情摘要】'
 /** 滑动窗口：最近 K 轮全文，更早的折叠进摘要 */
@@ -184,7 +194,8 @@ export function createPipeline(deps: PipelineDeps) {
       if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
       // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
       // 结果都如实进报告，慢层看得到（用户实拍："已拒绝执行 无权调用 navigation.setDestination"）
-      if (!opts.quietRejects && (result.status === 'rejected' || result.status === 'unavailable'))
+      if (!opts.quietRejects && (result.status === 'rejected' || result.status === 'unavailable')
+          && !SELF_FIX_CODES.has(result.code ?? ''))
         emit({ type: 'rejected', text: result.message ?? '无法执行' })
       return { c, result }
     }))

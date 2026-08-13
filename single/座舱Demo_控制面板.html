@@ -3481,6 +3481,17 @@ ${extras.desktop}`);
     }
   };
   var isMeta = (name, meta) => name === meta || name === meta.replace(/\./g, "_");
+  var SELF_FIX_CODES = /* @__PURE__ */ new Set([
+    "INVALID_PARAMS",
+    "DATA_SHAPE_MISMATCH",
+    "TTL_REQUIRED",
+    "SIZE_NOT_SUPPORTED",
+    "UNKNOWN_TOOL",
+    "UNKNOWN_SKILL",
+    "EMPTY_CARD",
+    "TASK_NOT_FOUND",
+    "SYSTEM_TEMPLATE"
+  ]);
   var SUM_MARK = "【前情摘要】";
   var KEEP_ROUNDS = 4;
   var COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成前情摘要：
@@ -3521,7 +3532,7 @@ ${extras.desktop}`);
         const result = metaKey ? await interceptors[metaKey](c.args) : await registry2.invoke(c.name, c.args, { allow, round });
         trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
         if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
-        if (!opts.quietRejects && (result.status === "rejected" || result.status === "unavailable"))
+        if (!opts.quietRejects && (result.status === "rejected" || result.status === "unavailable") && !SELF_FIX_CODES.has(result.code ?? ""))
           emit({ type: "rejected", text: result.message ?? "无法执行" });
         return { c, result };
       }));

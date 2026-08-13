@@ -71,22 +71,42 @@ describe('canvas 尺寸白名单开全档', () => {
     return reg
   }
 
-  it('canvas 可以要 2/3 的大画布', async () => {
+  it('canvas 最大 1/2；2/3 被拒并告知支持档位（2026-08-13 改：不覆盖桌面）', async () => {
     const reg = await mk()
-    const r = await reg.invoke('card.show', {
+    const ok = await reg.invoke('card.show', {
+      template: 'canvas', size: '1/2', ttl: 'untilDismissed',
+      data: { title: '对比', html: '<p>图</p>', text: '兜底' },
+    })
+    expect(ok.status).toBe('ok')
+    const big = await reg.invoke('card.show', {
       template: 'canvas', size: '2/3', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
-    expect(r.status).toBe('ok')
+    expect(big.status).toBe('rejected')
   })
 
   it('canvas 的模板 desc 与 sizes 白名单来自同一个数组 —— 不可能再打架', async () => {
     const { CARD_TEMPLATES } = await import('../../src/config/cards')
     const canvas = CARD_TEMPLATES.find(t => t.id === 'canvas')!
     expect(canvas.sizes).toBeTruthy()
-    // desc 里承诺的每一档都在白名单里
-    for (const z of ['2/3', 'full']) expect(canvas.sizes).toContain(z)
     // desc 的像素契约至少覆盖白名单里的大档
-    expect(canvas.desc).toContain('2/3')
+    expect(canvas.desc).toContain('1/2')
+  })
+
+  // 产品裁定（2026-08-13）：生成式卡**不进覆盖层**——full 会浮在所有卡上面
+  // 把桌面盖死。它和其他卡同层同仲裁，上限 1/2
+  it('生成式卡不许 full/2/3：和其他卡同层，绝不覆盖桌面', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    for (const id of ['canvas', 'canvas-app']) {
+      const t = CARD_TEMPLATES.find(x => x.id === id)!
+      expect(t.sizes, `${id} 不许 full`).not.toContain('full')
+      expect(t.sizes, `${id} 不许 2/3`).not.toContain('2/3')
+      expect(t.desc, `${id} desc 不许再提 full`).not.toContain('full')
+    }
+    const store = createStore(SIGNALS, CONSTRAINTS)
+    const reg2 = createRegistry(store, TOOLS, Date.now, { desk: createDesk() })
+    const r = await reg2.invoke('card.show', { template: 'canvas', size: 'full',
+      ttl: 'untilDismissed', data: { title: 'x', html: '<p>1</p>', text: 'x' } })
+    expect(r.status).toBe('rejected')
   })
 })

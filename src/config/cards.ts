@@ -59,7 +59,9 @@ export interface CardTemplate {
  * 这串是**算出来的**不是写死的：改栅格或屏幕尺寸，这句话自动跟着变。
  */
 /** canvas 允许的全部档位。desc 的像素契约从**同一个数组**生成——合同和门卫说同一套话 */
-const CANVAS_ALLOWED = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', 'tower', '2/3', 'full']
+// 产品裁定（2026-08-13）：生成式卡**不进覆盖层**——full/2/3 会浮在所有卡上面
+// 把桌面盖死（实拍点名"我不需要这样的卡片"）。它和其他卡同层同仲裁，上限 1/2
+const CANVAS_ALLOWED = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', 'tower']
 const CANVAS_SIZES = CANVAS_ALLOWED
   .map(z => { const p = pixelsOf(z); return `${z} ${p.w}×${p.h}` }).join('，')
 
@@ -127,7 +129,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 需要交互/动画/计算的小组件才走这（每卡一个 iframe，重但值）。
    */
   { id: 'canvas-app', label: '生成式小组件', defaultSize: '1/2', sizes: [...CANVAS_ALLOWED],
-    desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，尺寸：**只有游戏/需要操作的交互应用才用 full**（全屏征用，会盖住桌面，右上角有关闭钮）；信息展示一律 1/2 以下进桌面。' +
+    desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，尺寸上限 1/2——它和其他卡片同层进桌面，绝不覆盖别的卡；游戏也在 1/2 的画布里做（像素预算见下）。' +
       '会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。' +
       '沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。' +
       '可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。' +

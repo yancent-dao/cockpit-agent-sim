@@ -419,7 +419,40 @@ export function createRegistry(
     })
   }
 
-  return { list, schemas, invoke, permissionOf, canonicalName, tools }
+  /**
+   * 工具目录：一行一工具的速览，常驻慢层 system 代替全量 schema（省 ~85% token）。
+   * 目录 = 非黑、非 meta、有 brief 的工具——由数据自动生成，加工具目录自己长。
+   */
+  const briefCatalog = (allow?: string[]) =>
+    list(allow)
+      .filter(t => !t.meta && t.brief)
+      .map(t => `- ${t.name}: ${t.brief}`)
+      .join('\n')
+
+  /**
+   * 一组工具声明会读写哪些信号（writes 路径展开占位符 + requires）。
+   * 状态注入按这个裁剪：挂了车窗工具就注入车窗信号，50 行 → ~12 行。
+   */
+  function signalsFor(names: string[]): string[] {
+    const out = new Set<string>()
+    for (const n of names) {
+      const t = resolve(n)
+      if (!t) continue
+      if (t.requires) out.add(t.requires)
+      for (const w of t.writes ?? []) {
+        const m = w.path.match(/\{(\w+)\}/)
+        if (!m) { out.add(w.path); continue }
+        // 占位符按参数枚举展开；expand 的别名（all）指向的是已有枚举值，跳过即可
+        const p = t.params[m[1]]
+        const expandKeys = new Set(Object.keys(t.expand?.[m[1]] ?? {}))
+        for (const v of p?.values ?? [])
+          if (!expandKeys.has(v)) out.add(w.path.replace(m[0], v))
+      }
+    }
+    return [...out]
+  }
+
+  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor }
 }
 
 export type Registry = ReturnType<typeof createRegistry>

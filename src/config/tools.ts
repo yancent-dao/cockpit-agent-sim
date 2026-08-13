@@ -38,6 +38,18 @@ export interface ToolDef {
   handler?: string
   /** 依赖的信号：该信号 equipped=false 时，能力目录里此 Tool 标记为未选装 */
   requires?: string
+  /**
+   * 一行速览（≤20 字），慢层工具目录的原料——目录常驻 system 代替全量 schema。
+   * 非黑、非 meta 工具必填（有测试卡）。写给模型看，要说清"什么时候用我"。
+   */
+  brief?: string
+  /**
+   * 快层工具面标记。**显式标注不做推导**：彩权限里也有不适合快层的
+   * （music.play 要挑搜索结果）。只允许出现在彩权限上（有测试卡）。
+   */
+  fast?: boolean
+  /** 元工具（tools.load / handoff 这类装载管道），不进目录不进能力卡 */
+  meta?: boolean
 }
 
 /**
@@ -48,6 +60,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 读取 ── */
   {
     name: 'vehicle.getState',
+    brief: '读车辆当前状态',
+    fast: true,
     desc: '读取车辆当前状态。不传参返回全部状态；传 paths 只读取指定信号。',
     permission: '彩',
     params: {
@@ -59,6 +73,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 能力目录：由 Tool Registry 自动生成，供能力目录卡渲染 ── */
   {
     name: 'capability.list',
+    brief: '屏上显示能力目录',
     desc: '把本车能力目录显示到屏幕上（按能力域分组的卡片，如车窗/空调/导航），并返回清单数据。**这是唯一能让用户在屏幕上看到能力清单的方式**——你自己凭记忆背清单，用户屏幕上什么都不会出现，而且容易背漏或背错。所以只要用户问"你能做什么/会啥/帮我干嘛"，先调它，再口头概括一两句。调用后不要再说"屏幕上已显示"之类的话除非你真的调过它。不传 domain 返回全部；传 domain 只看某一类（如 window）。',
     permission: '彩',
     params: {
@@ -70,6 +85,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 车窗（零 handler） ── */
   {
     name: 'window.set',
+    brief: '控制车窗开度',
+    fast: true,
     desc: '控制车窗开度。position 为百分比，0 表示完全关闭，100 表示完全打开。window 传 all 可一次控制四扇窗。',
     permission: '彩',
     params: {
@@ -88,6 +105,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 空调（v0.1 简化：单分区，不做左右独立温区） ── */
   {
     name: 'climate.set',
+    brief: '空调温度风量出风',
+    fast: true,
     desc: '控制空调。可以一次传多个字段（比如同时开空调并调温度），只传要改的字段即可，不用每个都填。',
     permission: '彩',
     params: {
@@ -115,6 +134,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 座椅（v0.1 简化：滑动/靠背仅前排；按摩、记忆位暂不做） ── */
   {
     name: 'seat.set',
+    brief: '座椅加热通风调节',
+    fast: true,
     desc: '控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。',
     permission: '彩',
     params: {
@@ -139,6 +160,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 方向盘 ── */
   {
     name: 'steeringWheel.set',
+    brief: '方向盘加热',
+    fast: true,
     desc: '控制方向盘加热档位。',
     permission: '彩',
     params: { heating: { type: 'number', range: [0, 3], required: true, desc: '加热档位 0-3' } },
@@ -148,6 +171,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 天窗：未选装，用于反幻觉验证 ── */
   {
     name: 'sunroof.set',
+    brief: '天窗开合',
+    fast: true,
     desc: '控制全景天窗开度。',
     permission: '彩',
     params: { position: { type: 'number', range: [0, 100], required: true, desc: '开度百分比 0-100' } },
@@ -157,6 +182,8 @@ export const TOOLS: ToolDef[] = [
 
   {
     name: 'wiper.set',
+    brief: '雨刷挡位',
+    fast: true,
     desc: '雨刷。auto 是自动感应雨量，下雨天用户说"开雨刷"一般给 auto 最省心；雨大就 high。',
     permission: '彩',
     params: { mode: { type: 'enum', values: ['off', 'auto', 'slow', 'medium', 'high'], required: true, desc: '档位' } },
@@ -166,6 +193,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 车门：灰级，需二次确认 ── */
   {
     name: 'door.set',
+    brief: '开关车门，需确认',
     desc: '开关车门。open 打开，close 关闭。',
     permission: '灰',
     params: {
@@ -182,6 +210,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 后备箱：灰级，且非 P 挡禁止 ── */
   {
     name: 'trunk.set',
+    brief: '开关后备箱，需确认',
     desc: '开关后备箱。只有 P 挡才能打开。',
     permission: '灰',
     params: {
@@ -195,6 +224,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 充电口 ── */
   {
     name: 'chargePort.set',
+    brief: '开关充电口，需确认',
     desc: '开关充电口盖。',
     permission: '彩',
     params: { action: { type: 'enum', values: ['open', 'close'], required: true, desc: '动作' } },
@@ -204,6 +234,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 儿童锁 ── */
   {
     name: 'childLock.set',
+    brief: '儿童锁开关',
+    fast: true,
     desc: '开关后排儿童锁。开启后后排车窗与车门将无法控制。',
     permission: '彩',
     params: { enabled: { type: 'boolean', required: true, desc: '是否开启' } },
@@ -213,6 +245,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 氛围灯（v0.1 简化：整车一个分区，不做前后独立） ── */
   {
     name: 'ambientLight.set',
+    brief: '氛围灯开关颜色亮度',
+    fast: true,
     desc: '控制氛围灯。可以一次传多个字段，只传要改的即可。',
     permission: '彩',
     params: {
@@ -232,6 +266,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 香氛 ── */
   {
     name: 'fragrance.set',
+    brief: '香氛开关香型浓度',
+    fast: true,
     desc: '控制香氛。可以一次传多个字段，只传要改的即可。',
     permission: '彩',
     params: {
@@ -249,6 +285,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 灯光（v0.1 简化：只做大灯与后备箱灯，阅读灯留待 v0.2） ── */
   {
     name: 'light.set',
+    brief: '大灯与后备箱灯',
+    fast: true,
     desc: '开关车灯。',
     permission: '彩',
     params: {
@@ -261,6 +299,8 @@ export const TOOLS: ToolDef[] = [
   /* ── 驾驶设置：灰级（行驶中） ── */
   {
     name: 'driveSetting.set',
+    brief: '驾驶模式回收悬架',
+    fast: true,
     desc: '调整驾驶模式、动能回收、悬架高度。可以一次传多个字段，只传要改的即可。停车时可直接执行，行驶中需要用户确认。',
     permission: '彩',
     params: {
@@ -280,6 +320,7 @@ export const TOOLS: ToolDef[] = [
   /* ── L2 应用级：导航（真实接高德，失败一律 unavailable，不冒充 rejected） ── */
   {
     name: 'navigation.search',
+    brief: '搜地点出候选列表',
     desc: '搜索地点或公交线路。去一个地方前先用这个搜，不要凭地名直接设目的地——同名地点很多。type 传 poi（默认）返回候选 POI 列表；type 传 bus 返回公交线路，这时 near 必须传城市名。搜到多个候选时列表会自动上屏，**带编号**。你只说一句"搜到几个，你说第几个"就行，别把候选逐条念一遍——屏幕上摆着呢，念了是重复劳动，语音还长。只有一个候选时直接进 navigation.setDestination，不用多此一举地问。',
     permission: '彩',
     params: {
@@ -291,6 +332,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.setDestination',
+    brief: '设目的地开始导航',
     desc: '设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。',
     permission: '彩',
     params: {
@@ -312,6 +354,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'region.districts',
+    brief: '查周边区县列表',
     desc: `列出某个城市下辖的区县（名称 + 中心坐标）。不传 area 就用车辆当前所在城市。
 **这是"扫一圈周边"类需求的第一步**——拿到区县列表后，再用别的工具逐个查，就能组合出很多事：
 例："找附近正在下雨的县城导航过去" = 先调这个拿区县列表，再对每个区县调 weather.query，
@@ -324,6 +367,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'places.save',
+    brief: '存常用地址',
     desc: '把一个地点存成常用地址（家、公司、常去的健身房等），之后用户说"回家"就能直接导航。坐标来自 navigation.search 结果里的 location。',
     permission: '彩',
     params: {
@@ -335,6 +379,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'places.list',
+    brief: '列常用地址',
     desc: '看看存了哪些常用地址。用户说"回家""去公司"而你不确定存没存时，先查这个。',
     permission: '彩',
     params: {},
@@ -342,6 +387,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.searchAlong',
+    brief: '沿途周边搜服务点',
     desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
       口头只说"找到几个，最近的是XX"这种一句话结论，别把每个的名字、距离逐条念——屏幕上有。
 不传 near 时：导航中沿路线前方找，没导航就找车辆附近；不传 keyword 时按车型自动选（电车找充电站、油车找加油站）。
@@ -359,6 +405,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.compareRoutes',
+    brief: '多路线方案对比',
     desc: '对比去同一个目的地的几条路线（耗时/里程/过路费/红绿灯数），方案列表会自动上屏，带编号。口头只说关键差别和你的建议（"最快那条要两块过路费，另外两条免费"），别把三条的耗时里程逐条念一遍。用户问"走哪条快""要不要走高速""过路费多少"时用。用户选定后再调 navigation.setDestination 并传对应的 preference。',
     permission: '彩',
     params: {
@@ -370,6 +417,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.control',
+    brief: '暂停恢复结束导航',
     desc: '控制导航会话：resume 从暂停恢复/pause 暂停/cancel 取消。start 一般用不上——navigation.setDestination 成功后会自动开始导航；只有目的地已经设过、又被 pause 了，现在要重新开始，才需要用 start（或者干脆用 resume，效果一样）。',
     permission: '彩',
     params: {
@@ -379,6 +427,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.getStatus',
+    brief: '读导航当前状态',
     desc: '读取当前导航状态：是否在导航、目的地、ETA、剩余里程、电量是否够到达。导航中时会附带 traffic（实时路况），拿不到就没有这个字段，不代表出错。',
     permission: '彩',
     params: {},
@@ -388,6 +437,8 @@ export const TOOLS: ToolDef[] = [
   /* ── L2 应用级：天气（真实接高德） ── */
   {
     name: 'weather.query',
+    brief: '查城市天气预报',
+    fast: true,
     desc: '查询某个地点的天气，同时返回实况与未来几天预报。查询成功后天气卡会自动显示在屏幕上，你只负责口头播报重点，不要再建卡。查不到这个地点时会得到 unavailable。'
       + '**注意**：这是气象服务的城市级数据，跟车上传感器（车外温度、当前天况）测的"此刻这里"不是一回事，'
       + '两者对不上很正常，别当成矛盾去质问用户——车里冷不冷、雨大不大以传感器为准。',
@@ -401,6 +452,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 语音 ── */
   {
     name: 'voice.speak',
+    brief: '主动播报一句话',
     desc: '通过车内音响向用户播报一段话。用于解释、确认、反馈。',
     permission: '彩',
     params: {
@@ -411,6 +463,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'voice.ask',
+    brief: '向用户提问出选择卡',
     desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
     permission: '彩',
     params: {
@@ -424,6 +477,8 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
   {
     name: 'media.control',
+    brief: '播放暂停上下曲',
+    fast: true,
     desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
     permission: '彩',
     params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev', 'toggle'], required: true, desc: '动作。toggle 是播放/暂停切换（屏幕按钮用它）' } },
@@ -431,6 +486,8 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.volume',
+    brief: '调音量',
+    fast: true,
     desc: '媒体音量。level 传绝对值（0-100），delta 传增减量（"大声点"用 +10 这种）。超出范围会自动夹住而不是报错。',
     permission: '彩',
     params: {
@@ -441,6 +498,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.seek',
+    brief: '跳播放进度',
     desc: '跳到某个时间点或快进快退。电台是直播流，会返回 rejected。',
     permission: '彩',
     params: {
@@ -451,6 +509,8 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.mode',
+    brief: '循环随机播放模式',
+    fast: true,
     desc: '播放模式：顺序/随机/单曲循环。电台没有播放模式，会返回 rejected。',
     permission: '彩',
     params: { mode: { type: 'enum', values: ['sequential', 'shuffle', 'repeatOne'], required: true, desc: '模式' } },
@@ -458,6 +518,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.queue',
+    brief: '看播放队列',
     desc: '看播放队列：正在放什么、接下来几首、最近放过什么。点一首歌后同批搜索结果自动排队。',
     permission: '彩',
     params: {},
@@ -465,6 +526,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.favorite',
+    brief: '收藏当前曲目',
     desc: '收藏正在播的内容。歌和电台存在同一份收藏里，用户说"收藏"不用分类型。',
     permission: '彩',
     params: {},
@@ -472,6 +534,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'media.favorites',
+    brief: '列收藏列表',
     desc: '列出收藏过的内容，列表会自动显示到屏幕上带编号，你说一句"你收藏了几个"就行，别逐条念。',
     permission: '彩',
     params: {},
@@ -481,6 +544,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 音乐（iTunes，30 秒预览） ══════════ */
   {
     name: 'music.search',
+    brief: '搜歌不播',
     desc: '搜歌。可以搜歌名、歌手、专辑。结果自动上屏带编号，你只说一句"搜到几首"就行，别逐条念。**iTunes 只提供 30 秒预览，放不了整首**，这是版权限制，用户问起来就照实说。',
     permission: '彩',
     params: {
@@ -491,6 +555,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'music.play',
+    brief: '搜歌并播放入队',
     desc: '放歌。用户说"放周杰伦的晴天"就直接传 query，不用先 search——搜到会自动播第一首，省一轮。用户从搜索结果里选了第几个，传那一条的 trackId。',
     permission: '彩',
     params: {
@@ -503,6 +568,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
   {
     name: 'radio.search',
+    brief: '搜网络电台',
     desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',
     permission: '彩',
     params: {
@@ -516,6 +582,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'radio.play',
+    brief: '搜台并播放',
     desc: '放电台。用户说"放中国之声"直接传 query，不用先 search。从搜索结果里选的传 stationId。',
     permission: '彩',
     params: {
@@ -528,6 +595,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 新闻（NewsAPI） ══════════ */
   {
     name: 'news.headlines',
+    brief: '今日头条新闻',
     desc: '看某个领域的最新新闻。**中文拿不到编辑推荐的头条**（数据源限制），返回的是按关键词搜、按时间排的最新几条，返回里的 real=false 就是这个意思——播报时说"我给你找了今天的科技新闻"，**不要说"这是今天的头条"**。列表自动上屏带编号，你说一句有几条就行，别逐条念标题。',
     permission: '彩',
     params: {
@@ -538,6 +606,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'news.search',
+    brief: '按话题搜新闻',
     desc: '按关键词搜新闻。列表自动上屏带编号。',
     permission: '彩',
     params: {
@@ -548,6 +617,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'news.read',
+    brief: '念一条新闻正文',
     desc: '把列表里第几条的正文取出来念给用户听——车机场景是听不是看，用户说"读第二条"就用这个。要先调过 headlines 或 search 才有列表。',
     permission: '彩',
     params: { index: { type: 'number', range: [1, 20], required: true, desc: '第几条，从 1 开始' } },
@@ -557,6 +627,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 短视频（Pexels） ══════════ */
   {
     name: 'video.search',
+    brief: '搜短视频',
     desc: '找短视频。素材库风格（风景、城市、动物、美食这类），**不是社交平台的推荐流**，没有点赞评论。用英文关键词命中率高得多。结果自动上屏带编号。',
     permission: '彩',
     params: {
@@ -567,6 +638,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'video.play',
+    brief: '搜视频并播放',
     desc: '播短视频。**车一动就会被拒**（行车安全），拒绝时把原因和替代方案告诉用户——可以改放音乐或电台。用户说"放个视频"直接传 query 即可。',
     permission: '彩',
     params: {
@@ -579,6 +651,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 联网搜索 ══════════ */
   {
     name: 'web.search',
+    brief: '联网搜索现查',
     desc: '联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**返回的答案往往很长，别整段念——挑一两句最关键的说，剩下的让用户看屏幕。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**',
     permission: '彩',
     params: { query: { type: 'string', required: true, desc: '要查的问题，一句话说清' } },
@@ -587,6 +660,7 @@ export const TOOLS: ToolDef[] = [
 
   {
     name: 'card.show',
+    brief: '建卡片上屏',
     desc: '在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。',
     permission: '彩',
     params: {
@@ -623,6 +697,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'card.update',
+    brief: '更新卡片数据',
     desc: '更新已有卡片的内容。桌面上已有对应卡片时优先用这个，不要重复新建。',
     permission: '彩',
     params: {
@@ -633,6 +708,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'card.resize',
+    brief: '调卡片大小',
     desc: '改变卡片尺寸。空间不够时系统会自动腾位。',
     permission: '彩',
     params: {
@@ -646,6 +722,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'card.dismiss',
+    brief: '撤掉卡片',
     desc: '移除一张卡片。',
     permission: '彩',
     params: { cardId: { type: 'string', required: true, desc: '卡片 id' } },
@@ -653,6 +730,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'card.focus',
+    brief: '高亮提示一张卡',
     desc: '把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。',
     permission: '彩',
     params: { cardId: { type: 'string', required: true, desc: '卡片 id' } },
@@ -660,6 +738,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'desktop.getLayout',
+    brief: '读桌面布局',
     desc: '读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。',
     permission: '彩',
     params: {},
@@ -678,6 +757,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 记忆（显式，长期） ══════════ */
   {
     name: 'memory.remember',
+    brief: '记住用户偏好',
     desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。' +
       '只记**用户明说要记**的；你自己猜的规律不许存。这些偏好每次对话都会注入给你，落实靠你自己。',
     permission: '彩',
@@ -686,6 +766,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'memory.forget',
+    brief: '删掉记住的偏好',
     desc: '用户说"别记了""把那条删了"时调用，按内容片段模糊匹配删除。',
     permission: '彩',
     params: { text: { type: 'string', required: true, desc: '要删的偏好的关键词' } },
@@ -693,6 +774,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'memory.list',
+    brief: '列出记住的事',
     desc: '用户问"你记住了什么"时调用，清单会上屏。',
     permission: '彩',
     params: {},

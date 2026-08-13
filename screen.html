@@ -48,7 +48,9 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .hintpill b{color:var(--brand-fg);font-weight:600}
 .chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
 /* 后台任务芯片：持续状态的第四类显示面（§6.1）。转圈=在跑，点开出任务列表卡 */
-#chipTask{cursor:pointer}
+#chipTask{cursor:pointer;max-width:520px}
+#taskCur{color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:inline-block;max-width:360px;vertical-align:bottom;margin-left:6px}
 #chipTask .spin{display:inline-block;font-style:normal;animation:taskspin 1.6s linear infinite}
 @keyframes taskspin{to{transform:rotate(360deg)}}
 
@@ -537,7 +539,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
     <span>车外 <b id="tOut">3</b>°C</span>
     <span id="wx">☁ 多云</span>
     <span class="sp"></span>
-    <span class="chip" id="chipTask" style="display:none"><i class="spin">⟳</i> <b id="taskN">0</b></span>
+    <span class="chip" id="chipTask" style="display:none"><i class="spin">⟳</i> <b id="taskN">0</b><span id="taskCur"></span></span>
     <span class="chip" id="chipSpd">静止 · P 挡</span>
     <span class="chip" id="chipLock" style="display:none">🔒 儿童锁开启</span>
     <span>电量 <b id="soc">68</b>%</span>

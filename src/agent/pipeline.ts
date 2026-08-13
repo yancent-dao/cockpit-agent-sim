@@ -41,6 +41,10 @@ export interface BgTask {
   label: string
   status: 'running' | 'done' | 'failed' | 'cancelled'
   summary?: string
+  /** 进展流（§6.2）：机制副产品——LLM 轮与工具调用都是步骤，零模型成本 */
+  steps: Array<{ label: string; at: number; ms?: number }>
+  /** 当前动作（状态栏芯片旁的微字） */
+  current?: string
 }
 
 export interface PipelineDeps {
@@ -291,10 +295,31 @@ export function createPipeline(deps: PipelineDeps) {
   const taskPool: BgTask[] = []
   let taskSeq = 0
   let activeSubs = 0
-  const tasks = (): BgTask[] => taskPool.map(t => ({ ...t }))
+  const tasks = (): BgTask[] => taskPool.map(t => ({ ...t, steps: t.steps.map(x => ({ ...x })) }))
   const cancelTask = (id: string) => {
     const t = taskPool.find(x => x.id === id)
     if (t?.status === 'running') { t.status = 'cancelled'; emit({ type: 'taskUpdate' }) }
+  }
+
+  /** 元工具的人话标签（业务工具用 brief，这几个管道工具不在 TOOLS 里） */
+  const META_LABELS: Record<string, string> = {
+    'tools.load': '装载工具', 'skill.use': '取设计规范', 'agent.handoff': '转交',
+  }
+  /** 步骤推进：结掉上一步的耗时、开新步、更新 current，taskUpdate 通知 UI */
+  const step = (task: BgTask | undefined, label: string) => {
+    if (!task || task.status !== 'running') return
+    const now = clock()
+    const last = task.steps[task.steps.length - 1]
+    if (last && last.ms === undefined) last.ms = now - last.at
+    task.steps.push({ label, at: now })
+    task.current = label
+    emit({ type: 'taskUpdate' })
+  }
+  const stepLabel = (name: string) => {
+    const canonical = registry.canonicalName(name)
+    const metaKey = Object.keys(META_LABELS).find(k => isMeta(name, k))
+    return metaKey ? META_LABELS[metaKey]
+      : (registry.list().find(t => t.name === canonical)?.brief ?? canonical)
   }
 
   /**
@@ -318,6 +343,7 @@ export function createPipeline(deps: PipelineDeps) {
     const trace: TraceStep[] = []
     for (let r = 0; r < sm.maxRounds; r++) {
       if (task && task.status !== 'running') return { summary: '' }   // 被取消：立刻收手
+      step(task, `思考中（第 ${r + 1} 轮）`)
       const system = buildSystemPrompt(manifest, store, registry, {
         catalog: registry.briefCatalog(),
         signalFilter: registry.signalsFor([...loaded]),
@@ -327,6 +353,7 @@ export function createPipeline(deps: PipelineDeps) {
       const reply = await deps.slowLlm.chat({ system, messages: view, tools })
       if (task && task.status !== 'running') return { summary: '' }
       if (!reply.toolCalls?.length) return { summary: reply.text ?? '' }
+      for (const c of reply.toolCalls) step(task, `正在${stepLabel(c.name)}`)
       view.push(asstMsg(reply))
       const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
         'tools.load': mkLoader(loaded),
@@ -348,13 +375,15 @@ export function createPipeline(deps: PipelineDeps) {
       .filter(n => registry.list().some(t => t.name === n))
     activeSubs++
     if (args?.background) {
-      const task: BgTask = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: 'running' }
+      const task: BgTask = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: 'running', steps: [] }
       taskPool.push(task)
       emit({ type: 'taskUpdate' })
       void subRun(goal, preload, task)
         .then(({ summary }) => {
           if (task.status !== 'running') return    // 取消了就静默收场
-          task.status = 'done'; task.summary = summary
+          const last = task.steps[task.steps.length - 1]
+          if (last && last.ms === undefined) last.ms = clock() - last.at
+          task.status = 'done'; task.summary = summary; task.current = undefined
           emit({ type: 'taskUpdate' })
           emit({ type: 'taskDone', taskId: task.id, summary, ok: true })
         })

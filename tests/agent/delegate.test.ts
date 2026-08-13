@@ -138,6 +138,58 @@ describe('后台模式：立即返回，完成机械交付', () => {
   })
 })
 
+describe('进展流：机制副产品，零模型成本（§6.2）', () => {
+  it('任务的 steps 随执行生长：LLM 轮与工具调用都成为步骤，current 指向当前动作', async () => {
+    let release!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { release = res })
+    const { p } = mk((req) => {
+      if (isSub(req, '慢调研')) {
+        if (!req.messages.some(m => m.role === 'tool'))
+          return { toolCalls: [call('tools.load', { names: ['web.search'] })] }
+        return gate                     // 第二轮挂住，好让我们检查中途状态
+      }
+      if (!req.messages.some(m => m.content.includes('taskId')))
+        return { toolCalls: [call('task.delegate', { goal: '慢调研', background: true })] }
+      return { text: '跑着了' }
+    })
+    await p.run('调研一下')
+    const t = p.tasks()[0]
+    const labels = t.steps.map(s => s.label)
+    expect(labels.some(l => l.includes('思考')), 'LLM 轮是步骤').toBe(true)
+    expect(labels.some(l => l.includes('装载工具')), '元工具有人话标签').toBe(true)
+    expect(t.current, 'current 指向进行中的步骤').toContain('思考')
+    // 已完成的步骤有耗时，进行中的没有
+    expect(t.steps[0].ms, '完成步骤带耗时').toBeTypeOf('number')
+    expect(t.steps[t.steps.length - 1].ms, '当前步骤未结').toBeUndefined()
+    release({ text: '完了' })
+    await new Promise(r => setTimeout(r, 5))
+    expect(p.tasks()[0].status).toBe('done')
+  })
+
+  it('业务工具的步骤标签用 brief 人话，不用函数名', async () => {
+    let release!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { release = res })
+    const { p } = mk((req) => {
+      if (isSub(req, '查东西')) {
+        if (!req.messages.some(m => m.role === 'tool'))
+          return { toolCalls: [call('tools.load', { names: ['weather.query'] })] }
+        if (!req.messages.some(m => m.content.includes('天气')))
+          return { toolCalls: [call('weather.query', { location: '成都' })] }
+        return gate
+      }
+      if (!req.messages.some(m => m.content.includes('taskId')))
+        return { toolCalls: [call('task.delegate', { goal: '查东西', background: true })] }
+      return { text: '好' }
+    })
+    await p.run('后台查个东西')
+    await new Promise(r => setTimeout(r, 10))
+    const labels = p.tasks()[0].steps.map(s => s.label).join('|')
+    expect(labels).toContain('查城市天气预报')     // weather.query 的 brief
+    expect(labels).not.toContain('weather.query')
+    release({ text: '完' })
+  })
+})
+
 describe('task.cancel：取消也是模型决策（语音"别查了"/点屏都汇到它）', () => {
   it('第二个 turn 里模型调 task.cancel → 任务取消，子 Agent 收手', async () => {
     let releaseSub!: (r: LLMReply) => void

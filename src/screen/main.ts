@@ -606,11 +606,13 @@ const WX_EMOJI: Record<string, string> = { clear: '☀️', cloudy: '☁️', ra
 function renderStatus() {
   // 后台任务芯片：running 数转圈；失败的短暂标警示色。点开出任务列表卡（机制直调）
   const tasks: Array<{ status: string }> = meta.tasks ?? []
-  const running = tasks.filter(t => t.status === 'running').length
+  const runningTasks = tasks.filter(t => t.status === 'running')
   const failed = tasks.some(t => t.status === 'failed')
   const tc = $('chipTask')
-  tc.style.display = running || failed ? '' : 'none'
-  $('taskN').textContent = String(running)
+  tc.style.display = runningTasks.length || failed ? '' : 'none'
+  $('taskN').textContent = String(runningTasks.length)
+  // 当前动作微字（§6.2 轻层）：大致在干嘛一眼可知，细看点芯片出进展卡
+  $('taskCur').textContent = (runningTasks[0] as any)?.current ? ` · ${(runningTasks[0] as any).current}` : ''
   tc.classList.toggle('warn', failed)
   const c = $('chipSpd')
   c.textContent = speedChip(meta.speed, meta.gear)

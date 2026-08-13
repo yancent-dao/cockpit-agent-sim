@@ -221,14 +221,7 @@ const bus = createBus(m => {
     log('u', '[屏幕] 关掉了覆盖层')
     return
   }
-  if ((m as any).type === 'taskChip') {
-    const ST: Record<string, string> = { running: '跑着', done: '完成', failed: '没成', cancelled: '已取消' }
-    const items = pipeline.tasks().map(t => ({ label: t.label, sub: ST[t.status] ?? t.status }))
-    if (items.length)
-      desk.render({ key: 'bgtasks', template: 'list', kind: 'system', ttl: 60,
-        data: { title: '后台任务', items } })
-    return
-  }
+  if ((m as any).type === 'taskChip') { renderBgTasks(true); return }
   if (m.type !== 'hello') return
   setConn(true)
   pushDesk(); push()
@@ -253,7 +246,7 @@ function push() {
       speed: store.get('vehicle.speed'), childLock: store.get('cabin.childLock'),
       weather: store.get('env.weather'), outTemp: store.get('cabin.temperature.outside'),
       soc: store.get('powertrain.soc'), gear: store.get('vehicle.gear'),
-      tasks: pipeline.tasks().map(t => ({ id: t.id, label: t.label, status: t.status })),
+      tasks: pipeline.tasks().map(t => ({ id: t.id, label: t.label, status: t.status, current: t.current })),
     },
   })
   for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`) as number))
@@ -311,6 +304,31 @@ function renderSnap() {
 setInterval(() => { store.tick(200); push() }, 200)
 pushDesk()
 
+/**
+ * 任务进展卡（§6.2）：Claude 式步骤流——✓ 已完成（带耗时）/ ⟳ 进行中。
+ * 点任务芯片打开；开着时 taskUpdate 事件 live 刷新；全部翻篇自动撤。
+ * 复用 list 模板，零新模板。
+ */
+function renderBgTasks(force = false) {
+  if (!force && !desk.findByKey('bgtasks')) return
+  const ST: Record<string, string> = { done: '✓ 完成', failed: '✗ 没成', cancelled: '— 已取消' }
+  const ts = pipeline.tasks()
+  if (!ts.length) return
+  const items: Array<{ label: string; sub?: string }> = []
+  for (const t of [...ts].sort(a => (a.status === 'running' ? -1 : 1))) {
+    items.push({ label: `【${t.label}】`, sub: t.status === 'running' ? '进行中' : ST[t.status] })
+    for (const st of t.steps) {
+      const done = st.ms !== undefined || t.status !== 'running'
+      items.push({
+        label: `${done ? '✓' : '⟳'} ${st.label}`,
+        sub: st.ms !== undefined ? `${(st.ms / 1000).toFixed(1)}s` : (done ? '' : '…'),
+      })
+    }
+  }
+  desk.render({ key: 'bgtasks', template: 'list', kind: 'system', ttl: 120, refreshTtl: true,
+    data: { title: '后台任务进展', items } })
+}
+
 /* ══════════ 追踪面板 ══════════ */
 const traceEl = $('trace')
 function log(cls: string, text: string) {
@@ -348,8 +366,16 @@ pipeline.on(e => {
       log('a', `  ⟵(补) ${e.text}`)
       bus.send({ type: 'banner', on: true, reason: 'late', title: '补一句', desc: e.text, ttl: 6000 })
       break
-    case 'taskUpdate':
-      push(); break
+    case 'taskUpdate': {
+      push()
+      renderBgTasks()          // 进展卡开着就 live 刷新
+      // 全部翻篇 → 进展卡按"这件事翻篇"退场（交付卡随 taskDone 自己上）
+      if (pipeline.tasks().length && pipeline.tasks().every(t => t.status !== 'running')) {
+        const c = desk.findByKey('bgtasks')
+        if (c) desk.dismiss(c.id)
+      }
+      break
+    }
     case 'taskDone':
       log(e.ok ? 'k' : 'e', `后台任务${e.ok ? '完成' : '没成'}：${e.summary.slice(0, 60)}`)
       deliveries.push(() => {

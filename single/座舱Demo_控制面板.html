@@ -3615,13 +3615,32 @@ ${extras.desktop}`);
     const taskPool = [];
     let taskSeq = 0;
     let activeSubs = 0;
-    const tasks = () => taskPool.map((t) => ({ ...t }));
+    const tasks = () => taskPool.map((t) => ({ ...t, steps: t.steps.map((x) => ({ ...x })) }));
     const cancelTask = (id) => {
       const t = taskPool.find((x) => x.id === id);
       if (t?.status === "running") {
         t.status = "cancelled";
         emit({ type: "taskUpdate" });
       }
+    };
+    const META_LABELS = {
+      "tools.load": "装载工具",
+      "skill.use": "取设计规范",
+      "agent.handoff": "转交"
+    };
+    const step = (task, label) => {
+      if (!task || task.status !== "running") return;
+      const now = clock();
+      const last = task.steps[task.steps.length - 1];
+      if (last && last.ms === void 0) last.ms = now - last.at;
+      task.steps.push({ label, at: now });
+      task.current = label;
+      emit({ type: "taskUpdate" });
+    };
+    const stepLabel = (name) => {
+      const canonical = registry2.canonicalName(name);
+      const metaKey = Object.keys(META_LABELS).find((k) => isMeta(name, k));
+      return metaKey ? META_LABELS[metaKey] : registry2.list().find((t) => t.name === canonical)?.brief ?? canonical;
     };
     async function subRun(goal, preload, task) {
       const sm = deps.slowManifest;
@@ -3640,6 +3659,7 @@ ${extras.desktop}`);
       const trace = [];
       for (let r = 0; r < sm.maxRounds; r++) {
         if (task && task.status !== "running") return { summary: "" };
+        step(task, `思考中（第 ${r + 1} 轮）`);
         const system = buildSystemPrompt(manifest, store2, registry2, {
           catalog: registry2.briefCatalog(),
           signalFilter: registry2.signalsFor([...loaded])
@@ -3652,6 +3672,7 @@ ${extras.desktop}`);
         const reply = await deps.slowLlm.chat({ system, messages: view, tools });
         if (task && task.status !== "running") return { summary: "" };
         if (!reply.toolCalls?.length) return { summary: reply.text ?? "" };
+        for (const c of reply.toolCalls) step(task, `正在${stepLabel(c.name)}`);
         view.push(asstMsg(reply));
         const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
           "tools.load": mkLoader(loaded),
@@ -3669,13 +3690,16 @@ ${extras.desktop}`);
       const preload = (args?.tools ?? []).map((n) => registry2.canonicalName(n)).filter((n) => registry2.list().some((t) => t.name === n));
       activeSubs++;
       if (args?.background) {
-        const task = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: "running" };
+        const task = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: "running", steps: [] };
         taskPool.push(task);
         emit({ type: "taskUpdate" });
         void subRun(goal, preload, task).then(({ summary }) => {
           if (task.status !== "running") return;
+          const last = task.steps[task.steps.length - 1];
+          if (last && last.ms === void 0) last.ms = clock() - last.at;
           task.status = "done";
           task.summary = summary;
+          task.current = void 0;
           emit({ type: "taskUpdate" });
           emit({ type: "taskDone", taskId: task.id, summary, ok: true });
         }).catch((e) => {
@@ -6034,16 +6058,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       return;
     }
     if (m.type === "taskChip") {
-      const ST = { running: "跑着", done: "完成", failed: "没成", cancelled: "已取消" };
-      const items = pipeline.tasks().map((t) => ({ label: t.label, sub: ST[t.status] ?? t.status }));
-      if (items.length)
-        desk.render({
-          key: "bgtasks",
-          template: "list",
-          kind: "system",
-          ttl: 60,
-          data: { title: "后台任务", items }
-        });
+      renderBgTasks(true);
       return;
     }
     if (m.type !== "hello") return;
@@ -6074,7 +6089,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         outTemp: store.get("cabin.temperature.outside"),
         soc: store.get("powertrain.soc"),
         gear: store.get("vehicle.gear"),
-        tasks: pipeline.tasks().map((t) => ({ id: t.id, label: t.label, status: t.status }))
+        tasks: pipeline.tasks().map((t) => ({ id: t.id, label: t.label, status: t.status, current: t.current }))
       }
     });
     for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`)));
@@ -6132,6 +6147,31 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     push();
   }, 200);
   pushDesk();
+  function renderBgTasks(force = false) {
+    if (!force && !desk.findByKey("bgtasks")) return;
+    const ST = { done: "✓ 完成", failed: "✗ 没成", cancelled: "— 已取消" };
+    const ts = pipeline.tasks();
+    if (!ts.length) return;
+    const items = [];
+    for (const t of [...ts].sort((a) => a.status === "running" ? -1 : 1)) {
+      items.push({ label: `【${t.label}】`, sub: t.status === "running" ? "进行中" : ST[t.status] });
+      for (const st of t.steps) {
+        const done = st.ms !== void 0 || t.status !== "running";
+        items.push({
+          label: `${done ? "✓" : "⟳"} ${st.label}`,
+          sub: st.ms !== void 0 ? `${(st.ms / 1e3).toFixed(1)}s` : done ? "" : "…"
+        });
+      }
+    }
+    desk.render({
+      key: "bgtasks",
+      template: "list",
+      kind: "system",
+      ttl: 120,
+      refreshTtl: true,
+      data: { title: "后台任务进展", items }
+    });
+  }
   var traceEl = $("trace");
   function log(cls, text) {
     const div = document.createElement("div");
@@ -6175,9 +6215,15 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         log("a", `  ⟵(补) ${e.text}`);
         bus.send({ type: "banner", on: true, reason: "late", title: "补一句", desc: e.text, ttl: 6e3 });
         break;
-      case "taskUpdate":
+      case "taskUpdate": {
         push();
+        renderBgTasks();
+        if (pipeline.tasks().length && pipeline.tasks().every((t) => t.status !== "running")) {
+          const c = desk.findByKey("bgtasks");
+          if (c) desk.dismiss(c.id);
+        }
         break;
+      }
       case "taskDone":
         log(e.ok ? "k" : "e", `后台任务${e.ok ? "完成" : "没成"}：${e.summary.slice(0, 60)}`);
         deliveries.push(() => {

@@ -476,15 +476,12 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
     webSearch: async (args: any): Promise<ToolResult> => {
       try {
         const { brief, detail } = await need('websearch').search(args.query)
-        // 详细内容只进卡片。语音念完就没了，数字和人名尤其记不住，得让用户能回看
-        desk?.()?.render({
-          key: 'websearch', template: 'generic', size: '1/2', kind: 'task', ttl: 'untilDismissed',
-          data: { title: args.query, text: detail },
-        })
-        // **只把一句话结论返回给 Agent**。给全文的话它会整段念——实测 366 字。
-        // 这是机制，不是嘱咐
-        return { status: 'ok', data: { answer: brief, detailOnScreen: true },
-          message: '详细内容已经在屏幕上了，你只需要说这一句结论' }
+        // 查证是过程不是交付（产品实拍裁定：原始材料糊一屏"非常丑"）——**永不上屏**。
+        // 全文返给模型当成文原料；用户只看模型加工后的最终卡片或话术。
+        // 念长文的风险从"机制屏蔽"改为"纪律约束"：不上屏之后原料必须回模型，
+        // 否则报告没数据可写
+        return { status: 'ok', data: { answer: brief, detail },
+          message: '这是原始材料：播报只说 answer 那一句结论；要展示就提炼后按规范建卡，别把原文摆上屏' }
       } catch (e) { return cpFail(e, '联网搜索') }
     },
 

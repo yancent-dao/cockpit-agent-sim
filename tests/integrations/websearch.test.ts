@@ -30,12 +30,15 @@ const mk = (answer: string | (() => Promise<string>), onCall?: (s: string, p: st
  * 意图判断，那种判断是硬约束禁止的。
  */
 describe('web.search', () => {
-  it('拿到答案并上屏', async () => {
+  // 产品裁定（实拍"非常丑"）：查证是过程不是交付——原始材料**永不上屏**，
+  // 全文返给模型当成文原料，用户只看模型加工后的最终卡/话术
+  it('拿到答案，不建任何卡', async () => {
     const r = mk('特斯拉 2026 年第二季度交付 44 万辆。')
     const res = await r.invoke('web.search', { query: '特斯拉最新交付量' })
     expect(res.status).toBe('ok')
     expect((res.data as any).answer).toContain('44 万辆')
-    expect(desk.findByKey('websearch')!.data.text).toContain('44 万辆')
+    expect(desk.findByKey('websearch'), '查证原料不上屏').toBeUndefined()
+    expect(desk.layout().cards).toHaveLength(0)
   })
 
   // 答案会被车载助手念出来，Markdown 是噪音
@@ -52,15 +55,15 @@ describe('web.search', () => {
    * 改完 Tool 描述再跑，变成 284/363/366 字，不降反升。
    * 光靠嘱咐没用，得让它根本看不到长文。
    */
-  it('只把一句话结论返回给 Agent，长文只进卡片', async () => {
+  it('结论与全文分开返回：answer 一句话（播报用），detail 全文（成文原料）', async () => {
     const long = '零跑B01性价比最高。\n\n车身四米七七，轴距两米七三五，后备厢四百六十升。'
       + '续航三个版本，四百三、五百五、六百五公里。激光雷达只有高配两款才有。'
     const r = mk(long)
     const res = await r.invoke('web.search', { query: '新电动车' })
-    const answer = (res.data as any).answer
-    expect(answer).toBe('零跑B01性价比最高。')
-    expect(answer).not.toContain('轴距')          // 细节没进 Agent 上下文
-    expect(desk.findByKey('websearch')!.data.text).toContain('轴距')  // 但屏幕上有
+    expect((res.data as any).answer).toBe('零跑B01性价比最高。')
+    // 原料必须回到模型手里——不上屏之后这是它成文的唯一来源
+    expect((res.data as any).detail).toContain('轴距')
+    expect(res.message, '播报纪律随结果带回').toContain('结论')
   })
 
   it('结论过长也截断——搜索模型不听话时兜底', async () => {
@@ -73,7 +76,7 @@ describe('web.search', () => {
     const r = mk('就一段话没有空行')
     const res = await r.invoke('web.search', { query: 'x' })
     expect((res.data as any).answer).toBe('就一段话没有空行')
-    expect(desk.findByKey('websearch')!.data.text).toBe('就一段话没有空行')
+    expect((res.data as any).detail).toBe('就一段话没有空行')
   })
 
   it('搜了个空 → unavailable，不能假装有答案', async () => {

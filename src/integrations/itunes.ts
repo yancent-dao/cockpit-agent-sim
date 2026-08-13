@@ -39,7 +39,7 @@ export const browserJsonp: Jsonp = (url, cbParam) =>
       clearTimeout(timer)
       fn()
     }
-    const timer = setTimeout(() => done(() => reject(new ItunesError('iTunes 没有响应', 'TIMEOUT'))), 8000)
+    const timer = setTimeout(() => done(() => reject(new ItunesError('iTunes 没有响应', 'TIMEOUT'))), 4000)   // 8s→4s：正常响应 <2s，挂的时候它拖住整轮 Promise.all
     ;(window as any)[name] = (data: any) => done(() => resolve(data))
     el.onerror = () => done(() => reject(new ItunesError('iTunes 连不上', 'NETWORK')))
     el.src = `${url}&${cbParam}=${name}`

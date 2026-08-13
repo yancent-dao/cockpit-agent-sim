@@ -3125,7 +3125,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       clearTimeout(timer);
       fn();
     };
-    const timer = setTimeout(() => done(() => reject(new ItunesError("iTunes 没有响应", "TIMEOUT"))), 8e3);
+    const timer = setTimeout(() => done(() => reject(new ItunesError("iTunes 没有响应", "TIMEOUT"))), 4e3);
     window[name] = (data) => done(() => resolve(data));
     el.onerror = () => done(() => reject(new ItunesError("iTunes 连不上", "NETWORK")));
     el.src = `${url}&${cbParam}=${name}`;
@@ -3415,10 +3415,13 @@ ${extras.desktop}`);
     type: "function",
     function: {
       name: "agent_handoff",
-      description: "收尾时勾选：把后续工作可能用到的工具名（从工具目录里挑）转交给大模型同事预载。没有就不调。",
+      description: "收尾必调：say 放给用户的一句话（报你干成/没干成的结果，≤15 字），suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。",
       parameters: {
         type: "object",
-        properties: { suggestedTools: { type: "array", items: { type: "string" }, description: '工具名列表，如 ["navigation.search"]' } }
+        properties: {
+          say: { type: "string", description: "立即播报给用户的话术" },
+          suggestedTools: { type: "array", items: { type: "string" }, description: '工具名列表，如 ["navigation.search"]' }
+        }
       }
     }
   };
@@ -3536,7 +3539,11 @@ ${extras.desktop}`);
         function: { name: c.name, arguments: JSON.stringify(c.args) }
       }))
     });
-    const fastView = (snapshot) => snapshot.filter((m) => (m.role === "user" || m.role === "assistant") && m.content).map((m) => ({ role: m.role, content: m.content })).slice(-6);
+    const fastView = (snapshot) => {
+      const past = snapshot.slice(0, boundary).filter((m) => (m.role === "user" || m.role === "assistant") && m.content).map((m) => ({ role: m.role, content: m.content })).slice(-5);
+      const now = snapshot.slice(boundary).map((m) => m.role === "tool" ? { ...m, content: m.content.slice(0, 300) } : m);
+      return [...past, ...now];
+    };
     async function runFast(g, trace) {
       const fm = deps.fastManifest;
       const allTools = [...registry2.schemas("openai", fm.tools), HANDOFF_SCHEMA];
@@ -3545,24 +3552,31 @@ ${extras.desktop}`);
       let rounds = 0;
       while (rounds < fm.maxRounds) {
         rounds++;
-        const tools = rounds === fm.maxRounds ? [] : allTools;
+        const last = rounds === fm.maxRounds;
+        const tools = last ? [HANDOFF_SCHEMA] : allTools;
         const system = buildSystemPrompt(fm, store2, registry2, {
           catalog: registry2.briefCatalog(),
           catalogHint: "仅供你在 agent.handoff 里勾选转交。这些工具你自己一个都调不了，调了也白调",
           signalFilter: registry2.signalsFor(fm.tools)
         });
-        trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
         const view = fastView(thread);
+        const pEntry = { type: "prompt", at: clock(), system, toolCount: tools.length, layer: "fast", view };
+        trace.push(pEntry);
+        const tChat = clock();
         let reply;
         try {
-          reply = await deps.fastLlm.chat({ system, messages: view, tools });
+          reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : void 0 });
         } catch (e) {
           trace.push({ type: "error", at: clock(), message: `快层：${e}` });
           return { suggested, said, rounds };
         }
+        ;
+        pEntry.llmMs = clock() - tChat;
+        pEntry.llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map((c) => ({ name: c.name, args: c.args })) };
         if (stale(g)) return { suggested, said, rounds };
         if (reply.text) {
           said = reply.text;
+          trace.push({ type: "reply", at: clock(), text: reply.text, layer: "fast" });
           emit({ type: "speaking", text: reply.text, layer: "fast" });
         }
         if (!reply.toolCalls?.length) {
@@ -3573,6 +3587,12 @@ ${extras.desktop}`);
         const toolMsgs = await execRound(g, reply.toolCalls, fm.tools, trace, {
           "agent.handoff": (args) => {
             suggested = (args?.suggestedTools ?? []).filter((n) => registry2.list().some((t) => t.name === registry2.canonicalName(n)));
+            const say = String(args?.say ?? "").trim();
+            if (say && !said && !stale(g)) {
+              said = say;
+              trace.push({ type: "reply", at: clock(), text: say, layer: "fast" });
+              emit({ type: "speaking", text: say, layer: "fast" });
+            }
             return { status: "ok", message: "已转交" };
           }
         }, { quietRejects: true });
@@ -3692,7 +3712,8 @@ ${extras.desktop}`);
           catalog: registry2.briefCatalog(),
           signalFilter: registry2.signalsFor([...loaded])
         });
-        trace.push({ type: "prompt", at: clock(), system, toolCount: loaded.size });
+        const pEntry = { type: "prompt", at: clock(), system, toolCount: loaded.size, layer: "slow", view: view.slice() };
+        trace.push(pEntry);
         const last = rounds === sm.maxRounds;
         const tools = last ? [] : [
           ...registry2.schemas("openai", [...loaded]),
@@ -3701,6 +3722,7 @@ ${extras.desktop}`);
           CANCEL_SCHEMA,
           ...sm.skills?.length ? [SKILL_SCHEMA] : []
         ];
+        const tChat = clock();
         let reply;
         try {
           reply = await deps.slowLlm.chat({ system, messages: view, tools });
@@ -3709,10 +3731,13 @@ ${extras.desktop}`);
           emit({ type: "error", message: String(e) });
           return { said: "", rounds, stop: "error" };
         }
+        ;
+        pEntry.llmMs = clock() - tChat;
+        pEntry.llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map((c) => ({ name: c.name, args: c.args })) };
         if (!reply.toolCalls?.length) {
           const text = reply.text ?? "";
           if (text) commit(g, { role: "assistant", content: text });
-          trace.push({ type: "reply", at: clock(), text });
+          trace.push({ type: "reply", at: clock(), text, layer: "slow" });
           if (stale(g)) {
             if (text) emit({ type: "lateNote", text });
           } else {
@@ -3863,7 +3888,11 @@ ${text}` });
             messages: [{ role: "system", content: req.system }, ...req.messages],
             tools: req.tools,
             tool_choice: "auto",
-            temperature: 0.3
+            temperature: 0.3,
+            ...req.maxTokens ? { max_tokens: req.maxTokens } : {},
+            // 同一模型不同 provider 延迟差几倍（实测 GLM-flash 8.6s→3.2s）。
+            // 语音场景延迟就是体验，按延迟路由
+            provider: { sort: "latency" }
           })
         });
         if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`);
@@ -5665,7 +5694,9 @@ ${text}` });
 1. 先看它做的对不对：**对着对话里的调用记录看就行，不要为了"核验"再发起任何查询**。
    错了直接调工具改，改完说一句（"温度我给你调回 24 了"）。
 2. 剩下没做的活你来干，**只调这单任务真正需要的工具**。它查过的（如天气）别重查。
-3. 它说过的话别复述。一切都对且没有剩余工作时**什么都不说**——回空即可，沉默是合法答案。
+3. **它说过的信息一个点都不许再说**（开了什么、调到几度、放的什么歌——用户刚听过一遍）。
+   你只说**新增**的：纠错、它没提的结果、需要用户决定的事。一切都对且没有新增 →
+   **回空**，沉默是合法且常见的答案。
 4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。
 5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。`,
     context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
@@ -5707,7 +5738,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 2. 工具面里没有的活**一个不碰、一字不评**——后面有你的大模型同事接手兜底。这单全轮不到你
    而「工具目录」里显然有工具能干时，只说两三个字的承接（"我看看""稍等"）；纯闲聊就自然答。
    **你不了解的状态（导航开没开、放的什么歌）一个字不许答**——那是同事的地盘，编错比沉默糟十倍。
-3. 收尾可以调 agent.handoff，把同事接下来可能用到的工具名从目录里勾出来。
+3. 收尾**必调一次 agent.handoff**：say 放给用户的话（报你干成/没干成了什么，≤15 字），
+   suggestedTools 勾同事接下来可能用到的工具（从目录挑，没有就空着）。
 4. 别复述指令、别道歉、别提模型和公司。`
   };
 
@@ -6148,8 +6180,18 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 ▸ ${text}`);
     const t0 = performance.now();
     const r = await pipeline.run(text);
+    let rn = 0;
     for (const s of r.trace) {
-      if (s.type === "prompt") log("p", `  · 注入 ${s.system.length} 字符 / ${s.toolCount} 个工具`);
+      if (s.type === "prompt") {
+        rn++;
+        log("p", `  ${s.layer === "fast" ? "⚡快层" : "🐢慢层"} · LLM ${s.llmMs != null ? (s.llmMs / 1e3).toFixed(1) + "s" : "?"} · 注入 ${s.system.length} 字 / ${s.toolCount} 工具`);
+        console.groupCollapsed(`%c[R${rn} ${s.layer === "fast" ? "⚡快层" : "🐢慢层"}] LLM ${((s.llmMs ?? 0) / 1e3).toFixed(1)}s`, "color:#4DA3FF");
+        console.log("system:\n" + s.system);
+        console.log("messages:", s.view);
+        console.log("reply:", s.llmReply);
+        console.groupEnd();
+      }
+      if (s.type === "reply" && s.text) log("a", `  ⟵${s.layer === "fast" ? "⚡" : "🐢"} ${s.text}`);
       if (s.type === "toolCall") log("t", `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission}]`);
       if (s.type === "toolResult") {
         const res = s.result;
@@ -6164,8 +6206,10 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         }
       }
     }
-    log("a", `  ⟵ ${r.reply || "(无话术)"}`);
-    log("p", `  ${r.rounds} 轮 · ${Math.round(performance.now() - t0)}ms · ${r.stopReason}`);
+    if (!r.reply) log("a", "  ⟵ (无话术)");
+    const firstReply = r.trace.find((s) => s.type === "reply" && s.text);
+    const firstMs = firstReply ? firstReply.at - r.trace[0].at : null;
+    log("p", `  首声 ${firstMs != null ? Math.round(firstMs) + "ms" : "—"} · 总 ${Math.round(performance.now() - t0)}ms · ${r.rounds} 轮 · ${r.stopReason}（每轮完整 Prompt/返回见浏览器控制台）`);
     push();
     $("busy").textContent = "";
   }
@@ -6284,31 +6328,37 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   var allModels = [];
   var fastOnly = true;
   var DEFAULT_MODEL_ID = "minimax/minimax-m3";
+  var MODEL_KEY = "cockpit-sim:model";
+  var FAST_MODEL_KEY = "cockpit-sim:fastModel";
   function renderModels() {
     const list = fastOnly ? pickFastModels(allModels) : allModels.slice().sort((a, b) => (a.promptPrice ?? 0) - (b.promptPrice ?? 0));
     const sel = $("model");
     sel.innerHTML = list.map((m) => `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ""}</option>`).join("");
     $("modelCount").textContent = `${list.length} / ${allModels.length}`;
     if (list.length) {
-      modelId = list.find((m) => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id;
+      const saved = localStorage.getItem(MODEL_KEY);
+      modelId = (saved && list.find((m) => m.id === saved)?.id) ?? list.find((m) => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id;
       sel.value = modelId;
     }
     const fastList = pickFastModels(allModels);
     const fsel = $("fastModel");
     fsel.innerHTML = fastList.map((m) => `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ""}</option>`).join("");
-    const FAST_PREFER = /haiku|gemini.+flash|glm.+flash|gpt.+mini/i;
+    const FAST_PREFER = [/qwen.+flash/i, /glm.+flash/i, /gemini.+flash/i, /haiku/i];
     if (fastList.length) {
-      fastModelId = (fastList.find((m) => FAST_PREFER.test(m.id)) ?? fastList[0]).id;
+      const saved = localStorage.getItem(FAST_MODEL_KEY);
+      fastModelId = (saved && fastList.find((m) => m.id === saved)?.id) ?? (FAST_PREFER.map((re) => fastList.find((m) => re.test(m.id))).find(Boolean) ?? fastList[0]).id;
       fsel.value = fastModelId;
     }
   }
   $("model").onchange = (e) => {
     modelId = e.target.value;
-    log("p", `模型切换 → ${modelId}`);
+    localStorage.setItem(MODEL_KEY, modelId);
+    log("p", `慢层模型 → ${modelId}（已记住）`);
   };
   $("fastModel").onchange = (e) => {
     fastModelId = e.target.value;
-    log("p", `快层模型切换 → ${fastModelId}`);
+    localStorage.setItem(FAST_MODEL_KEY, fastModelId);
+    log("p", `快层模型 → ${fastModelId}（已记住）`);
   };
   $("fastOnly").onclick = () => {
     fastOnly = !fastOnly;

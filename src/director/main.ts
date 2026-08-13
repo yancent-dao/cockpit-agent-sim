@@ -382,8 +382,20 @@ async function ask(text: string) {
   const t0 = performance.now()
   const r = await pipeline.run(text)
 
+  let rn = 0
   for (const s of r.trace) {
-    if (s.type === 'prompt') log('p', `  · 注入 ${s.system.length} 字符 / ${s.toolCount} 个工具`)
+    // 分层流水：⚡快层 / 🐢慢层，每轮标 LLM 耗时——一个需求的流转一眼可读。
+    // 完整 Prompt / 消息视图 / 模型原始返回打进浏览器控制台（面板放不下也不该放）
+    if (s.type === 'prompt') {
+      rn++
+      log('p', `  ${s.layer === 'fast' ? '⚡快层' : '🐢慢层'} · LLM ${s.llmMs != null ? (s.llmMs / 1000).toFixed(1) + 's' : '?'} · 注入 ${s.system.length} 字 / ${s.toolCount} 工具`)
+      console.groupCollapsed(`%c[R${rn} ${s.layer === 'fast' ? '⚡快层' : '🐢慢层'}] LLM ${((s.llmMs ?? 0) / 1000).toFixed(1)}s`, 'color:#4DA3FF')
+      console.log('system:\n' + s.system)
+      console.log('messages:', (s as any).view)
+      console.log('reply:', (s as any).llmReply)
+      console.groupEnd()
+    }
+    if (s.type === 'reply' && s.text) log('a', `  ⟵${s.layer === 'fast' ? '⚡' : '🐢'} ${s.text}`)
     if (s.type === 'toolCall') log('t', `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission}]`)
     if (s.type === 'toolResult') {
       const res: any = s.result
@@ -400,8 +412,10 @@ async function ask(text: string) {
       }
     }
   }
-  log('a', `  ⟵ ${r.reply || '(无话术)'}`)
-  log('p', `  ${r.rounds} 轮 · ${Math.round(performance.now() - t0)}ms · ${r.stopReason}`)
+  if (!r.reply) log('a', '  ⟵ (无话术)')
+  const firstReply = r.trace.find(s => s.type === 'reply' && (s as any).text)
+  const firstMs = firstReply ? (firstReply as any).at - (r.trace[0] as any).at : null
+  log('p', `  首声 ${firstMs != null ? Math.round(firstMs) + 'ms' : '—'} · 总 ${Math.round(performance.now() - t0)}ms · ${r.rounds} 轮 · ${r.stopReason}（每轮完整 Prompt/返回见浏览器控制台）`)
   push()
   $('busy').textContent = ''
 }
@@ -474,6 +488,10 @@ let fastOnly = true
 /** 默认选中的模型——便宜模型工具调用纪律差（会瞎重复调 Tool），这个稳一些 */
 const DEFAULT_MODEL_ID = 'minimax/minimax-m3'
 
+/** 两层模型都是用户的选择：选过就记住（localStorage），刷新不重置；
+ *  只有从没选过时才给一次初始推荐（产品点名"不要写成默认的"） */
+const MODEL_KEY = 'cockpit-sim:model'
+const FAST_MODEL_KEY = 'cockpit-sim:fastModel'
 function renderModels() {
   const list = fastOnly
     ? pickFastModels(allModels)
@@ -483,23 +501,30 @@ function renderModels() {
     `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ''}</option>`).join('')
   $('modelCount').textContent = `${list.length} / ${allModels.length}`
   if (list.length) {
-    modelId = list.find(m => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id
+    const saved = localStorage.getItem(MODEL_KEY)
+    modelId = (saved && list.find(m => m.id === saved)?.id)
+      ?? list.find(m => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id
     sel.value = modelId
   }
-  // 快层模型：只从快速档里挑。默认优先已知工具调用纪律好的快系列——
-  // 实测无脑取最便宜那档会选中调不动工具的裸小模型，快层直接躺平
+  // 快层模型：只从快速档里挑
   const fastList = pickFastModels(allModels)
   const fsel = $<HTMLSelectElement>('fastModel')
   fsel.innerHTML = fastList.map(m =>
     `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ''}</option>`).join('')
-  const FAST_PREFER = /haiku|gemini.+flash|glm.+flash|gpt.+mini/i
+  // 初始推荐序（2026-08-13 带真实工具负载 + latency 路由复测）：
+  // qwen-flash 2.5-3.6s 且并行调用最准（此前 24s 是话术轮没封顶，已用 maxTokens 修掉）；
+  // glm 2.5-5.7s；gemini/haiku 在该组合下走到无权 provider 报 403。
+  // 用户选过就完全听用户的（localStorage）
+  const FAST_PREFER = [/qwen.+flash/i, /glm.+flash/i, /gemini.+flash/i, /haiku/i]
   if (fastList.length) {
-    fastModelId = (fastList.find(m => FAST_PREFER.test(m.id)) ?? fastList[0]).id
+    const saved = localStorage.getItem(FAST_MODEL_KEY)
+    fastModelId = (saved && fastList.find(m => m.id === saved)?.id)
+      ?? (FAST_PREFER.map(re => fastList.find(m => re.test(m.id))).find(Boolean) ?? fastList[0]).id
     fsel.value = fastModelId
   }
 }
-$<HTMLSelectElement>('model').onchange = e => { modelId = (e.target as HTMLSelectElement).value; log('p', `模型切换 → ${modelId}`) }
-$<HTMLSelectElement>('fastModel').onchange = e => { fastModelId = (e.target as HTMLSelectElement).value; log('p', `快层模型切换 → ${fastModelId}`) }
+$<HTMLSelectElement>('model').onchange = e => { modelId = (e.target as HTMLSelectElement).value; localStorage.setItem(MODEL_KEY, modelId); log('p', `慢层模型 → ${modelId}（已记住）`) }
+$<HTMLSelectElement>('fastModel').onchange = e => { fastModelId = (e.target as HTMLSelectElement).value; localStorage.setItem(FAST_MODEL_KEY, fastModelId); log('p', `快层模型 → ${fastModelId}（已记住）`) }
 $('fastOnly').onclick = () => { fastOnly = !fastOnly; $('fastOnly').classList.toggle('on', fastOnly); renderModels() }
 
 async function loadModels() {

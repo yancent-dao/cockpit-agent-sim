@@ -9,6 +9,8 @@ export interface LLMRequest {
   system: string
   messages: Msg[]
   tools: any[]
+  /** 输出上限。快层话术轮用它拦住"撤了工具就开始长思考"的模型（实拍 24s） */
+  maxTokens?: number
 }
 
 export interface LLMReply {
@@ -123,6 +125,10 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
           tools: req.tools,
           tool_choice: 'auto',
           temperature: 0.3,
+          ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+          // 同一模型不同 provider 延迟差几倍（实测 GLM-flash 8.6s→3.2s）。
+          // 语音场景延迟就是体验，按延迟路由
+          provider: { sort: 'latency' },
         }),
       })
       if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`)

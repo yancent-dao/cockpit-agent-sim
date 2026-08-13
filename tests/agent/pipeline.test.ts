@@ -243,19 +243,69 @@ describe('确认流跨层：pending 确认直达慢层', () => {
   })
 })
 
-describe('快层上下文', () => {
-  it('只带最近轮次的原话与话术，不带工具执行细节', async () => {
+describe('handoff 的 say：勾选与话术一个调用完成', () => {
+  // 实拍：话术轮 qwen 只调了 handoff 没给 text，轮次用尽一声没吭，首声全等慢层。
+  // 修法：handoff 带 say 字段——说话不再依赖模型"调完还记得说"
+  it('handoff.say 直接成为快层话术：emit speaking + 进 trace', async () => {
     const fast = fakeLLM(
-      () => ({ text: '好', toolCalls: [call('climate.set', { targetTemp: 24 })] }),
-      () => ({ text: '好' }),
+      () => ({ toolCalls: [call('climate.set', { targetTemp: 24 })] }),
+      () => ({ toolCalls: [call('agent.handoff', { say: '空调24度好了', suggestedTools: [] })] }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p, events } = mk(fast, slow)
+    const r = await p.run('空调24度')
+    const speaks = events.filter(e => e.type === 'speaking') as any[]
+    expect(speaks).toHaveLength(1)
+    expect(speaks[0].text).toBe('空调24度好了')
+    expect(speaks[0].layer).toBe('fast')
+    expect(r.reply).toContain('空调24度好了')
+  })
+})
+
+describe('分层追踪：一个需求的流转全程可见', () => {
+  it('trace 的 prompt/reply 条目带 layer 与 LLM 耗时——日志能还原快慢流水', async () => {
+    const fast = fakeLLM(() => ({ text: '好嘞', toolCalls: [call('climate.set', { targetTemp: 24 })] }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    const r = await p.run('空调24度')
+    const prompts = r.trace.filter(t => t.type === 'prompt') as any[]
+    expect(prompts.some(t => t.layer === 'fast')).toBe(true)
+    expect(prompts.some(t => t.layer === 'slow')).toBe(true)
+    for (const t of prompts) expect(typeof t.llmMs, 'LLM 耗时已回填').toBe('number')
+    const replies = r.trace.filter(t => t.type === 'reply') as any[]
+    expect(replies.some(t => t.layer === 'fast' && t.text.includes('好嘞')), '快层话术进 trace').toBe(true)
+  })
+})
+
+describe('快层上下文', () => {
+  it('话术轮看得见**本轮**的执行结果——不然会说"马上查"其实早查完了（实拍）', async () => {
+    const fast = fakeLLM(
+      () => ({ toolCalls: [call('climate.set', { targetTemp: 24 })] }),
+      () => ({ text: '空调24度好了' }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('空调24度')
+    const r2 = fast.seen[1]
+    expect(r2.messages.some(m => m.role === 'tool'), '本轮工具结果在视图里').toBe(true)
+    const names = (r2.tools ?? []).map((t: any) => t.function.name)
+    expect(names, '话术轮只留 handoff——勾选通道不撤，业务工具撤').toEqual(['agent_handoff'])
+  })
+
+  it('历史轮的工具细节仍然不带——只裁旧的，不裁本轮的', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '好', toolCalls: [call('climate.set', { targetTemp: 24 })] }),   // turn1 R1
+      () => ({ text: '好了' }),                                                        // turn1 R2（话术轮）
+      () => ({ text: '再热了点' }),                                                    // turn2 R1
     )
     const slow = fakeLLM(() => ({ text: '' }), () => ({ text: '' }))
     const { p } = mk(fast, slow)
     await p.run('空调24度')
     await p.run('再热一点')
-    const msgs = fast.seen[1].messages
-    expect(msgs.some(m => m.role === 'tool'), '工具结果不进快层视图').toBe(false)
-    expect(msgs.some(m => m.tool_calls?.length), 'tool_calls 不进快层视图').toBe(false)
+    const msgs = fast.seen[2].messages    // turn2 首轮：历史 = turn1，本轮只有新输入
+    expect(msgs.some(m => m.role === 'tool'), '历史轮工具结果不进视图').toBe(false)
+    expect(msgs.some(m => m.tool_calls?.length), '历史轮 tool_calls 不进视图').toBe(false)
+    expect(msgs[msgs.length - 1].content).toBe('再热一点')
   })
 
   it('空输入直接返回，不叫任何模型', async () => {

@@ -6,10 +6,12 @@ import { buildSystemPrompt } from './context'
 
 export type TraceStep =
   | { type: 'userInput'; at: number; text: string }
-  | { type: 'prompt'; at: number; system: string; toolCount: number }
+  | { type: 'prompt'; at: number; system: string; toolCount: number; layer?: 'fast' | 'slow'; llmMs?: number
+      /** 调试全量：这一轮送进模型的消息视图与模型原始返回（产品点名要能逐轮看） */
+      view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> } }
   | { type: 'toolCall'; at: number; name: string; args: any; permission?: string }
   | { type: 'toolResult'; at: number; name: string; result: ToolResult; ms: number }
-  | { type: 'reply'; at: number; text: string }
+  | { type: 'reply'; at: number; text: string; layer?: 'fast' | 'slow' }
   | { type: 'error'; at: number; message: string }
 
 /**
@@ -68,10 +70,13 @@ export interface TurnResult {
 const HANDOFF_SCHEMA = {
   type: 'function', function: {
     name: 'agent_handoff',
-    description: '收尾时勾选：把后续工作可能用到的工具名（从工具目录里挑）转交给大模型同事预载。没有就不调。',
+    description: '收尾必调：say 放给用户的一句话（报你干成/没干成的结果，≤15 字），suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。',
     parameters: {
       type: 'object',
-      properties: { suggestedTools: { type: 'array', items: { type: 'string' }, description: '工具名列表，如 ["navigation.search"]' } },
+      properties: {
+        say: { type: 'string', description: '立即播报给用户的话术' },
+        suggestedTools: { type: 'array', items: { type: 'string' }, description: '工具名列表，如 ["navigation.search"]' },
+      },
     },
   },
 }
@@ -197,14 +202,19 @@ export function createPipeline(deps: PipelineDeps) {
   })
 
   /**
-   * 快层视图：最近几条**原话与话术**。工具调用与结果一律不带（§3.2）——
-   * 它要的是对话承接感，不是执行细节；上一轮慢层的长报告会撑爆它的预算。
+   * 快层视图分两段裁（§3.2）：**历史轮**只留原话与话术（承接感够了，执行细节
+   * 会撑爆预算）；**本 turn**（boundary 起）完整保留含工具结果（截断）——
+   * 不然话术轮看不见自己刚干的活，会说"马上查"其实早查完了（实拍）。
    */
-  const fastView = (snapshot: Msg[]): Msg[] =>
-    snapshot
+  const fastView = (snapshot: Msg[]): Msg[] => {
+    const past = snapshot.slice(0, boundary)
       .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
       .map(m => ({ role: m.role, content: m.content }))
-      .slice(-6)
+      .slice(-5)
+    const now = snapshot.slice(boundary)
+      .map(m => (m.role === 'tool' ? { ...m, content: m.content.slice(0, 300) } : m))
+    return [...past, ...now]
+  }
 
   /** 快层：能干的立刻干、立刻说；收尾勾选转交。打断（世代变了）即弃场闭嘴 */
   async function runFast(g: number, trace: TraceStep[]): Promise<{ suggested: string[]; said: string; rounds: number }> {
@@ -215,22 +225,33 @@ export function createPipeline(deps: PipelineDeps) {
     let rounds = 0
     while (rounds < fm.maxRounds) {
       rounds++
-      // 最后一轮撤工具逼话术——实测 GLM-flash 会把两轮全用来重复调同一个工具，
-      // 一句话没说就转交，用户等到慢层兜底才听到声。跟慢层最后一轮同一条纪律
-      const tools = rounds === fm.maxRounds ? [] : allTools
+      // 最后一轮撤业务工具逼话术（实测 GLM-flash 会两轮全用来重复调用），
+      // 但 handoff 留着——撤了它，模型会把勾选写进话术念给用户听（实拍）
+      const last = rounds === fm.maxRounds
+      const tools = last ? [HANDOFF_SCHEMA] : allTools
       const system = buildSystemPrompt(fm, store, registry, {
         catalog: registry.briefCatalog(),
         catalogHint: '仅供你在 agent.handoff 里勾选转交。这些工具你自己一个都调不了，调了也白调',
         signalFilter: registry.signalsFor(fm.tools),
       })
-      trace.push({ type: 'prompt', at: clock(), system, toolCount: tools.length })
       const view = fastView(thread)
+      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: tools.length, layer: 'fast', view }
+      trace.push(pEntry)
+      const tChat = clock()
       let reply
-      try { reply = await deps.fastLlm.chat({ system, messages: view, tools }) }
+      // maxTokens 拦话术轮的"长思考狂写"（实拍 qwen-flash 撤工具后那轮 24s）：
+      // 话术纪律 ≤15 字 + 一个 handoff 调用，300 token 顶天
+      try { reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : undefined }) }
       catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds } }
+      ;(pEntry as any).llmMs = clock() - tChat
+      ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
       if (stale(g)) return { suggested, said, rounds }
       // 话术立刻出——先斩后奏的"奏"不等工具返回（车控是本地毫秒级，查询类模型自会下一轮再说）
-      if (reply.text) { said = reply.text; emit({ type: 'speaking', text: reply.text, layer: 'fast' }) }
+      if (reply.text) {
+        said = reply.text
+        trace.push({ type: 'reply', at: clock(), text: reply.text, layer: 'fast' })
+        emit({ type: 'speaking', text: reply.text, layer: 'fast' })
+      }
       if (!reply.toolCalls?.length) {
         if (reply.text) commit(g, { role: 'assistant', content: reply.text })
         return { suggested, said, rounds }
@@ -239,6 +260,14 @@ export function createPipeline(deps: PipelineDeps) {
       const toolMsgs = await execRound(g, reply.toolCalls, fm.tools, trace, {
         'agent.handoff': args => {
           suggested = (args?.suggestedTools ?? []).filter((n: string) => registry.list().some(t => t.name === registry.canonicalName(n)))
+          // say = 勾选顺带的话术。实拍：话术轮模型只调 handoff 不给 text，轮次用尽
+          // 一声没吭——说话不能依赖模型"调完还记得说"，并进同一个调用
+          const say = String(args?.say ?? '').trim()
+          if (say && !said && !stale(g)) {
+            said = say
+            trace.push({ type: 'reply', at: clock(), text: say, layer: 'fast' })
+            emit({ type: 'speaking', text: say, layer: 'fast' })
+          }
           return { status: 'ok', message: '已转交' }
         },
       }, { quietRejects: true })
@@ -368,11 +397,13 @@ export function createPipeline(deps: PipelineDeps) {
         catalog: registry.briefCatalog(),
         signalFilter: registry.signalsFor([...loaded]),
       })
-      trace.push({ type: 'prompt', at: clock(), system, toolCount: loaded.size })
+      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: loaded.size, layer: 'slow', view: view.slice() }
+      trace.push(pEntry)
       // 最后一轮撤工具逼话术——语音场景没有"静默耗尽轮次"这个选项
       const last = rounds === sm.maxRounds
       const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA,
         ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
+      const tChat = clock()
       let reply
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
       catch (e) {
@@ -381,10 +412,12 @@ export function createPipeline(deps: PipelineDeps) {
         return { said: '', rounds, stop: 'error' }
       }
 
+      ;(pEntry as any).llmMs = clock() - tChat
+      ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
       if (!reply.toolCalls?.length) {
         const text = reply.text ?? ''
         if (text) commit(g, { role: 'assistant', content: text })
-        trace.push({ type: 'reply', at: clock(), text })
+        trace.push({ type: 'reply', at: clock(), text, layer: 'slow' })
         if (stale(g)) {
           // 迟到的话术不抢麦：降级为横幅素材（§4.1）。活已经干完，成果都在
           if (text) emit({ type: 'lateNote', text })

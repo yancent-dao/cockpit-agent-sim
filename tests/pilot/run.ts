@@ -50,8 +50,8 @@ const AMAP_KEY = process.env.VITE_AMAP_WEB_KEY ?? ''
 const NEWS_KEY = process.env.VITE_NEWSAPI_KEY ?? ''
 const PEXELS_KEY = process.env.VITE_PEXELS_KEY ?? ''
 const AGENT_MODEL = process.env.PILOT_AGENT_MODEL ?? 'minimax/minimax-m3'
-// 快层：过滤器小模型。GLM-4.7-flash 实测工具调用纪律可用且够快
-const FAST_MODEL = process.env.PILOT_FAST_MODEL ?? 'z-ai/glm-4.7-flash'
+// 快层：过滤器小模型。qwen-flash 真实负载 2.5-3.6s 并行调用最准（话术轮已 maxTokens 封顶）
+const FAST_MODEL = process.env.PILOT_FAST_MODEL ?? 'qwen/qwen3.7-flash'
 const BOT_MODEL = process.env.PILOT_BOT_MODEL ?? 'minimax/minimax-m3'
 
 if (!OPENROUTER_KEY) { console.error('缺 VITE_OPENROUTER_KEY'); process.exit(1) }

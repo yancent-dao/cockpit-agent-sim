@@ -13,6 +13,7 @@ import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
+import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_NEXT } from './icons'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('screen')
@@ -196,7 +197,7 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
           <span class="pltime"></span></div>
         <div class="pl-next"></div>
         <div class="plctl">
-          <span data-act="tap:prev">⏮</span><span data-act="tap:toggle">⏯</span><span data-act="tap:next">⏭</span>
+          <span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>
         </div>
         <div class="pl-hint"></div></div>
     </div>`
@@ -236,7 +237,8 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
       else art.innerHTML = `<img src="${esc(url)}" alt="">`
     } else if (!img) {
       // 没封面就给个音源图标，别留个空洞
-      art.innerHTML = `<div class="plicon">${d.source === 'radio' ? '📻' : '♪'}</div>`
+      // 没封面给渐变底 + 音源图标，别留灰洞
+      art.innerHTML = `<div class="plicon">${TPL_ICONS.media}</div>`
     }
   }
   node.querySelector('.pltrack')!.textContent = String(d.track ?? '')
@@ -437,8 +439,8 @@ function renderDesk() {
       else if (c.template === 'media') renderPlayerCard(node, c)
       else if (c.template === 'canvas-app') {
         if (!node.dataset.shell) {
-          node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3>` +
-            `<div class="bd"></div>`
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS['canvas-app']}</span><span class="cvtitle"></span>` +
+            `<span class="genmark">生成式</span></h3><div class="bd"></div>`
           node.dataset.shell = '1'
           // 流光两态：进场旋 2 秒表明"刚生成"，之后静置——持续流动在驾驶环境是注意力噪音
           node.classList.add('fresh')
@@ -454,8 +456,8 @@ function renderDesk() {
          */
         if (!node.dataset.shell) {
           // 角标是诚实标注：这张卡是临场生成的，跟固定模板不是一回事
-          node.innerHTML = `<h3><span class="cvtitle"></span><span class="genmark">生成式</span></h3>` +
-            `<div class="bd"><div class="cvhost"></div></div>`
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS.canvas}</span><span class="cvtitle"></span>` +
+            `<span class="genmark">生成式</span></h3><div class="bd"><div class="cvhost"></div></div>`
           node.dataset.shell = '1'
           node.classList.add('fresh')
           setTimeout(() => node.classList.remove('fresh'), 2200)
@@ -471,10 +473,12 @@ function renderDesk() {
          * （.bd 认领剩余高度让内容贴底——诊断 1 的修法不变）
          */
         if (!node.dataset.shell) {
-          node.innerHTML = `<h3></h3><div class="bd"></div>`
+          // 40px 身份图标块：远看一眼定位卡片类型——视觉稿有、上一版漏掉的锚点
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS[c.template] ?? TPL_ICONS.generic}</span>` +
+            `<span class="ttl"></span></h3><div class="bd"></div>`
           node.dataset.shell = '1'
         }
-        node.querySelector('h3')!.textContent = c.title ?? ''
+        node.querySelector('.ttl')!.textContent = c.title ?? ''
         node.querySelector('.bd')!.innerHTML = cardBody(c)
         // 车身图形是资源不是逻辑，留在这里填进 render 层给的占位
         const slot = node.querySelector('.vehslot')

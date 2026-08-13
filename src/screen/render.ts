@@ -8,6 +8,7 @@
 import { dayLabel } from './turn'
 import { capForm, weatherForm, formOf } from '../config/forms'
 import { dimsOf, normalizeTier } from '../config/grid'
+import { weatherIcon } from './icons'
 
 import { esc } from '../text'
 export { esc }
@@ -174,6 +175,7 @@ export function cardBody(c: CardView): string {
       return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
           <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+          <span class="wxico">${weatherIcon(d.now.weather)}</span>
         </div>` : ''}${cast.length
         // 预报也是并列数据，走块状均分——省掉一套只给天气用的 CSS
         ? blocksBody(cast.map((f: any) => ({

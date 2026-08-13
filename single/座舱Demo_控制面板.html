@@ -2894,6 +2894,23 @@ ${extras.desktop}`);
     return allowed.some((z) => normalizeTier(z) === want) ? null : fail();
   }
 
+  // src/cards/summary.ts
+  var titleOf = (c) => c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template;
+  function summarize(l) {
+    const lines = [];
+    if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
+    const slots = Math.floor(l.free / cellsOfTier("1/6"));
+    const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`;
+    lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
+    for (const c of l.cards) {
+      const total = Array.isArray(c.data?.items) ? c.data.items.length : 0;
+      const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total;
+      const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
+      if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
+    }
+    return lines.join("\n");
+  }
+
   // src/config/priority.ts
   var URGENCY = {
     ambient: 0,
@@ -2948,7 +2965,6 @@ ${extras.desktop}`);
   var canShrink = (c) => rung(c.size) > floorIdx(c);
   var PRIO = (c) => priorityOf(c.kind, c.urgency);
   var isEmptyList = (template, data) => (template === "list" || template === "capability") && Array.isArray(data?.items) && data.items.length === 0;
-  var titleOf = (c) => c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template;
   function createDesk(clock = Date.now) {
     const cards = /* @__PURE__ */ new Map();
     let overlay;
@@ -2962,9 +2978,13 @@ ${extras.desktop}`);
     let familyAutoRound = 0;
     function sweepFamily(c) {
       if (!c.family) return;
+      let removed = false;
       for (const other of [...cards.values()])
-        if (other.id !== c.id && other.family === c.family && other.round !== c.round)
+        if (other.id !== c.id && other.family === c.family && other.round !== c.round) {
           cards.delete(other.id);
+          removed = true;
+        }
+      if (removed) releasedAt = clock();
     }
     function tryPlace(list) {
       const order = [...list].sort((a, b) => {
@@ -3216,21 +3236,7 @@ ${extras.desktop}`);
         overlay: overlay ? cards.get(overlay) : void 0
       };
     }
-    function summary() {
-      const l = layout();
-      const lines = [];
-      if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
-      const slots = Math.floor(l.free / cellsOfTier("1/6"));
-      const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`;
-      lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
-      for (const c of l.cards) {
-        const total = Array.isArray(c.data?.items) ? c.data.items.length : 0;
-        const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total;
-        const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
-        if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
-      }
-      return lines.join("\n");
-    }
+    const summary = () => summarize(layout());
     return {
       show,
       update,

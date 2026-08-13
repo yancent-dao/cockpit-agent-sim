@@ -46,3 +46,14 @@ describe('desk.onDataChange：真变了才通知', () => {
     expect(hits).toEqual([])
   })
 })
+
+/** 天气图标映射：展示映射不是意图分支（同 CN 枚举表待遇），纯函数配测试 */
+describe('weatherIcon', () => {
+  it('按现象关键词给图标，雷优先于雨', async () => {
+    const { weatherIcon } = await import('../../src/screen/icons')
+    expect(weatherIcon('雷阵雨')).toContain('svg')
+    expect(weatherIcon('雷阵雨')).not.toBe(weatherIcon('小雨'))
+    expect(weatherIcon('多云')).not.toBe(weatherIcon('晴'))
+    expect(weatherIcon(undefined)).toContain('svg')   // 兜底晴天，不给空
+  })
+})

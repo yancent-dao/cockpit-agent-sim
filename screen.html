@@ -16,9 +16,24 @@
 html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
-#vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+/* 真机外壳：深色环境底 + 悬浮投影，屏幕本体带玻璃黑边和铝合金圈——
+   仿真机的意义是演示时"这就是一块车机屏"，不是浏览器里的一个网页 */
+#vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(120% 90% at 50% 30%, #23262d 0%, #101216 58%, #0a0b0e 100%)}
 #stage{width:2560px;height:1440px;flex:none;transform-origin:center;
-  background:var(--bg-base);position:relative;overflow:hidden}
+  background:var(--bg-base);position:relative;overflow:hidden;
+  border-radius:64px;
+  /* 三层壳：内圈玻璃黑边 → 铝圈高光 → 环境投影 */
+  box-shadow:
+    0 0 0 22px #060708,
+    0 0 0 25px #3c4046,
+    0 0 0 26px #17181c,
+    0 46px 120px -18px rgba(0,0,0,.75),
+    0 12px 36px rgba(0,0,0,.5)}
+/* 屏幕玻璃反光：左上一道极淡的斜光，真机质感的一半来自它 */
+#stage::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:9;
+  background:linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.035) 12%, transparent 26%);
+  border-radius:inherit}
 
 #statusbar{height:96px;padding:0 60px;display:flex;align-items:center;gap:56px;
   border-bottom:1px solid var(--hairline);font-size:30px;color:var(--text-secondary)}
@@ -42,8 +57,9 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    字号一律 = 字阶 × --u。--u 由档位类（.t-card / .t-stage …）给，
    一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
    加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
-.card{position:relative;background:var(--sf-card,var(--bg-surface));border:1px solid var(--hair,transparent);
-  border-radius:var(--r-m);box-shadow:var(--sh-1);overflow:hidden;
+.card{position:relative;border:1px solid var(--hair-strong,var(--hair));
+  background:linear-gradient(168deg,#FFFFFF 0%,#F6F9FC 82%,#F1F5F9 100%);
+  border-radius:var(--r-m);box-shadow:var(--sh-1),var(--gloss,inset 0 1px 0 rgba(255,255,255,.9));overflow:hidden;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
@@ -58,9 +74,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    用 nth-child 不行：桌面里卡片和占位块（.slot）混在一起，
    序号对不上，而且节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
-.card>h3{flex:none;display:flex;align-items:center;gap:calc(11px*var(--u));
+.card>h3{flex:none;display:flex;align-items:center;gap:calc(12px*var(--u));
   margin-bottom:calc(12px*var(--u));font-size:calc(var(--t-title)*var(--u));
-  font-weight:500;color:var(--tx-3,var(--text-secondary));letter-spacing:.09em}
+  font-weight:500;color:var(--tx-2,var(--text-secondary));letter-spacing:.06em}
+/* 40px 身份图标块：语义色底 + 描边 + 线性图标，远看一眼定位卡片类型 */
+.card>h3 .ico{flex:none;width:calc(40px*var(--u));height:calc(40px*var(--u));
+  border-radius:calc(12px*var(--u));background:var(--acbg);border:1px solid var(--acbd);
+  color:var(--ac);display:flex;align-items:center;justify-content:center}
+.card>h3 .ico svg{width:58%;height:58%}
+.card>h3 .ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 单行档图标块跟着缩，不然它一个就占掉半张卡 */
+.t-chip>h3 .ico,.t-strip>h3 .ico{width:calc(30px*var(--u));height:calc(30px*var(--u));border-radius:calc(9px*var(--u))}
 /* 诊断 1：内容缩在左上角，下半张脸空着。
    .bd 认领全部剩余高度，主数值贴底 —— 空白被推到标题与数据之间，而不是堆在底部。 */
 .bd{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;
@@ -69,9 +93,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 [data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
 [data-act]:active{transform:scale(.94);opacity:.75}
 .plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
-.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:calc(16px*var(--u));
-  display:flex;align-items:center;justify-content:center;font-size:calc(var(--t-lead)*var(--u));
+.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:var(--r-pill,999px);
+  display:flex;align-items:center;justify-content:center;
   background:var(--acbg);border:1px solid var(--acbd);color:var(--ac)}
+.plctl span svg{width:calc(30px*var(--u));height:calc(30px*var(--u))}
+/* 中间的播放/暂停是主键，实色 */
+.plctl span:nth-child(2){background:var(--acgr);color:#fff;border-color:transparent;
+  box-shadow:0 6px 18px -6px var(--ac)}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -157,7 +185,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .blocks{flex:1;min-height:0;display:grid;gap:calc(10px*var(--u));grid-auto-rows:1fr}
 .blocks.c2{grid-template-columns:1fr 1fr}
 .blocks.c3{grid-template-columns:repeat(3,1fr)}
-.blk{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+.blk{background:linear-gradient(165deg,#FBFDFF, #F2F6FB);border:1px solid var(--hair-strong,var(--hair));
   border-radius:calc(16px*var(--u));padding:calc(12px*var(--u)) calc(15px*var(--u));
   display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;
   transition:box-shadow .24s var(--ez,var(--ease))}
@@ -176,7 +204,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* ── 文本块 ── */
 .card .sub{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary));line-height:1.5}
 .card .sug{margin-top:calc(10px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--ac)}
-.card .opt{display:inline-block;padding:calc(5px*var(--u)) calc(13px*var(--u));
+.card .opt{display:inline-block;padding:calc(8px*var(--u)) calc(20px*var(--u));font-weight:600;
   margin:calc(8px*var(--u)) calc(10px*var(--u)) 0 0;border-radius:var(--r-pill,999px);
   background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
   font-size:calc(var(--t-cap)*var(--u));font-weight:500}
@@ -188,13 +216,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    滚动位置模型看不见，模型的世界观仍以 summary 的可见条数为准 */
 .listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
 .listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
-.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(12px*var(--u));
-  padding:calc(7px*var(--u)) 0;border-bottom:1px solid var(--hair,var(--hairline));min-width:0}
-.listcard li:last-child{border-bottom:none}
+.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(14px*var(--u));
+  padding:calc(10px*var(--u)) calc(12px*var(--u));border-radius:calc(14px*var(--u));min-width:0;
+  background:transparent;transition:background .15s}
+.listcard li:nth-child(odd){background:color-mix(in srgb, var(--n1,#F6F8FB) 65%, transparent)}
 .listcard li::before{content:counter(pick);flex:none;
-  width:calc(34px*var(--u));height:calc(34px*var(--u));border-radius:50%;
-  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);
-  font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  width:calc(38px*var(--u));height:calc(38px*var(--u));border-radius:calc(12px*var(--u));
+  background:var(--acgr);color:#fff;box-shadow:0 2px 8px -2px var(--ac);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:700;
   display:flex;align-items:center;justify-content:center;align-self:center}
 .listcard li b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
   color:var(--tx-1,var(--text-primary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -234,6 +263,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxmeta{display:flex;flex-direction:column;gap:calc(3px*var(--u));padding-bottom:calc(6px*var(--u))}
 .wxmeta span{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2,var(--text-secondary))}
 .wxmeta small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
+/* 现象图标压住右侧留白——1/6 档"一个数字挂着"的空旷感就是它治的 */
+.wxico{margin-left:auto;width:calc(120px*var(--u));height:calc(120px*var(--u));
+  color:var(--ac);opacity:.85;align-self:center}
+.wxico svg{width:100%;height:100%;stroke-width:1.4}
+.t-chip .wxico,.t-strip .wxico{width:calc(52px*var(--u));height:calc(52px*var(--u))}
 
 /* ── 能力目录 ── */
 /* 列数由形态函数给（c1/c2/c3），不在 CSS 里硬编码 ——
@@ -243,9 +277,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   align-content:start;overflow:hidden}
 .cap.c2{grid-template-columns:1fr 1fr}
 .cap.c3{grid-template-columns:repeat(3,1fr)}
-.cap div{background:var(--sf-raised,var(--bg-elevated));border:1px solid var(--hair,transparent);
+.cap div{background:linear-gradient(160deg, color-mix(in srgb, var(--acbg) 40%, #fff), #FFFFFF);
+  border:1px solid var(--hair-strong,var(--hair));border-left:3px solid var(--acbd);
   border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
-  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-1,var(--text-primary))}
+  font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--tx-1,var(--text-primary))}
 .cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
 .cap div.off{opacity:.35;text-decoration:line-through}
 
@@ -289,10 +324,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .plwrap{display:flex;align-items:center;gap:calc(20px*var(--u));height:100%;min-height:0}
 .tpl-media.narrow .plwrap{flex-direction:column;align-items:flex-start;justify-content:center}
 .plart{flex:none;width:calc(132px*var(--u));height:calc(132px*var(--u));
-  border-radius:calc(18px*var(--u));overflow:hidden;background:var(--sf-sunken,var(--bg-elevated));
+  border-radius:calc(20px*var(--u));overflow:hidden;
+  background:var(--media-gr,linear-gradient(145deg,#8B5CF6,#6D28D9));
+  box-shadow:0 8px 22px -8px var(--media-fg,#6D28D9);
   display:flex;align-items:center;justify-content:center}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
-.plicon{font-size:calc(var(--t-lead)*var(--u));opacity:.5}
+.plicon{width:46%;height:46%;color:rgba(255,255,255,.9)}
+.plicon svg{width:100%;height:100%;stroke-width:1.6}
 .plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
 .plmeta b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
@@ -332,6 +370,15 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxmeta small{font-size:21px;color:var(--text-secondary)}
 /* 天气预报改走块状均分（.blocks/.blk），不再需要 .wxcast 那一套
    —— 预报本来就是并列数据，跟车窗开度同一个形状。 */
+
+/* ── 短文本卡：白卡 + 左侧 5px 语义色渐变竖条 + 左起淡出底色（§10）──
+   整块染色又糊又吵；竖条一眼给出"这是哪类消息"，正文照旧是主角 */
+.tpl-feedback::before,.tpl-notice::before,.tpl-info::before{
+  content:'';position:absolute;left:0;top:calc(18px*var(--u));bottom:calc(18px*var(--u));
+  width:5px;border-radius:0 4px 4px 0;background:var(--acgr)}
+.tpl-feedback,.tpl-notice,.tpl-info{
+  background:linear-gradient(105deg, color-mix(in srgb, var(--acbg) 55%, #fff) 0%, #FFFFFF 42%),
+    linear-gradient(168deg,#FFFFFF,#F6F9FC)}
 
 /* ── 短文本卡：正文是主角，不是标题下面的灰色小字 ──
    这几张（续航、正在播放、执行反馈、临时提醒）内容天生就一句话，

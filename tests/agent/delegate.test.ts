@@ -138,6 +138,33 @@ describe('后台模式：立即返回，完成机械交付', () => {
   })
 })
 
+describe('task.cancel：取消也是模型决策（语音"别查了"/点屏都汇到它）', () => {
+  it('第二个 turn 里模型调 task.cancel → 任务取消，子 Agent 收手', async () => {
+    let releaseSub!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { releaseSub = res })
+    const { p } = mk((req) => {
+      if (isSub(req, '大调研')) return gate
+      const lastUser = [...req.messages].reverse().find(m => m.role === 'user')
+      if (lastUser?.content === '别查了') {
+        const id = req.messages.map(m => m.content).join(' ').match(/task_\d+/)?.[0]
+        if (!req.messages.some(m => m.content.includes('已取消')))
+          return { toolCalls: [call('task.cancel', { taskId: id })] }
+        return { text: '好，不查了' }
+      }
+      if (!req.messages.some(m => m.content.includes('taskId')))
+        return { toolCalls: [call('task.delegate', { goal: '大调研', background: true })] }
+      return { text: '查着呢' }
+    })
+    await p.run('调研一下')
+    expect(p.tasks()[0].status).toBe('running')
+    await p.run('别查了')
+    expect(p.tasks()[0].status).toBe('cancelled')
+    releaseSub({ text: '晚了' })
+    await new Promise(r => setTimeout(r, 5))
+    expect(p.tasks()[0].status, '取消后完成回调不许翻案').toBe('cancelled')
+  })
+})
+
 describe('边界三条', () => {
   it('深度 1：子 Agent 的工具列表里没有 task.delegate', async () => {
     const { p, slow } = mk((req) => {

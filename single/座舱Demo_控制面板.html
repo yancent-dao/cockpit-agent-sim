@@ -92,10 +92,12 @@ input::placeholder{color:#4A5462}
     <h2>模型 <span class="n" id="modelCount">—</span></h2>
     <div class="fld"><label>API Key</label><input id="key" type="password" placeholder="sk-or-v1-…"></div>
     <div class="fld"><label>模型</label><select id="model"></select></div>
+    <div class="fld"><label>快层模型</label><select id="fastModel"></select></div>
     <div class="row">
       <button id="reload">刷新模型列表</button>
       <button id="fastOnly" class="on">只看快速模型</button>
     </div>
+    <div class="note">快层模型 = 过滤器小模型：车控/天气这类简单指令由它亚秒先答，大模型在后台校验接力。选最便宜最快的档就对了。</div>
     <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
   </section>
 
@@ -744,6 +746,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 读取 ── */
     {
       name: "vehicle.getState",
+      brief: "读车辆当前状态",
+      fast: true,
       desc: "读取车辆当前状态。不传参返回全部状态；传 paths 只读取指定信号。",
       permission: "彩",
       params: {
@@ -754,6 +758,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 能力目录：由 Tool Registry 自动生成，供能力目录卡渲染 ── */
     {
       name: "capability.list",
+      brief: "屏上显示能力目录",
       desc: '把本车能力目录显示到屏幕上（按能力域分组的卡片，如车窗/空调/导航），并返回清单数据。**这是唯一能让用户在屏幕上看到能力清单的方式**——你自己凭记忆背清单，用户屏幕上什么都不会出现，而且容易背漏或背错。所以只要用户问"你能做什么/会啥/帮我干嘛"，先调它，再口头概括一两句。调用后不要再说"屏幕上已显示"之类的话除非你真的调过它。不传 domain 返回全部；传 domain 只看某一类（如 window）。',
       permission: "彩",
       params: {
@@ -764,6 +769,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 车窗（零 handler） ── */
     {
       name: "window.set",
+      brief: "控制车窗开度",
+      fast: true,
       desc: "控制车窗开度。position 为百分比，0 表示完全关闭，100 表示完全打开。window 传 all 可一次控制四扇窗。",
       permission: "彩",
       params: {
@@ -783,6 +790,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 空调（v0.1 简化：单分区，不做左右独立温区） ── */
     {
       name: "climate.set",
+      brief: "空调温度风量出风",
+      fast: true,
       desc: "控制空调。可以一次传多个字段（比如同时开空调并调温度），只传要改的字段即可，不用每个都填。",
       permission: "彩",
       params: {
@@ -809,6 +818,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 座椅（v0.1 简化：滑动/靠背仅前排；按摩、记忆位暂不做） ── */
     {
       name: "seat.set",
+      brief: "座椅加热通风调节",
+      fast: true,
       desc: "控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。",
       permission: "彩",
       params: {
@@ -834,6 +845,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 方向盘 ── */
     {
       name: "steeringWheel.set",
+      brief: "方向盘加热",
+      fast: true,
       desc: "控制方向盘加热档位。",
       permission: "彩",
       params: { heating: { type: "number", range: [0, 3], required: true, desc: "加热档位 0-3" } },
@@ -842,6 +855,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 天窗：未选装，用于反幻觉验证 ── */
     {
       name: "sunroof.set",
+      brief: "天窗开合",
+      fast: true,
       desc: "控制全景天窗开度。",
       permission: "彩",
       params: { position: { type: "number", range: [0, 100], required: true, desc: "开度百分比 0-100" } },
@@ -850,6 +865,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "wiper.set",
+      brief: "雨刷挡位",
+      fast: true,
       desc: '雨刷。auto 是自动感应雨量，下雨天用户说"开雨刷"一般给 auto 最省心；雨大就 high。',
       permission: "彩",
       params: { mode: { type: "enum", values: ["off", "auto", "slow", "medium", "high"], required: true, desc: "档位" } },
@@ -858,6 +875,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 车门：灰级，需二次确认 ── */
     {
       name: "door.set",
+      brief: "开关车门，需确认",
       desc: "开关车门。open 打开，close 关闭。",
       permission: "灰",
       params: {
@@ -875,6 +893,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 后备箱：灰级，且非 P 挡禁止 ── */
     {
       name: "trunk.set",
+      brief: "开关后备箱，需确认",
       desc: "开关后备箱。只有 P 挡才能打开。",
       permission: "灰",
       params: {
@@ -887,6 +906,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 充电口 ── */
     {
       name: "chargePort.set",
+      brief: "开关充电口，需确认",
       desc: "开关充电口盖。",
       permission: "彩",
       params: { action: { type: "enum", values: ["open", "close"], required: true, desc: "动作" } },
@@ -895,6 +915,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 儿童锁 ── */
     {
       name: "childLock.set",
+      brief: "儿童锁开关",
+      fast: true,
       desc: "开关后排儿童锁。开启后后排车窗与车门将无法控制。",
       permission: "彩",
       params: { enabled: { type: "boolean", required: true, desc: "是否开启" } },
@@ -903,6 +925,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 氛围灯（v0.1 简化：整车一个分区，不做前后独立） ── */
     {
       name: "ambientLight.set",
+      brief: "氛围灯开关颜色亮度",
+      fast: true,
       desc: "控制氛围灯。可以一次传多个字段，只传要改的即可。",
       permission: "彩",
       params: {
@@ -921,6 +945,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 香氛 ── */
     {
       name: "fragrance.set",
+      brief: "香氛开关香型浓度",
+      fast: true,
       desc: "控制香氛。可以一次传多个字段，只传要改的即可。",
       permission: "彩",
       params: {
@@ -937,6 +963,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 灯光（v0.1 简化：只做大灯与后备箱灯，阅读灯留待 v0.2） ── */
     {
       name: "light.set",
+      brief: "大灯与后备箱灯",
+      fast: true,
       desc: "开关车灯。",
       permission: "彩",
       params: {
@@ -948,6 +976,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 驾驶设置：灰级（行驶中） ── */
     {
       name: "driveSetting.set",
+      brief: "驾驶模式回收悬架",
+      fast: true,
       desc: "调整驾驶模式、动能回收、悬架高度。可以一次传多个字段，只传要改的即可。停车时可直接执行，行驶中需要用户确认。",
       permission: "彩",
       params: {
@@ -966,6 +996,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── L2 应用级：导航（真实接高德，失败一律 unavailable，不冒充 rejected） ── */
     {
       name: "navigation.search",
+      brief: "搜地点出候选列表",
       desc: '搜索地点或公交线路。去一个地方前先用这个搜，不要凭地名直接设目的地——同名地点很多。type 传 poi（默认）返回候选 POI 列表；type 传 bus 返回公交线路，这时 near 必须传城市名。搜到多个候选时列表会自动上屏，**带编号**。你只说一句"搜到几个，你说第几个"就行，别把候选逐条念一遍——屏幕上摆着呢，念了是重复劳动，语音还长。只有一个候选时直接进 navigation.setDestination，不用多此一举地问。',
       permission: "彩",
       params: {
@@ -977,6 +1008,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "navigation.setDestination",
+      brief: "设目的地开始导航",
       desc: "设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。",
       permission: "彩",
       params: {
@@ -1000,6 +1032,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "region.districts",
+      brief: "查周边区县列表",
       desc: `列出某个城市下辖的区县（名称 + 中心坐标）。不传 area 就用车辆当前所在城市。
 **这是"扫一圈周边"类需求的第一步**——拿到区县列表后，再用别的工具逐个查，就能组合出很多事：
 例："找附近正在下雨的县城导航过去" = 先调这个拿区县列表，再对每个区县调 weather.query，
@@ -1012,6 +1045,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "places.save",
+      brief: "存常用地址",
       desc: '把一个地点存成常用地址（家、公司、常去的健身房等），之后用户说"回家"就能直接导航。坐标来自 navigation.search 结果里的 location。',
       permission: "彩",
       params: {
@@ -1023,6 +1057,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "places.list",
+      brief: "列常用地址",
       desc: '看看存了哪些常用地址。用户说"回家""去公司"而你不确定存没存时，先查这个。',
       permission: "彩",
       params: {},
@@ -1030,6 +1065,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "navigation.searchAlong",
+      brief: "沿途周边搜服务点",
       desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
       口头只说"找到几个，最近的是XX"这种一句话结论，别把每个的名字、距离逐条念——屏幕上有。
 不传 near 时：导航中沿路线前方找，没导航就找车辆附近；不传 keyword 时按车型自动选（电车找充电站、油车找加油站）。
@@ -1047,6 +1083,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "navigation.compareRoutes",
+      brief: "多路线方案对比",
       desc: '对比去同一个目的地的几条路线（耗时/里程/过路费/红绿灯数），方案列表会自动上屏，带编号。口头只说关键差别和你的建议（"最快那条要两块过路费，另外两条免费"），别把三条的耗时里程逐条念一遍。用户问"走哪条快""要不要走高速""过路费多少"时用。用户选定后再调 navigation.setDestination 并传对应的 preference。',
       permission: "彩",
       params: {
@@ -1058,6 +1095,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "navigation.control",
+      brief: "暂停恢复结束导航",
       desc: "控制导航会话：resume 从暂停恢复/pause 暂停/cancel 取消。start 一般用不上——navigation.setDestination 成功后会自动开始导航；只有目的地已经设过、又被 pause 了，现在要重新开始，才需要用 start（或者干脆用 resume，效果一样）。",
       permission: "彩",
       params: {
@@ -1067,6 +1105,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "navigation.getStatus",
+      brief: "读导航当前状态",
       desc: "读取当前导航状态：是否在导航、目的地、ETA、剩余里程、电量是否够到达。导航中时会附带 traffic（实时路况），拿不到就没有这个字段，不代表出错。",
       permission: "彩",
       params: {},
@@ -1075,6 +1114,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── L2 应用级：天气（真实接高德） ── */
     {
       name: "weather.query",
+      brief: "查城市天气预报",
+      fast: true,
       desc: '查询某个地点的天气，同时返回实况与未来几天预报。查询成功后天气卡会自动显示在屏幕上，你只负责口头播报重点，不要再建卡。查不到这个地点时会得到 unavailable。**注意**：这是气象服务的城市级数据，跟车上传感器（车外温度、当前天况）测的"此刻这里"不是一回事，两者对不上很正常，别当成矛盾去质问用户——车里冷不冷、雨大不大以传感器为准。',
       permission: "彩",
       params: {
@@ -1085,6 +1126,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ── 语音 ── */
     {
       name: "voice.speak",
+      brief: "主动播报一句话",
       desc: "通过车内音响向用户播报一段话。用于解释、确认、反馈。",
       permission: "彩",
       params: {
@@ -1095,6 +1137,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "voice.ask",
+      brief: "向用户提问出选择卡",
       desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
       permission: "彩",
       params: {
@@ -1107,6 +1150,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
     {
       name: "media.control",
+      brief: "播放暂停上下曲",
+      fast: true,
       desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
       permission: "彩",
       params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev", "toggle"], required: true, desc: "动作。toggle 是播放/暂停切换（屏幕按钮用它）" } },
@@ -1114,6 +1159,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.volume",
+      brief: "调音量",
+      fast: true,
       desc: '媒体音量。level 传绝对值（0-100），delta 传增减量（"大声点"用 +10 这种）。超出范围会自动夹住而不是报错。',
       permission: "彩",
       params: {
@@ -1124,6 +1171,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.seek",
+      brief: "跳播放进度",
       desc: "跳到某个时间点或快进快退。电台是直播流，会返回 rejected。",
       permission: "彩",
       params: {
@@ -1134,6 +1182,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.mode",
+      brief: "循环随机播放模式",
+      fast: true,
       desc: "播放模式：顺序/随机/单曲循环。电台没有播放模式，会返回 rejected。",
       permission: "彩",
       params: { mode: { type: "enum", values: ["sequential", "shuffle", "repeatOne"], required: true, desc: "模式" } },
@@ -1141,6 +1191,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.queue",
+      brief: "看播放队列",
       desc: "看播放队列：正在放什么、接下来几首、最近放过什么。点一首歌后同批搜索结果自动排队。",
       permission: "彩",
       params: {},
@@ -1148,6 +1199,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.favorite",
+      brief: "收藏当前曲目",
       desc: '收藏正在播的内容。歌和电台存在同一份收藏里，用户说"收藏"不用分类型。',
       permission: "彩",
       params: {},
@@ -1155,6 +1207,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "media.favorites",
+      brief: "列收藏列表",
       desc: '列出收藏过的内容，列表会自动显示到屏幕上带编号，你说一句"你收藏了几个"就行，别逐条念。',
       permission: "彩",
       params: {},
@@ -1163,6 +1216,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 音乐（iTunes，30 秒预览） ══════════ */
     {
       name: "music.search",
+      brief: "搜歌不播",
       desc: '搜歌。可以搜歌名、歌手、专辑。结果自动上屏带编号，你只说一句"搜到几首"就行，别逐条念。**iTunes 只提供 30 秒预览，放不了整首**，这是版权限制，用户问起来就照实说。',
       permission: "彩",
       params: {
@@ -1173,6 +1227,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "music.play",
+      brief: "搜歌并播放入队",
       desc: '放歌。用户说"放周杰伦的晴天"就直接传 query，不用先 search——搜到会自动播第一首，省一轮。用户从搜索结果里选了第几个，传那一条的 trackId。',
       permission: "彩",
       params: {
@@ -1184,6 +1239,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
     {
       name: "radio.search",
+      brief: "搜网络电台",
       desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',
       permission: "彩",
       params: {
@@ -1197,6 +1253,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "radio.play",
+      brief: "搜台并播放",
       desc: '放电台。用户说"放中国之声"直接传 query，不用先 search。从搜索结果里选的传 stationId。',
       permission: "彩",
       params: {
@@ -1208,6 +1265,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 新闻（NewsAPI） ══════════ */
     {
       name: "news.headlines",
+      brief: "今日头条新闻",
       desc: '看某个领域的最新新闻。**中文拿不到编辑推荐的头条**（数据源限制），返回的是按关键词搜、按时间排的最新几条，返回里的 real=false 就是这个意思——播报时说"我给你找了今天的科技新闻"，**不要说"这是今天的头条"**。列表自动上屏带编号，你说一句有几条就行，别逐条念标题。',
       permission: "彩",
       params: {
@@ -1218,6 +1276,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "news.search",
+      brief: "按话题搜新闻",
       desc: "按关键词搜新闻。列表自动上屏带编号。",
       permission: "彩",
       params: {
@@ -1228,6 +1287,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "news.read",
+      brief: "念一条新闻正文",
       desc: '把列表里第几条的正文取出来念给用户听——车机场景是听不是看，用户说"读第二条"就用这个。要先调过 headlines 或 search 才有列表。',
       permission: "彩",
       params: { index: { type: "number", range: [1, 20], required: true, desc: "第几条，从 1 开始" } },
@@ -1236,6 +1296,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 短视频（Pexels） ══════════ */
     {
       name: "video.search",
+      brief: "搜短视频",
       desc: "找短视频。素材库风格（风景、城市、动物、美食这类），**不是社交平台的推荐流**，没有点赞评论。用英文关键词命中率高得多。结果自动上屏带编号。",
       permission: "彩",
       params: {
@@ -1246,6 +1307,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "video.play",
+      brief: "搜视频并播放",
       desc: '播短视频。**车一动就会被拒**（行车安全），拒绝时把原因和替代方案告诉用户——可以改放音乐或电台。用户说"放个视频"直接传 query 即可。',
       permission: "彩",
       params: {
@@ -1257,6 +1319,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 联网搜索 ══════════ */
     {
       name: "web.search",
+      brief: "联网搜索现查",
       desc: "联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**返回的答案往往很长，别整段念——挑一两句最关键的说，剩下的让用户看屏幕。**每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。**",
       permission: "彩",
       params: { query: { type: "string", required: true, desc: "要查的问题，一句话说清" } },
@@ -1264,6 +1327,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "card.show",
+      brief: "建卡片上屏",
       desc: "在桌面 Agent 区新建一张卡片。先用 desktop.getLayout 看桌面上有没有现成的卡可以复用——已有就用 card.update，尺寸不够就用 card.resize，都不行才新建。",
       permission: "彩",
       params: {
@@ -1292,6 +1356,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "card.update",
+      brief: "更新卡片数据",
       desc: "更新已有卡片的内容。桌面上已有对应卡片时优先用这个，不要重复新建。",
       permission: "彩",
       params: {
@@ -1302,6 +1367,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "card.resize",
+      brief: "调卡片大小",
       desc: "改变卡片尺寸。空间不够时系统会自动腾位。",
       permission: "彩",
       params: {
@@ -1317,6 +1383,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "card.dismiss",
+      brief: "撤掉卡片",
       desc: "移除一张卡片。",
       permission: "彩",
       params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
@@ -1324,6 +1391,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "card.focus",
+      brief: "高亮提示一张卡",
       desc: "把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。",
       permission: "彩",
       params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
@@ -1331,6 +1399,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "desktop.getLayout",
+      brief: "读桌面布局",
       desc: "读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。",
       permission: "彩",
       params: {},
@@ -1348,6 +1417,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     /* ══════════ 记忆（显式，长期） ══════════ */
     {
       name: "memory.remember",
+      brief: "记住用户偏好",
       desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。只记**用户明说要记**的；你自己猜的规律不许存。这些偏好每次对话都会注入给你，落实靠你自己。',
       permission: "彩",
       params: { text: { type: "string", required: true, desc: '一句话的偏好，如"空调默认 24 度""出风别对着脸吹"' } },
@@ -1355,6 +1425,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "memory.forget",
+      brief: "删掉记住的偏好",
       desc: '用户说"别记了""把那条删了"时调用，按内容片段模糊匹配删除。',
       permission: "彩",
       params: { text: { type: "string", required: true, desc: "要删的偏好的关键词" } },
@@ -1362,6 +1433,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     {
       name: "memory.list",
+      brief: "列出记住的事",
       desc: '用户问"你记住了什么"时调用，清单会上屏。',
       permission: "彩",
       params: {},
@@ -2677,12 +2749,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     }
     function validate(t, args) {
       for (const [key, def] of Object.entries(t.params)) {
-        const v = args?.[key];
+        let v = args?.[key];
         if (v === void 0 || v === null) {
           if (def.required) return `缺少必填参数 ${key}`;
           continue;
         }
         if (def.type === "number") {
+          if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) {
+            v = Number(v);
+            args[key] = v;
+          }
           if (typeof v !== "number" || Number.isNaN(v)) return `${key} 需要数值`;
           if (def.range && (v < def.range[0] || v > def.range[1]))
             return `${key} 需在 ${def.range[0]}~${def.range[1]} 之间`;
@@ -2794,7 +2870,32 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         return { name, description: t.desc, inputSchema: parameters };
       });
     }
-    return { list, schemas, invoke, permissionOf, canonicalName, tools };
+    const briefCatalog = (allow) => list(allow).filter((t) => !t.meta && t.brief).map((t) => `- ${t.name}: ${t.brief}`).join("\n");
+    function signalsFor(names) {
+      const out = /* @__PURE__ */ new Set();
+      for (const n of names) {
+        const t = resolve(n);
+        if (!t) continue;
+        if (t.requires) out.add(t.requires);
+        for (const w of t.writes ?? []) {
+          const m = w.path.match(/\{(\w+)\}/);
+          if (!m) {
+            out.add(w.path);
+            continue;
+          }
+          const p = t.params[m[1]];
+          const expandKeys = new Set(Object.keys(t.expand?.[m[1]] ?? {}));
+          for (const v of p?.values ?? [])
+            if (!expandKeys.has(v)) out.add(w.path.replace(m[0], v));
+        }
+      }
+      return [...out];
+    }
+    const pendingConfirm = () => {
+      for (const [, t] of tokens) if (t.expires > clock()) return { tool: t.tool };
+      return null;
+    };
+    return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm };
   }
 
   // src/state/domain.ts
@@ -3235,15 +3336,39 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const v = store2.get(alias);
     return store2.signals.find((s) => s.alias === alias)?.valueLabels?.[String(v)] ?? v;
   };
+  var CORE_PREFIXES = ["vehicle.", "powertrain."];
   function buildSystemPrompt(manifest, store2, registry2, extras = {}) {
     const parts = [manifest.persona];
+    if (manifest.role) parts.push(manifest.role);
     const want = new Set(manifest.context);
     const g = (p) => store2.get(p);
+    if (want.has("capabilities")) {
+      const missing = store2.signals.filter((s) => s.equipped === false);
+      if (missing.length)
+        parts.push(`
+## 本车型未配备（绝对不要假装能操作）
+${missing.map((s) => `- ${s.label}`).join("\n")}`);
+    }
+    if (extras.catalog)
+      parts.push(`
+## 工具目录（一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调）
+${extras.catalog}`);
+    if (extras.prefs?.length) {
+      const shown = extras.prefs.slice(-10);
+      parts.push(`
+## 用户偏好（用户让你记住的，落实靠你）
+${shown.map((t) => `- ${t}`).join("\n")}`);
+    }
+    if (extras.recent) parts.push(`
+## 最近
+${extras.recent}`);
     if (want.has("vehicleState")) {
+      const filter = extras.signalFilter;
       const lines = [];
       for (const sig of store2.signals) {
         if (sig.equipped === false) continue;
         if (sig.alias.startsWith("perception.") || sig.alias.startsWith("env.")) continue;
+        if (filter && !filter.includes(sig.alias) && !CORE_PREFIXES.some((p) => sig.alias.startsWith(p))) continue;
         let v = g(sig.alias);
         if (sig.changeMode === "CONTINUOUS" && typeof v === "number") v = Math.round(v);
         if (typeof v === "number") v = Math.round(v);
@@ -3254,15 +3379,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
 ## 当前车辆状态
 ${lines.join("\n")}`);
     }
-    if (extras.prefs?.length) {
-      const shown = extras.prefs.slice(-10);
-      parts.push(`
-## 用户偏好（用户让你记住的，落实靠你）
-${shown.map((t) => `- ${t}`).join("\n")}`);
-    }
-    if (extras.recent) parts.push(`
-## 最近
-${extras.recent}`);
     if (want.has("environment")) {
       parts.push(`
 ## 环境
@@ -3275,15 +3391,9 @@ ${extras.recent}`);
 ## 说话人
 当前说话的人坐在 **${seat}**。当他说"开窗""我这边"这类没有指明位置的话时，默认指他自己所在的位置。`);
     }
-    if (want.has("capabilities")) {
-      const missing = store2.signals.filter((s) => s.equipped === false);
-      if (missing.length)
-        parts.push(`
-## 本车型未配备（绝对不要假装能操作）
-${missing.map((s) => `- ${s.label}`).join("\n")}`);
+    if (want.has("capabilities"))
       parts.push(`
-你当前可用的能力共 ${registry2.list(manifest.tools).length} 项，均已在工具列表中给出。列表之外的能力一律不存在。`);
-    }
+你当前可用的能力共 ${registry2.list(manifest.tools).length} 项。目录之外的能力一律不存在。`);
     if (want.has("desktop") && extras.desktop)
       parts.push(`
 ## 桌面布局（本车无 App，一切都是卡片）
@@ -3291,92 +3401,365 @@ ${extras.desktop}`);
     return parts.join("\n");
   }
 
-  // src/agent/runtime.ts
-  function createAgent({ manifest, registry: registry2, store: store2, llm: llm2, clock = Date.now, desktopSummary, prefsList, recentSummary: recentSummary2, onTurnStart }) {
-    let toolRound = 0;
+  // src/agent/pipeline.ts
+  var HANDOFF_SCHEMA = {
+    type: "function",
+    function: {
+      name: "agent_handoff",
+      description: "收尾时勾选：把后续工作可能用到的工具名（从工具目录里挑）转交给大模型同事预载。没有就不调。",
+      parameters: {
+        type: "object",
+        properties: { suggestedTools: { type: "array", items: { type: "string" }, description: '工具名列表，如 ["navigation.search"]' } }
+      }
+    }
+  };
+  var LOAD_SCHEMA = {
+    type: "function",
+    function: {
+      name: "tools_load",
+      description: "把工具目录里的能力装进手边（下一轮获得完整 schema）。要用目录里的工具但它不在当前工具列表时先调这个。",
+      parameters: {
+        type: "object",
+        required: ["names"],
+        properties: { names: { type: "array", items: { type: "string" }, description: "要装载的工具名列表" } }
+      }
+    }
+  };
+  var DELEGATE_SCHEMA = {
+    type: "function",
+    function: {
+      name: "task_delegate",
+      description: '把一个独立子任务委托给子 Agent 执行。多个互不依赖的重活（调研/搜集/报告）在**同一轮里连发多个** delegate 即并行。background=true 时立即返回 taskId 后台跑，完成后系统自动通知用户（你先答"我去查着"即可）；否则等结果回来你自己汇总。',
+      parameters: {
+        type: "object",
+        required: ["goal"],
+        properties: {
+          goal: { type: "string", description: "子任务目标，一句话说清要什么结论" },
+          tools: { type: "array", items: { type: "string" }, description: "给子 Agent 点的装备（工具目录里的名字）。不点它自己按目录取" },
+          background: { type: "boolean", description: "耗时长的活转后台，完成自动通知" }
+        }
+      }
+    }
+  };
+  var CANCEL_SCHEMA = {
+    type: "function",
+    function: {
+      name: "task_cancel",
+      description: '取消一个还在跑的后台任务。用户说"别查了/不用了"或点了任务卡上的取消时调。',
+      parameters: {
+        type: "object",
+        properties: {
+          taskId: { type: "string", description: "任务 id（task_N）；不知道 id 可给 label 关键词" },
+          label: { type: "string", description: "按任务名关键词匹配" }
+        }
+      }
+    }
+  };
+  var isMeta = (name, meta) => name === meta || name === meta.replace(/\./g, "_");
+  var SUM_MARK = "【前情摘要】";
+  var KEEP_ROUNDS = 4;
+  var COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成前情摘要：
+- 不超过 10 行，只写结论与未完成的事（谁要了什么、办到哪一步、定了什么偏好）
+- 最后一行固定写「提到过：xxx、yyy」——列出出现过的地名/人名/歌名/店名，
+  这是检索索引：用户以后说"刚才那个加油站"要靠它找锚点
+- 只输出摘要正文，不解释`;
+  function createPipeline(deps) {
+    const { registry: registry2, store: store2, clock = Date.now } = deps;
     const listeners = [];
     const emit = (e) => listeners.forEach((l) => l(e));
     const on = (cb) => {
       listeners.push(cb);
       return () => listeners.splice(listeners.indexOf(cb), 1);
     };
-    let history = [];
-    const reset = () => {
-      history = [];
-    };
-    async function run(userText) {
-      const trace = [];
-      const t0 = clock();
-      if (!userText.trim()) return { reply: "", trace, rounds: 0, stopReason: "empty" };
-      onTurnStart?.();
-      trace.push({ type: "userInput", at: t0, text: userText });
-      history.push({ role: "user", content: userText });
-      const tools = registry2.schemas("openai", manifest.tools);
-      let rounds = 0;
-      try {
-        while (rounds < manifest.maxRounds) {
-          rounds++;
-          const system = buildSystemPrompt(
-            manifest,
-            store2,
-            registry2,
-            { desktop: desktopSummary?.(), prefs: prefsList?.(), recent: recentSummary2?.() }
-          );
-          trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
-          emit({ type: "thinking" });
-          const last = rounds === manifest.maxRounds;
-          const reply = await llm2.chat({ system, messages: history, tools: last ? [] : tools });
-          if (!reply.toolCalls?.length) {
-            const text = reply.text ?? "";
-            history.push({ role: "assistant", content: text });
-            trace.push({ type: "reply", at: clock(), text });
-            emit({ type: "speaking", text });
-            emit({ type: "done" });
-            return { reply: text, trace, rounds, stopReason: "reply" };
-          }
-          history.push({
-            role: "assistant",
-            content: reply.text ?? "",
-            tool_calls: reply.toolCalls.map((c) => ({
-              id: c.id,
-              type: "function",
-              function: { name: c.name, arguments: JSON.stringify(c.args) }
-            }))
-          });
-          const round = ++toolRound;
-          const results = await Promise.all(reply.toolCalls.map(async (c) => {
-            const name = registry2.canonicalName(c.name);
-            trace.push({
-              type: "toolCall",
-              at: clock(),
-              name,
-              args: c.args,
-              permission: registry2.permissionOf(c.name)
-            });
-            emit({ type: "executing", name });
-            const s = clock();
-            const result = await registry2.invoke(c.name, c.args, { allow: manifest.tools, round });
-            trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
-            if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
-            if (result.status === "rejected" || result.status === "unavailable")
-              emit({ type: "rejected", text: result.message ?? "无法执行" });
-            return { c, result };
-          }));
-          for (const { c, result } of results)
-            history.push({ role: "tool", tool_call_id: c.id, content: JSON.stringify(result) });
-        }
-        emit({ type: "done" });
-        return { reply: "", trace, rounds, stopReason: "maxRounds" };
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        trace.push({ type: "error", at: clock(), message });
-        emit({ type: "error", message });
-        return { reply: "", trace, rounds, stopReason: "error" };
+    const thread = [];
+    let gen = 0;
+    let boundary = 0;
+    let toolRound = 0;
+    const lastTime = deps.memory?.load();
+    if (lastTime) thread.push({ role: "assistant", content: `${SUM_MARK}上回说到：${lastTime}` });
+    const stale = (g) => g !== gen;
+    const commit = (g, ...msgs) => {
+      if (!stale(g)) thread.push(...msgs);
+      else {
+        thread.splice(boundary, 0, ...msgs);
+        boundary += msgs.length;
       }
+    };
+    async function execRound(g, calls, allow, trace, interceptors) {
+      const round = ++toolRound;
+      const results = await Promise.all(calls.map(async (c) => {
+        const metaKey = Object.keys(interceptors).find((k) => isMeta(c.name, k));
+        const name = metaKey ?? registry2.canonicalName(c.name);
+        trace.push({ type: "toolCall", at: clock(), name, args: c.args, permission: registry2.permissionOf(c.name) });
+        emit({ type: "executing", name });
+        const s = clock();
+        const result = metaKey ? await interceptors[metaKey](c.args) : await registry2.invoke(c.name, c.args, { allow, round });
+        trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
+        if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
+        if (result.status === "rejected" || result.status === "unavailable")
+          emit({ type: "rejected", text: result.message ?? "无法执行" });
+        return { c, result };
+      }));
+      return results.map(({ c, result }) => ({
+        role: "tool",
+        tool_call_id: c.id,
+        content: JSON.stringify(result)
+      }));
     }
-    return { run, on, reset, manifest, get history() {
-      return history;
-    } };
+    const asstMsg = (reply) => ({
+      role: "assistant",
+      content: reply.text ?? "",
+      tool_calls: reply.toolCalls?.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: { name: c.name, arguments: JSON.stringify(c.args) }
+      }))
+    });
+    const fastView = (snapshot) => snapshot.filter((m) => (m.role === "user" || m.role === "assistant") && m.content).map((m) => ({ role: m.role, content: m.content })).slice(-6);
+    async function runFast(g, trace) {
+      const fm = deps.fastManifest;
+      const allTools = [...registry2.schemas("openai", fm.tools), HANDOFF_SCHEMA];
+      let suggested = [];
+      let said = "";
+      let rounds = 0;
+      while (rounds < fm.maxRounds) {
+        rounds++;
+        const tools = rounds === fm.maxRounds ? [] : allTools;
+        const system = buildSystemPrompt(fm, store2, registry2, {
+          catalog: registry2.briefCatalog(),
+          signalFilter: registry2.signalsFor(fm.tools)
+        });
+        trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
+        const view = fastView(thread);
+        let reply;
+        try {
+          reply = await deps.fastLlm.chat({ system, messages: view, tools });
+        } catch (e) {
+          trace.push({ type: "error", at: clock(), message: `快层：${e}` });
+          return { suggested, said, rounds };
+        }
+        if (stale(g)) return { suggested, said, rounds };
+        if (reply.text) {
+          said = reply.text;
+          emit({ type: "speaking", text: reply.text, layer: "fast" });
+        }
+        if (!reply.toolCalls?.length) {
+          if (reply.text) commit(g, { role: "assistant", content: reply.text });
+          return { suggested, said, rounds };
+        }
+        commit(g, asstMsg(reply));
+        const toolMsgs = await execRound(g, reply.toolCalls, fm.tools, trace, {
+          "agent.handoff": (args) => {
+            suggested = (args?.suggestedTools ?? []).filter((n) => registry2.list().some((t) => t.name === registry2.canonicalName(n)));
+            return { status: "ok", message: "已转交" };
+          }
+        });
+        commit(g, ...toolMsgs);
+      }
+      return { suggested, said, rounds };
+    }
+    const taskPool = [];
+    let taskSeq = 0;
+    let activeSubs = 0;
+    const tasks = () => taskPool.map((t) => ({ ...t }));
+    const cancelTask = (id) => {
+      const t = taskPool.find((x) => x.id === id);
+      if (t?.status === "running") {
+        t.status = "cancelled";
+        emit({ type: "taskUpdate" });
+      }
+    };
+    async function subRun(goal, preload, task) {
+      const sm = deps.slowManifest;
+      const allow = registry2.list().filter((t) => t.permission !== "灰").map((t) => t.name);
+      const resident = (sm.resident ?? []).filter((n) => !n.startsWith("voice."));
+      const loaded = /* @__PURE__ */ new Set([...resident, ...preload]);
+      const manifest = {
+        ...sm,
+        role: `
+## 子任务模式
+你在独立执行一个被委托的子任务，对话第一条就是任务目标。把**结论**用一段话说清——
+这段话会被直接播报或展示；要展示报告/图表就自己建卡（报告图表类用 canvas 模板，
+列表类用 list）。别闲聊，别问问题——问不到人。`
+      };
+      const view = [{ role: "user", content: goal }];
+      const trace = [];
+      for (let r = 0; r < sm.maxRounds; r++) {
+        if (task && task.status !== "running") return { summary: "" };
+        const system = buildSystemPrompt(manifest, store2, registry2, {
+          catalog: registry2.briefCatalog(),
+          signalFilter: registry2.signalsFor([...loaded])
+        });
+        const tools = r === sm.maxRounds - 1 ? [] : [...registry2.schemas("openai", [...loaded]), LOAD_SCHEMA];
+        const reply = await deps.slowLlm.chat({ system, messages: view, tools });
+        if (task && task.status !== "running") return { summary: "" };
+        if (!reply.toolCalls?.length) return { summary: reply.text ?? "" };
+        view.push(asstMsg(reply));
+        const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
+          "tools.load": mkLoader(loaded)
+        });
+        view.push(...toolMsgs);
+      }
+      return { summary: "" };
+    }
+    const delegateInterceptor = (args) => {
+      const goal = String(args?.goal ?? "").trim();
+      if (!goal) return { status: "rejected", code: "INVALID_PARAMS", message: "goal 不能为空" };
+      if (activeSubs >= 3)
+        return { status: "rejected", code: "TASKS_LIMIT", message: "并行任务已达上限 3 个", suggestion: "等一个跑完再派，或合并任务" };
+      const preload = (args?.tools ?? []).map((n) => registry2.canonicalName(n)).filter((n) => registry2.list().some((t) => t.name === n));
+      activeSubs++;
+      if (args?.background) {
+        const task = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: "running" };
+        taskPool.push(task);
+        emit({ type: "taskUpdate" });
+        void subRun(goal, preload, task).then(({ summary }) => {
+          if (task.status !== "running") return;
+          task.status = "done";
+          task.summary = summary;
+          emit({ type: "taskUpdate" });
+          emit({ type: "taskDone", taskId: task.id, summary, ok: true });
+        }).catch((e) => {
+          if (task.status !== "running") return;
+          task.status = "failed";
+          task.summary = String(e);
+          emit({ type: "taskUpdate" });
+          emit({ type: "taskDone", taskId: task.id, summary: String(e), ok: false });
+        }).finally(() => {
+          activeSubs--;
+        });
+        return { status: "ok", data: { taskId: task.id }, message: "已转后台，完成会自动通知用户" };
+      }
+      return subRun(goal, preload).then(({ summary }) => ({ status: "ok", data: { summary } })).finally(() => {
+        activeSubs--;
+      });
+    };
+    const mkLoader = (loaded) => (args) => {
+      const names = (args?.names ?? []).map((n) => registry2.canonicalName(n));
+      const known = names.filter((n) => registry2.list().some((t) => t.name === n));
+      known.forEach((n) => loaded.add(n));
+      const unknown = names.filter((n) => !known.includes(n));
+      return known.length ? { status: "ok", message: `已装载：${known.join("、")}${unknown.length ? `；没有这些工具：${unknown.join("、")}` : ""}` } : { status: "rejected", code: "UNKNOWN_TOOL", message: `目录里没有：${names.join("、")}`, suggestion: "对照工具目录里的名字再试" };
+    };
+    async function runSlow(g, suggested, trace) {
+      const sm = deps.slowManifest;
+      const loaded = /* @__PURE__ */ new Set([...sm.resident ?? [], ...suggested.map((n) => registry2.canonicalName(n))]);
+      const view = thread.slice();
+      let rounds = 0;
+      while (rounds < sm.maxRounds) {
+        rounds++;
+        const system = buildSystemPrompt(sm, store2, registry2, {
+          desktop: deps.desktopSummary?.(),
+          prefs: deps.prefsList?.(),
+          recent: deps.recentSummary?.(),
+          catalog: registry2.briefCatalog(),
+          signalFilter: registry2.signalsFor([...loaded])
+        });
+        trace.push({ type: "prompt", at: clock(), system, toolCount: loaded.size });
+        const last = rounds === sm.maxRounds;
+        const tools = last ? [] : [...registry2.schemas("openai", [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA];
+        let reply;
+        try {
+          reply = await deps.slowLlm.chat({ system, messages: view, tools });
+        } catch (e) {
+          trace.push({ type: "error", at: clock(), message: `慢层：${e}` });
+          emit({ type: "error", message: String(e) });
+          return { said: "", rounds, stop: "error" };
+        }
+        if (!reply.toolCalls?.length) {
+          const text = reply.text ?? "";
+          if (text) commit(g, { role: "assistant", content: text });
+          trace.push({ type: "reply", at: clock(), text });
+          if (stale(g)) {
+            if (text) emit({ type: "lateNote", text });
+          } else {
+            if (text) emit({ type: "speaking", text, layer: "slow" });
+            emit({ type: "done" });
+          }
+          return { said: text, rounds, stop: "reply" };
+        }
+        const am = asstMsg(reply);
+        commit(g, am);
+        view.push(am);
+        const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
+          "tools.load": mkLoader(loaded),
+          "task.delegate": delegateInterceptor,
+          "task.cancel": (args) => {
+            const t = taskPool.find((x) => x.status === "running" && (x.id === args?.taskId || args?.label && x.label.includes(args.label)));
+            if (!t) return { status: "rejected", code: "TASK_NOT_FOUND", message: "没有对得上的在跑任务" };
+            cancelTask(t.id);
+            return { status: "ok", message: `已取消：${t.label}` };
+          }
+        });
+        commit(g, ...toolMsgs);
+        view.push(...toolMsgs);
+      }
+      if (!stale(g)) emit({ type: "done" });
+      return { said: "", rounds, stop: "maxRounds" };
+    }
+    async function run(text) {
+      const trace = [];
+      if (!text.trim()) return { reply: "", trace, rounds: 0, stopReason: "empty" };
+      const g = ++gen;
+      deps.onTurnStart?.();
+      trace.push({ type: "userInput", at: clock(), text });
+      boundary = thread.length;
+      thread.push({ role: "user", content: text });
+      emit({ type: "thinking" });
+      const pending = registry2.pendingConfirm();
+      let fast = { suggested: [], said: "", rounds: 0 };
+      if (!pending) fast = await runFast(g, trace);
+      else fast.suggested = [pending.tool];
+      const slow = await runSlow(g, fast.suggested, trace);
+      if (!stale(g)) compaction = doCompact(g).catch(() => {
+      });
+      return {
+        reply: [fast.said, slow.said].filter(Boolean).join(" "),
+        trace,
+        rounds: fast.rounds + slow.rounds,
+        stopReason: slow.stop
+      };
+    }
+    let compaction = Promise.resolve();
+    async function doCompact(g) {
+      const userIdx = thread.map((m, i) => m.role === "user" ? i : -1).filter((i) => i >= 0);
+      if (userIdx.length <= KEEP_ROUNDS) return;
+      const cutAt = userIdx[userIdx.length - KEEP_ROUNDS];
+      const head = thread.slice(0, cutAt);
+      const folded = head.map(
+        (m) => `${m.role}: ${(m.content || (m.tool_calls?.length ? `[调用 ${m.tool_calls.map((c) => c.function.name).join("、")}]` : "")).slice(0, 300)}`
+      ).join("\n");
+      const reply = await deps.fastLlm.chat({
+        system: COMPACT_PROMPT,
+        messages: [{ role: "user", content: folded }],
+        tools: []
+      });
+      if (stale(g)) return;
+      const text = (reply.text ?? "").trim();
+      if (!text) return;
+      thread.splice(0, cutAt, { role: "assistant", content: `${SUM_MARK}
+${text}` });
+      boundary = Math.max(thread.map((m, i) => m.role === "user" ? i : -1).filter((i) => i >= 0).pop() ?? 0, 0);
+      deps.memory?.save(text);
+    }
+    const reset = () => {
+      thread.length = 0;
+      boundary = 0;
+    };
+    return {
+      run,
+      on,
+      reset,
+      thread,
+      tasks,
+      cancelTask,
+      get generation() {
+        return gen;
+      },
+      get compaction() {
+        return compaction;
+      }
+    };
   }
 
   // src/agent/llm.ts
@@ -5217,6 +5600,30 @@ ${extras.desktop}`);
     name: "主Agent",
     version: "0.1.0",
     tools: ["*"],
+    // 常驻 = 高频管道，全 schema 永远在慢层；其余工具走目录 + 预载/补载
+    resident: [
+      "voice.speak",
+      "voice.ask",
+      "card.show",
+      "card.update",
+      "card.resize",
+      "card.dismiss",
+      "card.focus",
+      "desktop.getLayout",
+      "memory.remember",
+      "memory.forget",
+      "memory.list",
+      "vehicle.getState"
+    ],
+    role: `
+## 协作方式（快慢双层）
+你是慢层。你前面有个"快手分身"可能已经执行了部分操作——对话里能看到它的调用和结果，那就是第一手记录：
+1. 先看它做的对不对：**对着对话里的调用记录看就行，不要为了"核验"再发起任何查询**。
+   错了直接调工具改，改完说一句（"温度我给你调回 24 了"）。
+2. 剩下没做的活你来干，**只调这单任务真正需要的工具**。它查过的（如天气）别重查。
+3. 它说过的话别复述。一切都对且没有剩余工作时**什么都不说**——回空即可，沉默是合法答案。
+4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。
+5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。`,
     context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
     maxRounds: 6,
     persona: `你是这台车的车载助手，能直接操作车辆功能。
@@ -5241,6 +5648,22 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 9. 用户问你会做什么 → 调 capability.list 让完整目录上屏，**别凭记忆背清单**，容易漏、容易编。
 10. 车控、导航、天气、能力目录、确认与选择这些卡系统按状态自动出，**不需要你调 card.show**；
    只有系统没覆盖的临时内容才自己建卡。卡片被挤掉时顺带告诉用户一声。`
+  };
+
+  // agents/main-agent/fast.ts
+  var FAST_AGENT = {
+    id: "fast-filter",
+    name: "快层过滤器",
+    version: "0.1.0",
+    tools: TOOLS.filter((t) => t.fast).map((t) => t.name),
+    context: ["vehicleState", "speaker"],
+    maxRounds: 2,
+    persona: `你是车载助手的快手分身，只管立刻能办的小事，讲究一个字：快。
+1. 工具面里有的活直接干，一句话报结果（≤15 字，口语，无 Markdown）；参数含糊宁可不动。
+2. 工具面里没有的活**一个不碰、一字不评**——后面有你的大模型同事接手兜底。这单全轮不到你
+   而「工具目录」里显然有工具能干时，只说两三个字的承接（"我看看""稍等"）；纯闲聊就自然答。
+3. 收尾可以调 agent.handoff，把同事接下来可能用到的工具名从目录里勾出来。
+4. 别复述指令、别道歉、别提模型和公司。`
   };
 
   // src/director/main.ts
@@ -5274,16 +5697,22 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start();
   var apiKey = "";
   var modelId = "";
+  var fastModelId = "";
   var llm = createOpenRouter(() => apiKey, () => modelId);
-  var agent = createAgent({
-    manifest: MAIN_AGENT,
+  var fastLlm = createOpenRouter(() => apiKey, () => fastModelId || modelId);
+  var LASTTIME_KEY = "cockpit-sim:lastTime";
+  var pipeline = createPipeline({
     registry,
     store,
-    llm,
+    fastLlm,
+    slowLlm: llm,
+    fastManifest: FAST_AGENT,
+    slowManifest: MAIN_AGENT,
     desktopSummary: () => desk.summary(),
     prefsList: () => prefs.list().map((x) => x.text),
     recentSummary: () => recentSummary(state),
-    onTurnStart: () => desk.endTask()
+    onTurnStart: () => desk.endTask(),
+    memory: { load: () => localStorage.getItem(LASTTIME_KEY), save: (t) => localStorage.setItem(LASTTIME_KEY, t) }
   });
   var brief = (c) => ({
     id: c.id,
@@ -5411,6 +5840,19 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       }
       return;
     }
+    if (m.type === "taskChip") {
+      const ST = { running: "跑着", done: "完成", failed: "没成", cancelled: "已取消" };
+      const items = pipeline.tasks().map((t) => ({ label: t.label, sub: ST[t.status] ?? t.status }));
+      if (items.length)
+        desk.render({
+          key: "bgtasks",
+          template: "list",
+          kind: "system",
+          ttl: 60,
+          data: { title: "后台任务", items }
+        });
+      return;
+    }
     if (m.type !== "hello") return;
     setConn(true);
     pushDesk();
@@ -5438,7 +5880,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         weather: store.get("env.weather"),
         outTemp: store.get("cabin.temperature.outside"),
         soc: store.get("powertrain.soc"),
-        gear: store.get("vehicle.gear")
+        gear: store.get("vehicle.gear"),
+        tasks: pipeline.tasks().map((t) => ({ id: t.id, label: t.label, status: t.status }))
       }
     });
     for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`)));
@@ -5506,10 +5949,15 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   }
   $("clr").onclick = () => traceEl.innerHTML = "";
   $("resetSess").onclick = () => {
-    agent.reset();
+    pipeline.reset();
     log("p", "── 会话已重置 ──");
   };
-  agent.on((e) => {
+  var voiceBusy = false;
+  var deliveries = [];
+  var flushDeliveries = () => {
+    while (!voiceBusy && deliveries.length) deliveries.shift()();
+  };
+  pipeline.on((e) => {
     switch (e.type) {
       case "thinking":
         bus.send({ type: "voice", s: "thinking", text: null });
@@ -5518,6 +5966,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         bus.send({ type: "voice", s: "executing" });
         break;
       case "speaking":
+        voiceBusy = true;
         bus.send({ type: "voice", s: "speaking", text: e.text, who: "agent" });
         break;
       case "confirming":
@@ -5528,8 +5977,37 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         bus.send({ type: "voice", s: "rejected" });
         bus.send({ type: "banner", on: true, reason: "rejected", title: "已拒绝执行", desc: e.text, ttl: 6e3 });
         break;
+      // 旧 turn 的慢层迟到话术：不抢麦，走横幅（§4.1）
+      case "lateNote":
+        log("a", `  ⟵(补) ${e.text}`);
+        bus.send({ type: "banner", on: true, reason: "late", title: "补一句", desc: e.text, ttl: 6e3 });
+        break;
+      case "taskUpdate":
+        push();
+        break;
+      case "taskDone":
+        log(e.ok ? "k" : "e", `后台任务${e.ok ? "完成" : "没成"}：${e.summary.slice(0, 60)}`);
+        deliveries.push(() => {
+          bus.send({ type: "voice", s: "speaking", text: e.summary, who: "agent" });
+          bus.send({
+            type: "banner",
+            on: true,
+            reason: e.ok ? "task" : "taskFail",
+            title: e.ok ? "后台任务完成" : "后台任务没成",
+            desc: e.summary.slice(0, 80),
+            ttl: 8e3
+          });
+          setTimeout(() => bus.send({ type: "voice", s: "idle", text: "" }), 3e3);
+          push();
+        });
+        flushDeliveries();
+        break;
       case "done":
-        setTimeout(() => bus.send({ type: "voice", s: "idle", text: "" }), 3e3);
+        setTimeout(() => {
+          voiceBusy = false;
+          bus.send({ type: "voice", s: "idle", text: "" });
+          flushDeliveries();
+        }, 3e3);
         break;
       case "error":
         log("e", "✗ " + e.message);
@@ -5537,7 +6015,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         break;
     }
   });
-  var busy = false;
   async function ask(text) {
     if (muted) {
       muted = false;
@@ -5546,7 +6023,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       pushDesk();
       push();
     }
-    if (busy) return;
     if (!apiKey) {
       log("e", "✗ 请先填入 OpenRouter API Key");
       return;
@@ -5555,7 +6031,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       log("e", "✗ 请先选择模型");
       return;
     }
-    busy = true;
     $("busy").textContent = "思考中…";
     bus.send({ type: "banner", on: false });
     bus.send({ type: "card", action: "dismiss", id: "confirm" });
@@ -5563,7 +6038,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     log("u", `
 ▸ ${text}`);
     const t0 = performance.now();
-    const r = await agent.run(text);
+    const r = await pipeline.run(text);
     for (const s of r.trace) {
       if (s.type === "prompt") log("p", `  · 注入 ${s.system.length} 字符 / ${s.toolCount} 个工具`);
       if (s.type === "toolCall") log("t", `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission}]`);
@@ -5583,7 +6058,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     log("a", `  ⟵ ${r.reply || "(无话术)"}`);
     log("p", `  ${r.rounds} 轮 · ${Math.round(performance.now() - t0)}ms · ${r.stopReason}`);
     push();
-    busy = false;
     $("busy").textContent = "";
   }
   $("send").onclick = () => {
@@ -5710,10 +6184,22 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       modelId = list.find((m) => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id;
       sel.value = modelId;
     }
+    const fastList = pickFastModels(allModels);
+    const fsel = $("fastModel");
+    fsel.innerHTML = fastList.map((m) => `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ""}</option>`).join("");
+    const FAST_PREFER = /haiku|gemini.+flash|glm.+flash|gpt.+mini/i;
+    if (fastList.length) {
+      fastModelId = (fastList.find((m) => FAST_PREFER.test(m.id)) ?? fastList[0]).id;
+      fsel.value = fastModelId;
+    }
   }
   $("model").onchange = (e) => {
     modelId = e.target.value;
     log("p", `模型切换 → ${modelId}`);
+  };
+  $("fastModel").onchange = (e) => {
+    fastModelId = e.target.value;
+    log("p", `快层模型切换 → ${fastModelId}`);
   };
   $("fastOnly").onclick = () => {
     fastOnly = !fastOnly;

@@ -92,6 +92,17 @@ const DELEGATE_SCHEMA = {
     },
   },
 }
+const CANCEL_SCHEMA = {
+  type: 'function', function: {
+    name: 'task_cancel',
+    description: '取消一个还在跑的后台任务。用户说"别查了/不用了"或点了任务卡上的取消时调。',
+    parameters: {
+      type: 'object',
+      properties: { taskId: { type: 'string', description: '任务 id（task_N）；不知道 id 可给 label 关键词' },
+                    label: { type: 'string', description: '按任务名关键词匹配' } },
+    },
+  },
+}
 const isMeta = (name: string, meta: string) => name === meta || name === meta.replace(/\./g, '_')
 
 /** epoch 摘要消息的识别标 */
@@ -178,12 +189,15 @@ export function createPipeline(deps: PipelineDeps) {
   /** 快层：能干的立刻干、立刻说；收尾勾选转交。打断（世代变了）即弃场闭嘴 */
   async function runFast(g: number, trace: TraceStep[]): Promise<{ suggested: string[]; said: string; rounds: number }> {
     const fm = deps.fastManifest
-    const tools = [...registry.schemas('openai', fm.tools), HANDOFF_SCHEMA]
+    const allTools = [...registry.schemas('openai', fm.tools), HANDOFF_SCHEMA]
     let suggested: string[] = []
     let said = ''
     let rounds = 0
     while (rounds < fm.maxRounds) {
       rounds++
+      // 最后一轮撤工具逼话术——实测 GLM-flash 会把两轮全用来重复调同一个工具，
+      // 一句话没说就转交，用户等到慢层兜底才听到声。跟慢层最后一轮同一条纪律
+      const tools = rounds === fm.maxRounds ? [] : allTools
       const system = buildSystemPrompt(fm, store, registry, {
         catalog: registry.briefCatalog(),
         signalFilter: registry.signalsFor(fm.tools),
@@ -322,7 +336,7 @@ export function createPipeline(deps: PipelineDeps) {
       trace.push({ type: 'prompt', at: clock(), system, toolCount: loaded.size })
       // 最后一轮撤工具逼话术——语音场景没有"静默耗尽轮次"这个选项
       const last = rounds === sm.maxRounds
-      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA]
+      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA]
       let reply
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
       catch (e) {
@@ -350,6 +364,13 @@ export function createPipeline(deps: PipelineDeps) {
       const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
         'tools.load': mkLoader(loaded),
         'task.delegate': delegateInterceptor,
+        'task.cancel': (args: any): ToolResult => {
+          const t = taskPool.find(x => x.status === 'running' &&
+            (x.id === args?.taskId || (args?.label && x.label.includes(args.label))))
+          if (!t) return { status: 'rejected', code: 'TASK_NOT_FOUND', message: '没有对得上的在跑任务' }
+          cancelTask(t.id)
+          return { status: 'ok', message: `已取消：${t.label}` }
+        },
       })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
     }

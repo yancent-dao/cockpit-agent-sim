@@ -92,10 +92,12 @@ input::placeholder{color:#4A5462}
     <h2>模型 <span class="n" id="modelCount">—</span></h2>
     <div class="fld"><label>API Key</label><input id="key" type="password" placeholder="sk-or-v1-…"></div>
     <div class="fld"><label>模型</label><select id="model"></select></div>
+    <div class="fld"><label>快层模型</label><select id="fastModel"></select></div>
     <div class="row">
       <button id="reload">刷新模型列表</button>
       <button id="fastOnly" class="on">只看快速模型</button>
     </div>
+    <div class="note">快层模型 = 过滤器小模型：车控/天气这类简单指令由它亚秒先答，大模型在后台校验接力。选最便宜最快的档就对了。</div>
     <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
   </section>
 

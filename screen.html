@@ -47,6 +47,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   color:var(--tx-2);font-size:24px}
 .hintpill b{color:var(--brand-fg);font-weight:600}
 .chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
+/* 后台任务芯片：持续状态的第四类显示面（§6.1）。转圈=在跑，点开出任务列表卡 */
+#chipTask{cursor:pointer}
+#chipTask .spin{display:inline-block;font-style:normal;animation:taskspin 1.6s linear infinite}
+@keyframes taskspin{to{transform:rotate(360deg)}}
 
 /* 3列×2行栅格：上行 Agent 区，下行固定区 */
 /* 语音条待机时缩到 148px，激活长到 300px。但**桌面高度锚死在 300**：
@@ -528,6 +532,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
     <span>车外 <b id="tOut">3</b>°C</span>
     <span id="wx">☁ 多云</span>
     <span class="sp"></span>
+    <span class="chip" id="chipTask" style="display:none"><i class="spin">⟳</i> <b id="taskN">0</b></span>
     <span class="chip" id="chipSpd">静止 · P 挡</span>
     <span class="chip" id="chipLock" style="display:none">🔒 儿童锁开启</span>
     <span>电量 <b id="soc">68</b>%</span>

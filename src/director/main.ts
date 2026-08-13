@@ -15,7 +15,7 @@ import { createRadioClient } from '../integrations/radio'
 import { createNewsClient } from '../integrations/news'
 import { createPexelsClient } from '../integrations/pexels'
 import { createWebSearch } from '../integrations/websearch'
-import { createAgent } from '../agent/runtime'
+import { createPipeline } from '../agent/pipeline'
 import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
 import { createDesk } from '../cards/desk'
@@ -26,6 +26,7 @@ import { TOOLS } from '../config/tools'
 import { CARD_TEMPLATES } from '../config/cards'
 import { CARD_RULES, DATA_BUILDERS } from '../config/cardRules'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
+import { FAST_AGENT } from '../../agents/main-agent/fast'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('director')
@@ -63,13 +64,19 @@ createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, de
 
 let apiKey: string = (import.meta as any).env?.VITE_OPENROUTER_KEY || ''
 let modelId = ''
+let fastModelId = ''
 const llm = createOpenRouter(() => apiKey, () => modelId)
-const agent = createAgent({
-  manifest: MAIN_AGENT, registry, store, llm,
+// 快层用自己的（更便宜更快的）模型；没选就跟慢层同一个——功能不断，只是不快
+const fastLlm = createOpenRouter(() => apiKey, () => fastModelId || modelId)
+const LASTTIME_KEY = 'cockpit-sim:lastTime'
+const pipeline = createPipeline({
+  registry, store, fastLlm, slowLlm: llm,
+  fastManifest: FAST_AGENT, slowManifest: MAIN_AGENT,
   desktopSummary: () => desk.summary(),
   prefsList: () => prefs.list().map(x => x.text),
   recentSummary: () => recentSummary(state),
   onTurnStart: () => desk.endTask(),
+  memory: { load: () => localStorage.getItem(LASTTIME_KEY), save: t => localStorage.setItem(LASTTIME_KEY, t) },
 })
 
 /* ══════════ 桌面 → 车机屏：位置由 desk 统一计算，车机屏只管画 ══════════ */
@@ -207,6 +214,14 @@ const bus = createBus(m => {
     }
     return
   }
+  if ((m as any).type === 'taskChip') {
+    const ST: Record<string, string> = { running: '跑着', done: '完成', failed: '没成', cancelled: '已取消' }
+    const items = pipeline.tasks().map(t => ({ label: t.label, sub: ST[t.status] ?? t.status }))
+    if (items.length)
+      desk.render({ key: 'bgtasks', template: 'list', kind: 'system', ttl: 60,
+        data: { title: '后台任务', items } })
+    return
+  }
   if (m.type !== 'hello') return
   setConn(true)
   pushDesk(); push()
@@ -231,6 +246,7 @@ function push() {
       speed: store.get('vehicle.speed'), childLock: store.get('cabin.childLock'),
       weather: store.get('env.weather'), outTemp: store.get('cabin.temperature.outside'),
       soc: store.get('powertrain.soc'), gear: store.get('vehicle.gear'),
+      tasks: pipeline.tasks().map(t => ({ id: t.id, label: t.label, status: t.status })),
     },
   })
   for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`) as number))
@@ -296,16 +312,21 @@ function log(cls: string, text: string) {
   traceEl.appendChild(div); traceEl.scrollTop = traceEl.scrollHeight
 }
 $('clr').onclick = () => (traceEl.innerHTML = '')
-$('resetSess').onclick = () => { agent.reset(); log('p', '── 会话已重置 ──') }
+$('resetSess').onclick = () => { pipeline.reset(); log('p', '── 会话已重置 ──') }
 
-/* ══════════ Agent 事件 → 车机屏 ══════════ */
-agent.on(e => {
+/* ══════════ Pipeline 事件 → 车机屏 ══════════ */
+// 后台任务交付排队：语音正忙（在播报）就压着，idle 再放——通知不打断对话（§6.1）
+let voiceBusy = false
+const deliveries: Array<() => void> = []
+const flushDeliveries = () => { while (!voiceBusy && deliveries.length) deliveries.shift()!() }
+pipeline.on(e => {
   switch (e.type) {
     case 'thinking':
       bus.send({ type: 'voice', s: 'thinking', text: null }); break
     case 'executing':
       bus.send({ type: 'voice', s: 'executing' }); break
     case 'speaking':
+      voiceBusy = true
       bus.send({ type: 'voice', s: 'speaking', text: e.text, who: 'agent' }); break
     case 'confirming':
       bus.send({ type: 'voice', s: 'confirming', text: e.text, who: 'agent' })
@@ -315,8 +336,28 @@ agent.on(e => {
       bus.send({ type: 'voice', s: 'rejected' })
       bus.send({ type: 'banner', on: true, reason: 'rejected', title: '已拒绝执行', desc: e.text, ttl: 6000 })
       break
+    // 旧 turn 的慢层迟到话术：不抢麦，走横幅（§4.1）
+    case 'lateNote':
+      log('a', `  ⟵(补) ${e.text}`)
+      bus.send({ type: 'banner', on: true, reason: 'late', title: '补一句', desc: e.text, ttl: 6000 })
+      break
+    case 'taskUpdate':
+      push(); break
+    case 'taskDone':
+      log(e.ok ? 'k' : 'e', `后台任务${e.ok ? '完成' : '没成'}：${e.summary.slice(0, 60)}`)
+      deliveries.push(() => {
+        // 机械交付：子 Agent 的 summary 播报 + 横幅。卡片它自己建过了，这里不代劳
+        bus.send({ type: 'voice', s: 'speaking', text: e.summary, who: 'agent' })
+        bus.send({ type: 'banner', on: true, reason: e.ok ? 'task' : 'taskFail',
+          title: e.ok ? '后台任务完成' : '后台任务没成', desc: e.summary.slice(0, 80), ttl: 8000 })
+        setTimeout(() => bus.send({ type: 'voice', s: 'idle', text: '' }), 3000)
+        push()
+      })
+      flushDeliveries()
+      break
     case 'done':
-      setTimeout(() => bus.send({ type: 'voice', s: 'idle', text: '' }), 3000); break
+      setTimeout(() => { voiceBusy = false; bus.send({ type: 'voice', s: 'idle', text: '' }); flushDeliveries() }, 3000)
+      break
     case 'error':
       log('e', '✗ ' + e.message)
       bus.send({ type: 'voice', s: 'rejected', text: '出错了：' + e.message, who: 'agent' })
@@ -325,21 +366,20 @@ agent.on(e => {
 })
 
 /* ══════════ 发起一轮对话 ══════════ */
-let busy = false
 async function ask(text: string) {
   // 夺回写权：用户在这个面板开口 = 要用它
   if (muted) { muted = false; ME.boot = Date.now(); log('p', '本面板已接管写屏'); pushDesk(); push() }
-  if (busy) return
+  // 不设 busy 闸：barge-in 是常态，世代戳在 pipeline 里管（§4.1）
   if (!apiKey) { log('e', '✗ 请先填入 OpenRouter API Key'); return }
   if (!modelId) { log('e', '✗ 请先选择模型'); return }
-  busy = true; $('busy').textContent = '思考中…'
+  $('busy').textContent = '思考中…'
   bus.send({ type: 'banner', on: false })
   bus.send({ type: 'card', action: 'dismiss', id: 'confirm' })
   bus.send({ type: 'voice', s: 'listening', text, who: 'user' })
   log('u', `\n▸ ${text}`)
 
   const t0 = performance.now()
-  const r = await agent.run(text)
+  const r = await pipeline.run(text)
 
   for (const s of r.trace) {
     if (s.type === 'prompt') log('p', `  · 注入 ${s.system.length} 字符 / ${s.toolCount} 个工具`)
@@ -362,7 +402,7 @@ async function ask(text: string) {
   log('a', `  ⟵ ${r.reply || '(无话术)'}`)
   log('p', `  ${r.rounds} 轮 · ${Math.round(performance.now() - t0)}ms · ${r.stopReason}`)
   push()
-  busy = false; $('busy').textContent = ''
+  $('busy').textContent = ''
 }
 
 $('send').onclick = () => { const v = $<HTMLInputElement>('say').value.trim(); if (v) { $<HTMLInputElement>('say').value = ''; ask(v) } }
@@ -445,8 +485,20 @@ function renderModels() {
     modelId = list.find(m => m.id === DEFAULT_MODEL_ID)?.id ?? list[0].id
     sel.value = modelId
   }
+  // 快层模型：只从快速档里挑。默认优先已知工具调用纪律好的快系列——
+  // 实测无脑取最便宜那档会选中调不动工具的裸小模型，快层直接躺平
+  const fastList = pickFastModels(allModels)
+  const fsel = $<HTMLSelectElement>('fastModel')
+  fsel.innerHTML = fastList.map(m =>
+    `<option value="${m.id}">${m.name}${m.promptPrice ? `　·　$${(m.promptPrice * 1e6).toFixed(2)}/M` : ''}</option>`).join('')
+  const FAST_PREFER = /haiku|gemini.+flash|glm.+flash|gpt.+mini/i
+  if (fastList.length) {
+    fastModelId = (fastList.find(m => FAST_PREFER.test(m.id)) ?? fastList[0]).id
+    fsel.value = fastModelId
+  }
 }
 $<HTMLSelectElement>('model').onchange = e => { modelId = (e.target as HTMLSelectElement).value; log('p', `模型切换 → ${modelId}`) }
+$<HTMLSelectElement>('fastModel').onchange = e => { fastModelId = (e.target as HTMLSelectElement).value; log('p', `快层模型切换 → ${fastModelId}`) }
 $('fastOnly').onclick = () => { fastOnly = !fastOnly; $('fastOnly').classList.toggle('on', fastOnly); renderModels() }
 
 async function loadModels() {

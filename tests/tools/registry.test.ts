@@ -262,6 +262,20 @@ describe('capability.list', () => {
   })
 })
 
+/* ── 数值参数宽容：实测模型常送 "24" 字符串，硬拒浪费一整轮往返 ── */
+describe('数值参数字符串宽容', () => {
+  it('"24" 自动转数值执行，不再 INVALID_PARAMS', async () => {
+    const r = await reg.invoke('climate.set', { targetTemp: '24', fanSpeed: '3' })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.climate.targetTemp')).toBe(24)
+  })
+
+  it('真不是数的还是拒——宽容不是不校验', async () => {
+    const r = await reg.invoke('climate.set', { targetTemp: '很热' })
+    expect(r.status).toBe('rejected')
+  })
+})
+
 /* ────────────────────────── Tool 名 wire 格式（Anthropic 等 provider 不接受点号） ────────────────────────── */
 describe('Tool 名 sanitize', () => {
   it('schemas() 导出的 name 不含点号，供严格校验的 provider 使用', async () => {

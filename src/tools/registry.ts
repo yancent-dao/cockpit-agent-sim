@@ -275,12 +275,17 @@ export function createRegistry(
 
   function validate(t: ToolDef, args: Record<string, any>): string | null {
     for (const [key, def] of Object.entries(t.params) as [string, ParamDef][]) {
-      const v = args?.[key]
+      let v = args?.[key]
       if (v === undefined || v === null) {
         if (def.required) return `缺少必填参数 ${key}`
         continue
       }
       if (def.type === 'number') {
+        // 宽容数值字符串：实测模型常送 "24"，硬拒等于让用户多等一整轮往返。
+        // 宽容不是不校验——转不成数的照拒
+        if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) {
+          v = Number(v); args[key] = v
+        }
         if (typeof v !== 'number' || Number.isNaN(v)) return `${key} 需要数值`
         if (def.range && (v < def.range[0] || v > def.range[1]))
           return `${key} 需在 ${def.range[0]}~${def.range[1]} 之间`

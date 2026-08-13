@@ -107,6 +107,13 @@ describe('handler 层：weatherQuery 带上家族与轮次，ttl 不再定时蒸
     expect(desk.layout().cards).toHaveLength(2)
   })
 
+  // 用户实拍：单城查询默认铺到 1/3 太占地方。默认跟模板走（1/6），想看大的说"放大"
+  it('天气卡默认尺寸走模板 defaultSize（1/6），不在 handler 里写死大尺寸', async () => {
+    const { h, desk, setRound } = boot()
+    setRound(1); await h.weatherQuery({ location: '成都' })
+    expect(desk.layout().cards[0].size).toBe('1/6')
+  })
+
   it('天气卡是内容不是问题：放三小时也不自动消失（用户点名要求）', async () => {
     const { h, desk, setRound, tickHours } = boot()
     setRound(1); await h.weatherQuery({ location: '成都' })

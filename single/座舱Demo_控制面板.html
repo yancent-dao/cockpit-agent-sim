@@ -1474,7 +1474,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       });
       return r && r.status !== "ok";
     };
-    const dismissCandidates = (keys = [CANDIDATES, "routes"]) => {
+    const dismissCandidates = (keys = [CANDIDATES, "routes", "along"]) => {
       const d = desk2?.();
       for (const key of keys) {
         const c = d?.findByKey(key);
@@ -1746,7 +1746,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             family: "weather",
             round: round?.(),
             template: "weather",
-            size: "1/3",
             kind: "task",
             ttl: "untilDismissed",
             data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast }
@@ -2855,12 +2854,10 @@ ${extras.desktop}`);
   };
   var mediaForm = (c, r) => {
     const a = area(c, r);
-    const blocks = [];
-    if (a >= 8) blocks.push("art");
-    blocks.push("title");
+    const blocks = ["art", "title"];
     if (a >= 8) blocks.push("sub");
-    if (c >= 6) blocks.push("bar");
-    if (a >= 8) blocks.push("toggle");
+    if (c >= 6 || a >= 8) blocks.push("bar");
+    blocks.push("toggle");
     if (r >= 2 && a >= 12) blocks.push("hint");
     if (a >= 16) blocks.push("next");
     return { blocks };

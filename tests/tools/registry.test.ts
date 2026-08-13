@@ -503,6 +503,28 @@ describe('navigation.search', () => {
     expect(desk.findByKey('candidates')).toBeUndefined()
   })
 
+  // 用户实拍：从"附近的停车场"里挑了一个设成目的地，那张周边列表一直留在屏上。
+  // 目的地一定，along 卡跟候选卡一样算"这件事翻篇"
+  it('setDestination 定下来后沿途/周边搜索卡也撤掉', async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    const desk = createDesk(() => now)
+    const r = createRegistry(store, TOOLS, () => now, {
+      desk,
+      amap: fakeAmap({
+        '/v5/place/around': { status: '1', pois: [
+          { id: 'P1', name: '停车场甲', address: 'a', location: '104.07,30.60', distance: '300' },
+          { id: 'P2', name: '停车场乙', address: 'b', location: '104.08,30.61', distance: '500' },
+        ] },
+        '/v5/place/detail': { status: '1', pois: [{ id: 'P1', name: '停车场甲', address: 'a', location: '104.07,30.60' }] },
+        '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '900', cost: { duration: '120' }, steps: [] }] } },
+      }),
+    })
+    await r.invoke('navigation.searchAlong', { keyword: '停车场' })
+    expect(desk.findByKey('along')).toBeTruthy()
+    await r.invoke('navigation.setDestination', { poiId: 'P1' })
+    expect(desk.findByKey('along')).toBeUndefined()
+  })
+
   // 模板已经声明了自己支持哪些尺寸，仲裁该认这个下限，不该让每个建卡处手写
   it('自动上屏的卡从模板 sizes 继承最小尺寸', async () => {
     const desk = createDesk()

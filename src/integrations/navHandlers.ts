@@ -98,8 +98,9 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
     // 用户对着空屏幕不知道该数什么
     return r && r.status !== 'ok'
   }
-  /** 目的地定了，候选列表与方案对比都完成使命。比路线时只撤候选、留下路线卡 */
-  const dismissCandidates = (keys = [CANDIDATES, 'routes']) => {
+  /** 目的地定了，候选列表、方案对比、周边搜索都完成使命（实拍：从"附近的停车场"
+   *  挑一个设成目的地后那张列表一直留着）。比路线时只撤候选、留下路线卡 */
+  const dismissCandidates = (keys = [CANDIDATES, 'routes', 'along']) => {
     const d = desk?.()
     for (const key of keys) {
       const c = d?.findByKey(key)
@@ -376,9 +377,11 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 家族：同轮并查五个县五张并存，新一轮查别的城旧批退场。
         // ttl untilDismissed：天气是内容不是问题，不许 120 秒自己蒸发（用户点名）——
         // 堆卡由家族机制管，不再靠定时器兜底
+        // 尺寸不写死：跟模板 defaultSize 走（1/6）。单城查询铺 1/3 太占地方（实拍），
+        // 想看多日预报说"放大"就行
         desk?.()?.render({
           key: `weather:${g.adcode}`, family: 'weather', round: round?.(),
-          template: 'weather', size: '1/3', kind: 'task', ttl: 'untilDismissed',
+          template: 'weather', kind: 'task', ttl: 'untilDismissed',
           data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast },
         })
         return { status: 'ok', data: { city: g.formattedAddress, now, forecast } }

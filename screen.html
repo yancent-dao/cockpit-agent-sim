@@ -49,10 +49,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
 
 /* 3列×2行栅格：上行 Agent 区，下行固定区 */
-/* 待机时语音区让出高度给桌面：一个球加两个字占掉整屏 21% 是浪费 */
-#stage{--voiceH:300px}
+/* 语音条待机时缩到 148px，激活长到 300px。但**桌面高度锚死在 300**：
+   之前桌面跟着 --voiceH 走，avatar 一激活桌面被压掉 152px，卡片内容
+   拦腰截断（用户实拍：天气预报只剩半行字）。待机时下方那条壁纸留白
+   是呼吸感，不是浪费——卡片高度可预测比多挤一排像素重要 */
+#stage{--voiceH:300px;--deskBottom:300px}
 #stage[data-s=idle]{--voiceH:148px}
-#desk{position:absolute;top:var(--status-h,96px);left:0;right:0;bottom:var(--voiceH);
+#desk{position:absolute;top:var(--status-h,96px);left:0;right:0;bottom:var(--deskBottom);
   padding:var(--desk-pad,24px 60px);
   display:grid;grid-template-columns:repeat(var(--grid-cols,12),1fr);
   grid-template-rows:repeat(var(--grid-rows,4),1fr);gap:var(--desk-gap,24px);
@@ -127,7 +130,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
 /* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟着 --voiceH 走，
    跟桌面区同一块地方 —— 语音区不该被盖住，用户还得听得见 Agent 在说什么 */
-#overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--voiceH);padding:24px 60px;
+#overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--deskBottom,300px);padding:24px 60px;
   display:none;z-index:6;transition:bottom .32s var(--ez,var(--ease))}
 #overlay.on{display:block;animation:cardIn var(--d3,.34s) var(--ez,var(--ease))}
 #overlay .card{height:100%}
@@ -341,6 +344,19 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   box-shadow:0 8px 22px -8px var(--media-fg,#6D28D9);
   display:flex;align-items:center;justify-content:center}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
+/* 一行的小档：封面收小、按钮收小，一行里排得开 */
+.t-chip .plart,.t-strip .plart,.t-bar .plart{width:calc(96px*var(--u));height:calc(96px*var(--u));
+  border-radius:calc(14px*var(--u))}
+.t-chip .plwrap,.t-strip .plwrap,.t-bar .plwrap{gap:calc(14px*var(--u))}
+.t-chip .plctl span,.t-strip .plctl span{min-width:calc(72px*var(--u));height:calc(56px*var(--u))}
+/* 两行以上的卡封面放大——132px 的小封面挂在 786×470 的卡里就是大片空白（实拍） */
+.t-card .plart,.t-wide .plart,.t-panel .plart,.t-banner .plart{
+  width:calc(220px*var(--u));height:calc(220px*var(--u));border-radius:calc(24px*var(--u))}
+.t-tower .plart,.t-stage .plart,.t-full .plart{
+  width:calc(300px*var(--u));height:calc(300px*var(--u));border-radius:calc(28px*var(--u))}
+/* 大卡歌名升一阶，别让 38px 的字撑 470px 的卡 */
+.t-panel .plmeta b,.t-banner .plmeta b,.t-stage .plmeta b,.t-full .plmeta b{
+  font-size:calc(var(--t-num)*var(--u))}
 .plicon{width:46%;height:46%;color:rgba(255,255,255,.9)}
 .plicon svg{width:100%;height:100%;stroke-width:1.6}
 .plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
@@ -481,14 +497,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    占位、锚定、让位机制全都还在——只是不画那层磨砂玻璃 */
 .tpl-clock{align-items:flex-end;text-align:right;
   background:transparent;border-color:transparent;box-shadow:none;
-  backdrop-filter:none;-webkit-backdrop-filter:none}
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+  container-type:inline-size}
 .tpl-clock>h3{display:none}
 .tpl-clock .bd{justify-content:center;align-items:flex-end;gap:calc(2px*var(--u));overflow:hidden}
 .ckwx{display:flex;align-items:center;gap:calc(10px*var(--u));white-space:nowrap;
   font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
 .ckwx svg{width:calc(40px*var(--u));height:calc(40px*var(--u));flex:none}
-.cktime{font-size:calc(190px*var(--u));font-weight:400;line-height:1.02;letter-spacing:-6px;
-  color:var(--tx-1);font-variant-numeric:tabular-nums}
+/* 字号跟卡宽走（cqw = 容器宽度的 1%）：卡被压小时数字整体缩，不许裁半
+   （实拍："20:26" 被裁成 "20:"）。27cqw 下 5 个表格数字 ≈ 69% 卡宽，稳落卡内 */
+.cktime{font-size:min(calc(190px*var(--u)),27cqw);font-weight:400;line-height:1.02;
+  letter-spacing:-.032em;color:var(--tx-1);font-variant-numeric:tabular-nums}
 .ckdate{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
 #conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>

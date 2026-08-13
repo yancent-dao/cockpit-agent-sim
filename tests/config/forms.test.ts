@@ -134,32 +134,40 @@ describe('天气卡：温度当主角，预报按空间加', () => {
   })
 })
 
-describe('播放器卡：封面先让位，进度条最后走', () => {
+describe('播放器卡：封面/歌名/播控任何档位都在，进度条和队列按空间加', () => {
   const m = CARD_FORMS.media
 
-  it('小档只留歌名 —— 封面占的是能写字的地方', () => {
-    expect(f(m, 'chip').blocks).toEqual(['title'])
+  // 用户实拍：最小档只剩一行歌名，"连图片都没有"，想停都没按钮。
+  // 封面是媒体卡的身份证，播控是它存在的意义——这三样不许砍
+  it('最小档也认得出在放什么、停得下来：封面+歌名+播控', () => {
+    for (const t of ['chip', 'strip', 'card', 'panel', 'stage'] as const) {
+      expect(has(m, t, 'art'), `${t} 封面`).toBe(true)
+      expect(has(m, t, 'title'), `${t} 歌名`).toBe(true)
+      expect(has(m, t, 'bar') || has(m, t, 'toggle'), `${t} 播控`).toBe(true)
+    }
   })
 
-  it('card 及以上放封面', () => {
-    expect(has(m, 'card', 'art')).toBe(true)
+  // 用户实拍：1/6 卡（786×470px）只给单键，大片空白。这个面积放得下三键+进度
+  it('card 档（4×2）就放完整进度条三键，别只给单键', () => {
+    expect(has(m, 'card', 'bar')).toBe(true)
+    expect(has(m, 'bar', 'bar')).toBe(true)     // 6 列一行档也放
   })
 
-  // 控制条是状态指示不是按钮，屏幕不可交互 —— 但进度得让人看得见
-  it('宽到 6 列才放进度条', () => {
-    expect(has(m, 'bar', 'bar')).toBe(true)
+  it('一行的小档（chip/strip）退到单键——三键挤不下', () => {
     expect(has(m, 'chip', 'bar')).toBe(false)
-  })
-
-  // 实拍缺口：卡被挤到 1/6 时完全没按钮，想停都停不了
-  it('card 档起有 toggle 单键，chip 档没有', () => {
-    expect(has(m, 'card', 'toggle')).toBe(true)
-    expect(has(m, 'chip', 'toggle')).toBe(false)
+    expect(has(m, 'strip', 'bar')).toBe(false)
+    expect(has(m, 'chip', 'toggle')).toBe(true)
+    expect(has(m, 'strip', 'toggle')).toBe(true)
   })
 
   it('半高以上带一行「说换一台就行」的语音提示', () => {
     expect(has(m, 'panel', 'hint')).toBe(true)
     expect(has(m, 'strip', 'hint')).toBe(false)
+  })
+
+  it('panel 档起报"接下来"队列预告——大卡不许大片留白', () => {
+    expect(has(m, 'panel', 'next')).toBe(true)
+    expect(has(m, 'card', 'next')).toBe(false)
   })
 })
 

@@ -1,7 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel } from './turn'
-import { navForm, mediaForm } from '../config/forms'
+import { navForm, mediaForm, formOf } from '../config/forms'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { classifyGesture } from './gestures'
@@ -203,8 +203,10 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
         <div class="pl-hint"></div></div>
     </div>`
   }
-  // 窄卡（封面挤掉歌名）竖排；封面本身在小档直接不出现
-  node.classList.toggle('narrow', !form.blocks.includes('sub'))
+  // 竖排只给竖条卡（tower）：宽度不够封面和文字并排。以前用"没有 sub"判断，
+  // 封面改成任何档位都在之后，chip/strip 会被误判成竖排——一行高的卡竖着摞必然溢出
+  const [pc, pr] = dimsOf(c.size)
+  node.classList.toggle('narrow', pr >= 4 && pc <= 4)
   const art = node.querySelector('.plart') as HTMLElement
   art.style.display = form.blocks.includes('art') ? '' : 'none'
   const sub = node.querySelector('.plartist') as HTMLElement
@@ -466,6 +468,10 @@ function renderDesk() {
           node.querySelector('.cktime')!.textContent = $('clock').textContent!
           node.querySelector('.ckdate')!.textContent = `${now.getMonth() + 1}月${now.getDate()}日 星期${'日一二三四五六'[now.getDay()]}`
         }
+        // 形态跟着尺寸走：被压小时先收天气行再收日期，时间永远在
+        const ckf = formOf('clock', ...dimsOf(c.size))
+        ;(node.querySelector('.ckwx') as HTMLElement).style.display = ckf.blocks.includes('wx') ? '' : 'none'
+        ;(node.querySelector('.ckdate') as HTMLElement).style.display = ckf.blocks.includes('date') ? '' : 'none'
       }
       else if (c.template === 'canvas-app') {
         if (!node.dataset.shell) {

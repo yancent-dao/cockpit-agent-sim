@@ -94,20 +94,18 @@ const genericForm: FormFn = (c, r) => {
 }
 
 /**
- * 播放器卡。封面最先让位——它占的是能写字的地方，而歌名比封面重要。
- * `hint` 是那行「说『换一台』『大点声』都可以」：控制条画成图标就有诱导点击的风险
- * （屏幕不可交互），这行字把它标回语音能力。
+ * 播放器卡。封面、歌名、播控任何档位都在——封面是媒体卡的身份证，播控是它存在的
+ * 意义，这三样砍了就不是播放器了（实拍：最小档只剩一行歌名，用户直接点名）。
+ * `bar` = 进度条 + 三键；`toggle` = 播放/暂停单键，一行的小档三键挤不下才退到它。
+ * `hint` 是那行「说『换一台』『大点声』都可以」——把播控标回语音能力。
  */
 export const mediaForm: FormFn = (c, r) => {
   const a = area(c, r)
-  const blocks: string[] = []
-  if (a >= 8) blocks.push('art')
-  blocks.push('title')
+  const blocks = ['art', 'title']
   if (a >= 8) blocks.push('sub')
-  if (c >= 6) blocks.push('bar')
-  // 小档也要能停/继续——卡被挤到 1/6 时完全没按钮是实拍抓到的缺口。
-  // toggle = 只显示中间的播放/暂停单键；bar 档才有完整三键
-  if (a >= 8) blocks.push('toggle')
+  // 4×2 的卡实际有 786×470px，三键+进度绰绰有余——只给单键就是大片空白
+  if (c >= 6 || a >= 8) blocks.push('bar')
+  blocks.push('toggle')
   if (r >= 2 && a >= 12) blocks.push('hint')
   if (a >= 16) blocks.push('next')   // "接下来：A · B"——队列的预告，大档才有地方
   return { blocks }

@@ -68,27 +68,31 @@ describe('搜索命中 → 整批入队', () => {
 })
 
 describe('ended → 机制自动续播（零模型）', () => {
+  // 假时钟每次跳 30 秒——保险丝只熔断"打开即 ended"的坏流，正常听完不误伤
+  const mkAp = () => { let now = 0; const ap = createAutoplay(store, state, () => now)
+    return { ended: () => { now += 30_000; ap.onEnded() } } }
+
   it('放完自动下一首，写的是信号不是对话', async () => {
     await reg.invoke('music.play', { query: '歌' })
-    const autoplay = createAutoplay(store, state)
-    autoplay.onEnded()
+    const ap = mkAp()
+    ap.ended()
     expect(store.get('media.track')).toBe('歌2')
     expect(store.get('media.playing')).toBe(true)
   })
 
   it('顺序模式到尾：停下，不静音挂着也不硬循环', async () => {
     await reg.invoke('music.play', { query: '歌' })
-    const autoplay = createAutoplay(store, state)
-    autoplay.onEnded(); autoplay.onEnded()
+    const ap = mkAp()
+    ap.ended(); ap.ended()
     expect(store.get('media.track')).toBe('歌3')
-    autoplay.onEnded()
+    ap.ended()
     expect(store.get('media.playing'), '到尾了就停').toBe(false)
   })
 
   it('单曲循环：ended 重放当前', async () => {
     await reg.invoke('music.play', { query: '歌' })
     store.setDirect('media.mode', 'repeatOne')
-    createAutoplay(store, state).onEnded()
+    mkAp().ended()
     expect(store.get('media.track')).toBe('歌1')
     expect(store.get('media.playing')).toBe(true)
   })
@@ -115,6 +119,33 @@ describe('暂停不退卡', () => {
     await reg.invoke('media.control', { action: 'toggle' })
     expect(store.get('media.playing')).toBe(false)
     await reg.invoke('media.control', { action: 'toggle' })
+    expect(store.get('media.playing')).toBe(true)
+  })
+})
+
+/**
+ * 续播保险丝：坏流（打开即 ended 的失效预览）会让自动续播链式跳歌——
+ * 用户听感"每两秒音乐重新放一遍"。距上次续播不足 5 秒又收到 ended，
+ * 判定流坏了：停下并示警，不再往下跳。
+ */
+describe('续播保险丝', () => {
+  it('两次 ended 间隔 <5 秒 → 停播不跳下一首', async () => {
+    let now = 0
+    await reg.invoke('music.play', { query: '歌' })
+    const ap = createAutoplay(store, state, () => now)
+    now = 10_000; ap.onEnded()                       // 正常放完 10 秒，续播 ✓
+    expect(store.get('media.track')).toBe('歌2')
+    now = 11_000; ap.onEnded()                       // 1 秒就 ended：流坏了
+    expect(store.get('media.playing'), '保险丝熔断').toBe(false)
+  })
+
+  it('正常听完整首（>5 秒）续播照常', async () => {
+    let now = 0
+    await reg.invoke('music.play', { query: '歌' })
+    const ap = createAutoplay(store, state, () => now)
+    now = 30_000; ap.onEnded()
+    now = 60_000; ap.onEnded()
+    expect(store.get('media.track')).toBe('歌3')
     expect(store.get('media.playing')).toBe(true)
   })
 })

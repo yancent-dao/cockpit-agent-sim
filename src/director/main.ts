@@ -112,7 +112,16 @@ renderInspector()
 desk.subscribe(pushDesk)
 // diff 高亮：同槽数据真变了（北京刷进成都那张天气卡）让屏幕闪一下。
 // desk 只报事实（哪张卡变了），闪不闪、闪多久是屏幕的事
-desk.onDataChange(id => bus.send({ type: 'highlight', ids: [], cards: [id] } as any))
+// 150ms 合并去抖：起播要连写六个信号，每写一次都 diff 出变化，
+// 不合并的话一次换曲发六条 highlight，屏幕闪成一串
+const hlPending = new Map<string, ReturnType<typeof setTimeout>>()
+desk.onDataChange(id => {
+  if (hlPending.has(id)) return
+  hlPending.set(id, setTimeout(() => {
+    hlPending.delete(id)
+    bus.send({ type: 'highlight', ids: [], cards: [id] } as any)
+  }, 150))
+})
 // 卡片被挤出必须告诉用户 —— 静默消失不可接受。走横幅而不是塞一张卡：
 // 「我把天气收起来了」是对刚才那个动作的解释，不是内容
 desk.onNotice(n => bus.send({

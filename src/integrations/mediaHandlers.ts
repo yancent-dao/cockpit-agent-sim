@@ -69,11 +69,21 @@ export function playQueueTrack(store: Store, qt: QueueTrack) {
  * ——这条"规则"现在建成了。产品收益：iTunes 只给 30 秒试听，
  * 自动续播让歌单像电台一样流动。
  */
-export function createAutoplay(store: Store, state: DomainState) {
+export function createAutoplay(store: Store, state: DomainState, clock: () => number = Date.now) {
+  let lastAdvance = 0
   return {
     onEnded() {
+      /**
+       * 保险丝：距上次续播不足 5 秒又收到 ended = 流是坏的（失效预览一打开
+       * 就 ended），继续跳只会链式放整个队列——用户听感"每两秒重新放一遍"。
+       * 熔断：停播。横幅提示由 director 对 playing 骤停自行处理。
+       */
+      if (clock() - lastAdvance < 5000) {
+        store.set('media.playing', false)
+        return
+      }
       const qt = state.queue.advance(String(store.get('media.mode') ?? 'sequential'))
-      if (qt) { playQueueTrack(store, qt); state.history.push(qt) }
+      if (qt) { playQueueTrack(store, qt); state.history.push(qt); lastAdvance = clock() }
       else store.set('media.playing', false)   // 到尾了就停，不静音挂着
     },
   }

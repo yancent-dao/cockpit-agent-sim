@@ -406,7 +406,10 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
 const cardNodes = new Map<string, HTMLDivElement>()
 // size 必须进签名：尺寸变了形态也要跟着变（导航卡缩小要收起地图），
 // 不算进来的话只有栅格位置动、内容还是老样子
-const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`
+// hot 刻意不进指纹：高亮开/关只翻 class（className 守卫已处理），
+// 掺进 sig 会让每次 highlight 的 on/off 各触发一次整卡重填——起播连写
+// 六个信号引出一串 highlight 时，卡片就跟着连闪（用户实拍的"卡片闪烁"）
+const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}`
 
 function renderDesk() {
   const desk = $('desk')

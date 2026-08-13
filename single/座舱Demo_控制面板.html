@@ -968,13 +968,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     store2.set("media.videoActive", qt.videoActive ?? false);
     store2.set("media.playing", true);
   }
-  function createAutoplay(store2, state2) {
+  function createAutoplay(store2, state2, clock = Date.now) {
+    let lastAdvance = 0;
     return {
       onEnded() {
+        if (clock() - lastAdvance < 5e3) {
+          store2.set("media.playing", false);
+          return;
+        }
         const qt = state2.queue.advance(String(store2.get("media.mode") ?? "sequential"));
         if (qt) {
           playQueueTrack(store2, qt);
           state2.history.push(qt);
+          lastAdvance = clock();
         } else store2.set("media.playing", false);
       }
     };
@@ -5232,7 +5238,14 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   desk.subscribe(renderInspector);
   renderInspector();
   desk.subscribe(pushDesk);
-  desk.onDataChange((id) => bus.send({ type: "highlight", ids: [], cards: [id] }));
+  var hlPending = /* @__PURE__ */ new Map();
+  desk.onDataChange((id) => {
+    if (hlPending.has(id)) return;
+    hlPending.set(id, setTimeout(() => {
+      hlPending.delete(id);
+      bus.send({ type: "highlight", ids: [], cards: [id] });
+    }, 150));
+  });
   desk.onNotice((n) => bus.send({
     type: "banner",
     on: true,

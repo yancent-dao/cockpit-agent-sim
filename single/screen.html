@@ -1984,7 +1984,7 @@ ${BRIDGE}
     });
   }
   var cardNodes = /* @__PURE__ */ new Map();
-  var cardSig = (c) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}|${hotCards.has(c.id)}`;
+  var cardSig = (c) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}`;
   function renderDesk() {
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();

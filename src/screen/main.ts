@@ -35,7 +35,8 @@ const stage = $('stage')
 /** 舞台缩放比。FLIP 要用它换算 —— getBoundingClientRect 给的是缩放后像素 */
 let stageScale = 1
 const fit = () => {
-  stageScale = Math.min(innerWidth / 2560, innerHeight / 1440)
+  // 0.92：给真机边框和投影留出呼吸空间——贴满视口时黑边被裁在屏外
+  stageScale = Math.min(innerWidth / 2560, innerHeight / 1440) * 0.92
   stage.style.transform = `scale(${stageScale})`
 }
 addEventListener('resize', fit); fit()
@@ -594,6 +595,7 @@ function renderStatus() {
   $('tOut').textContent = String(Math.round(meta.outTemp))
   $('soc').textContent = String(Math.round(meta.soc))
   $('wx').textContent = meta.weather === 'rain' ? '🌧 小雨' : '☁ 多云'
+  $('awx').textContent = meta.weather === 'rain' ? '🌧' : '⛅'
 }
 
 /* ── 过渡动画：车窗位置由车机屏本地逼近 target ── */
@@ -697,6 +699,9 @@ hello(); setTimeout(hello, 500); setInterval(hello, 4000)
 setInterval(() => {
   const d = new Date()
   $('clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  // 氛围区（风格稿）：右侧大时钟 + 日期，躺在壁纸上
+  $('aclock').textContent = $('clock').textContent!
+  $('adate').textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${'日一二三四五六'[new Date().getDay()]}`
 }, 1000)
 renderStatus(); renderDesk()
 export { CN }

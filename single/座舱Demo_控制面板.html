@@ -2301,6 +2301,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   };
   var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
 
+  // src/director/election.ts
+  var yieldsTo = (me, other) => other.src !== me.src && (other.boot > me.boot || other.boot === me.boot && other.src > me.src);
+
   // src/integrations/itunes.ts
   var ItunesError = class extends Error {
     constructor(message, code) {
@@ -5162,6 +5165,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   var pexelsKey = import_meta.env?.VITE_PEXELS_KEY || "";
   var amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : void 0;
   if (!amapWebKey) console.warn("未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable");
+  var ME = { src: Math.random().toString(36).slice(2, 10), boot: Date.now() };
+  var muted = false;
   var state = createDomainState();
   var prefs = createPrefs();
   var autoplay = createAutoplay(store, state);
@@ -5204,8 +5209,9 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     data: c.data
   });
   function pushDesk() {
+    if (muted) return;
     const l = desk.layout();
-    bus.send({ type: "cards", desk: {
+    bus.send({ type: "cards", src: ME.src, boot: ME.boot, desk: {
       cards: l.cards.map(brief),
       overlay: l.overlay ? brief(l.overlay) : void 0,
       free: l.free
@@ -5257,6 +5263,13 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   setInterval(() => desk.tick(), 500);
   $("toolCount").textContent = `${registry.list(MAIN_AGENT.tools).length} tools`;
   var bus = createBus((m) => {
+    if (m.type === "cards" && m.src && yieldsTo(ME, { src: m.src, boot: m.boot ?? 0 })) {
+      if (!muted) {
+        muted = true;
+        log("r", "检测到另一个控制面板在写屏，本面板已让位（在这里说句话即可接管）");
+      }
+      return;
+    }
     if (m.type === "mediaEvent" && m.event === "ended") {
       autoplay.onEnded();
       log("p", store.get("media.playing") ? `放完了，自动下一首：${store.get("media.track")}` : "队列放完了");
@@ -5323,6 +5336,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     log("p", "已打开车机屏 · 拖到外接屏后按 F 全屏");
   };
   function push() {
+    if (muted) return;
     const target = {};
     for (const k of POS) target[k] = store.getTarget(`cabin.window.${k}.position`);
     bus.send({
@@ -5388,6 +5402,13 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   });
   var busy = false;
   async function ask(text) {
+    if (muted) {
+      muted = false;
+      ME.boot = Date.now();
+      log("p", "本面板已接管写屏");
+      pushDesk();
+      push();
+    }
     if (busy) return;
     if (!apiKey) {
       log("e", "✗ 请先填入 OpenRouter API Key");

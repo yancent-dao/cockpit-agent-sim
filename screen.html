@@ -16,30 +16,36 @@
 html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
-/* 真机外壳：深色环境底 + 悬浮投影，屏幕本体带玻璃黑边和铝合金圈——
-   仿真机的意义是演示时"这就是一块车机屏"，不是浏览器里的一个网页 */
+/* 真机外壳（风格稿）：细黑边悬浮屏 + 天际线背景——上半是舱外天空，
+   下半是仪表台深色，屏幕浮在分界线上 */
 #vp{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(120% 90% at 50% 30%, #23262d 0%, #101216 58%, #0a0b0e 100%)}
+  background:linear-gradient(180deg,#8B93D8 0%,#A9AEE3 30%,#C6C9EF 52%,
+    #1a1d2e 52.3%,#12141f 78%,#0c0d15 100%)}
 #stage{width:2560px;height:1440px;flex:none;transform-origin:center;
-  background:var(--bg-base);position:relative;overflow:hidden;
-  border-radius:64px;
-  /* 三层壳：内圈玻璃黑边 → 铝圈高光 → 环境投影 */
-  box-shadow:
-    0 0 0 22px #060708,
-    0 0 0 25px #3c4046,
-    0 0 0 26px #17181c,
-    0 46px 120px -18px rgba(0,0,0,.75),
-    0 12px 36px rgba(0,0,0,.5)}
-/* 屏幕玻璃反光：左上一道极淡的斜光，真机质感的一半来自它 */
+  position:relative;overflow:hidden;border-radius:72px;
+  /* 梦幻天空壁纸：薰衣草蓝渐变 + 云团光斑（纯 CSS，零外链） */
+  background:
+    radial-gradient(52% 62% at 82% 78%, rgba(255,255,255,.75) 0%, rgba(255,255,255,0) 60%),
+    radial-gradient(38% 44% at 68% 30%, rgba(122,132,235,.35) 0%, rgba(122,132,235,0) 65%),
+    radial-gradient(45% 50% at 22% 88%, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 62%),
+    linear-gradient(158deg,#B9BEF0 0%,#C9CDF4 26%,#DCDEF8 52%,#EFEDFB 78%,#F7F4FC 100%);
+  box-shadow:0 0 0 16px #0a0b0f, 0 42px 110px -12px rgba(10,12,30,.65), 0 10px 30px rgba(10,12,30,.45)}
+/* 玻璃斜光 */
 #stage::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:9;
-  background:linear-gradient(115deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,.035) 12%, transparent 26%);
+  background:linear-gradient(115deg, rgba(255,255,255,.12) 0%, rgba(255,255,255,.04) 14%, transparent 30%);
   border-radius:inherit}
 
-#statusbar{height:96px;padding:0 60px;display:flex;align-items:center;gap:56px;
-  border-bottom:1px solid var(--hairline);font-size:30px;color:var(--text-secondary)}
+#statusbar{height:96px;padding:0 60px;display:flex;align-items:center;gap:32px;
+  font-size:26px;color:var(--tx-2);position:relative;z-index:2}
 #statusbar .clock{font-size:36px;color:var(--text-primary);font-weight:500}
 #statusbar .sp{flex:1}#statusbar b{color:var(--text-primary);font-weight:500}
-.chip{padding:8px 22px;border-radius:999px;background:var(--bg-elevated);font-size:26px;transition:.24s var(--ease)}
+.chip{padding:8px 22px;border-radius:999px;font-size:24px;transition:.24s var(--ease);
+  background:rgba(255,255,255,.42);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.55)}
+/* 顶部语音提示胶囊（风格稿）：能力曝光的另一半 */
+.hintpill{display:flex;align-items:center;gap:12px;padding:10px 26px;border-radius:999px;
+  background:rgba(255,255,255,.5);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.6);
+  color:var(--tx-2);font-size:24px}
+.hintpill b{color:var(--brand-fg);font-weight:600}
 .chip.warn{background:rgba(201,122,22,.16);color:var(--warning)}
 
 /* 3列×2行栅格：上行 Agent 区，下行固定区 */
@@ -57,9 +63,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    字号一律 = 字阶 × --u。--u 由档位类（.t-card / .t-stage …）给，
    一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
    加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
-.card{position:relative;border:1px solid var(--hair-strong,var(--hair));
-  background:linear-gradient(168deg,#FFFFFF 0%,#F6F9FC 82%,#F1F5F9 100%);
-  border-radius:var(--r-m);box-shadow:var(--sh-1),var(--gloss,inset 0 1px 0 rgba(255,255,255,.9));overflow:hidden;
+.card{position:relative;border:1px solid rgba(255,255,255,.62);
+  background:rgba(255,255,255,.58);
+  backdrop-filter:blur(30px) saturate(1.25);-webkit-backdrop-filter:blur(30px) saturate(1.25);
+  border-radius:var(--r-l);box-shadow:0 18px 50px -18px rgba(60,68,140,.35),inset 0 1px 0 rgba(255,255,255,.8);overflow:hidden;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
@@ -93,13 +100,12 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 [data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
 [data-act]:active{transform:scale(.94);opacity:.75}
 .plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
+/* 风格稿：细线幽灵键，命中区照旧 ≥96px（透明的也算数） */
 .plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:var(--r-pill,999px);
-  display:flex;align-items:center;justify-content:center;
-  background:var(--acbg);border:1px solid var(--acbd);color:var(--ac)}
-.plctl span svg{width:calc(30px*var(--u));height:calc(30px*var(--u))}
-/* 中间的播放/暂停是主键，实色 */
-.plctl span:nth-child(2){background:var(--acgr);color:#fff;border-color:transparent;
-  box-shadow:0 6px 18px -6px var(--ac)}
+  display:flex;align-items:center;justify-content:center;color:var(--tx-1);background:transparent;border:none}
+.plctl span svg{width:calc(30px*var(--u));height:calc(30px*var(--u));stroke-width:1.7}
+.plctl span:nth-child(2){background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.8);
+  box-shadow:0 6px 20px -8px rgba(60,68,140,.5)}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -185,7 +191,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .blocks{flex:1;min-height:0;display:grid;gap:calc(10px*var(--u));grid-auto-rows:1fr}
 .blocks.c2{grid-template-columns:1fr 1fr}
 .blocks.c3{grid-template-columns:repeat(3,1fr)}
-.blk{background:linear-gradient(165deg,#FBFDFF, #F2F6FB);border:1px solid var(--hair-strong,var(--hair));
+.blk{background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.7);
   border-radius:calc(16px*var(--u));padding:calc(12px*var(--u)) calc(15px*var(--u));
   display:flex;flex-direction:column;justify-content:space-between;min-width:0;overflow:hidden;
   transition:box-shadow .24s var(--ez,var(--ease))}
@@ -385,8 +391,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   content:'';position:absolute;left:0;top:calc(18px*var(--u));bottom:calc(18px*var(--u));
   width:5px;border-radius:0 4px 4px 0;background:var(--acgr)}
 .tpl-feedback,.tpl-notice,.tpl-info{
-  background:linear-gradient(105deg, color-mix(in srgb, var(--acbg) 55%, #fff) 0%, #FFFFFF 42%),
-    linear-gradient(168deg,#FFFFFF,#F6F9FC)}
+  background:linear-gradient(105deg, color-mix(in srgb, var(--acbg) 42%, rgba(255,255,255,.6)) 0%, rgba(255,255,255,.58) 46%)}
 
 /* ── 短文本卡：正文是主角，不是标题下面的灰色小字 ──
    这几张（续航、正在播放、执行反馈、临时提醒）内容天生就一句话，
@@ -473,13 +478,26 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 #banner code{background:var(--acbg);border:1px solid var(--acbd);padding:2px 10px;
   border-radius:8px;font-size:.86em;color:var(--ac)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+/* 氛围区（风格稿右侧）：大而轻的时钟直接躺在壁纸上，不占卡位。
+   卡片是磨砂玻璃，压上来时它从毛玻璃后隐约透出——这正是想要的层次 */
+#ambient{position:absolute;right:120px;top:280px;z-index:0;text-align:right;pointer-events:none}
+#ambient .aw{display:flex;justify-content:flex-end;align-items:center;gap:14px;
+  font-size:34px;color:var(--tx-2);margin-bottom:8px}
+#ambient .aclock{font-size:300px;font-weight:400;line-height:1;letter-spacing:-8px;
+  color:var(--tx-1);opacity:.88;font-variant-numeric:tabular-nums}
+#desk{z-index:1}
 #conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>
 </head>
 <body>
 <div id="vp"><div id="stage" data-s="idle">
+  <div id="ambient">
+    <div class="aw"><span id="awx">☀</span><span id="adate">--/--</span></div>
+    <div class="aclock" id="aclock">--:--</div>
+  </div>
   <div id="statusbar">
     <span class="clock" id="clock">--:--</span>
+    <span class="hintpill">◎ 试试说：<b>"今天天气怎么样"</b></span>
     <span>车外 <b id="tOut">3</b>°C</span>
     <span id="wx">☁ 多云</span>
     <span class="sp"></span>

@@ -69,3 +69,28 @@ describe('shortPlace：地名截短', () => {
     expect(shortPlace('')).toBe('')
   })
 })
+
+/**
+ * 单写者选举：同时开两个控制面板，两份桌面（卡片 id 不同）轮流推送，
+ * 车机屏每两秒全量拆建——卡片集体闪、音乐 stop/重播，与是否在播放无关
+ * （用户实拍的最后真凶）。规则：新开的面板接管，旧的静默让位；
+ * 用户在旧面板一开口即夺回。
+ */
+describe('控制面板单写者选举', () => {
+  it('对方更晚启动 → 我让位', async () => {
+    const { yieldsTo } = await import('../../src/director/election')
+    expect(yieldsTo({ src: 'a', boot: 100 }, { src: 'b', boot: 200 })).toBe(true)
+    expect(yieldsTo({ src: 'a', boot: 200 }, { src: 'b', boot: 100 })).toBe(false)
+  })
+
+  it('同毫秒启动用 src 决胜——两边必须裁出唯一赢家', async () => {
+    const { yieldsTo } = await import('../../src/director/election')
+    const a = { src: 'aaa', boot: 100 }, b = { src: 'bbb', boot: 100 }
+    expect(yieldsTo(a, b) !== yieldsTo(b, a)).toBe(true)
+  })
+
+  it('自己的消息不触发让位', async () => {
+    const { yieldsTo } = await import('../../src/director/election')
+    expect(yieldsTo({ src: 'a', boot: 100 }, { src: 'a', boot: 100 })).toBe(false)
+  })
+})

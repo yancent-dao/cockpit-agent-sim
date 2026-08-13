@@ -8,6 +8,7 @@ import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
 import { routeOf } from '../config/interactions'
+import { yieldsTo, type Writer } from './election'
 import { createAmapClient } from '../integrations/amap'
 import { createItunesClient } from '../integrations/itunes'
 import { createRadioClient } from '../integrations/radio'
@@ -43,6 +44,10 @@ const pexelsKey: string = (import.meta as any).env?.VITE_PEXELS_KEY || ''
 const amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : undefined
 if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable')
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
+/** 本面板的写者身份。多面板并存时新开的接管，旧的让位（election.ts） */
+const ME: Writer = { src: Math.random().toString(36).slice(2, 10), boot: Date.now() }
+let muted = false
+
 /** 领域状态仓：队列/历史/收藏（localStorage 持久化）。记忆系统的第三级 */
 const state = createDomainState()
 const prefs = createPrefs()
@@ -72,8 +77,9 @@ const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind:
   row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan,
   title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template, data: c.data })
 function pushDesk() {
+  if (muted) return   // 让位期间不写屏——两个面板轮流推就是"整屏两秒一闪"的根
   const l = desk.layout()
-  bus.send({ type: 'cards', desk: {
+  bus.send({ type: 'cards', src: ME.src, boot: ME.boot, desk: {
     cards: l.cards.map(brief),
     overlay: l.overlay ? brief(l.overlay) : undefined, free: l.free,
   } } as any)
@@ -137,6 +143,12 @@ $('toolCount').textContent = `${registry.list(MAIN_AGENT.tools).length} tools`
 // 每次都推而不是只在首次推：刷新后控制面板这边并不知道对面换了个新页面。
 // 代价是 4 秒一次小 postMessage，车机屏那边按节点 diff，不会闪
 const bus = createBus(m => {
+  // 单写者选举：收到**另一个面板**的桌面推送且它更晚启动 → 我让位静默。
+  // 用户在本面板一开口（ask）就夺回
+  if ((m as any).type === 'cards' && (m as any).src && yieldsTo(ME, { src: (m as any).src, boot: (m as any).boot ?? 0 })) {
+    if (!muted) { muted = true; log('r', '检测到另一个控制面板在写屏，本面板已让位（在这里说句话即可接管）') }
+    return
+  }
   // ended → 机制自动续播，零模型调用（公理 4）。写的是信号，
   // 规则会自己刷新播放器卡——桌面 = f(状态) 的又一次兑现
   if (m.type === 'mediaEvent' && m.event === 'ended') {
@@ -210,6 +222,7 @@ $('openScreen').onclick = () => {
 }
 
 function push() {
+  if (muted) return
   const target: Record<string, number> = {}
   for (const k of POS) target[k] = store.getTarget(`cabin.window.${k}.position`) as number
   bus.send({
@@ -268,6 +281,8 @@ agent.on(e => {
 /* ══════════ 发起一轮对话 ══════════ */
 let busy = false
 async function ask(text: string) {
+  // 夺回写权：用户在这个面板开口 = 要用它
+  if (muted) { muted = false; ME.boot = Date.now(); log('p', '本面板已接管写屏'); pushDesk(); push() }
   if (busy) return
   if (!apiKey) { log('e', '✗ 请先填入 OpenRouter API Key'); return }
   if (!modelId) { log('e', '✗ 请先选择模型'); return }

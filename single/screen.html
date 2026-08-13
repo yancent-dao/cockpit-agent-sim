@@ -479,7 +479,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   border-radius:8px;font-size:.86em;color:var(--ac)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 /* 时钟氛围卡（背景层方案已废——卡片压上来时从缝里漏出来很丑，用户实拍） */
-.tpl-clock{align-items:flex-end;text-align:right}
+/* 时钟卡透明：它是氛围不是内容，画卡面反而把壁纸切出一块补丁（用户拍板）。
+   占位、锚定、让位机制全都还在——只是不画那层磨砂玻璃 */
+.tpl-clock{align-items:flex-end;text-align:right;
+  background:transparent;border-color:transparent;box-shadow:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none}
 .tpl-clock>h3{display:none}
 .tpl-clock .bd{justify-content:center;align-items:flex-end;gap:calc(2px*var(--u));overflow:hidden}
 .ckwx{display:flex;align-items:center;gap:calc(10px*var(--u));white-space:nowrap;

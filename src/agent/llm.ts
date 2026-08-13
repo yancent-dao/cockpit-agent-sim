@@ -77,6 +77,8 @@ export function createOnlineChat(getKey: () => string, getModel: () => string) {
   return async (system: string, prompt: string): Promise<string> => {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
+      // 60s 超时：实测 :online 正常 4-30s；挂起的连接不许冻住任务（实拍几分钟没反应）
+      signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${getKey()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: `${getModel()}:online`,
@@ -114,6 +116,8 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
     async chat(req: LLMRequest): Promise<LLMReply> {
       const res = await fetch(`${base}/chat/completions`, {
         method: 'POST',
+        // 120s 超时：大模型长轮正常 5-45s，悬挂连接不许冻住整个 turn
+        signal: AbortSignal.timeout(120_000),
         headers: {
           Authorization: `Bearer ${getKey()}`,
           'Content-Type': 'application/json',

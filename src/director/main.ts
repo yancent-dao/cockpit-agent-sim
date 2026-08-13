@@ -221,7 +221,13 @@ const bus = createBus(m => {
     log('u', '[屏幕] 关掉了覆盖层')
     return
   }
-  if ((m as any).type === 'taskChip') { renderBgTasks(true); return }
+  // 芯片是开关：开着再点就收回（实拍：展开后没法收）
+  if ((m as any).type === 'taskChip') {
+    const open = desk.findByKey('bgtasks')
+    if (open) desk.dismiss(open.id, { byUser: true })
+    else renderBgTasks(true)
+    return
+  }
   if (m.type !== 'hello') return
   setConn(true)
   pushDesk(); push()

@@ -45,7 +45,10 @@ const compare = (a: any, op: Op, b: any) =>
 
 const CONFIRM_TTL = 60_000
 
-export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs }
+export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs
+  /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
+   *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
+  toolTimeoutMs?: number }
 
 export function createRegistry(
   store: Store,
@@ -384,7 +387,21 @@ export function createRegistry(
     try {
       if (t.writes) return applyWrites(t, args)
       const h = t.handler && handlers[t.handler]
-      if (h) return await h(args)
+      if (h) {
+        // 通用超时闸：CP 各自的超时是第一道，这里是最后一道
+        const ms = deps.toolTimeoutMs ?? 60_000
+        let timer!: ReturnType<typeof setTimeout>
+        const timeout = new Promise<ToolResult>(res => {
+          timer = setTimeout(() => res({
+            status: 'failed', code: 'TOOL_TIMEOUT',
+            message: `${name} 超过 ${Math.round(ms / 1000)} 秒没有响应，已放弃`,
+            suggestion: '稍后再试一次',
+          }), ms)
+        })
+        const r = await Promise.race([Promise.resolve(h(args)), timeout])
+        clearTimeout(timer)
+        return r
+      }
       return { status: 'failed', code: 'NO_HANDLER', message: `${name} 尚未实现` }
     } catch (e) {
       return { status: 'failed', code: 'HANDLER_ERROR', message: String(e) }

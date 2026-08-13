@@ -85,6 +85,21 @@ describe('web.search', () => {
     expect(res.status).toBe('unavailable')
   })
 
+  // 实拍：联网搜索几分钟没反应——一次挂起的 fetch 冻住整个任务，进展卡永远转圈。
+  // 工具级通用超时是最后一道闸：任何 handler 悬挂都在限时内变成 failed 返回
+  it('handler 悬挂 → TOOL_TIMEOUT，不许冻住调用方', async () => {
+    const never = new Promise<string>(() => {})
+    const r = createRegistry(store, TOOLS, Date.now, {
+      desk, websearch: createWebSearch(() => never), toolTimeoutMs: 50,
+    } as any)
+    const t0 = Date.now()
+    const res = await r.invoke('web.search', { query: 'x' })
+    expect(Date.now() - t0).toBeLessThan(2000)
+    expect(res.status).toBe('failed')
+    expect(res.code).toBe('TOOL_TIMEOUT')
+    expect(res.message).toContain('没有响应')
+  })
+
   it('模型调用炸了也要翻译成人话', async () => {
     const r = mk(async () => { throw new Error('402 余额不足') })
     const res = await r.invoke('web.search', { query: 'x' })

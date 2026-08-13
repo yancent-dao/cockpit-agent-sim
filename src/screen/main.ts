@@ -13,7 +13,7 @@ import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
-import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT } from './icons'
+import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT, weatherIcon } from './icons'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('screen')
@@ -462,6 +462,16 @@ function renderDesk() {
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
+      else if (c.template === 'clock') {
+        if (!node.dataset.shell) {
+          node.innerHTML = `<div class="bd"><div class="ckwx"></div><div class="cktime">--:--</div><div class="ckdate"></div></div>`
+          node.dataset.shell = '1'
+          renderStatus()   // 立刻喂一次天气行，别等下一条 state
+          const now = new Date()
+          node.querySelector('.cktime')!.textContent = $('clock').textContent!
+          node.querySelector('.ckdate')!.textContent = `${now.getMonth() + 1}月${now.getDate()}日 星期${'日一二三四五六'[now.getDay()]}`
+        }
+      }
       else if (c.template === 'canvas-app') {
         if (!node.dataset.shell) {
           node.innerHTML = `<h3><span class="ico">${TPL_ICONS['canvas-app']}</span><span class="cvtitle"></span>` +
@@ -595,7 +605,8 @@ function renderStatus() {
   $('tOut').textContent = String(Math.round(meta.outTemp))
   $('soc').textContent = String(Math.round(meta.soc))
   $('wx').textContent = meta.weather === 'rain' ? '🌧 小雨' : '☁ 多云'
-  $('awx').textContent = meta.weather === 'rain' ? '🌧' : '⛅'
+  for (const el of Array.from(document.querySelectorAll('.ckwx')))
+    el.innerHTML = `${weatherIcon(meta.weather === 'rain' ? '小雨' : '多云')}<span>车外 ${Math.round(meta.outTemp)}°C</span>`
 }
 
 /* ── 过渡动画：车窗位置由车机屏本地逼近 target ── */
@@ -699,9 +710,10 @@ hello(); setTimeout(hello, 500); setInterval(hello, 4000)
 setInterval(() => {
   const d = new Date()
   $('clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  // 氛围区（风格稿）：右侧大时钟 + 日期，躺在壁纸上
-  $('aclock').textContent = $('clock').textContent!
-  $('adate').textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${'日一二三四五六'[new Date().getDay()]}`
+  // 时钟氛围卡：时间是遥测不是状态，屏端本地每秒刷，不过 store 不过 bus
+  for (const el of Array.from(document.querySelectorAll('.cktime'))) el.textContent = $('clock').textContent!
+  for (const el of Array.from(document.querySelectorAll('.ckdate')))
+    el.textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${'日一二三四五六'[new Date().getDay()]}`
 }, 1000)
 renderStatus(); renderDesk()
 export { CN }

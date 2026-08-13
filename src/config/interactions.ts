@@ -40,6 +40,7 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
   'canvas-app': [{ on: 'app', route: 'answer' }, SWIPE_AWAY],
   /** 导航卡刻意没有 swipe:away——导航中把导航划掉是事故 */
+  clock: [SWIPE_AWAY],
   nav: [],
 }
 

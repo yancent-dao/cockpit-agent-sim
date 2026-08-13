@@ -47,12 +47,25 @@ export interface CardRule {
      * 显然不该有同样的命运。不写就是 normal。
      */
     urgency?: 'ambient' | 'normal' | 'urgent' | 'critical'
+    /** 靠边锚定：clock 靠右撑场，nav 靠左是既有行为 */
+    anchor?: 'left' | 'right'
     /** data builder 名，登记在 DATA_BUILDERS 白名单 */
     data: string
   }
 }
 
 export const CARD_RULES: CardRule[] = [
+  /**
+   * 时钟氛围卡：when 恒真的状态卡。最低优先级（rule+ambient），
+   * 谁来都让位，空间释放 reconcile 自动请回——"无常驻卡"的精神不破，
+   * 它是可挤的填充不是钉死的家具。时间由屏端本地渲染，data 里没有秒。
+   */
+  {
+    id: 'ambient-clock',
+    when: [],
+    watch: [],
+    card: { key: 'clock', template: 'clock', urgency: 'ambient', anchor: 'right', data: 'clockCard' },
+  },
   {
     id: 'nav-active',
     when: [['navigation.active', '==', true]],
@@ -120,6 +133,7 @@ const CN: Record<string, string> = {
 const cn = (v: unknown) => (typeof v === 'string' && CN[v]) || v
 
 export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
+  clockCard: () => ({ title: '' }),   // 内容全在屏端本地（时间是遥测不是状态）
   navCard: ({ store, amap }) => {
     const destination = store.get('navigation.destination') as string
     const destLoc = store.get('navigation.destinationLocation') as string

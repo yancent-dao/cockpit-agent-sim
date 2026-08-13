@@ -98,6 +98,13 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: [...COMMON_SIZES, 'full'],
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
+  /**
+   * 时钟氛围卡（用户实拍反馈）：时间做背景层会从卡片缝里漏出来。
+   * 做成真卡走同一套仲裁：最低优先级填充，谁来都让位，空了自己回来。
+   * 时间由车机屏本地渲染——每秒变的东西不进 data（遥测边界的老规矩）。
+   */
+  { id: 'clock', label: '时钟卡', defaultSize: '1/3', systemOnly: true,
+    desc: '空桌面的氛围填充：时间/日期/天气。系统规则驱动，不要手动创建。' },
   { id: 'generic', label: '通用卡', defaultSize: '1/3',
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },
   /**

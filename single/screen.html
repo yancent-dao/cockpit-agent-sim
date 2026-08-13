@@ -478,23 +478,21 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 #banner code{background:var(--acbg);border:1px solid var(--acbd);padding:2px 10px;
   border-radius:8px;font-size:.86em;color:var(--ac)}
 @keyframes rise{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-/* 氛围区（风格稿右侧）：大而轻的时钟直接躺在壁纸上，不占卡位。
-   卡片是磨砂玻璃，压上来时它从毛玻璃后隐约透出——这正是想要的层次 */
-#ambient{position:absolute;right:120px;top:280px;z-index:0;text-align:right;pointer-events:none}
-#ambient .aw{display:flex;justify-content:flex-end;align-items:center;gap:14px;
-  font-size:34px;color:var(--tx-2);margin-bottom:8px}
-#ambient .aclock{font-size:300px;font-weight:400;line-height:1;letter-spacing:-8px;
-  color:var(--tx-1);opacity:.88;font-variant-numeric:tabular-nums}
-#desk{z-index:1}
+/* 时钟氛围卡（背景层方案已废——卡片压上来时从缝里漏出来很丑，用户实拍） */
+.tpl-clock{align-items:flex-end;text-align:right}
+.tpl-clock>h3{display:none}
+.tpl-clock .bd{justify-content:center;align-items:flex-end;gap:calc(2px*var(--u));overflow:hidden}
+.ckwx{display:flex;align-items:center;gap:calc(10px*var(--u));white-space:nowrap;
+  font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
+.ckwx svg{width:calc(40px*var(--u));height:calc(40px*var(--u));flex:none}
+.cktime{font-size:calc(190px*var(--u));font-weight:400;line-height:1.02;letter-spacing:-6px;
+  color:var(--tx-1);font-variant-numeric:tabular-nums}
+.ckdate{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
 #conn{position:fixed;left:16px;bottom:14px;font-size:12px;color:#AEB6C2;transition:opacity .6s}
 </style>
 </head>
 <body>
 <div id="vp"><div id="stage" data-s="idle">
-  <div id="ambient">
-    <div class="aw"><span id="awx">☀</span><span id="adate">--/--</span></div>
-    <div class="aclock" id="aclock">--:--</div>
-  </div>
   <div id="statusbar">
     <span class="clock" id="clock">--:--</span>
     <span class="hintpill">◎ 试试说：<b>"今天天气怎么样"</b></span>
@@ -876,6 +874,18 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
+    /**
+     * 时钟氛围卡（用户实拍反馈）：时间做背景层会从卡片缝里漏出来。
+     * 做成真卡走同一套仲裁：最低优先级填充，谁来都让位，空了自己回来。
+     * 时间由车机屏本地渲染——每秒变的东西不进 data（遥测边界的老规矩）。
+     */
+    {
+      id: "clock",
+      label: "时钟卡",
+      defaultSize: "1/3",
+      systemOnly: true,
+      desc: "空桌面的氛围填充：时间/日期/天气。系统规则驱动，不要手动创建。"
+    },
     {
       id: "generic",
       label: "通用卡",
@@ -975,6 +985,13 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       overflow: mode === "count" ? "count" : "more"
     };
   };
+  var clockForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = ["time"];
+    if (a >= 8) blocks.push("date");
+    if (a >= 16) blocks.push("wx");
+    return { blocks };
+  };
   var CARD_FORMS = {
     nav: navForm,
     control: controlForm,
@@ -986,7 +1003,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     media: mediaForm,
     weather: weatherForm,
     capability: capForm,
-    generic: genericForm
+    generic: genericForm,
+    clock: clockForm
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
 
@@ -2038,7 +2056,16 @@ ${BRIDGE}
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
         else if (c.template === "media") renderPlayerCard(node, c);
-        else if (c.template === "canvas-app") {
+        else if (c.template === "clock") {
+          if (!node.dataset.shell) {
+            node.innerHTML = `<div class="bd"><div class="ckwx"></div><div class="cktime">--:--</div><div class="ckdate"></div></div>`;
+            node.dataset.shell = "1";
+            renderStatus();
+            const now = /* @__PURE__ */ new Date();
+            node.querySelector(".cktime").textContent = $("clock").textContent;
+            node.querySelector(".ckdate").textContent = `${now.getMonth() + 1}月${now.getDate()}日 星期${"日一二三四五六"[now.getDay()]}`;
+          }
+        } else if (c.template === "canvas-app") {
           if (!node.dataset.shell) {
             node.innerHTML = `<h3><span class="ico">${TPL_ICONS["canvas-app"]}</span><span class="cvtitle"></span><span class="genmark">生成式</span></h3><div class="bd"></div>`;
             node.dataset.shell = "1";
@@ -2139,7 +2166,8 @@ ${BRIDGE}
     $("tOut").textContent = String(Math.round(meta.outTemp));
     $("soc").textContent = String(Math.round(meta.soc));
     $("wx").textContent = meta.weather === "rain" ? "🌧 小雨" : "☁ 多云";
-    $("awx").textContent = meta.weather === "rain" ? "🌧" : "⛅";
+    for (const el of Array.from(document.querySelectorAll(".ckwx")))
+      el.innerHTML = `${weatherIcon(meta.weather === "rain" ? "小雨" : "多云")}<span>车外 ${Math.round(meta.outTemp)}°C</span>`;
   }
   var last = performance.now();
   var loop = (t) => {
@@ -2250,8 +2278,9 @@ ${BRIDGE}
   setInterval(() => {
     const d = /* @__PURE__ */ new Date();
     $("clock").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-    $("aclock").textContent = $("clock").textContent;
-    $("adate").textContent = `${(/* @__PURE__ */ new Date()).getMonth() + 1}月${(/* @__PURE__ */ new Date()).getDate()}日 星期${"日一二三四五六"[(/* @__PURE__ */ new Date()).getDay()]}`;
+    for (const el of Array.from(document.querySelectorAll(".cktime"))) el.textContent = $("clock").textContent;
+    for (const el of Array.from(document.querySelectorAll(".ckdate")))
+      el.textContent = `${(/* @__PURE__ */ new Date()).getMonth() + 1}月${(/* @__PURE__ */ new Date()).getDate()}日 星期${"日一二三四五六"[(/* @__PURE__ */ new Date()).getDay()]}`;
   }, 1e3);
   renderStatus();
   renderDesk();

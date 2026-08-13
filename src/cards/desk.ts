@@ -97,6 +97,8 @@ export interface Card {
    */
   family?: string
   round?: number
+  /** 靠边锚定：right 从右往左找位（时钟撑右场），缺省行为不变 */
+  anchor?: 'left' | 'right'
   data: any
   ttl: Ttl
   evictable: boolean
@@ -148,6 +150,7 @@ export interface ShowInput {
   minSize?: Size
   /** 事件卡活动期间刷新寿命（重置 createdAt），避免连续活动中被 ttl 误杀 */
   refreshTtl?: boolean
+  anchor?: 'left' | 'right'
 }
 
 export interface DeskResult {
@@ -246,9 +249,11 @@ export function createDesk(clock: () => number = Date.now) {
         occupy(c.prevPos.row, c.prevPos.col, shape)
         placed = { ...c, row: c.prevPos.row, col: c.prevPos.col, rowSpan: shape.h, colSpan: shape.w }
       }
-      // 列起点只取偶数 —— 配合「档位宽度一律偶数」，空隙必为偶数宽，chip 永远填得上
+      // 列起点只取偶数 —— 配合「档位宽度一律偶数」，空隙必为偶数宽，chip 永远填得上。
+      // anchor:right 从右往左找位（时钟卡撑右场），不变量不受影响
       const cols: number[] = []
       for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i)
+      if (c.anchor === 'right') cols.reverse()
       // 行起点按自身高度对齐：半高档只落 0/2，不会错位出一条高 1 的横缝
       const rowStep = shape.h >= 2 ? 2 : 1
       if (!placed) outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
@@ -352,7 +357,7 @@ export function createDesk(clock: () => number = Date.now) {
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
       desiredSize: size,   // 仲裁自降只改 size；这里记住"本来该多大"
-      family: input.family,
+      family: input.family, anchor: input.anchor,
       round: input.family ? (input.round ?? ++familyAutoRound) : undefined,
       urgency: normalizeUrgency(input.urgency),
       data: input.data ?? {}, ttl: input.ttl, evictable: input.evictable ?? true,

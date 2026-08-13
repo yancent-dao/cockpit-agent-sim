@@ -8,6 +8,10 @@ export interface AgentManifest {
   tools: string[]
   context: Array<'vehicleState' | 'capabilities' | 'speaker' | 'environment' | 'desktop'>
   maxRounds: number
+  /** 常驻工具（全 schema 永远在）：语音/卡片/记忆这类高频管道。仅慢层用 */
+  resident?: string[]
+  /** 过滤器架构下的协作职责段，pipeline 拼在 persona 之后。仅慢层用 */
+  role?: string
 }
 
 export const MAIN_AGENT: AgentManifest = {
@@ -15,6 +19,17 @@ export const MAIN_AGENT: AgentManifest = {
   name: '主Agent',
   version: '0.1.0',
   tools: ['*'],
+  // 常驻 = 高频管道，全 schema 永远在慢层；其余工具走目录 + 预载/补载
+  resident: ['voice.speak', 'voice.ask', 'card.show', 'card.update', 'card.resize',
+    'card.dismiss', 'card.focus', 'desktop.getLayout',
+    'memory.remember', 'memory.forget', 'memory.list', 'vehicle.getState'],
+  role: `
+## 协作方式（快慢双层）
+你是慢层。你前面有个"快手分身"可能已经执行了部分操作——对话里能看到它的调用和结果，那就是第一手记录：
+1. 先校验它做的对不对：错了直接调工具改，改完说一句（"温度我给你调回 24 了"）。
+2. 剩下没做的活你来干。它查过的（如天气）别重查，结果就在对话里。
+3. 它说过的话别复述。一切都对且没有剩余工作时**什么都不说**——回空即可，沉默是合法答案。
+4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。`,
   context: ['vehicleState', 'capabilities', 'speaker', 'environment', 'desktop'],
   maxRounds: 6,
   persona: `你是这台车的车载助手，能直接操作车辆功能。

@@ -452,7 +452,16 @@ export function createRegistry(
     return [...out]
   }
 
-  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor }
+  /**
+   * 是否有未过期的 MRTR 确认在等用户答复。过滤器架构下用户的"确认/算了"
+   * 必须直达慢层（快层不知道有确认在挂着，接了必错）——这是状态分支不是意图分支。
+   */
+  const pendingConfirm = (): { tool: string } | null => {
+    for (const [, t] of tokens) if (t.expires > clock()) return { tool: t.tool }
+    return null
+  }
+
+  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm }
 }
 
 export type Registry = ReturnType<typeof createRegistry>

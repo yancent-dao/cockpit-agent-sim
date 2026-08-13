@@ -20,8 +20,19 @@ export type PipelineEvent =
   | { type: 'rejected'; text: string }
   /** 旧 turn 的慢层迟到话术：不抢麦，降级给横幅（§4.1） */
   | { type: 'lateNote'; text: string }
+  /** 后台任务池变化（新建/完成/取消）——UI 拿 tasks() 刷任务芯片 */
+  | { type: 'taskUpdate' }
+  /** 后台任务完成：机械交付素材（播报 summary + 横幅），不叫醒主模型 */
+  | { type: 'taskDone'; taskId: string; summary: string; ok: boolean }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+export interface BgTask {
+  id: string
+  label: string
+  status: 'running' | 'done' | 'failed' | 'cancelled'
+  summary?: string
+}
 
 export interface PipelineDeps {
   registry: Registry
@@ -67,6 +78,20 @@ const LOAD_SCHEMA = {
     },
   },
 }
+const DELEGATE_SCHEMA = {
+  type: 'function', function: {
+    name: 'task_delegate',
+    description: '把一个独立子任务委托给子 Agent 执行。多个互不依赖的重活（调研/搜集/报告）在**同一轮里连发多个** delegate 即并行。background=true 时立即返回 taskId 后台跑，完成后系统自动通知用户（你先答"我去查着"即可）；否则等结果回来你自己汇总。',
+    parameters: {
+      type: 'object', required: ['goal'],
+      properties: {
+        goal: { type: 'string', description: '子任务目标，一句话说清要什么结论' },
+        tools: { type: 'array', items: { type: 'string' }, description: '给子 Agent 点的装备（工具目录里的名字）。不点它自己按目录取' },
+        background: { type: 'boolean', description: '耗时长的活转后台，完成自动通知' },
+      },
+    },
+  },
+}
 const isMeta = (name: string, meta: string) => name === meta || name === meta.replace(/\./g, '_')
 
 /** epoch 摘要消息的识别标 */
@@ -109,7 +134,7 @@ export function createPipeline(deps: PipelineDeps) {
   async function execRound(
     g: number, calls: NonNullable<Awaited<ReturnType<LLM['chat']>>['toolCalls']>,
     allow: string[], trace: TraceStep[],
-    interceptors: Record<string, (args: any) => ToolResult>,
+    interceptors: Record<string, (args: any) => ToolResult | Promise<ToolResult>>,
   ): Promise<Msg[]> {
     const round = ++toolRound
     const results = await Promise.all(calls.map(async c => {
@@ -119,7 +144,7 @@ export function createPipeline(deps: PipelineDeps) {
       emit({ type: 'executing', name })
       const s = clock()
       const result = metaKey
-        ? interceptors[metaKey](c.args)
+        ? await interceptors[metaKey](c.args)
         : await registry.invoke(c.name, c.args, { allow, round })
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
       if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
@@ -187,6 +212,100 @@ export function createPipeline(deps: PipelineDeps) {
     return { suggested, said, rounds }
   }
 
+  /* ── 子 Agent 委托（§6）：机制在此，拆不拆/拆几个/等不等全在慢层模型 ── */
+  const taskPool: BgTask[] = []
+  let taskSeq = 0
+  let activeSubs = 0
+  const tasks = (): BgTask[] => taskPool.map(t => ({ ...t }))
+  const cancelTask = (id: string) => {
+    const t = taskPool.find(x => x.id === id)
+    if (t?.status === 'running') { t.status = 'cancelled'; emit({ type: 'taskUpdate' }) }
+  }
+
+  /**
+   * 子 Agent = 同一个循环的独立小生命：自己的 view（只带 goal，不背主对话包袱）、
+   * 点名预载 + 目录补载、自己的轮次。无灰权限（后台任务不许自己弹确认）、
+   * 无 delegate（深度 1）、无 voice（交付是机械的，不许中途乱说话）。
+   */
+  async function subRun(goal: string, preload: string[], task?: BgTask): Promise<{ summary: string }> {
+    const sm = deps.slowManifest
+    const allow = registry.list().filter(t => t.permission !== '灰').map(t => t.name)
+    const resident = (sm.resident ?? []).filter(n => !n.startsWith('voice.'))
+    const loaded = new Set<string>([...resident, ...preload])
+    const manifest = {
+      ...sm, role: `
+## 子任务模式
+你在独立执行一个被委托的子任务，对话第一条就是任务目标。把**结论**用一段话说清——
+这段话会被直接播报或展示；要展示报告/图表就自己建卡（报告图表类用 canvas 模板，
+列表类用 list）。别闲聊，别问问题——问不到人。`,
+    }
+    const view: Msg[] = [{ role: 'user', content: goal }]
+    const trace: TraceStep[] = []
+    for (let r = 0; r < sm.maxRounds; r++) {
+      if (task && task.status !== 'running') return { summary: '' }   // 被取消：立刻收手
+      const system = buildSystemPrompt(manifest, store, registry, {
+        catalog: registry.briefCatalog(),
+        signalFilter: registry.signalsFor([...loaded]),
+      })
+      const tools = r === sm.maxRounds - 1 ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA]
+      const reply = await deps.slowLlm.chat({ system, messages: view, tools })
+      if (task && task.status !== 'running') return { summary: '' }
+      if (!reply.toolCalls?.length) return { summary: reply.text ?? '' }
+      view.push(asstMsg(reply))
+      const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
+        'tools.load': mkLoader(loaded),
+      })
+      view.push(...toolMsgs)
+    }
+    return { summary: '' }
+  }
+
+  /** delegate 拦截器：同步等结果 / 后台立即返回 taskId、完成机械交付 */
+  const delegateInterceptor = (args: any): ToolResult | Promise<ToolResult> => {
+    const goal = String(args?.goal ?? '').trim()
+    if (!goal) return { status: 'rejected', code: 'INVALID_PARAMS', message: 'goal 不能为空' }
+    if (activeSubs >= 3)
+      return { status: 'rejected', code: 'TASKS_LIMIT', message: '并行任务已达上限 3 个', suggestion: '等一个跑完再派，或合并任务' }
+    const preload = ((args?.tools ?? []) as string[])
+      .map(n => registry.canonicalName(n))
+      .filter(n => registry.list().some(t => t.name === n))
+    activeSubs++
+    if (args?.background) {
+      const task: BgTask = { id: `task_${++taskSeq}`, label: goal.slice(0, 18), status: 'running' }
+      taskPool.push(task)
+      emit({ type: 'taskUpdate' })
+      void subRun(goal, preload, task)
+        .then(({ summary }) => {
+          if (task.status !== 'running') return    // 取消了就静默收场
+          task.status = 'done'; task.summary = summary
+          emit({ type: 'taskUpdate' })
+          emit({ type: 'taskDone', taskId: task.id, summary, ok: true })
+        })
+        .catch(e => {
+          if (task.status !== 'running') return
+          task.status = 'failed'; task.summary = String(e)
+          emit({ type: 'taskUpdate' })
+          emit({ type: 'taskDone', taskId: task.id, summary: String(e), ok: false })
+        })
+        .finally(() => { activeSubs-- })
+      return { status: 'ok', data: { taskId: task.id }, message: '已转后台，完成会自动通知用户' }
+    }
+    return subRun(goal, preload)
+      .then(({ summary }) => ({ status: 'ok' as const, data: { summary } }))
+      .finally(() => { activeSubs-- })
+  }
+
+  /** tools.load 拦截器工厂：快慢/子 Agent 各自的 loaded 集合 */
+  const mkLoader = (loaded: Set<string>) => (args: any): ToolResult => {
+    const names: string[] = ((args?.names ?? []) as string[]).map(n => registry.canonicalName(n))
+    const known = names.filter(n => registry.list().some(t => t.name === n))
+    known.forEach(n => loaded.add(n))
+    const unknown = names.filter(n => !known.includes(n))
+    return known.length
+      ? { status: 'ok', message: `已装载：${known.join('、')}${unknown.length ? `；没有这些工具：${unknown.join('、')}` : ''}` }
+      : { status: 'rejected', code: 'UNKNOWN_TOOL', message: `目录里没有：${names.join('、')}`, suggestion: '对照工具目录里的名字再试' }
+  }
+
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
   async function runSlow(g: number, suggested: string[], trace: TraceStep[]): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
     const sm = deps.slowManifest
@@ -203,7 +322,7 @@ export function createPipeline(deps: PipelineDeps) {
       trace.push({ type: 'prompt', at: clock(), system, toolCount: loaded.size })
       // 最后一轮撤工具逼话术——语音场景没有"静默耗尽轮次"这个选项
       const last = rounds === sm.maxRounds
-      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA]
+      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA]
       let reply
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
       catch (e) {
@@ -229,15 +348,8 @@ export function createPipeline(deps: PipelineDeps) {
       const am = asstMsg(reply)
       commit(g, am); view.push(am)
       const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
-        'tools.load': args => {
-          const names: string[] = (args?.names ?? []).map((n: string) => registry.canonicalName(n))
-          const known = names.filter(n => registry.list().some(t => t.name === n))
-          known.forEach(n => loaded.add(n))
-          const unknown = names.filter(n => !known.includes(n))
-          return known.length
-            ? { status: 'ok', message: `已装载：${known.join('、')}${unknown.length ? `；没有这些工具：${unknown.join('、')}` : ''}` }
-            : { status: 'rejected', code: 'UNKNOWN_TOOL', message: `目录里没有：${names.join('、')}`, suggestion: '对照工具目录里的名字再试' }
-        },
+        'tools.load': mkLoader(loaded),
+        'task.delegate': delegateInterceptor,
       })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
     }
@@ -299,7 +411,8 @@ export function createPipeline(deps: PipelineDeps) {
 
   const reset = () => { thread.length = 0; boundary = 0 }
 
-  return { run, on, reset, thread, get generation() { return gen }, get compaction() { return compaction } }
+  return { run, on, reset, thread, tasks, cancelTask,
+    get generation() { return gen }, get compaction() { return compaction } }
 }
 
 export type Pipeline = ReturnType<typeof createPipeline>

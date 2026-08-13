@@ -302,6 +302,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--tx-1,var(--text-primary))}
 .cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
 .cap .cico{margin-right:calc(8px*var(--u));font-size:1.15em;vertical-align:-1px}
+/* 覆盖层关闭钮：临时征用必须有归还的门。命中区 ≥96px（车规） */
+.ovclose{margin-left:auto;flex:none;width:calc(96px*var(--u));height:calc(72px*var(--u));
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  font-size:calc(34px*var(--u));color:var(--tx-2);border-radius:var(--r-pill,999px)}
+.ovclose:active{transform:scale(.92);background:rgba(0,0,0,.06)}
 /* 网格模式压成单行条目：banner 档 3 栏 × 4 行，容量公式按半行高算的，
    双行条目会把第 4 行拦腰裁掉——切半行等于骗人 */
 .cap.grid div{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden;
@@ -952,7 +957,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式小组件",
       defaultSize: "1/2",
       sizes: [...CANVAS_ALLOWED],
-      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
+      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，尺寸：**只有游戏/需要操作的交互应用才用 full**（全屏征用，会盖住桌面，右上角有关闭钮）；信息展示一律 1/2 以下进桌面。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
@@ -2151,8 +2156,25 @@ ${BRIDGE}
       const sig = `${o.id}|${JSON.stringify(o.data)}`;
       if (ov.dataset.sig !== sig) {
         ov.dataset.sig = sig;
-        ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}">
-        <h3>${esc2(o.title)}</h3><div class="bd">${cardBody({ ...o, size: "full" })}</div></div>`;
+        ov.innerHTML = "";
+        const node = document.createElement("div");
+        node.className = `card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}`;
+        ov.appendChild(node);
+        const oc = { ...o, size: "full" };
+        const CLOSE = `<span class="ovclose" data-close="1">✕</span>`;
+        if (o.template === "canvas-app") {
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS["canvas-app"]}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"></div>`;
+          node.querySelector(".cvtitle").textContent = o.title ?? "";
+          renderCanvasAppCard(node, oc);
+        } else if (o.template === "canvas") {
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS.canvas}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"><div class="cvhost"></div></div>`;
+          node.querySelector(".cvtitle").textContent = o.title ?? "";
+          renderCanvasCard(node, oc);
+        } else {
+          node.innerHTML = `<h3>${esc2(o.title)}${CLOSE}</h3><div class="bd">${cardBody(oc)}</div>`;
+        }
+        ;
+        node.querySelector(".ovclose").onclick = () => bus.send({ type: "overlayClose", cardId: o.id });
       }
     } else {
       ov.className = "";

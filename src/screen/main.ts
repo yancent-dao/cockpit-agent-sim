@@ -551,14 +551,37 @@ function renderDesk() {
     const alert = o.data?.urgency === 'critical' || (o as any).urgency === 'critical'
     ov.className = `on${alert ? ' alert' : ''}`
     // 指纹护栏：数据没变不重刷。renderDesk 会被频繁调用（车窗过渡每帧一次），
-    // 覆盖层每次整刷会摧毁将来的滚动容器
+    // 覆盖层每次整刷会摧毁 iframe 里跑着的游戏和滚动位置
     const sig = `${o.id}|${JSON.stringify(o.data)}`
     if (ov.dataset.sig !== sig) {
       ov.dataset.sig = sig
+      ov.innerHTML = ''
       // 走跟桌面卡同一套档位类和语义色类，否则 --u 没定义、字号全塌
-      ov.innerHTML = `<div class="card tpl-${o.template} ${tierClass('full')} ${
-        accentClass(o.template, { ...o.data, urgency: alert ? 'critical' : o.data?.urgency })}">
-        <h3>${esc(o.title)}</h3><div class="bd">${cardBody({ ...o, size: 'full' })}</div></div>`
+      const node = document.createElement('div')
+      node.className = `card tpl-${o.template} ${tierClass('full')} ${
+        accentClass(o.template, { ...o.data, urgency: alert ? 'critical' : o.data?.urgency })}`
+      ov.appendChild(node)
+      const oc = { ...o, size: 'full' } as CardView
+      // ✕：覆盖层是"临时征用"，必须有归还的门。窗口管理直调（overlayClose），
+      // 不走交互声明也不叫醒模型——关掉盖在脸上的东西不需要理解成分
+      const CLOSE = `<span class="ovclose" data-close="1">✕</span>`
+      // canvas / canvas-app 在覆盖层也要走各自的真渲染分支——之前覆盖层只会
+      // cardBody() 通用填充，全屏游戏渲染出来是一张空白卡（用户实拍）
+      if (o.template === 'canvas-app') {
+        node.innerHTML = `<h3><span class="ico">${TPL_ICONS['canvas-app']}</span><span class="cvtitle"></span>` +
+          `<span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"></div>`
+        node.querySelector('.cvtitle')!.textContent = o.title ?? ''
+        renderCanvasAppCard(node as HTMLDivElement, oc)
+      } else if (o.template === 'canvas') {
+        node.innerHTML = `<h3><span class="ico">${TPL_ICONS.canvas}</span><span class="cvtitle"></span>` +
+          `<span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"><div class="cvhost"></div></div>`
+        node.querySelector('.cvtitle')!.textContent = o.title ?? ''
+        renderCanvasCard(node as HTMLDivElement, oc)
+      } else {
+        node.innerHTML = `<h3>${esc(o.title)}${CLOSE}</h3><div class="bd">${cardBody(oc)}</div>`
+      }
+      ;(node.querySelector('.ovclose') as HTMLElement).onclick = () =>
+        bus.send({ type: 'overlayClose', cardId: o.id } as any)
     }
   } else { ov.className = ''; ov.innerHTML = ''; delete ov.dataset.sig }
 

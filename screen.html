@@ -302,6 +302,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--tx-1,var(--text-primary))}
 .cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
 .cap .cico{margin-right:calc(8px*var(--u));font-size:1.15em;vertical-align:-1px}
+/* 覆盖层关闭钮：临时征用必须有归还的门。命中区 ≥96px（车规） */
+.ovclose{margin-left:auto;flex:none;width:calc(96px*var(--u));height:calc(72px*var(--u));
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  font-size:calc(34px*var(--u));color:var(--tx-2);border-radius:var(--r-pill,999px)}
+.ovclose:active{transform:scale(.92);background:rgba(0,0,0,.06)}
 /* 网格模式压成单行条目：banner 档 3 栏 × 4 行，容量公式按半行高算的，
    双行条目会把第 4 行拦腰裁掉——切半行等于骗人 */
 .cap.grid div{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden;

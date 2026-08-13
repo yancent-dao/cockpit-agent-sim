@@ -127,7 +127,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 需要交互/动画/计算的小组件才走这（每卡一个 iframe，重但值）。
    */
   { id: 'canvas-app', label: '生成式小组件', defaultSize: '1/2', sizes: [...CANVAS_ALLOWED],
-    desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，' +
+    desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，尺寸：**只有游戏/需要操作的交互应用才用 full**（全屏征用，会盖住桌面，右上角有关闭钮）；信息展示一律 1/2 以下进桌面。' +
       '会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。' +
       '沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。' +
       '可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。' +

@@ -215,6 +215,12 @@ const bus = createBus(m => {
     }
     return
   }
+  // 覆盖层 ✕：窗口管理直调，不叫醒模型（关掉盖在脸上的东西没有理解成分）
+  if ((m as any).type === 'overlayClose') {
+    desk.dismiss((m as any).cardId, { byUser: true })
+    log('u', '[屏幕] 关掉了覆盖层')
+    return
+  }
   if ((m as any).type === 'taskChip') {
     const ST: Record<string, string> = { running: '跑着', done: '完成', failed: '没成', cancelled: '已取消' }
     const items = pipeline.tasks().map(t => ({ label: t.label, sub: ST[t.status] ?? t.status }))

@@ -29,6 +29,17 @@ button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
 button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
 button:disabled{opacity:.4;cursor:not-allowed}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.g3 button.on{background:rgba(255,184,77,.16);color:var(--warn);border-color:rgba(255,184,77,.5)}
+.seg{display:flex;gap:6px;flex:1}
+.seg button{flex:1;padding:7px 0;font-weight:600}
+.snap{display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:12px}
+.snap>div{background:var(--el);border-radius:9px;padding:8px 11px;display:flex;
+  justify-content:space-between;gap:10px;align-items:baseline}
+.snap>div span{color:var(--t3);flex:none}
+.snap>div b{font-weight:500;color:#C9D2E0;text-align:right;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.snap>div b.dim{color:#4A5462;font-weight:400}
 input,select{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);
   border-radius:9px;padding:9px 11px;font-size:13px;font-family:inherit;width:100%}
 input::placeholder{color:#4A5462}
@@ -126,12 +137,29 @@ input::placeholder{color:#4A5462}
     <div class="note">导航算的距离/时长以这个为起点——不选对，异地导航会出现"1786km"这种离谱数字，不是 Bug。</div>
     <div class="hr"></div>
     <div class="fld"><label>车速</label><input type="range" id="spd" min="0" max="140" value="0"><span class="v" id="spdV">0 km/h</span></div>
+    <div class="fld"><label>挡位</label><div class="seg" id="gearSeg">
+      <button data-g="p" class="on">P</button><button data-g="r">R</button>
+      <button data-g="n">N</button><button data-g="d">D</button></div></div>
     <div class="fld"><label>车外温</label><input type="range" id="tmp" min="-10" max="40" value="3"><span class="v" id="tmpV">3 °C</span></div>
     <div class="fld"><label>电量</label><input type="range" id="soc" min="0" max="100" value="68"><span class="v" id="socV">68 %</span></div>
+    <div class="fld"><label>天气</label><select id="wxSel">
+      <option value="clear">晴</option><option value="cloudy" selected>多云</option>
+      <option value="rain">小雨</option><option value="heavyRain">大雨</option>
+      <option value="snow">雪</option><option value="fog">雾</option></select></div>
     <div class="fld"><label>说话人</label><select id="vsrc">
       <option value="driver">主驾</option><option value="passenger">副驾</option>
       <option value="rearLeft">左后</option><option value="rearRight">右后</option></select></div>
-    <div class="g2"><button id="bLock">儿童锁 关</button><button id="bRain">天气 多云</button></div>
+    <div class="g2"><button id="bLock">儿童锁 关</button><button id="bOcc">左后座 无人</button></div>
+    <!-- 门与舱口：模拟"忘关门就挂挡起步"这类物理事实。约束引擎拦的是 Agent，
+         人手拉门不归它管，所以这里直写信号 -->
+    <div class="g3" style="margin-top:8px">
+      <button data-door="cabin.door.driver.isOpen">主驾门</button>
+      <button data-door="cabin.door.passenger.isOpen">副驾门</button>
+      <button data-door="cabin.door.rearLeft.isOpen">左后门</button>
+      <button data-door="cabin.door.rearRight.isOpen">右后门</button>
+      <button data-door="cabin.trunk.isOpen">后备箱</button>
+      <button data-door="cabin.chargePort.isOpen">充电口</button>
+    </div>
     <div class="mini">
       <div><span>主驾</span><b id="m-driver">0</b></div><div><span>副驾</span><b id="m-passenger">0</b></div>
       <div><span>左后</span><b id="m-rearLeft">0</b></div><div><span>右后</span><b id="m-rearRight">0</b></div>
@@ -140,6 +168,12 @@ input::placeholder{color:#4A5462}
     <div class="perm" style="margin-top:12px">
       <i class="c">彩 可直接执行</i><i class="h">灰 需确认</i><i class="b">黑 AI 禁区</i>
     </div>
+  </section>
+
+  <section>
+    <h2>实时信号快照</h2>
+    <!-- 只读。Agent 改了什么这里立刻能看到——演示时不用翻 trace 猜"到底调没调成" -->
+    <div class="snap" id="snap"></div>
   </section>
  </div>
 </div>

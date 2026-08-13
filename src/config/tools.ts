@@ -59,7 +59,7 @@ export const TOOLS: ToolDef[] = [
   /* ── 能力目录：由 Tool Registry 自动生成，供能力目录卡渲染 ── */
   {
     name: 'capability.list',
-    desc: '把本车能力清单显示到屏幕上（全屏能力目录卡），并返回清单数据。**这是唯一能让用户在屏幕上看到能力清单的方式**——你自己凭记忆背清单，用户屏幕上什么都不会出现，而且容易背漏或背错。所以只要用户问"你能做什么/会啥/帮我干嘛"，先调它，再口头概括一两句。调用后不要再说"屏幕上已显示"之类的话除非你真的调过它。不传 domain 返回全部；传 domain 只看某一类（如 window、card）。',
+    desc: '把本车能力目录显示到屏幕上（按能力域分组的卡片，如车窗/空调/导航），并返回清单数据。**这是唯一能让用户在屏幕上看到能力清单的方式**——你自己凭记忆背清单，用户屏幕上什么都不会出现，而且容易背漏或背错。所以只要用户问"你能做什么/会啥/帮我干嘛"，先调它，再口头概括一两句。调用后不要再说"屏幕上已显示"之类的话除非你真的调过它。不传 domain 返回全部；传 domain 只看某一类（如 window）。',
     permission: '彩',
     params: {
       domain: { type: 'string', desc: '按能力名前缀过滤，如 "window" 只看车窗相关能力' },
@@ -698,4 +698,31 @@ export const TOOLS: ToolDef[] = [
     params: {},
     handler: 'memoryList',
   },
+]
+/**
+ * 能力目录的**给人看的那一面**。目录卡上的条目是能力域（车窗/空调/导航……），
+ * 用语言 + icon 介绍——函数名是模型和平台之间的接口，不是给用户看的
+ * （实拍反馈："现在感觉像个工程化界面"）。
+ *
+ * match 是 Tool 名前缀：加一个新 Tool 时若前缀已在表里，目录自动长出来；
+ * 前缀不在表里则默默不进目录——card / voice / desktop 这类管道工具正好被筛掉。
+ */
+export const CAPABILITY_DOMAINS: Array<{ match: string[]; icon: string; label: string; blurb: string }> = [
+  { match: ['window'], icon: '🪟', label: '车窗', blurb: '四扇窗独立开合，说"开一半"也行' },
+  { match: ['climate'], icon: '❄️', label: '空调', blurb: '温度、风量、出风口，冷了热了直接说' },
+  { match: ['seat', 'steeringWheel'], icon: '💺', label: '座椅方向盘', blurb: '加热、通风、前后与靠背，方向盘也能热' },
+  { match: ['sunroof'], icon: '🌅', label: '天窗', blurb: '开合、透气' },
+  { match: ['door', 'trunk', 'chargePort', 'childLock'], icon: '🚪', label: '门与舱口', blurb: '车门、后备箱、充电口、儿童锁' },
+  { match: ['ambientLight', 'fragrance', 'light'], icon: '💡', label: '灯光香氛', blurb: '氛围灯颜色亮度、香氛、大灯' },
+  { match: ['wiper'], icon: '🌧️', label: '雨刷', blurb: '手动挡位或自动感应' },
+  { match: ['driveSetting'], icon: '🎛️', label: '驾驶设置', blurb: '驾驶模式、能量回收、悬架高度' },
+  { match: ['navigation', 'region', 'places'], icon: '🧭', label: '导航', blurb: '找地方、规划对比路线、沿途搜索、存常用地址' },
+  { match: ['weather'], icon: '🌤️', label: '天气', blurb: '查任何城市的现在和未来几天' },
+  { match: ['music'], icon: '🎵', label: '音乐', blurb: '搜歌放歌，自动接着放下一首' },
+  { match: ['radio'], icon: '📻', label: '电台', blurb: '全球网络电台想听哪台搜哪台' },
+  { match: ['news'], icon: '📰', label: '新闻', blurb: '今日头条、按话题搜、念给你听' },
+  { match: ['video'], icon: '🎬', label: '视频', blurb: '短视频，行驶中会自动只留声音' },
+  { match: ['media'], icon: '🎚️', label: '播放控制', blurb: '换曲、音量、进度、收藏，通用于音乐电台' },
+  { match: ['web'], icon: '🔍', label: '联网搜索', blurb: '答不上来的现查' },
+  { match: ['memory'], icon: '🧠', label: '记忆', blurb: '"记住我喜欢 24 度"，下次直接照做' },
 ]

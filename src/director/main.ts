@@ -230,14 +230,60 @@ function push() {
     meta: {
       speed: store.get('vehicle.speed'), childLock: store.get('cabin.childLock'),
       weather: store.get('env.weather'), outTemp: store.get('cabin.temperature.outside'),
-      soc: store.get('powertrain.soc'),
+      soc: store.get('powertrain.soc'), gear: store.get('vehicle.gear'),
     },
   })
   for (const k of POS) $(`m-${k}`).textContent = String(Math.round(store.getTarget(`cabin.window.${k}.position`) as number))
+  // 门/舱口按钮兼作状态灯：Agent 开的门（door.set）也要亮，所以从 store 回读
+  document.querySelectorAll<HTMLElement>('[data-door]').forEach(b =>
+    b.classList.toggle('on', store.get(b.dataset.door!) === true))
+  renderSnap()
   const v = store.checkInvariants()
   $('invar').innerHTML = v.length
     ? `<span style="color:#FF5C5C">⚠ 不变量违规：${v.join('；')}</span>`
     : '状态不变量：正常'
+}
+
+/* ══════════ 实时信号快照（只读） ══════════
+   Agent 改了什么这里立刻能看到——演示时不用翻 trace 猜"到底调没调成"。
+   行定义是数据：别名→格式化，一个 if 业务判断都没有 */
+const lblOf = (alias: string) => {
+  const s = SIGNALS.find(x => x.alias === alias)
+  const v = store.get(alias)
+  return String((s?.valueLabels as any)?.[v as any] ?? v)
+}
+const SNAP: Array<[string, () => string | null]> = [
+  ['空调', () => store.get('cabin.climate.power')
+    ? `${store.get('cabin.climate.targetTemp')}°C · ${store.get('cabin.climate.fanSpeed')}档 · ${lblOf('cabin.climate.airflow')}` : null],
+  ['主驾座椅', () => {
+    const h = Number(store.get('seat.driver.heating') ?? 0), vt = Number(store.get('seat.driver.ventilation') ?? 0)
+    return h || vt ? [h ? `加热${h}档` : '', vt ? `通风${vt}档` : ''].filter(Boolean).join(' · ') : null
+  }],
+  ['方向盘加热', () => store.get('cabin.steeringWheel.heating') ? '开' : null],
+  ['天窗', () => { const p = Number(store.get('cabin.sunroof.glass.position') ?? 0); return p ? `开 ${Math.round(p)}%` : null }],
+  ['氛围灯', () => store.get('cabin.ambientLight.power')
+    ? `${lblOf('cabin.ambientLight.color')} · ${store.get('cabin.ambientLight.brightness')}%` : null],
+  ['香氛', () => store.get('cabin.fragrance.power') ? lblOf('cabin.fragrance.scent') : null],
+  ['雨刷', () => store.get('cabin.wiper.mode') !== 'off' ? lblOf('cabin.wiper.mode') : null],
+  ['驾驶模式', () => lblOf('vehicle.driveMode')],
+  ['媒体', () => {
+    const src = store.get('media.source')
+    if (!src || src === 'none') return null
+    return `${store.get('media.track') || lblOf('media.source')} ${store.get('media.playing') ? '▶' : '⏸'} · 音量${store.get('media.volume')}`
+  }],
+  ['导航', () => store.get('navigation.active')
+    ? `${store.get('navigation.destination')} · ${store.get('navigation.eta')}分钟 · ${store.get('navigation.distanceRemaining')}km` : null],
+]
+const snapEl = $('snap')
+snapEl.innerHTML = SNAP.map(([k]) => `<div><span>${k}</span><b class="dim">—</b></div>`).join('')
+const snapVals = Array.from(snapEl.querySelectorAll('b'))
+function renderSnap() {
+  SNAP.forEach(([, fn], i) => {
+    let v: string | null = null
+    try { v = fn() } catch { /* 信号没配全时快照行降级成 —，不许把面板整个炸了 */ }
+    const b = snapVals[i], txt = v ?? '—'
+    if (b.textContent !== txt) { b.textContent = txt; b.classList.toggle('dim', v === null) }
+  })
 }
 setInterval(() => { store.tick(200); push() }, 200)
 pushDesk()
@@ -322,18 +368,38 @@ async function ask(text: string) {
 $('send').onclick = () => { const v = $<HTMLInputElement>('say').value.trim(); if (v) { $<HTMLInputElement>('say').value = ''; ask(v) } }
 $<HTMLInputElement>('say').onkeydown = e => { if (e.key === 'Enter') $('send').click() }
 
-/* ══════════ 车辆状态控件 ══════════ */
+/* ══════════ 车辆状态控件 ══════════
+   全部 setDirect：这里模拟的是**物理世界的事实**（人踩油门、人拉门、天下雨），
+   约束引擎拦的是 Agent 的写入，不归它管。面板不许有业务逻辑——写信号 + 刷显示，仅此而已 */
 const setSpeed = (v: number) => { store.setDirect('vehicle.speed', v); $<HTMLInputElement>('spd').value = String(v); $('spdV').textContent = `${v} km/h`; push() }
 const setSrc = (v: string) => { store.setDirect('perception.voiceSource', v); $<HTMLSelectElement>('vsrc').value = v }
 const setLock = (v: boolean) => { store.setDirect('cabin.childLock', v); const b = $('bLock'); b.textContent = '儿童锁 ' + (v ? '开' : '关'); b.classList.toggle('on', v); push() }
-const setRain = (v: boolean) => { store.setDirect('env.weather', v ? 'rain' : 'cloudy'); const b = $('bRain'); b.textContent = '天气 ' + (v ? '小雨' : '多云'); b.classList.toggle('on', v); push() }
+const setWeather = (v: string) => { store.setDirect('env.weather', v); $<HTMLSelectElement>('wxSel').value = v; push() }
+const setGear = (g: string) => {
+  store.setDirect('vehicle.gear', g)
+  document.querySelectorAll<HTMLElement>('#gearSeg button').forEach(b => b.classList.toggle('on', b.dataset.g === g))
+  push()
+}
+const setOcc = (v: boolean) => {
+  store.setDirect('perception.occupancy.rearLeft', v)
+  const b = $('bOcc'); b.textContent = '左后座 ' + (v ? '有人' : '无人'); b.classList.toggle('on', v); push()
+}
 
 $<HTMLInputElement>('spd').oninput = e => setSpeed(Number((e.target as HTMLInputElement).value))
 $<HTMLInputElement>('tmp').oninput = e => { const v = Number((e.target as HTMLInputElement).value); store.setDirect('cabin.temperature.outside', v); $('tmpV').textContent = `${v} °C`; push() }
 $<HTMLInputElement>('soc').oninput = e => { const v = Number((e.target as HTMLInputElement).value); store.setDirect('powertrain.soc', v); $('socV').textContent = `${v} %`; push() }
 $<HTMLSelectElement>('vsrc').onchange = e => setSrc((e.target as HTMLSelectElement).value)
 $('bLock').onclick = () => setLock(!store.get('cabin.childLock'))
-$('bRain').onclick = () => setRain(store.get('env.weather') !== 'rain')
+$('bOcc').onclick = () => setOcc(store.get('perception.occupancy.rearLeft') !== true)
+$<HTMLSelectElement>('wxSel').onchange = e => setWeather((e.target as HTMLSelectElement).value)
+document.querySelectorAll<HTMLElement>('#gearSeg button').forEach(b => (b.onclick = () => setGear(b.dataset.g!)))
+// 门/舱口：按钮既是开关也是状态灯——Agent 开的门（door.set）也要在这里亮起来，
+// 所以每次 push 都从 store 回读，不自己记状态
+document.querySelectorAll<HTMLElement>('[data-door]').forEach(b => (b.onclick = () => {
+  const path = b.dataset.door!
+  store.setDirect(path, store.get(path) !== true)
+  push()
+}))
 const CITY_KEY = 'cockpit-sim:city'
 const citySelect = $<HTMLSelectElement>('city')
 const setCity = (value: string, announce: boolean) => {
@@ -351,10 +417,10 @@ const savedCity = localStorage.getItem(CITY_KEY)
 if (savedCity) setCity(savedCity, false)
 
 const SCENES: Record<string, () => void> = {
-  park: () => { setSpeed(0); setRain(false); setLock(false) },
-  highway: () => { setSpeed(120); setRain(false); setLock(false) },
-  rain: () => { setSpeed(45); setRain(true); setLock(false) },
-  kids: () => { setSpeed(30); setRain(false); setLock(true) },
+  park: () => { setSpeed(0); setGear('p'); setWeather('cloudy'); setLock(false) },
+  highway: () => { setSpeed(120); setGear('d'); setWeather('clear'); setLock(false) },
+  rain: () => { setSpeed(45); setGear('d'); setWeather('rain'); setLock(false) },
+  kids: () => { setSpeed(30); setGear('d'); setWeather('cloudy'); setLock(true); setOcc(true) },
 }
 document.querySelectorAll('[data-sc]').forEach(b => (b as HTMLElement).onclick = () => {
   SCENES[(b as HTMLElement).dataset.sc!]()

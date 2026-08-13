@@ -173,7 +173,7 @@ export function cardBody(c: CardView): string {
       // 屏幕不可滚动，放不下的必须截断并说明——切掉半行等于骗人
       const { shown, rest } = truncate(items, form.maxItems)
       return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i: any) =>
-        `<div class="${i.off ? 'off' : ''}">${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>${
+        `<div class="${i.off ? 'off' : ''}">${i.icon ? `<span class="cico">${esc(i.icon)}</span>` : ''}${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>${
         rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ''}`
     }
     case 'weather': {

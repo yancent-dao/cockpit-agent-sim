@@ -1,6 +1,7 @@
 import type { Store } from '../core/store'
 import type { Permission, Value, Op } from '../core/types'
 import type { ToolDef, ParamDef } from '../config/tools'
+import { CAPABILITY_DOMAINS } from '../config/tools'
 import { globMatch } from '../core/glob'
 import type { Desk } from '../cards/desk'
 import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
@@ -85,18 +86,26 @@ export function createRegistry(
       return { status: 'ok', data: { asked: args.question, options: args.options }, message: args.question }
     },
 
-    /* ── 能力目录：直接读 list()，能力增减自动同步，不允许手写 ── */
+    /* ── 能力目录：Tool 按域聚合成"给人看的能力"（CAPABILITY_DOMAINS），
+       能力增减仍自动同步——域内工具全下线域才标 off。函数名不许漏给用户
+       （实拍："现在感觉像个工程化界面"），管道工具（card/voice）不进目录 ── */
     capabilityList: args => {
-      const items = list()
-        .filter(t => !args?.domain || t.name.startsWith(`${args.domain}.`))
-        .map(t => ({
-          label: t.name,
-          desc: t.desc,
-          off: t.requires ? store.signals.find(s => s.alias === t.requires)?.equipped === false : false,
-        }))
+      const avail = list()
+      const isOff = (t: ToolDef) =>
+        t.requires ? store.signals.find(s => s.alias === t.requires)?.equipped === false : false
+      const items = CAPABILITY_DOMAINS
+        .filter(d => !args?.domain || d.match.includes(args.domain))
+        .map(d => {
+          const tools = avail.filter(t => d.match.some(m => t.name.startsWith(`${m}.`)))
+          return tools.length
+            ? { icon: d.icon, label: d.label, desc: d.blurb, off: tools.every(isOff) }
+            : null
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
       // 能力目录是**内容**不是问题，不该定时消失 —— 用户正对着屏念
-      // "你还会什么"的时候它自己关掉最气人。挤掉它的应该是下一张卡，不是秒表
-      autoCard({ key: 'capabilities', template: 'capability', size: 'full', kind: 'task',
+      // "你还会什么"的时候它自己关掉最气人。挤掉它的应该是下一张卡，不是秒表。
+      // 尺寸 1/2 走桌面："你会什么"是内容不是告警，不配盖住整个屏（覆盖层）
+      autoCard({ key: 'capabilities', template: 'capability', size: '1/2', kind: 'task',
         ttl: 'untilDismissed', data: { title: '我能做的事', items } })
       return { status: 'ok', data: { items } }
     },

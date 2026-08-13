@@ -127,7 +127,9 @@ export const weatherForm: FormFn = (c, r) => {
  */
 export const capForm: FormFn = (c, r) => {
   const a = area(c, r)
-  const mode = a >= 32 ? 'grid' : a >= 12 ? 'list' : 'count'
+  // 网格看"面积够 且 宽度撑得起多栏"：banner（12×2）单列排一屏只见 4 项，
+  // 目录卡默认 1/2 正落在这——一半屏幕只列 4 个能力，用户会以为就这四样
+  const mode = a >= 24 && c >= 8 ? 'grid' : a >= 12 ? 'list' : 'count'
   // 按**实际列数**算容量。list 模式只有一列，照三列的容量给就会切掉半行——
   // 用户看到一条被拦腰截断的能力比不显示更糟，他会以为那就是全部
   const cols = mode === 'grid' ? contentCols(c) : 1

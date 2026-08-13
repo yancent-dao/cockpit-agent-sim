@@ -81,12 +81,14 @@ describe('列表卡：能显示几条由几何算，不查表', () => {
  * 所以走 `mode` 而不是 `blocks`，下面那条「档位变大不掉块」的单调性才管得住 blocks。
  */
 describe('能力目录：33 项塞不进小卡就老实报个数', () => {
-  it('stage / full 铺成网格', () => {
-    for (const t of ['stage', 'full'] as const) expect(f(capForm, t).mode, t).toBe('grid')
+  // banner（12×2）宽 12 列却单列排，一屏只见 4 项——目录卡默认 1/2 就落在这，
+  // 一半屏幕只列 4 个能力等于告诉用户"我就会这四样"。宽度够 8 列就该铺网格
+  it('stage / full / banner 铺成网格', () => {
+    for (const t of ['stage', 'full', 'banner'] as const) expect(f(capForm, t).mode, t).toBe('grid')
   })
 
-  it('banner / panel 列得下，一列排', () => {
-    for (const t of ['banner', 'panel'] as const) expect(f(capForm, t).mode, t).toBe('list')
+  it('panel 列得下，一列排', () => {
+    expect(f(capForm, 'panel').mode).toBe('list')
   })
 
   /**
@@ -95,8 +97,12 @@ describe('能力目录：33 项塞不进小卡就老实报个数', () => {
    * 比不显示更糟（他会以为那就是全部）。
    */
   it('list 模式按一列算容量，不按三列', () => {
-    expect(f(capForm, 'banner').maxItems).toBe(4)   // 12×2 一列 = 4 条
     expect(f(capForm, 'panel').maxItems).toBe(4)
+  })
+
+  it('banner 网格 3 栏，容量 12——够整个域目录一次摊开', () => {
+    expect(f(capForm, 'banner').cols).toBe(3)
+    expect(f(capForm, 'banner').maxItems).toBe(12)
   })
 
   it('grid 模式才按多列算', () => {

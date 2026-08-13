@@ -45,6 +45,15 @@ export function parseTurn(instruction: string): Turn {
   return { dist: d ? `${d[1]}${d[2]}` : '', action, road, icon }
 }
 
+/**
+ * 状态条的车速×挡位芯片。挡位显示真实信号——之前从车速猜（<1 就算 P 挡），
+ * 挂 R 倒车会显示 D 挡。gear 缺失（老面板没发这个字段）才退回猜。
+ */
+export function speedChip(speed: number, gear?: string): string {
+  const g = (gear ?? (speed < 1 ? 'p' : 'd')).toUpperCase()
+  return `${speed < 1 ? '静止' : `${Math.round(speed)} km/h`} · ${g} 挡`
+}
+
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 /**

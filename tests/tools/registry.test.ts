@@ -224,30 +224,41 @@ describe('vehicle.getState', () => {
 
 /* ────────────────────────── 能力目录（供能力目录卡渲染） ────────────────────────── */
 describe('capability.list', () => {
-  it('由 Tool Registry 生成，不包含黑级 Tool', async () => {
+  // 用户点名："现在感觉像个工程化界面"。目录给人看，条目是能力域
+  // （车窗/空调/导航……），用语言+icon 介绍，函数名一个都不许漏出去
+  it('条目是能力域不是函数名——label 无点号、带 icon、有人话简介', async () => {
     const r = await reg.invoke('capability.list', {})
     expect(r.status).toBe('ok')
-    const labels = (r.data as any).items.map((i: any) => i.label)
-    expect(labels).not.toContain('brake.apply')
-    expect(labels).toContain('window.set')
+    const items = (r.data as any).items
+    expect(items.length).toBeGreaterThan(5)
+    for (const i of items) {
+      expect(i.label, i.label).not.toMatch(/[.a-z]{3,}\./)
+      expect(i.icon, `${i.label} 缺 icon`).toBeTruthy()
+      expect(i.desc, `${i.label} 缺简介`).toBeTruthy()
+    }
+    expect(items.map((i: any) => i.label)).toContain('车窗')
   })
 
-  it('依赖未选装信号的 Tool 标记 off:true', async () => {
+  it('机制类工具（card.*/voice.*/brake）不进目录——那是管道不是能力', async () => {
     const r = await reg.invoke('capability.list', {})
-    const sunroof = (r.data as any).items.find((i: any) => i.label === 'sunroof.set')
+    const all = JSON.stringify((r.data as any).items)
+    expect(all).not.toContain('card.')
+    expect(all).not.toContain('voice.')
+    expect(all).not.toContain('brake')
+  })
+
+  it('整个域都依赖未选装信号才标 off：天窗未选装 → 天窗域 off', async () => {
+    const r = await reg.invoke('capability.list', {})
+    const sunroof = (r.data as any).items.find((i: any) => i.label === '天窗')
     expect(sunroof.off).toBe(true)
-  })
-
-  it('已选装的 Tool 不标记 off', async () => {
-    const r = await reg.invoke('capability.list', {})
-    const win = (r.data as any).items.find((i: any) => i.label === 'window.set')
+    const win = (r.data as any).items.find((i: any) => i.label === '车窗')
     expect(win.off).toBeFalsy()
   })
 
-  it('domain 按 Tool 名前缀过滤', async () => {
+  it('domain 按 Tool 名前缀过滤，返回对应的域', async () => {
     const r = await reg.invoke('capability.list', { domain: 'window' })
     const labels = (r.data as any).items.map((i: any) => i.label)
-    expect(labels).toEqual(['window.set'])
+    expect(labels).toEqual(['车窗'])
   })
 })
 
@@ -1246,14 +1257,15 @@ describe('查询/交互结果自动上屏', () => {
     expect(calls).toContain('/v3/geocode/geo')
   })
 
-  it('capability.list 成功 → 能力目录卡自动上屏（full）', async () => {
+  // full 走覆盖层盖住整个桌面——"你会什么"是内容不是告警，用普通卡片（用户点名）
+  it('capability.list 成功 → 能力目录卡上桌面，不上覆盖层', async () => {
     const desk = await mkDesk()
     const r = createRegistry(store, TOOLS, () => now, { desk })
     await r.invoke('capability.list', {})
     const card = desk.findByKey('capabilities')!
     expect(card).toBeTruthy()
     expect(card.template).toBe('capability')
-    expect(card.size).toBe('full')
+    expect(card.size).not.toBe('full')
     expect(card.data.items.length).toBeGreaterThan(0)
   })
 

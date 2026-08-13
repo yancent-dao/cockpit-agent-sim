@@ -54,6 +54,26 @@ describe('转向条文案解析', () => {
 })
 
 /** 车机上没人读"2026-08-11"，天气预报的日期要说人话 */
+describe('状态条：车速×挡位 → 芯片文案', () => {
+  it('P 挡静止', async () => {
+    const { speedChip } = await import('../../src/screen/turn')
+    expect(speedChip(0, 'p')).toBe('静止 · P 挡')
+  })
+
+  it('挡位显示真实信号，不从车速瞎猜——挂 R 倒车曾显示 D 挡', async () => {
+    const { speedChip } = await import('../../src/screen/turn')
+    expect(speedChip(5, 'r')).toBe('5 km/h · R 挡')
+    expect(speedChip(120, 'd')).toBe('120 km/h · D 挡')
+    expect(speedChip(0, 'n')).toBe('静止 · N 挡')
+  })
+
+  it('挡位缺失（老控制面板没发）退回按车速猜', async () => {
+    const { speedChip } = await import('../../src/screen/turn')
+    expect(speedChip(0, undefined)).toBe('静止 · P 挡')
+    expect(speedChip(60, undefined)).toBe('60 km/h · D 挡')
+  })
+})
+
 describe('预报日期人性化', () => {
   // 用本地时间构造，别带时区偏移——否则跑测试的机器在哪个时区，"今天"就是哪天
   const today = new Date(2026, 7, 11, 9)   // 2026-08-11 周二

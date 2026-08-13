@@ -297,6 +297,14 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   border-radius:calc(14px*var(--u));padding:calc(11px*var(--u)) calc(15px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--tx-1,var(--text-primary))}
 .cap div small{display:block;color:var(--tx-3,var(--text-secondary));font-size:.82em;margin-top:3px}
+.cap .cico{margin-right:calc(8px*var(--u));font-size:1.15em;vertical-align:-1px}
+/* 网格模式压成单行条目：banner 档 3 栏 × 4 行，容量公式按半行高算的，
+   双行条目会把第 4 行拦腰裁掉——切半行等于骗人 */
+.cap.grid div{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden;
+  padding:calc(12px*var(--u)) calc(15px*var(--u))}
+.cap.grid div small{display:inline;margin:0 0 0 calc(8px*var(--u));overflow:hidden;
+  text-overflow:ellipsis;flex:1;min-width:0}
+.cap.grid .cico{flex:none}
 .cap div.off{opacity:.35;text-decoration:line-through}
 
 /* ══════════ 导航卡：转向条在上、地图居中、关键数字在下 ══════════

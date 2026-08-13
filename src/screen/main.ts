@@ -1,6 +1,6 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
-import { parseTurn, dayLabel } from './turn'
+import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
 import { createBannerQueue, toneOf } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
@@ -575,16 +575,22 @@ function renderDesk() {
   }).join('')
 }
 
+// 天气枚举 → 人话/emoji。信号有 6 个枚举值（clear/cloudy/rain/heavyRain/snow/fog），
+// 之前这里只认 rain 一个，下雪显示"多云"
+const WX_LABEL: Record<string, string> = { clear: '晴', cloudy: '多云', rain: '小雨', heavyRain: '大雨', snow: '雪', fog: '雾' }
+const WX_EMOJI: Record<string, string> = { clear: '☀️', cloudy: '☁️', rain: '🌧', heavyRain: '⛈', snow: '❄️', fog: '🌫' }
+
 function renderStatus() {
   const c = $('chipSpd')
-  c.textContent = meta.speed < 1 ? '静止 · P 挡' : `${Math.round(meta.speed)} km/h · D 挡`
+  c.textContent = speedChip(meta.speed, meta.gear)
   c.className = 'chip' + (meta.speed > 100 ? ' warn' : '')
   $('chipLock').style.display = meta.childLock ? '' : 'none'
   $('tOut').textContent = String(Math.round(meta.outTemp))
   $('soc').textContent = String(Math.round(meta.soc))
-  $('wx').textContent = meta.weather === 'rain' ? '🌧 小雨' : '☁ 多云'
+  const wl = WX_LABEL[meta.weather] ?? '多云'
+  $('wx').textContent = `${WX_EMOJI[meta.weather] ?? '☁️'} ${wl}`
   for (const el of Array.from(document.querySelectorAll('.ckwx')))
-    el.innerHTML = `${weatherIcon(meta.weather === 'rain' ? '小雨' : '多云')}<span>车外 ${Math.round(meta.outTemp)}°C</span>`
+    el.innerHTML = `${weatherIcon(wl)}<span>车外 ${Math.round(meta.outTemp)}°C</span>`
 }
 
 /* ── 过渡动画：车窗位置由车机屏本地逼近 target ── */

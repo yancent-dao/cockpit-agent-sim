@@ -71,18 +71,18 @@ describe('canvas 尺寸白名单开全档', () => {
     return reg
   }
 
-  it('canvas 最大 1/2；2/3 被拒并告知支持档位（2026-08-13 改：不覆盖桌面）', async () => {
+  it('canvas 可用 2/3 竖向大块；full 被拒（覆盖层资格已取消）', async () => {
     const reg = await mk()
-    const ok = await reg.invoke('card.show', {
-      template: 'canvas', size: '1/2', ttl: 'untilDismissed',
-      data: { title: '对比', html: '<p>图</p>', text: '兜底' },
-    })
-    expect(ok.status).toBe('ok')
     const big = await reg.invoke('card.show', {
       template: 'canvas', size: '2/3', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
-    expect(big.status).toBe('rejected')
+    expect(big.status).toBe('ok')
+    const fs = await reg.invoke('card.show', {
+      template: 'canvas', size: 'full', ttl: 'untilDismissed',
+      data: { title: '对比', html: '<p>图</p>', text: '兜底' },
+    })
+    expect(fs.status).toBe('rejected')
   })
 
   it('canvas 的模板 desc 与 sizes 白名单来自同一个数组 —— 不可能再打架', async () => {
@@ -93,20 +93,27 @@ describe('canvas 尺寸白名单开全档', () => {
     expect(canvas.desc).toContain('1/2')
   })
 
-  // 产品裁定（2026-08-13）：生成式卡**不进覆盖层**——full 会浮在所有卡上面
-  // 把桌面盖死。它和其他卡同层同仲裁，上限 1/2
-  it('生成式卡不许 full/2/3：和其他卡同层，绝不覆盖桌面', async () => {
+  // 产品裁定（2026-08-13 两轮定稿）：生成式卡**不进覆盖层**（full 禁）——
+  // 但最大可到 2/3（stage 竖向大块，走桌面仲裁），游戏这类竖向内容靠它
+  it('生成式卡：full 禁（不覆盖桌面）、2/3 是上限（竖向大块）', async () => {
     const { CARD_TEMPLATES } = await import('../../src/config/cards')
     for (const id of ['canvas', 'canvas-app']) {
       const t = CARD_TEMPLATES.find(x => x.id === id)!
       expect(t.sizes, `${id} 不许 full`).not.toContain('full')
-      expect(t.sizes, `${id} 不许 2/3`).not.toContain('2/3')
-      expect(t.desc, `${id} desc 不许再提 full`).not.toContain('full')
+      expect(t.sizes, `${id} 上限 2/3`).toContain('2/3')
+      expect(t.sizes, `${id} 竖块 tower 可用`).toContain('tower')
     }
     const store = createStore(SIGNALS, CONSTRAINTS)
     const reg2 = createRegistry(store, TOOLS, Date.now, { desk: createDesk() })
     const r = await reg2.invoke('card.show', { template: 'canvas', size: 'full',
       ttl: 'untilDismissed', data: { title: 'x', html: '<p>1</p>', text: 'x' } })
     expect(r.status).toBe('rejected')
+  })
+
+  it('模板 desc 教"按内容形状选尺寸"——游戏竖向内容指向 2/3', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    const app = CARD_TEMPLATES.find(x => x.id === 'canvas-app')!
+    expect(app.desc).toContain('2/3')
+    expect(app.desc).toMatch(/竖/)
   })
 })

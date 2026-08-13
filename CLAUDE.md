@@ -6,7 +6,7 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 676 个，必须全绿才算完成）
+- 测试：`npm test`（当前 750 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
 - 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173
@@ -59,7 +59,13 @@ src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占 · 
                （contract）、尺寸自愈（heal）、模型视角生成器（summary）五块
                **机制**进驻——都是本轮设计新增的职责，不是逻辑漏进来。
                判据不变：再超先查是不是业务逻辑混进了仲裁
-src/agent/     Runtime · 上下文注入 · 并行编排 · OpenRouter      < 500 行（现 344）
+src/agent/     快慢双层 pipeline · 上下文注入 · OpenRouter          < 800 行
+               > 2026-08-12 从 500 上调：过滤器（快层先斩）、工具粒度装载
+               （目录+预载+补载）、task.delegate 子 Agent、异步记忆压缩、
+               turn 世代戳 barge-in——五块**机制**进驻（设计文档
+               2026-08-12-agent-fast-slow-architecture-design.md）。
+               判据不变：编排的"决策"（做不做/拆不拆/要不要开口）必须在模型，
+               代码出现意图字符串比对即违规
 src/state/     记忆系统：域仓（队列/历史/收藏）· 偏好 · 会话摘要        < 300 行
 src/design/    Design Token（CSS 文本常量）—— 算数据不算代码，不占预算
 src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
@@ -68,7 +74,7 @@ src/screen/    车机屏（纯净可投屏）      ← 不许有业务逻辑
                现在 512 行纯函数全有测试，main.ts 那 500 行是 DOM 操作。
                超预算时先看是不是有逻辑漏进来了
 src/director/  控制面板（调试/演示）      ← 不许有业务逻辑
-agents/        Agent 实例：manifest + 人设
+agents/        Agent 实例：manifest + 人设 + fast.ts（快层微人设）+ skills/（技能包）
 ```
 
 超预算时不要提高预算，先检查是不是有逻辑漏进了 UI 层。
@@ -140,9 +146,29 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 **没有任何个人可注册的免费 CP 能提供华语流行乐完整播放**，iTunes 只给 30 秒。
 做 Demo 脚本时就得知道。
 
-## 记忆系统（2026-08-12，四级）
+## Agent 快慢双层（2026-08-12，设计文档 agent-fast-slow-architecture-design.md）
 
-瞬时（信号 store，VSS）→ 会话（`src/state/session.ts`，注入 ≤3 行结论）→
+- **过滤器架构**：快层小模型只挂 `fast: true` 的彩权限工具（~16 个，schema 2k token），
+  能做的立刻做、立刻说；**无论做没做一律转交**慢层（共享同一 thread）——慢层校验、
+  接力、静默判断（回空=合法）。先斩后奏的风险边界 = 既有黑/灰/彩分级。
+- **工具粒度装载，无"域"**：慢层常驻 = 工具目录（每 Tool 一行 `brief`，0.8k token）
+  + 常驻管道（voice/card/memory）+ 快层勾选（agent.handoff）预载 + `tools.load` 补载。
+  元工具（handoff/load/skill.use/task.delegate/task.cancel）是 pipeline 注入的，不进 TOOLS。
+- **task.delegate**：拆分决策归慢层模型，一轮连发 N 个即并行；background 模式立即返回
+  taskId、完成机械交付（卡+播报+横幅，语音忙则排队）。边界：深度 1 / 并发 ≤3 /
+  子 Agent 无灰权限无 voice。状态栏 ⟳ 任务芯片，点开任务列表卡。
+- **barge-in**：turn 世代戳。旧慢层活照干完、话术降级 lateNote 走横幅、消息插新输入前。
+  pending MRTR 确认时新输入直达慢层（状态分支不是意图分支）。
+- **Skill**（agents/main-agent/skills/）：目录行常驻 + skill.use 注入正文（≤40 行）。
+  首批导航、媒体。Tool=能力 Skill=章法 persona=品格 记忆=事实，四不相混。
+- 实测经验：快层最后一轮必须撤工具逼话术（GLM-flash 会两轮全用来重复调用）；
+  快层模型别选最便宜档（裸小模型调不动工具）；数值参数要宽容 "24" 字符串。
+
+## 记忆系统（2026-08-12，四级 + 会话对话摘要）
+
+瞬时（信号 store，VSS）→ 会话（`src/state/session.ts` 域仓结论 ≤3 行 + pipeline 的
+对话 epoch 摘要：最近 4 轮全文 + 摘要头，回复送出后小模型异步压缩，含实体索引行；
+"上回说到"落 localStorage 跨会话一行）→
 领域（`src/state/domain.ts`：播放队列/历史/收藏，localStorage）→
 长期（`src/state/prefs.ts`：显式偏好，注入 system ≤10 条）。
 

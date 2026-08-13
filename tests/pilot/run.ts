@@ -14,7 +14,7 @@ import { sanitize } from '../../src/screen/sanitize'
 import { createOrchestrator } from '../../src/cards/orchestrator'
 import { createRegistry } from '../../src/tools/registry'
 import { createAmapClient } from '../../src/integrations/amap'
-import { createAgent } from '../../src/agent/runtime'
+import { createPipeline } from '../../src/agent/pipeline'
 import { createOpenRouter, createOnlineChat } from '../../src/agent/llm'
 import { createItunesClient } from '../../src/integrations/itunes'
 import { createRadioClient } from '../../src/integrations/radio'
@@ -26,6 +26,8 @@ import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
 import { CARD_RULES, DATA_BUILDERS } from '../../src/config/cardRules'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
+import { FAST_AGENT } from '../../agents/main-agent/fast'
+import { SKILLS } from '../../agents/main-agent/skills'
 import { SCENARIOS, type Scenario } from './scenarios'
 import { createUserBot, soundsLikeAssistant } from './userBot'
 
@@ -48,6 +50,8 @@ const AMAP_KEY = process.env.VITE_AMAP_WEB_KEY ?? ''
 const NEWS_KEY = process.env.VITE_NEWSAPI_KEY ?? ''
 const PEXELS_KEY = process.env.VITE_PEXELS_KEY ?? ''
 const AGENT_MODEL = process.env.PILOT_AGENT_MODEL ?? 'minimax/minimax-m3'
+// 快层：过滤器小模型。GLM-4.7-flash 实测工具调用纪律可用且够快
+const FAST_MODEL = process.env.PILOT_FAST_MODEL ?? 'z-ai/glm-4.7-flash'
 const BOT_MODEL = process.env.PILOT_BOT_MODEL ?? 'minimax/minimax-m3'
 
 if (!OPENROUTER_KEY) { console.error('缺 VITE_OPENROUTER_KEY'); process.exit(1) }
@@ -208,10 +212,21 @@ async function runScenario(s: Scenario) {
   for (const [path, value] of Object.entries(initial)) store.setDirect(path, value as any)
 
   const llm = createOpenRouter(() => OPENROUTER_KEY, () => AGENT_MODEL)
-  const agent = createAgent({ manifest: MAIN_AGENT, registry, store, llm,
+  const fastLlm = createOpenRouter(() => OPENROUTER_KEY, () => FAST_MODEL)
+  // 分层计时：快层第一声何时出——过滤器架构的核心验收指标
+  let firstSpeakMs = 0, fastSaid = false, slowSilent = true, turnT0 = 0
+  const agent = createPipeline({ registry, store, fastLlm, slowLlm: llm,
+    fastManifest: FAST_AGENT, slowManifest: { ...MAIN_AGENT, skills: SKILLS },
     desktopSummary: () => desk.summary(),
     prefsList: () => prefs.list().map(x => x.text),
     recentSummary: () => recentSummary(state), onTurnStart: () => desk.endTask() })
+  agent.on(e => {
+    if (e.type === 'speaking') {
+      if (!firstSpeakMs) firstSpeakMs = Date.now() - turnT0
+      if (e.layer === 'fast') fastSaid = true
+      if (e.layer === 'slow') slowSilent = false
+    }
+  })
   const bot = createUserBot({ chat: botChat })
 
   const history: Array<{ role: 'user' | 'assistant'; content: string }> = []
@@ -223,6 +238,7 @@ async function runScenario(s: Scenario) {
     history.push({ role: 'user', content: say })
 
     const t0 = Date.now()
+    turnT0 = t0; firstSpeakMs = 0; fastSaid = false; slowSilent = true
     const r = await agent.run(say)
     const calls = r.trace.filter(x => x.type === 'toolCall').map((x: any) => {
       const res = r.trace.find((y: any) => y.type === 'toolResult' && y.name === x.name)
@@ -249,6 +265,8 @@ async function runScenario(s: Scenario) {
       agentReply: r.reply,
       rounds: r.rounds,
       ms: Date.now() - t0,
+      // 过滤器架构指标：首声延迟 / 快层是否开口 / 慢层是否静默（速度维度评审用）
+      firstSpeakMs, fastSaid, slowSilent,
       issues: [
         ...detectIssues(store, desk, calls, r.reply ?? ''),
         // 用户机器人串戏会污染整场对话，得标出来，不然人工评审会当成产品问题

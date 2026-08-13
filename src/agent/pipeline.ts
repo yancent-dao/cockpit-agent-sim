@@ -3,7 +3,14 @@ import type { Registry, ToolResult } from '../tools/registry'
 import type { LLM, Msg } from './llm'
 import type { AgentManifest } from '../../agents/main-agent/manifest'
 import { buildSystemPrompt } from './context'
-import type { TraceStep } from './runtime'
+
+export type TraceStep =
+  | { type: 'userInput'; at: number; text: string }
+  | { type: 'prompt'; at: number; system: string; toolCount: number }
+  | { type: 'toolCall'; at: number; name: string; args: any; permission?: string }
+  | { type: 'toolResult'; at: number; name: string; result: ToolResult; ms: number }
+  | { type: 'reply'; at: number; text: string }
+  | { type: 'error'; at: number; message: string }
 
 /**
  * 过滤器架构（设计文档 v2.7 §2-§5）：快层小模型先斩后奏，慢层大模型校验接力。
@@ -100,6 +107,16 @@ const CANCEL_SCHEMA = {
       type: 'object',
       properties: { taskId: { type: 'string', description: '任务 id（task_N）；不知道 id 可给 label 关键词' },
                     label: { type: 'string', description: '按任务名关键词匹配' } },
+    },
+  },
+}
+const SKILL_SCHEMA = {
+  type: 'function', function: {
+    name: 'skill_use',
+    description: '取一个技能的剧本正文（见技能目录）。有剧本的活先取剧本再动手，照章执行。',
+    parameters: {
+      type: 'object', required: ['name'],
+      properties: { name: { type: 'string', description: '技能名，来自技能目录' } },
     },
   },
 }
@@ -261,13 +278,15 @@ export function createPipeline(deps: PipelineDeps) {
         catalog: registry.briefCatalog(),
         signalFilter: registry.signalsFor([...loaded]),
       })
-      const tools = r === sm.maxRounds - 1 ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA]
+      const tools = r === sm.maxRounds - 1 ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA,
+        ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
       const reply = await deps.slowLlm.chat({ system, messages: view, tools })
       if (task && task.status !== 'running') return { summary: '' }
       if (!reply.toolCalls?.length) return { summary: reply.text ?? '' }
       view.push(asstMsg(reply))
       const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
         'tools.load': mkLoader(loaded),
+        'skill.use': mkSkillUse(loaded),
       })
       view.push(...toolMsgs)
     }
@@ -309,6 +328,18 @@ export function createPipeline(deps: PipelineDeps) {
       .finally(() => { activeSubs-- })
   }
 
+  /** skill.use 拦截器工厂：正文以工具结果注入，附带工具顺路装载 */
+  const mkSkillUse = (loaded: Set<string>) => (args: any): ToolResult => {
+    const skill = (deps.slowManifest.skills ?? []).find(s => s.name === args?.name)
+    if (!skill)
+      return { status: 'rejected', code: 'UNKNOWN_SKILL', message: `技能目录里没有「${args?.name}」`, suggestion: '对照技能目录里的名字' }
+    for (const n of skill.tools ?? []) {
+      const c = registry.canonicalName(n)
+      if (registry.list().some(t => t.name === c)) loaded.add(c)
+    }
+    return { status: 'ok', message: skill.inject, data: { unlocked: skill.tools ?? [] } }
+  }
+
   /** tools.load 拦截器工厂：快慢/子 Agent 各自的 loaded 集合 */
   const mkLoader = (loaded: Set<string>) => (args: any): ToolResult => {
     const names: string[] = ((args?.names ?? []) as string[]).map(n => registry.canonicalName(n))
@@ -336,7 +367,8 @@ export function createPipeline(deps: PipelineDeps) {
       trace.push({ type: 'prompt', at: clock(), system, toolCount: loaded.size })
       // 最后一轮撤工具逼话术——语音场景没有"静默耗尽轮次"这个选项
       const last = rounds === sm.maxRounds
-      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA]
+      const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA,
+        ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
       let reply
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
       catch (e) {
@@ -363,6 +395,7 @@ export function createPipeline(deps: PipelineDeps) {
       commit(g, am); view.push(am)
       const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
         'tools.load': mkLoader(loaded),
+        'skill.use': mkSkillUse(loaded),
         'task.delegate': delegateInterceptor,
         'task.cancel': (args: any): ToolResult => {
           const t = taskPool.find(x => x.status === 'running' &&

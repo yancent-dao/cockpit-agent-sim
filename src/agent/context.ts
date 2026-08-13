@@ -44,6 +44,10 @@ export function buildSystemPrompt(
   if (extras.catalog)
     parts.push(`\n## 工具目录（一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调）\n${extras.catalog}`)
 
+  if (manifest.skills?.length)
+    parts.push(`\n## 技能目录（有剧本的活先用 skill.use 点名取剧本再动手）\n${
+      manifest.skills.map(s => `- ${s.name}：${s.whenToUse}`).join('\n')}`)
+
   /* ── 易变尾部 ── */
   // 长期记忆注入：用户明说要记的偏好，整包给策略层。封顶 10 条取最近——
   // system 的每个字都在挤别的东西

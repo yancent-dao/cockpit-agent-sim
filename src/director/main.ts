@@ -27,6 +27,7 @@ import { CARD_TEMPLATES } from '../config/cards'
 import { CARD_RULES, DATA_BUILDERS } from '../config/cardRules'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
 import { FAST_AGENT } from '../../agents/main-agent/fast'
+import { SKILLS } from '../../agents/main-agent/skills'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('director')
@@ -71,7 +72,7 @@ const fastLlm = createOpenRouter(() => apiKey, () => fastModelId || modelId)
 const LASTTIME_KEY = 'cockpit-sim:lastTime'
 const pipeline = createPipeline({
   registry, store, fastLlm, slowLlm: llm,
-  fastManifest: FAST_AGENT, slowManifest: MAIN_AGENT,
+  fastManifest: FAST_AGENT, slowManifest: { ...MAIN_AGENT, skills: SKILLS },
   desktopSummary: () => desk.summary(),
   prefsList: () => prefs.list().map(x => x.text),
   recentSummary: () => recentSummary(state),

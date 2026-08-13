@@ -12,6 +12,8 @@ export interface AgentManifest {
   resident?: string[]
   /** 过滤器架构下的协作职责段，pipeline 拼在 persona 之后。仅慢层用 */
   role?: string
+  /** 技能包（二级披露：目录行常驻 + skill.use 注入正文）。仅慢层与子 Agent 用 */
+  skills?: Array<{ name: string; whenToUse: string; inject: string; tools?: string[] }>
 }
 
 export const MAIN_AGENT: AgentManifest = {

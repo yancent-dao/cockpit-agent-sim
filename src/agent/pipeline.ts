@@ -93,7 +93,7 @@ const LOAD_SCHEMA = {
 const DELEGATE_SCHEMA = {
   type: 'function', function: {
     name: 'task_delegate',
-    description: '把一个独立子任务委托给子 Agent 执行。多个互不依赖的重活（调研/搜集/报告）在**同一轮里连发多个** delegate 即并行。background=true 时立即返回 taskId 后台跑，完成后系统自动通知用户（你先答"我去查着"即可）；否则等结果回来你自己汇总。',
+    description: '把子任务委托给子 Agent 执行。**要联网查证、要成文交付的耗时重活，哪怕只有一件也建议委托**——子 Agent 有自己独立的完整轮次预算，你自己一轮轮磨会把轮次耗尽在查证上，最后没轮次交付（实测翻过车）。多个互不依赖的重活在同一轮连发多个即并行。background=true 立即返回 taskId 后台跑，完成后系统自动通知用户（你先答"我去查着"即可）；否则等结果回来你汇总。',
     parameters: {
       type: 'object', required: ['goal'],
       properties: {
@@ -241,7 +241,7 @@ export function createPipeline(deps: PipelineDeps) {
       let reply
       // maxTokens 拦话术轮的"长思考狂写"（实拍 qwen-flash 撤工具后那轮 24s）：
       // 话术纪律 ≤15 字 + 一个 handoff 调用，300 token 顶天
-      try { reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : undefined }) }
+      try { reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : 800 }) }
       catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds } }
       ;(pEntry as any).llmMs = clock() - tChat
       ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }

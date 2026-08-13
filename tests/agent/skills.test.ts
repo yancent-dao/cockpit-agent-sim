@@ -44,20 +44,29 @@ const mk = (slowFn: (req: LLMRequest, n: number) => LLMReply | Promise<LLMReply>
   return { p, fast, slow }
 }
 
-describe('首批两个 skill 是数据', () => {
-  it('导航、媒体、调研报告各一个，正文 ≤40 行、whenToUse ≤20 字', () => {
+describe('skill 全是数据', () => {
+  it('导航、媒体、生成卡片，正文 ≤40 行、whenToUse ≤20 字', () => {
     const names = SKILLS.map(s => s.name)
     expect(names).toContain('导航')
     expect(names).toContain('媒体')
-    expect(names).toContain('调研报告')
-    const report = SKILLS.find(s => s.name === '调研报告')!
-    expect(report.inject, '交付章法指向生成式卡').toContain('canvas')
-    expect(report.tools).toContain('web.search')
-    expect(report.tools).toContain('card.show')
+    expect(names).toContain('生成卡片')
+    // 产品红线：不许有场景专属的卡片 skill（"调研报告"这类）——
+    // 规范跟着"卡"走不跟着"场景"走，任何意料之外的需求同一条路
+    expect(names).not.toContain('调研报告')
     for (const s of SKILLS) {
       expect(s.whenToUse.length, `${s.name} whenToUse 超长`).toBeLessThanOrEqual(20)
       expect(s.inject.split('\n').length, `${s.name} 正文超 40 行`).toBeLessThanOrEqual(40)
     }
+  })
+
+  it('「生成卡片」是场景无关的设计规范：配色/图标/图表/代码规范/输出格式全齐', () => {
+    const g = SKILLS.find(s => s.name === '生成卡片')!
+    expect(g.tools).toContain('card.show')
+    for (const kw of ['#DB4045', 'svg', 'emoji', 'text', 'flex'])
+      expect(g.inject, `规范缺 ${kw}`).toContain(kw)
+    // 场景词不许出现——出现就是又在偷偷绑场景
+    for (const banned of ['股价', '调研', '报告', '天气', '新闻'])
+      expect(g.inject, `规范里不许有场景词「${banned}」`).not.toContain(banned)
   })
 })
 

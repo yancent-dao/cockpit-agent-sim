@@ -556,6 +556,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'music.play',
     brief: '搜歌并播放入队',
+    fast: true,
     desc: '放歌。用户说"放周杰伦的晴天"就直接传 query，不用先 search——搜到会自动播第一首，省一轮。用户从搜索结果里选了第几个，传那一条的 trackId。',
     permission: '彩',
     params: {
@@ -583,6 +584,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'radio.play',
     brief: '搜台并播放',
+    fast: true,
     desc: '放电台。用户说"放中国之声"直接传 query，不用先 search。从搜索结果里选的传 stationId。',
     permission: '彩',
     params: {
@@ -596,6 +598,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'news.headlines',
     brief: '今日头条新闻',
+    fast: true,
     desc: '看某个领域的最新新闻。**中文拿不到编辑推荐的头条**（数据源限制），返回的是按关键词搜、按时间排的最新几条，返回里的 real=false 就是这个意思——播报时说"我给你找了今天的科技新闻"，**不要说"这是今天的头条"**。列表自动上屏带编号，你说一句有几条就行，别逐条念标题。',
     permission: '彩',
     params: {
@@ -607,6 +610,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'news.search',
     brief: '按话题搜新闻',
+    fast: true,
     desc: '按关键词搜新闻。列表自动上屏带编号。',
     permission: '彩',
     params: {
@@ -639,6 +643,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'video.play',
     brief: '搜视频并播放',
+    fast: true,
     desc: '播短视频。**车一动就会被拒**（行车安全），拒绝时把原因和替代方案告诉用户——可以改放音乐或电台。用户说"放个视频"直接传 query 即可。',
     permission: '彩',
     params: {

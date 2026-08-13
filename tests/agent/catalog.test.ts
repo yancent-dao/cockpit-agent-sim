@@ -27,12 +27,16 @@ describe('brief 数据位：目录的原料', () => {
       expect(t.permission, `${t.name} 标了 fast 却不是彩`).toBe('彩')
   })
 
-  it('快层工具面成型：车控/天气/媒体控制在内，多步与搜索类在外', () => {
+  it('快层工具面成型：车控/天气/媒体一步到位类在内，多步与要挑选的在外', () => {
     const fast = TOOLS.filter(t => t.fast).map(t => t.name)
     expect(fast.length).toBeGreaterThanOrEqual(14)
-    for (const n of ['window.set', 'climate.set', 'weather.query', 'media.control'])
+    // music.play 语义就是"搜到直接放"、news.headlines 就是"列表上屏"——
+    // 一步到位不需要挑，圈进快层（实拍：圈在慢层让五连指令多等 3 轮 LLM）
+    for (const n of ['window.set', 'climate.set', 'weather.query', 'media.control',
+      'music.play', 'radio.play', 'news.headlines'])
       expect(fast, `${n} 该进快层`).toContain(n)
-    for (const n of ['navigation.search', 'music.play', 'door.set', 'memory.remember', 'card.show'])
+    // search 类要用户挑结果、door 灰权限、memory/card 要上下文——仍归慢层
+    for (const n of ['navigation.search', 'music.search', 'news.read', 'door.set', 'memory.remember', 'card.show'])
       expect(fast, `${n} 不该进快层`).not.toContain(n)
   })
 })

@@ -163,6 +163,7 @@ export function createPipeline(deps: PipelineDeps) {
     g: number, calls: NonNullable<Awaited<ReturnType<LLM['chat']>>['toolCalls']>,
     allow: string[], trace: TraceStep[],
     interceptors: Record<string, (args: any) => ToolResult | Promise<ToolResult>>,
+    opts: { quietRejects?: boolean } = {},
   ): Promise<Msg[]> {
     const round = ++toolRound
     const results = await Promise.all(calls.map(async c => {
@@ -176,7 +177,9 @@ export function createPipeline(deps: PipelineDeps) {
         : await registry.invoke(c.name, c.args, { allow, round })
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
       if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
-      if (result.status === 'rejected' || result.status === 'unavailable')
+      // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
+      // 结果都如实进报告，慢层看得到（用户实拍："已拒绝执行 无权调用 navigation.setDestination"）
+      if (!opts.quietRejects && (result.status === 'rejected' || result.status === 'unavailable'))
         emit({ type: 'rejected', text: result.message ?? '无法执行' })
       return { c, result }
     }))
@@ -217,6 +220,7 @@ export function createPipeline(deps: PipelineDeps) {
       const tools = rounds === fm.maxRounds ? [] : allTools
       const system = buildSystemPrompt(fm, store, registry, {
         catalog: registry.briefCatalog(),
+        catalogHint: '仅供你在 agent.handoff 里勾选转交。这些工具你自己一个都调不了，调了也白调',
         signalFilter: registry.signalsFor(fm.tools),
       })
       trace.push({ type: 'prompt', at: clock(), system, toolCount: tools.length })
@@ -237,7 +241,7 @@ export function createPipeline(deps: PipelineDeps) {
           suggested = (args?.suggestedTools ?? []).filter((n: string) => registry.list().some(t => t.name === registry.canonicalName(n)))
           return { status: 'ok', message: '已转交' }
         },
-      })
+      }, { quietRejects: true })
       commit(g, ...toolMsgs)
     }
     return { suggested, said, rounds }

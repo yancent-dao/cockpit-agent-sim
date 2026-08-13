@@ -156,6 +156,39 @@ describe('工具粒度装载', () => {
   })
 })
 
+describe('快层越权调用：转交的常态，不是用户脸上的错误', () => {
+  // 用户实拍：横幅弹"已拒绝执行 当前 Agent 无权调用 navigation.setDestination"——
+  // 快层对着目录直接调了圈外工具。registry 拒得对，但这是内部分工不是用户的事
+  it('快层调圈外工具 → 不 emit rejected（无横幅），结果照进 thread 让慢层接手', async () => {
+    const fast = fakeLLM(() => ({ toolCalls: [call('navigation.setDestination', { poiId: 'X' })] }))
+    const slow = fakeLLM(() => ({ text: '我来导' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    expect(events.filter(e => e.type === 'rejected'), '越权拒绝不上横幅').toHaveLength(0)
+    const report = p.thread.find(m => m.role === 'tool' && m.content.includes('NOT_AUTHORIZED'))
+    expect(report, '如实进转交报告').toBeTruthy()
+  })
+
+  it('快层的约束拒绝（真业务拒绝）同样静默——解释权归慢层', async () => {
+    store.setDirect('vehicle.speed', 120)
+    const fast = fakeLLM(() => ({ toolCalls: [call('window.set', { window: 'driver', position: 100 })] }))
+    const slow = fakeLLM(() => ({ text: '在高速上呢，开窗要确认下' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('把窗全开')
+    expect(events.filter(e => e.type === 'rejected')).toHaveLength(0)
+  })
+
+  it('快层目录段的文案是"仅供勾选"，不是慢层那句"用 tools.load 取"——它没有 tools.load', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('你好')
+    expect(fast.seen[0].system).toContain('勾选')
+    expect(fast.seen[0].system).not.toContain('tools.load')
+    expect(slow.seen[0].system).toContain('tools.load')
+  })
+})
+
 describe('barge-in：turn 世代戳', () => {
   it('旧 turn 的慢层迟到话术不抢麦，降级为 lateNote；活照干完', async () => {
     let release!: (r: LLMReply) => void

@@ -25,6 +25,8 @@ export function buildSystemPrompt(
     desktop?: string; prefs?: string[]; recent?: string
     /** 工具目录（brief 行）。慢层常驻，快层用于勾选转交 */
     catalog?: string
+    /** 目录段的使用说明。快慢两层的目录用途不同：慢层补载、快层只许勾选 */
+    catalogHint?: string
     /** 状态注入白名单（signalsFor 的输出）。缺省 = 全量（老行为） */
     signalFilter?: string[]
   } = {},
@@ -42,7 +44,7 @@ export function buildSystemPrompt(
   }
 
   if (extras.catalog)
-    parts.push(`\n## 工具目录（一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调）\n${extras.catalog}`)
+    parts.push(`\n## 工具目录（${extras.catalogHint ?? '一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调'}）\n${extras.catalog}`)
 
   if (manifest.skills?.length)
     parts.push(`\n## 技能目录（有剧本的活先用 skill.use 点名取剧本再动手）\n${

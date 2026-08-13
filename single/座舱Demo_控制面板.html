@@ -3351,7 +3351,7 @@ ${missing.map((s) => `- ${s.label}`).join("\n")}`);
     }
     if (extras.catalog)
       parts.push(`
-## 工具目录（一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调）
+## 工具目录（${extras.catalogHint ?? "一行一能力。schema 不在手边的能力先用 tools.load 点名取，别硬调"}）
 ${extras.catalog}`);
     if (manifest.skills?.length)
       parts.push(`
@@ -3501,7 +3501,7 @@ ${extras.desktop}`);
         boundary += msgs.length;
       }
     };
-    async function execRound(g, calls, allow, trace, interceptors) {
+    async function execRound(g, calls, allow, trace, interceptors, opts = {}) {
       const round = ++toolRound;
       const results = await Promise.all(calls.map(async (c) => {
         const metaKey = Object.keys(interceptors).find((k) => isMeta(c.name, k));
@@ -3512,7 +3512,7 @@ ${extras.desktop}`);
         const result = metaKey ? await interceptors[metaKey](c.args) : await registry2.invoke(c.name, c.args, { allow, round });
         trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
         if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
-        if (result.status === "rejected" || result.status === "unavailable")
+        if (!opts.quietRejects && (result.status === "rejected" || result.status === "unavailable"))
           emit({ type: "rejected", text: result.message ?? "无法执行" });
         return { c, result };
       }));
@@ -3543,6 +3543,7 @@ ${extras.desktop}`);
         const tools = rounds === fm.maxRounds ? [] : allTools;
         const system = buildSystemPrompt(fm, store2, registry2, {
           catalog: registry2.briefCatalog(),
+          catalogHint: "仅供你在 agent.handoff 里勾选转交。这些工具你自己一个都调不了，调了也白调",
           signalFilter: registry2.signalsFor(fm.tools)
         });
         trace.push({ type: "prompt", at: clock(), system, toolCount: tools.length });
@@ -3569,7 +3570,7 @@ ${extras.desktop}`);
             suggested = (args?.suggestedTools ?? []).filter((n) => registry2.list().some((t) => t.name === registry2.canonicalName(n)));
             return { status: "ok", message: "已转交" };
           }
-        });
+        }, { quietRejects: true });
         commit(g, ...toolMsgs);
       }
       return { suggested, said, rounds };
@@ -5700,6 +5701,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 1. 工具面里有的活直接干，一句话报结果（≤15 字，口语，无 Markdown）；参数含糊宁可不动。
 2. 工具面里没有的活**一个不碰、一字不评**——后面有你的大模型同事接手兜底。这单全轮不到你
    而「工具目录」里显然有工具能干时，只说两三个字的承接（"我看看""稍等"）；纯闲聊就自然答。
+   **你不了解的状态（导航开没开、放的什么歌）一个字不许答**——那是同事的地盘，编错比沉默糟十倍。
 3. 收尾可以调 agent.handoff，把同事接下来可能用到的工具名从目录里勾出来。
 4. 别复述指令、别道歉、别提模型和公司。`
   };

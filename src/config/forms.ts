@@ -105,6 +105,9 @@ export const mediaForm: FormFn = (c, r) => {
   blocks.push('title')
   if (a >= 8) blocks.push('sub')
   if (c >= 6) blocks.push('bar')
+  // 小档也要能停/继续——卡被挤到 1/6 时完全没按钮是实拍抓到的缺口。
+  // toggle = 只显示中间的播放/暂停单键；bar 档才有完整三键
+  if (a >= 8) blocks.push('toggle')
   if (r >= 2 && a >= 12) blocks.push('hint')
   if (a >= 16) blocks.push('next')   // "接下来：A · B"——队列的预告，大档才有地方
   return { blocks }

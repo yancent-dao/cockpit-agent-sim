@@ -151,6 +151,12 @@ describe('播放器卡：封面先让位，进度条最后走', () => {
     expect(has(m, 'chip', 'bar')).toBe(false)
   })
 
+  // 实拍缺口：卡被挤到 1/6 时完全没按钮，想停都停不了
+  it('card 档起有 toggle 单键，chip 档没有', () => {
+    expect(has(m, 'card', 'toggle')).toBe(true)
+    expect(has(m, 'chip', 'toggle')).toBe(false)
+  })
+
   it('半高以上带一行「说换一台就行」的语音提示', () => {
     expect(has(m, 'panel', 'hint')).toBe(true)
     expect(has(m, 'strip', 'hint')).toBe(false)

@@ -215,12 +215,22 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   // 控制条从"状态指示"变成真按钮（触控落地，§10 的约定反转）。
   // 电台没有上下曲，藏掉两端只留播放/暂停
   const ctl = node.querySelector('.plctl') as HTMLElement
-  // 中键随状态换脸：播放中显 ⏸（按了会停），暂停显 ▶（按了会继续）
+  // 中键随状态换脸：播放中显 ⏸，暂停显 ▶。只在状态变化时重写——
+  // hello 心跳每 4 秒全量重推，无脑重写 SVG 会闪
   const mid = ctl.children[1] as HTMLElement
-  mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY
-  ctl.style.display = form.blocks.includes('bar') ? '' : 'none'
-  for (const el of Array.from(ctl.children) as HTMLElement[])
-    el.style.visibility = d.source === 'radio' && el.dataset.act !== 'tap:toggle' ? 'hidden' : ''
+  if (mid.dataset.st !== String(!!d.playing)) {
+    mid.dataset.st = String(!!d.playing)
+    mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY
+  }
+  // 两级控制条：bar 档三键；小到 card 档留播放/暂停单键（实拍缺口：
+  // 卡被挤到 1/6 时完全没按钮，想停都停不了）
+  const full = form.blocks.includes('bar')
+  const single = !full && form.blocks.includes('toggle')
+  ctl.style.display = full || single ? '' : 'none'
+  for (const el of Array.from(ctl.children) as HTMLElement[]) {
+    const isMid = el.dataset.act === 'tap:toggle'
+    el.style.display = (single && !isMid) || (d.source === 'radio' && !isMid) ? 'none' : ''
+  }
   // 直播与否是**音源**的属性，不是"这一刻 duration 是多少"能猜的
   barEl.classList.toggle('live', d.source === 'radio')
   const nxt = node.querySelector('.pl-next') as HTMLElement
@@ -402,7 +412,6 @@ function renderDesk() {
   const desk = $('desk')
   const seen = new Set<string>()
   // 占位符零状态，直接整体重建最简单，不需要跟卡片一样按身份复用
-  desk.querySelectorAll('.slot').forEach(el => el.remove())
 
   const occupied: boolean[][] = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false))
   // FLIP：位置真的变了才记 first rect。车窗过渡每帧调 renderDesk()，
@@ -423,10 +432,16 @@ function renderDesk() {
       desk.appendChild(node)
     }
     const pos = posKey(c)
-    if (!isNoop(node.dataset.pos, pos)) moves.push({ node, first: node.getBoundingClientRect() })
-    node.dataset.pos = pos
-    node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
-    node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
+    if (!isNoop(node.dataset.pos, pos)) {
+      moves.push({ node, first: node.getBoundingClientRect() })
+      node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
+      node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
+    } else if (node.dataset.pos !== pos) {
+      // 首次落位（无旧 pos）：写坐标但不进 FLIP
+      node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`
+      node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`
+    }
+    if (node.dataset.pos !== pos) node.dataset.pos = pos
     // 档位类给 --u（字号 = 字阶 × --u），语义色类给 --ac 一族。
     // sz-* 那 22 条硬怼 font-size 的规则被这一个类取代了
     // picking：等着用户开口选。用户是用语音选的（"第二个"），
@@ -434,8 +449,11 @@ function renderDesk() {
     const picking = c.template === 'confirm' || (c.template === 'list' && c.data?.picking)
     // fresh（流光两态）由挂载分支加、定时器摘——className 重写要保留它
     const isFresh = node.classList.contains('fresh')
-    node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
+    const cls = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
       accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}${isFresh ? ' fresh' : ''}`
+    // 变了才写：hello 心跳每 4 秒全量重推（容错设计），renderDesk 必须真幂等，
+    // 否则属性风暴让整屏看着在"周期刷新"（用户实拍）
+    if (node.className !== cls) node.className = cls
     const sig = cardSig(c)
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
@@ -491,20 +509,30 @@ function renderDesk() {
     }
   }
   // 占位符按**基准卡大小**（4×2）画，不是按单元格。48 个 1×1 小方块的空桌面
-  // 看着像坏掉的棋盘；6 个基准块才读得出"这儿能放一张卡"
+  // 看着像坏掉的棋盘；6 个基准块才读得出"这儿能放一张卡"。
+  // **复用不删建**：hello 心跳每 4 秒重推，占位符每次删建就是整屏周期闪烁
   const [bw, bh] = [TIERS.card.w, TIERS.card.h]
+  const wantSlots = new Set<string>()
   for (let r = 0; r + bh <= GRID.rows; r += bh)
     for (let col = 0; col + bw <= GRID.cols; col += bw) {
       let free = true
       for (let dr = 0; dr < bh && free; dr++)
         for (let dc = 0; dc < bw; dc++) if (occupied[r + dr][col + dc]) { free = false; break }
-      if (!free) continue
-      const slot = document.createElement('div')
-      slot.className = 'slot'
-      slot.style.gridRow = `${r + 1} / span ${bh}`
-      slot.style.gridColumn = `${col + 1} / span ${bw}`
-      desk.appendChild(slot)
+      if (free) wantSlots.add(`${r},${col}`)
     }
+  for (const el of Array.from(desk.querySelectorAll('.slot')) as HTMLElement[]) {
+    if (wantSlots.has(el.dataset.at!)) wantSlots.delete(el.dataset.at!)
+    else el.remove()
+  }
+  for (const at of wantSlots) {
+    const [r, col] = at.split(',').map(Number)
+    const slot = document.createElement('div')
+    slot.className = 'slot'
+    slot.dataset.at = at
+    slot.style.gridRow = `${r + 1} / span ${bh}`
+    slot.style.gridColumn = `${col + 1} / span ${bw}`
+    desk.appendChild(slot)
+  }
 
   // 卡片被移除时（不再出现在新状态里），才真正清掉对应 DOM 节点
   for (const [id, node] of cardNodes) {

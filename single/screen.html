@@ -933,6 +933,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     blocks.push("title");
     if (a >= 8) blocks.push("sub");
     if (c >= 6) blocks.push("bar");
+    if (a >= 8) blocks.push("toggle");
     if (r >= 2 && a >= 12) blocks.push("hint");
     if (a >= 16) blocks.push("next");
     return { blocks };
@@ -1847,10 +1848,17 @@ ${BRIDGE}
     barEl.style.display = form.blocks.includes("bar") ? "" : "none";
     const ctl = node.querySelector(".plctl");
     const mid = ctl.children[1];
-    mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY;
-    ctl.style.display = form.blocks.includes("bar") ? "" : "none";
-    for (const el of Array.from(ctl.children))
-      el.style.visibility = d.source === "radio" && el.dataset.act !== "tap:toggle" ? "hidden" : "";
+    if (mid.dataset.st !== String(!!d.playing)) {
+      mid.dataset.st = String(!!d.playing);
+      mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY;
+    }
+    const full = form.blocks.includes("bar");
+    const single = !full && form.blocks.includes("toggle");
+    ctl.style.display = full || single ? "" : "none";
+    for (const el of Array.from(ctl.children)) {
+      const isMid = el.dataset.act === "tap:toggle";
+      el.style.display = single && !isMid || d.source === "radio" && !isMid ? "none" : "";
+    }
     barEl.classList.toggle("live", d.source === "radio");
     const nxt = node.querySelector(".pl-next");
     const upcoming = d.nextUp ?? [];
@@ -1980,7 +1988,6 @@ ${BRIDGE}
   function renderDesk() {
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();
-    desk.querySelectorAll(".slot").forEach((el) => el.remove());
     const occupied = Array.from({ length: GRID.rows }, () => Array(GRID.cols).fill(false));
     const moves = [];
     let fresh = 0;
@@ -1996,13 +2003,19 @@ ${BRIDGE}
         desk.appendChild(node);
       }
       const pos = posKey(c);
-      if (!isNoop(node.dataset.pos, pos)) moves.push({ node, first: node.getBoundingClientRect() });
-      node.dataset.pos = pos;
-      node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
-      node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
+      if (!isNoop(node.dataset.pos, pos)) {
+        moves.push({ node, first: node.getBoundingClientRect() });
+        node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
+        node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
+      } else if (node.dataset.pos !== pos) {
+        node.style.gridRow = `${c.row + 1} / span ${c.rowSpan}`;
+        node.style.gridColumn = `${c.col + 1} / span ${c.colSpan}`;
+      }
+      if (node.dataset.pos !== pos) node.dataset.pos = pos;
       const picking = c.template === "confirm" || c.template === "list" && c.data?.picking;
       const isFresh = node.classList.contains("fresh");
-      node.className = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}${picking ? " picking" : ""}${isFresh ? " fresh" : ""}`;
+      const cls = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${accentClass(c.template, c.data)}${hotCards.has(c.id) ? " hot" : ""}${picking ? " picking" : ""}${isFresh ? " fresh" : ""}`;
+      if (node.className !== cls) node.className = cls;
       const sig = cardSig(c);
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
@@ -2039,6 +2052,7 @@ ${BRIDGE}
       }
     }
     const [bw, bh] = [TIERS.card.w, TIERS.card.h];
+    const wantSlots = /* @__PURE__ */ new Set();
     for (let r = 0; r + bh <= GRID.rows; r += bh)
       for (let col = 0; col + bw <= GRID.cols; col += bw) {
         let free = true;
@@ -2047,13 +2061,21 @@ ${BRIDGE}
             free = false;
             break;
           }
-        if (!free) continue;
-        const slot = document.createElement("div");
-        slot.className = "slot";
-        slot.style.gridRow = `${r + 1} / span ${bh}`;
-        slot.style.gridColumn = `${col + 1} / span ${bw}`;
-        desk.appendChild(slot);
+        if (free) wantSlots.add(`${r},${col}`);
       }
+    for (const el of Array.from(desk.querySelectorAll(".slot"))) {
+      if (wantSlots.has(el.dataset.at)) wantSlots.delete(el.dataset.at);
+      else el.remove();
+    }
+    for (const at of wantSlots) {
+      const [r, col] = at.split(",").map(Number);
+      const slot = document.createElement("div");
+      slot.className = "slot";
+      slot.dataset.at = at;
+      slot.style.gridRow = `${r + 1} / span ${bh}`;
+      slot.style.gridColumn = `${col + 1} / span ${bw}`;
+      desk.appendChild(slot);
+    }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
         if (node.classList.contains("tpl-media")) player.stop();

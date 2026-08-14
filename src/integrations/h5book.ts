@@ -15,6 +15,12 @@
  * 所以直接全量转义就够，**fail-closed**。
  */
 import type { Book, BookPage } from '../state/story'
+/**
+ * 中文音色的偏好名单与朗读字速，跟车机屏**共用同一份**。
+ * 导出的 H5 是个自包含页面（不能 import），所以这两个常量是拼进脚本字符串的 ——
+ * 但来源只有一处：实测出来的音色名单抄成两份，改一处忘一处是必然的。
+ */
+import { PREFERRED_SRC, CPS } from '../screen/speech'
 
 /** 封面要用的额外素材，来自孩子档案与定妆照 */
 export interface BookMeta {
@@ -151,9 +157,26 @@ section.on{opacity:1;pointer-events:auto}
     if(e.key==='ArrowRight'||e.key===' ') go(1);
     if(e.key==='ArrowLeft') go(-1);
   });
-  // 朗读：浏览器原生。onboundary 给逐字点亮，第三方 TTS 多数不给这个时间戳
-  var cur=null;
-  function stop(){ try{speechSynthesis.cancel()}catch(_){} clearLit(); }
+  /* 朗读：浏览器原生。两个坑都是中文特有的（2026-08-14 实拍）：
+     ① 只设 lang='zh-CN' 不保证换音色，拿英文音色念中文出来是一串怪音 ——
+        得自己从 getVoices() 里挑，而它第一次调用常常是空的（异步加载）。
+     ② onboundary 对中文基本不发事件，逐字点亮得能纯靠时间推。 */
+  var voice=null;
+  function pickVoice(){
+    try{
+      var vs=speechSynthesis.getVoices()||[];
+      var zh=[].filter.call(vs,function(v){return (v.lang||'').toLowerCase().indexOf('zh')===0});
+      if(!zh.length)return;                       /* 没中文音色就别硬塞英文的 */
+      zh.sort(function(a,b){return sc(b)-sc(a)});
+      voice=zh[0];
+    }catch(_){}
+  }
+  var PREF=new RegExp(${JSON.stringify(PREFERRED_SRC)},'i');
+  function sc(v){ return (/^zh([-_]cn)?$/i.test(v.lang)?40:0)+(PREF.test(v.name)?20:0) }
+  if('speechSynthesis' in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+  function stop(){ try{speechSynthesis.cancel()}catch(_){} clearTimer(); clearLit(); }
+  var litTimer=null;
+  function clearTimer(){ if(litTimer){clearInterval(litTimer);litTimer=null} }
   function clearLit(){
     var m=document.querySelectorAll('.lit');
     [].forEach.call(m,function(el){el.replaceWith(el.textContent)});
@@ -161,15 +184,19 @@ section.on{opacity:1;pointer-events:auto}
   document.getElementById('say').addEventListener('click',function(){
     if(!('speechSynthesis' in window))return;
     var p=pages[i].querySelector('.cap p, h2, h1'); if(!p)return;
-    var text=p.textContent; clearLit();
-    var u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=.92;
-    u.onboundary=function(ev){
-      if(ev.name!=='word'&&ev.charIndex==null)return;
-      var s=ev.charIndex||0, e=s+(ev.charLength||2);
-      p.innerHTML=esc(text.slice(0,s))+'<span class="lit">'+esc(text.slice(s,e))+'</span>'+esc(text.slice(e));
-    };
-    u.onend=function(){p.textContent=text};
-    speechSynthesis.speak(u); cur=u;
+    var text=p.textContent; stop();
+    var rate=.92, total=text.length/${CPS}/rate*1000, t0=Date.now(), byB=false;
+    function lit(n){ p.innerHTML='<span class="lit">'+esc(text.slice(0,n))+'</span>'+esc(text.slice(n)) }
+    litTimer=setInterval(function(){
+      if(byB)return;
+      lit(Math.max(0,Math.min(text.length,Math.floor(text.length*((Date.now()-t0)/total)))));
+    },90);
+    var u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=rate;
+    if(!voice)pickVoice();
+    if(voice)u.voice=voice;
+    u.onboundary=function(ev){ byB=true; lit((ev.charIndex||0)+(ev.charLength||1)) };
+    u.onend=u.onerror=function(){ clearTimer(); p.textContent=text };
+    speechSynthesis.speak(u);
   });
   function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
   show(0);

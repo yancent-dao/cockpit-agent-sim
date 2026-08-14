@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   CARD_FORMS, navForm, capForm, weatherForm, listForm, mediaForm,
-  controlForm, confirmForm, noticeForm, feedbackForm, suggestSize,
+  controlForm, confirmForm, noticeForm, feedbackForm, storybookForm, suggestSize,
 } from '../../src/config/forms'
 import { dimsOf, tierNames } from '../../src/config/grid'
 import { CARD_TEMPLATES } from '../../src/config/cards'
@@ -235,6 +235,37 @@ describe('播放器卡：封面/歌名/播控任何档位都在', () => {
     expect(has(mediaForm, 'hall', 'next'), 'hall 该有队列预告').toBe(true)
     expect(has(mediaForm, 'hall', 'queue'), 'hall 放不下完整队列').toBe(false)
     expect(has(mediaForm, 'court', 'queue'), 'court 该有完整队列').toBe(true)
+  })
+})
+
+/**
+ * ══════════ 绘本卡：翻页是主交互，不是宽了才配有 ══════════
+ *
+ * 实拍反馈「也没有翻页，我想我自己可以点击翻页」。查下来根因在这：
+ * `ctl` 原来只在 c>=12（full 档）才给，而**默认档是 stage（8 列）** ——
+ * 用户看到的那张卡上根本没有翻页键。
+ *
+ * 翻页之于绘本，等同于播控之于播放器卡：那条测试写的是"封面和播控是命根子，
+ * 三档都有"，绘本卡该守同一条。
+ */
+describe('绘本卡：翻页键三档都在', () => {
+  it('每个档位都有翻页控制', () => {
+    for (const s of poolOf('storybook'))
+      expect(has(storybookForm, s, 'ctl'), `${s} 缺翻页键`).toBe(true)
+  })
+
+  it('画面和正文任何档都在 —— 少一个就不是绘本了', () => {
+    for (const s of poolOf('storybook'))
+      for (const b of ['art', 'line', 'dots'])
+        expect(has(storybookForm, s, b), `${s}.${b}`).toBe(true)
+  })
+
+  /** 三档的差异仍要落在内容密度上，不能因为补了 ctl 就变成同一张 */
+  it('档位差异仍在：章节名 → 孩子的点子', () => {
+    expect(has(storybookForm, 'court', 'chapter'), 'court 放不下章节行').toBe(false)
+    expect(has(storybookForm, 'stage', 'chapter')).toBe(true)
+    expect(has(storybookForm, 'stage', 'lesson'), 'stage 放不下点子行').toBe(false)
+    expect(has(storybookForm, 'full', 'lesson')).toBe(true)
   })
 })
 

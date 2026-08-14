@@ -439,6 +439,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .sbout{flex:1;display:flex;flex-direction:column;gap:calc(10px*var(--u));min-height:0}
 .sbout img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:calc(18px*var(--u))}
 .sbout p{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
+/* 两个出口：认下来（主）/ 再画一张（次）。定妆是全书唯一要人把关的一步，
+   卡上没有出口，家长就只能看着一个不像的主角讲完整本 */
+.sbpick{display:flex;gap:calc(10px*var(--u));flex:none}
+.sbpick b,.sbpick span{padding:calc(9px*var(--u)) calc(20px*var(--u));border-radius:999px;
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;cursor:pointer;white-space:nowrap}
+.sbpick b{background:var(--ac);color:#fff}
+.sbpick span{background:var(--n2,#F1F5F9);color:var(--tx-2);font-weight:500}
 /* 生成中：模糊到清晰，不用转圈——比 loading 圈高级得多 */
 .sbwait{flex:1;border-radius:calc(18px*var(--u));background:linear-gradient(160deg,#FEF3C7,#FED7AA);
   filter:blur(14px);animation:sbpulse 1.6s ease-in-out infinite alternate}

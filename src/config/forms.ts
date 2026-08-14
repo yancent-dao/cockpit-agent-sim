@@ -257,9 +257,14 @@ export const capForm: FormFn = (c, r) => {
  * 标了总数等于告诉孩子"还有三页就没了"，他会开始倒计时而不是听故事。
  */
 export const storybookForm: FormFn = (c, _r) => {
-  const blocks = ['art', 'line', 'dots']
+  /**
+   * **翻页键三档都在**（2026-08-14 实拍反馈「也没有翻页」）。
+   * 原来 `ctl` 卡在 c>=12，而默认档是 stage（8 列）—— 用户看到的那张卡上
+   * 根本没有翻页键。翻页之于绘本等同于播控之于播放器卡，是命根子不是奢侈品。
+   */
+  const blocks = ['art', 'line', 'dots', 'ctl']
   if (c >= 8) blocks.push('chapter')
-  if (c >= 12) blocks.push('lesson', 'ctl')
+  if (c >= 12) blocks.push('lesson')
   return { blocks }
 }
 

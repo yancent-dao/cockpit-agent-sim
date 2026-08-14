@@ -1,6 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead } from './storyflow'
+import { pickVoice, estimateMs, litUpto } from './speech'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
@@ -831,22 +832,45 @@ requestAnimationFrame(tickProgress)
  * 问什么话归模型 —— 跟 mediaEvent 只上报设备事实不上报决定是同一条边界。
  */
 let sbSpoken = ''
+/**
+ * 中文音色。`getVoices()` **第一次调用常常是空的**（音色异步加载），
+ * 所以既要在 voiceschanged 时补挑一次，也要在每次开口前再试一次。
+ */
+let sbVoice: SpeechSynthesisVoice | undefined
+const refreshVoice = () => {
+  try { sbVoice = pickVoice(speechSynthesis.getVoices() as any) as any } catch { /* 没有就算了 */ }
+}
+if ('speechSynthesis' in window) {
+  refreshVoice()
+  speechSynthesis.addEventListener?.('voiceschanged', refreshVoice)
+}
+
+const SB_RATE = .92
+/** 念完之后的兜底余量。语速估不准是常态，宁可多等一会儿也别提前翻页 */
+const SB_SLACK_MS = 2500
+
+/**
+ * 朗读的世代戳。**取消语义**（四条纪律第 3 条）：
+ * `speechSynthesis.cancel()` 会让上一句的 `onend` 照样触发，而那个回调里带着
+ * "读完了该翻页"的副作用 —— 用户手动点一下下一页，就会连翻两页。
+ * 作废的那一轮必须连副作用一起作废，不是只停止等待。
+ */
+let sbGen = 0
 function speakStory(node: HTMLElement, c: any) {
   const d = c?.data ?? {}
   const line = String(d.line ?? '')
-  if (!line || line === sbSpoken || !('speechSynthesis' in window)) return
+  if (!line || line === sbSpoken) return
   sbSpoken = line
-  try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
-  const u = new SpeechSynthesisUtterance(line)
-  u.lang = 'zh-CN'; u.rate = .92
+  const gen = ++sbGen
   const el = () => node.querySelector('.sbline')
-  // 逐字点亮：原生 TTS 的杀手锏，第三方 TTS 多数不给这个时间戳
-  u.onboundary = (ev: any) => {
-    const t = el(); if (!t) return
-    const i = ev.charIndex || 0, j = i + (ev.charLength || 2)
-    t.innerHTML = esc(line.slice(0, i)) + '<span class="lit">' + esc(line.slice(i, j)) + '</span>' + esc(line.slice(j))
-  }
-  u.onend = () => {
+
+  /** 这一页读完了 —— 决策在 storyflow 的纯函数里，这里只发结论 */
+  let done = false
+  const finish = () => {
+    if (done) return
+    done = true
+    clearInterval(timer); clearTimeout(guard)
+    if (gen !== sbGen) return          // 已经被下一页接管了，副作用一起作废
     const t = el(); if (t) t.textContent = line
     const next = afterRead({
       page: Number(d.page) || 0, chapterEnd: Number(d.chapterEnd) || 0,
@@ -858,6 +882,44 @@ function speakStory(node: HTMLElement, c: any) {
     else if (next.do === 'ask')
       setTimeout(() => bus.send({ type: 'storyChapterDone', chapter: Number(d.chapter) || 0 } as any), next.delay)
   }
+
+  /**
+   * 逐字点亮。**中文得靠时间推** —— `onboundary` 在中文上基本不发事件，
+   * 而这是整个产品最讨喜的一秒（孩子跟着字读）。边界事件来了就用它（更准），
+   * 不来就按估算的时长匀速推进。
+   */
+  const totalMs = estimateMs(line, SB_RATE)
+  const t0 = Date.now()
+  let byBoundary = false
+  const paintLit = (n: number) => {
+    const t = el(); if (!t) return
+    t.innerHTML = `<span class="lit">${esc(line.slice(0, n))}</span>${esc(line.slice(n))}`
+  }
+  const timer = setInterval(() => {
+    if (byBoundary || done) return
+    paintLit(litUpto(line.length, Date.now() - t0, totalMs))
+  }, 90)
+
+  /**
+   * **朗读整个失灵也不能把故事卡死**。没有中文音色、自动播放被拦、
+   * 内核不发 onend —— 任何一条都会让 `onend` 永远不来，而实拍看到的
+   * 就是"只讲了一页，也不翻页"。到点了自己往下走。
+   */
+  const guard = setTimeout(finish, totalMs + SB_SLACK_MS)
+
+  if (!('speechSynthesis' in window)) return
+  try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
+  const u = new SpeechSynthesisUtterance(line)
+  u.lang = 'zh-CN'; u.rate = SB_RATE
+  if (!sbVoice) refreshVoice()
+  // 挑不到中文音色时不硬塞：留空让引擎按 lang 自己决定，比拿英文音色念中文强
+  if (sbVoice) u.voice = sbVoice
+  u.onboundary = (ev: any) => {
+    byBoundary = true
+    paintLit((ev.charIndex || 0) + (ev.charLength || 1))
+  }
+  u.onend = finish
+  u.onerror = finish              // 念不出来也要往下走，不是卡住
   speechSynthesis.speak(u)
 }
 

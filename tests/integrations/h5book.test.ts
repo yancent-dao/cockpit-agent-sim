@@ -100,6 +100,27 @@ describe('翻页与朗读', () => {
   it('带朗读，用浏览器原生', () => {
     expect(html()).toContain('speechSynthesis')
   })
+
+  /**
+   * **中文得自己挑音色**（2026-08-14 实拍反馈「TTS 对中文的支持很不好」）。
+   * 只设 `lang='zh-CN'` 时浏览器不保证换音色，拿英文音色念中文出来是一串怪音。
+   * 而且 `getVoices()` 第一次调用常常是空的 —— 音色是异步加载的。
+   */
+  it('挑中文音色，并且等得到异步加载的音色表', () => {
+    const h = html()
+    expect(h, '得自己挑音色').toContain('getVoices')
+    expect(h, '第一次拿到的音色表常常是空的').toContain('voiceschanged')
+  })
+
+  /**
+   * **逐字点亮不能只靠 `onboundary`** —— 中文引擎基本不发这个事件，
+   * 而这是整本书最讨喜的一秒（孩子跟着字读）。要能纯靠时间推进。
+   */
+  it('点亮有时间兜底，不是只挂在 onboundary 上', () => {
+    const h = html()
+    expect(h).toContain('onboundary')
+    expect(h, '要有按时间推进的兜底').toMatch(/setInterval|requestAnimationFrame/)
+  })
 })
 
 describe('安全：书里的文字是模型生成的，一样要消毒', () => {

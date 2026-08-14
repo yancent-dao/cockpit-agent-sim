@@ -71,6 +71,8 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
   image: [SWIPE_AWAY, ...RESIZE, CLOSE],
   storybook: [
+    // 定妆卡的「就是他 / 再画一张」——点了等于说了这句话，怎么处置归模型
+    { on: 'tap:item', route: 'answer' },
     { on: 'tap:prev', route: 'tool', tool: 'story.page', args: { dir: 'prev' } },
     { on: 'tap:next', route: 'tool', tool: 'story.page', args: { dir: 'next' } },
     { on: 'tap:toggle', route: 'tool', tool: 'story.page', args: { dir: 'toggle' } },

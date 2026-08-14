@@ -263,11 +263,23 @@ export function cardBody(c: CardView): string {
     case 'storybook': {
       const form = formOf('storybook', ...dimsOf(c.size))
       const has = (b: string) => form.blocks.includes(b)
-      // 定妆阶段：左小图是家长给的照片，右大图是生成的主角
+      /**
+       * 定妆阶段：左小图是家长给的照片，右大图是生成的主角。
+       *
+       * **两个出口是这一步的关键**（2026-08-14 实拍反馈「没有让我选择，
+       * 而是直接开始讲故事」）。定妆是全书唯一需要人把关的一步 ——
+       * 之后每一页都拿这张当参考图，主角不像就是整本都不像。
+       * 出口走 `answer` 路由（点了等于说了这句话），**不是新加 Tool**：
+       * "像不像"是家长说了算，怎么处置归模型。
+       */
       if (d.photo) return `<div class="sbcast">
         <div class="sbsrc"><span>你给我的照片</span><img src="${esc(d.photo)}" alt=""></div>
         <div class="sbout">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}
-          <p>${esc(d.line)}</p></div></div>`
+          <p>${esc(d.line)}</p>
+          <div class="sbpick">
+            <b data-act="tap:item" data-value="就是他，开始讲故事吧">就是他</b>
+            <span data-act="tap:item" data-value="不太像，再画一张">再画一张</span>
+          </div></div></div>`
       const dots = Array.from({ length: Number(d.total) || 0 }, (_, i) =>
         `<i class="${i + 1 === Number(d.page) ? 'on' : ''}"></i>`).join('')
         + Array.from({ length: Number(d.pending) || 0 }, () => '<i class="pend"></i>').join('')

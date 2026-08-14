@@ -196,6 +196,36 @@ describe('每个块都真的落到了渲染上', () => {
   })
 })
 
+/**
+ * ══════════ 定妆那一步必须能被家长否掉 ══════════
+ *
+ * 实拍反馈「生成主角图之后没有让我选择，而是直接开始讲故事」。
+ * 定妆是**全书唯一需要人把关的一步**（之后每一页都拿它当参考图），
+ * 卡上没有出口，家长就只能眼睁睁看着一个不像的主角讲完整本。
+ *
+ * 出口走 `answer` 路由（合成用户输入进对话），**不是新加一个 Tool** ——
+ * "像不像"是家长说了算，怎么处置归模型，代码里不许出现这个分支。
+ */
+describe('定妆卡：家长得有地方说"不像"', () => {
+  const cast = () => body('storybook', 'stage',
+    { photo: 'data:image/png;base64,P', image: 'data:image/png;base64,C', line: '像吗？' })
+
+  it('两个出口都在：认下来 / 重画', () => {
+    const h = cast()
+    expect(h, '得能认下来').toMatch(/data-value="[^"]*就是他[^"]*"/)
+    expect(h, '得能要求重画').toMatch(/data-value="[^"]*再画[^"]*"/)
+  })
+
+  it('走的是 answer 路由那套标记，不是新 Tool', () => {
+    expect(cast()).toContain('data-act="tap:item"')
+  })
+
+  it('讲述中的页面上不出现这两个按钮 —— 只有定妆那一刻要问', () => {
+    const telling = body('storybook', 'stage', { line: '下雨了', page: 1, total: 3 })
+    expect(telling).not.toContain('就是他')
+  })
+})
+
 describe('形态契约的通用不变量', () => {
   /**
    * 形态函数声明了一个块，渲染层就必须有地方画它。声明了却不画

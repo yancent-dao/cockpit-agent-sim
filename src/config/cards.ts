@@ -52,6 +52,14 @@ export interface CardTemplate {
    */
   systemOnly?: boolean
   /**
+   * 列表类：items 为空时整张卡无意义，一律拒绝建卡。
+   *
+   * 判断本身是卡片契约的一部分（"这里有几条东西"，0 条时这句话是假的），
+   * 但以前硬编码在 desk 的 isEmptyList 里点名 list/capability——仲裁引擎
+   * 不该认识具体模板名。放这里之后，新增列表类模板只要声明这一个字段。
+   */
+  requireItems?: boolean
+  /**
    * data 的形状声明，供 registry 在 card.show/card.update 时做运行时校验——
    * 不声明（如 generic）就不校验。这不是通用 schema 引擎，只做一层平的
    * 必填 + 类型检查，跟 Tool 参数的 ParamDef 是同一个思路，绝不嵌套。
@@ -86,7 +94,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'notice', label: '提示/拒绝卡', defaultSize: '1/6',
     desc: '拒绝原因与替代方案。data: {title, text, suggestion}',
     fields: { text: { type: 'string', required: true } } },
-  { id: 'list', label: '列表卡', defaultSize: '1/2', sizes: [...LIST_SIZES],
+  { id: 'list', label: '列表卡', defaultSize: '1/2', sizes: [...LIST_SIZES], requireItems: true,
     desc: '搜索结果或候选项。data: {title, items:[{label, sub}]}',
     fields: { items: { type: 'array', required: true } } },
   /**
@@ -94,7 +102,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * systemOnly——它由机制按 desk.layout().staged 生成，模型手建的话
    * 内容是编的不是台下真实名单。条目 value 带卡 id，点击直调 card.focus 召回。
    */
-  { id: 'stagedlist', label: '台下清单', defaultSize: '1/3', sizes: [...LIST_SIZES], systemOnly: true,
+  { id: 'stagedlist', label: '台下清单', defaultSize: '1/3', sizes: [...LIST_SIZES], systemOnly: true, requireItems: true,
     desc: '台下排队卡片的清单，由系统按等位区状态自动生成，不要手动建。',
     fields: { items: { type: 'array', required: true } } },
   { id: 'info', label: '信息卡', defaultSize: '1/6',
@@ -124,7 +132,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     fields: { destination: { type: 'string', required: true } } },
   // 三档踩着 capForm 的真实阈值：1/6 只报个数，1/2 到网格模式（可能截断），
   // full 铺满显示完整清单——唯一能用 full 的：33 项能力要铺得开
-  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['1/6', '1/2', 'full'],
+  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['1/6', '1/2', 'full'], requireItems: true,
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
   /**

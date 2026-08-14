@@ -117,3 +117,39 @@ describe('canvas 尺寸白名单开全档', () => {
     expect(app.desc).toMatch(/竖/)
   })
 })
+
+/**
+ * 空列表判据走模板契约（2026-08-14 代码审查）。
+ *
+ * `isEmptyList` 原本硬编码 `template === 'list' || template === 'capability'`：
+ * 判断本身是对的（一张列表卡的意思就是"这里有几条东西"，0 条时这句话是假的），
+ * 但**声明放错了层**——模板特性该由模板契约声明，仲裁引擎只该读声明、
+ * 不该点名具体模板。代价很实在：新增列表类模板（stagedlist 就是一个）时
+ * 若忘了回 desk.ts 追加 `||` 分支，空卡壳照样上屏，正是跑批当年抓到的那个 bug
+ * 换个模板重演。
+ */
+describe('空列表判据来自模板契约，不是引擎里点名', () => {
+  it('声明了 requireItems 的模板，空 items 一律拒绝', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    const d = createDesk()
+    for (const t of CARD_TEMPLATES.filter(x => x.requireItems)) {
+      const r = d.show({ template: t.id, size: t.defaultSize as any, kind: 'system',
+        ttl: 60, data: { title: 'x', items: [] } })
+      expect(r.status, `${t.id} 空列表该被拒`).toBe('rejected')
+      expect(r.code).toBe('EMPTY_CARD')
+    }
+  })
+
+  it('列表类模板都声明了 requireItems——包括后加的 stagedlist', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    for (const id of ['list', 'capability', 'stagedlist']) {
+      const t = CARD_TEMPLATES.find(x => x.id === id)!
+      expect(t.requireItems, `${id} 该声明 requireItems`).toBe(true)
+    }
+  })
+
+  it('不是列表类的模板不受影响：没有 items 也照常建卡', () => {
+    const d = createDesk()
+    expect(d.show({ template: 'feedback', size: '1/6', ttl: 60, data: { title: '已开窗' } }).status).toBe('ok')
+  })
+})

@@ -6,6 +6,17 @@ import { dimsOf } from '../../src/config/grid'
 let now = 1000
 let desk: ReturnType<typeof createDesk>
 const mk = (o: any = {}) => desk.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
+/**
+ * 造一张"怎么腾都放不下"的卡：最小档就要 1/2（banner 12 列宽），
+ * 而导航 2/3 占着 8 列且不可挤——右边 4 列竖条它永远塞不进去，又不能再缩。
+ *
+ * 以前这些测试拿"第二张 2/3 导航卡"当放不下的样本，靠的是 stage 档不在
+ * 仲裁阶梯里所以缩不动。事务化重构后仲裁改走模板自己声明的档位，
+ * 第二张导航卡会老老实实降成 tower 待在右列（这正是想要的行为：
+ * 少一张卡永远比小一张卡更伤），于是不再是"放不下"的样本了。
+ */
+const unfittable = (o: any = {}) => mk({ template: 'list', size: '1/2', minSize: '1/2',
+  data: { title: '排队的', items: [{ label: 'x' }] }, ...o })
 
 beforeEach(() => { now = 1000; desk = createDesk(() => now) })
 
@@ -103,13 +114,17 @@ describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () 
     expect(r.shrunk).toBeTruthy()
   })
 
-  it('同一时刻最多一张 2/3——第二张放不下且第一张不可挤则进等位区（2026-08-13 改：不再拒绝）', () => {
+  // 全桌面只有一个 8×4 的合法位置，所以 2/3 至多一张。第二张不是消失，
+  // 而是降到自己尺寸表的下一档（tower）待在右列——少一张卡永远比小一张卡更伤
+  it('同一时刻最多一张 2/3：第二张降档留在桌面，不占第二个 8×4', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule' })
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张' } })
     expect(r.status).toBe('ok')
-    expect(r.staged).toBe(true)
-    expect(desk.layout().cards).toHaveLength(1)   // 只有第一张上台
-    expect(desk.layout().staged.map(c => c.id)).toContain(r.cardId)
+    const onstage = desk.layout().cards
+    expect(onstage.filter(c => c.size === '2/3'), '2/3 至多一张').toHaveLength(1)
+    const second = onstage.find(c => c.data?.title === '第二张')!
+    expect(second, '第二张没消失，只是变小了').toBeTruthy()
+    expect(desk.cellsOf(second.size)).toBeLessThan(desk.cellsOf('2/3'))
   })
 })
 
@@ -168,16 +183,33 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     expect(desk.cellsOf(call.size)).toBeLessThan(desk.cellsOf('1/2'))
   })
 
-  it('几何死局的最后手段：高优先级卡可被降尺寸（但绝不被挤出）——导航到来时 system 1/3 问题卡降为 1/6', () => {
-    mk({ kind: 'system', size: '1/3', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
-    expect(r.status).toBe('ok') // 之前这里会被 DESKTOP_FULL 拒绝，导航卡整个出不来
+  /**
+   * ⑤ 是几何死局的最后手段：连比候选优先级更高的卡也允许被降尺寸（但绝不被挤出）。
+   * 触发条件是 ③（候选自己缩）真的走不通——这里用 minSize 把候选钉死。
+   * 注：候选能自己缩时不该动更高优先级的卡，那种场景走 ③，见下一条。
+   */
+  it('几何死局的最后手段：高优先级卡可被降尺寸（但绝不被挤出）', () => {
+    // system 确认卡占满上两行（banner 12×2）
+    mk({ kind: 'system', size: '1/2', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
+    // 候选是 4×4 竖块且钉死不能再缩：上两行被占满，非降它不可
+    const r = mk({ size: 'tower', minSize: 'tower', template: 'nav', kind: 'rule',
+      evictable: false, data: { title: '导航' } })
+    expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles).toContain('导航')
-    expect(titles).toContain('请选择') // 没被挤出，只是变小了
-    // card 就是老的 1/6。断言"变小了"而不是断死某个名字
+    expect(titles).toContain('请选择')   // 没被挤出，只是变小了
     expect(desk.cellsOf(desk.layout().cards.find(c => c.data?.title === '请选择')!.size))
-      .toBeLessThan(desk.cellsOf('1/3'))
+      .toBeLessThan(desk.cellsOf('1/2'))
+  })
+
+  // 候选自己缩得动时就别动别人——尤其别动比它优先级更高的卡
+  it('候选能自己降档时，不去动更高优先级的卡', () => {
+    mk({ kind: 'system', size: '1/3', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.find(c => c.data?.title === '请选择')!.size, '高优先级卡纹丝不动').toBe('1/3')
+    expect(desk.cellsOf(desk.layout().cards.find(c => c.data?.title === '导航')!.size), '降的是候选自己')
+      .toBeLessThan(desk.cellsOf('2/3'))
   })
 
   // 列表卡缩到 1/6 就只剩个标题，选项全没了，等于白占一格。
@@ -606,7 +638,7 @@ describe('urgency 参与仲裁', () => {
     mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
     const r = mk({ size: '1/2', kind: 'system', data: { title: '普通提示' } })
     expect(r.status).toBe('ok')       // 会被降档放进右边竖条
-    const r2 = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张大卡' } })
+    const r2 = unfittable({ kind: 'system', data: { title: '第二张大卡', items: [{ label: 'x' }] } })
     expect(r2.status).toBe('ok')
     expect(r2.staged).toBe(true)
     expect(desk.layout().overlay).toBeUndefined()
@@ -672,7 +704,7 @@ describe('降级阶梯七档，缩得比 1/6 更小', () => {
 describe('等位区：放不下不再是失败，是一种状态', () => {
   it('放不下的新卡 status 仍是 ok，staged:true，不占桌面', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张' } })
+    const r = unfittable({ data: { title: '第二张', items: [{ label: 'x' }] } })
     expect(r.status).toBe('ok')
     expect(r.staged).toBe(true)
     expect(desk.layout().cards.some(c => c.data?.title === '第二张')).toBe(false)
@@ -692,7 +724,7 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   it('空间释放后，staged 卡自动上台（静默，reconcile）', () => {
     const a = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: 'A' } }).cardId!
     now += 10
-    const rb = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: 'B' } })
+    const rb = unfittable({ data: { title: 'B', items: [{ label: 'x' }] } })
     expect(rb.staged).toBe(true)
     desk.dismiss(a)   // 腾出空间
     desk.tick()
@@ -715,7 +747,7 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
 
   it('等位区里 untilDismissed 卡不因为久候而过期', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '排队中' }, ttl: 'untilDismissed' })
+    unfittable({ data: { title: '排队中', items: [{ label: 'x' }] }, ttl: 'untilDismissed' })
     now += 100_000; desk.tick(); now += 100_000; desk.tick()
     expect(desk.layout().staged.some(c => c.data?.title === '排队中')).toBe(true)
   })
@@ -769,7 +801,7 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   it('focus() 召回等位区的卡：不必等 tick，立即重新尝试上台', () => {
     const blockerId = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }).cardId!
     now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '待召回' } })
+    const r = unfittable({ data: { title: '待召回', items: [{ label: 'x' }] } })
     expect(r.staged).toBe(true)
     const id = r.cardId!
     desk.dismiss(blockerId)   // 腾出空间，但不调用 tick()
@@ -813,5 +845,141 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
     expect(r.status).toBe('ok')
     expect(desk.layout().overlay?.data?.title).toBe('车门未关')
     expect(desk.layout().staged.some(c => c.data?.title === '车门未关')).toBe(false)
+  })
+})
+
+/**
+ * ══════════ fit() 事务化（2026-08-14 代码审查） ══════════
+ *
+ * 老实现在腾位过程中**直接改台上卡的 size**（②降低优先级卡、⑤降高优先级卡），
+ * 只有成功路径算"提交"；候选最终放不下走 ⑥ 进等位区时，这些压缩既不回滚
+ * 也不设 releasedAt（尺寸回落只在 releasedAt 有值时才跑）——台上卡被白白
+ * 压到最小档且没有任何恢复触发，用户看到的是"加了一张根本没显示的卡，
+ * 桌面却全变小了还回不来"。
+ *
+ * 改法：试探期只在副本上算，成功才提交。失败什么都没动，天然无需回滚。
+ */
+describe('fit 事务化：试探失败不留下任何痕迹', () => {
+  it('候选放不下进等位区时，为它让过路的卡恢复原尺寸（不留压缩残留）', () => {
+    // 导航 8×4 不可挤，右列只剩 4 宽
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    const a = mk({ template: 'weather', size: '1/6', data: { title: '天气', now: {} } }).cardId!; now += 10
+    const b = mk({ template: 'feedback', size: '1/6', data: { title: '反馈' } }).cardId!; now += 10
+    const sizeA = desk.get(a)!.size, sizeB = desk.get(b)!.size
+    // 一张最小也要 1/2（banner 12×2）的卡：导航占着 8 列，怎么腾都放不下
+    const r = mk({ template: 'list', size: '1/2', minSize: '1/2', kind: 'system',
+      data: { title: '放不下的', items: [{ label: 'x' }] } })
+    expect(r.staged, '它自己进等位区').toBe(true)
+    expect(desk.get(a)!.size, '天气卡尺寸没被白白压小').toBe(sizeA)
+    expect(desk.get(b)!.size, '反馈卡尺寸没被白白压小').toBe(sizeB)
+    expect(desk.layout().cards.map(c => c.data?.title)).toContain('天气')
+    expect(desk.layout().cards.map(c => c.data?.title)).toContain('反馈')
+  })
+})
+
+/**
+ * 放大按钮的诚实性（2026-08-14 代码审查，实拍复现）。
+ *
+ * 老实现：放大目标放不下时 ③ 把候选一路降回原尺寸，然后返回 status:'ok'——
+ * 用户点了按钮，尺寸一动不动，按钮还亮着（"点了没反应"）。更坏的是目标为
+ * stage/tower 这类不在 LADDER 的专用档时 ③ 直接跳过，落到 ⑥ 把卡送进等位区，
+ * 卡片被自己的放大按钮送下台且回不来。
+ *
+ * 放大是"要更大"，不是"随便多大都行"：够不到就如实说够不到，卡片原样不动。
+ */
+describe('放大按钮：放不下就如实拒绝，绝不静默变没反应', () => {
+  it('放不下时返回 NO_ROOM，卡片留在台上且尺寸不变', () => {
+    // 导航 8×4 不可挤 + 右列两张钉死的 urgent 卡，谁都挤不动
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉A' } }); now += 10
+    mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉B' } }); now += 10
+    const m = mk({ template: 'media', size: '1/6', kind: 'rule', data: { title: '播放器', track: 'x' } }).cardId
+    // 桌面已满，播放器可能进了等位区；只在它真上台时才测放大
+    if (m && desk.layout().cards.some(c => c.id === m)) {
+      const before = desk.get(m)!.size
+      const r = desk.step(m, 'up')
+      expect(r.status, '够不到就说够不到').toBe('rejected')
+      expect(r.code).toBe('NO_ROOM')
+      expect(desk.get(m)!.size, '尺寸原样不动').toBe(before)
+      expect(desk.layout().cards.some(c => c.id === m), '还在台上，没被自己的按钮送下台').toBe(true)
+    }
+  })
+
+  it('导航卡放大够不到 2/3 时不会被送进等位区', () => {
+    const nav = mk({ size: 'tower', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }).cardId!
+    now += 10
+    // 用钉死的 urgent 卡占住剩余空间，让 2/3(8×4) 无论如何放不下
+    for (let i = 0; i < 4; i++) {
+      mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉' + i } })
+      now += 10
+    }
+    desk.step(nav, 'up')
+    expect(desk.layout().cards.some(c => c.id === nav), '导航卡还在台上').toBe(true)
+    expect(desk.layout().staged.some(c => c.id === nav), '没被送进等位区').toBe(false)
+  })
+})
+
+/**
+ * 仲裁降级只走模板自己声明的档位（2026-08-14 代码审查）。
+ *
+ * 老实现里仲裁有一套独立的七档 LADDER，与"每种卡最多三档"的模板契约并行存在：
+ * 一张声明了 ['1/6','1/3','1/2'] 的天气卡，会被仲裁自动压成它从没声明过的
+ * 'strip' 或 'bar'。两套阶梯并存的直接后果是车机屏必须为全部 10 档都备一套
+ * CSS，而模板契约形同虚设。
+ */
+describe('仲裁降级不越出模板契约', () => {
+  it('被压缩的卡只会落在自己声明过的档位上', () => {
+    const ids: string[] = []
+    for (let i = 0; i < 6; i++) {
+      ids.push(mk({ template: 'weather', size: '1/2', data: { title: 'W' + i, now: {} } }).cardId!)
+      now += 10
+    }
+    const allowed = CARD_TEMPLATES.find(t => t.id === 'weather')!.sizes!
+    for (const c of desk.layout().cards.filter(c => c.template === 'weather'))
+      expect(allowed.map(s => desk.cellsOf(s as any)), `${c.data?.title} 落在 ${c.size}`)
+        .toContain(desk.cellsOf(c.size))
+  })
+})
+
+/**
+ * 覆盖层进新退旧（2026-08-14 代码审查，最严重一条）。
+ *
+ * toOverlay 改写 overlay 指针时不清理旧覆盖层卡：旧卡留在 cards 里，
+ * 而 others() 只排除**当前**那张，于是这张占满 12×4 的孤儿参与了每一次
+ * 布局试放 —— tryPlace 恒返回 null，被 `?? []` 吞成空数组，桌面上所有卡
+ * 一起消失。更糟的是接下来：orchestrator 的 refill 看到规则卡"不在台上"
+ * 就重新断言 → render → update() → 无条件 emit → 同步通知订阅者 → refill…
+ * 没有任何终止条件，直接 RangeError 栈溢出，整个页面死掉。
+ * 782 个测试里没有一条覆盖过双覆盖层。
+ */
+describe('覆盖层：同一时刻只有一张，进新的先退旧的', () => {
+  const overlayCard = (title: string) =>
+    desk.show({ template: 'capability', size: 'full', kind: 'system', ttl: 'untilDismissed',
+      data: { title, items: [{ label: 'a' }] } })
+
+  it('第二张覆盖层进场时旧的退场，不留占满整屏的孤儿卡', () => {
+    const a = overlayCard('能力目录').cardId!
+    now += 10
+    const b = overlayCard('第二张').cardId!
+    expect(desk.layout().overlay?.id, '当前覆盖层是新的那张').toBe(b)
+    expect(desk.get(a), '旧覆盖层已退场，不再留在 cards 里').toBeFalsy()
+  })
+
+  it('换过覆盖层之后桌面照常工作——不会整屏空掉', () => {
+    overlayCard('第一张'); now += 10
+    overlayCard('第二张'); now += 10
+    const r = mk({ data: { title: '普通卡' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.some(c => c.data?.title === '普通卡'), '普通卡照常上台').toBe(true)
+  })
+
+  it('覆盖层退场后，之前被它盖住的桌面卡还在', () => {
+    const keep = mk({ data: { title: '底下的卡' } }).cardId!
+    now += 10
+    const ov = overlayCard('盖住').cardId!
+    now += 10
+    desk.dismiss(ov)
+    expect(desk.layout().cards.some(c => c.id === keep)).toBe(true)
+    expect(desk.layout().overlay).toBeUndefined()
   })
 })

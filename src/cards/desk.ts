@@ -45,31 +45,48 @@ const shapeOf = (size: string) => { const [w, h] = dimsOf(size); return { w, h }
  * tower/stage/full 是专用档不进阶梯：导航卡退成 tower 会变成一条竖缝。
  */
 const LADDER: Size[] = [...TIER_LADDER]
-/** 阶梯里的位置。老名字先归一，否则 '1/6' 查不到 */
-const rung = (s: Size) => LADDER.indexOf(normalizeTier(s))
-/** 卡片能缩到的最低档；没声明 minSize 就一路缩到 1/6 */
+
+/** 卡片尺寸相关的最小可辨识信息。仲裁和按钮共用同一份判据 */
+type Sizable = { size?: Size; minSize?: Size; urgency?: Urgency; template?: string }
+
 /**
- * 能缩到的最低档。显式 minSize 优先；没写就按 urgency 兜底 ——
- * critical 缩到只剩一个标题等于没显示。
+ * 这张卡允许出现的全部档位，按占用单元数从小到大。
+ *
+ * **唯一的降级阶梯。** 以前仲裁自带一套七档 LADDER，与模板契约声明的
+ * `sizes` 并行存在——后果是一张声明了 ['1/6','1/3','1/2'] 的天气卡，
+ * 会被仲裁自动压成它从没声明过的 'strip'，模板契约形同虚设，
+ * 车机屏还得为全部 10 档各备一套 CSS。现在仲裁降级和右上角按钮
+ * 读的是同一张表：**卡片只会出现在自己声明过的档位上**。
+ *
+ * 三条下限取最严的：调用方的 minSize、模板声明的最小档、紧急度下限
+ * （critical 缩到只剩一个标题等于没显示）。
  */
-const floorIdx = (c: { minSize?: Size; urgency?: Urgency; template?: string }) => {
-  const rungs: number[] = [0]
-  // ① 调用方显式声明的下限
-  if (c.minSize) rungs.push(rung(c.minSize))
-  // ② 模板自己的下限：列表类缩到 chip 只剩标题、选项全丢，那一格还不如让给别人
+function allowedSizes(c: Sizable): Size[] {
   const tmpl = c.template ? CARD_TEMPLATES.find(t => t.id === c.template) : undefined
-  if (tmpl?.sizes?.length) {
-    const smallest = tmpl.sizes.reduce((a, b) => (cellsOfTier(a) <= cellsOfTier(b) ? a : b))
-    const i = LADDER.indexOf(normalizeTier(smallest))
-    if (i >= 0) rungs.push(i)
-  }
-  // ③ 紧急度下限：critical 缩到只剩一个标题等于没显示
-  const i2 = LADDER.findIndex(t => cellsOfTier(t) >= cellsOfTier(minTierFor(c.urgency)))
-  if (i2 >= 0) rungs.push(i2)
-  // 三个都是"不能再小"，取最严的那个
-  return Math.max(...rungs)
+  const pool = (tmpl?.sizes ?? COMMON_SIZES) as readonly string[]
+  const floorCells = Math.max(
+    c.minSize ? cellsOfTier(c.minSize) : 0,
+    cellsOfTier(minTierFor(c.urgency)),
+  )
+  const seen = new Set<string>()
+  return pool
+    .filter(s => cellsOfTier(s) >= floorCells)
+    .filter(s => { const k = normalizeTier(s); if (seen.has(k)) return false; seen.add(k); return true })
+    .sort((a, b) => cellsOfTier(a) - cellsOfTier(b)) as Size[]
 }
-const canShrink = (c: { size: Size; minSize?: Size; urgency?: Urgency; template?: string }) => rung(c.size) > floorIdx(c)
+
+/**
+ * 比 cur 小一档是哪档；没有更小的就返回 undefined。
+ * cur 不在表里（历史数据/被别处改过）时退而求其次：取表里比它小的最大档。
+ */
+function smallerSize(c: Sizable, cur: Size): Size | undefined {
+  const allowed = allowedSizes(c)
+  const i = allowed.findIndex(s => normalizeTier(s) === normalizeTier(cur))
+  if (i >= 0) return i > 0 ? allowed[i - 1] : undefined
+  const curCells = cellsOfTier(cur)
+  const smaller = allowed.filter(s => cellsOfTier(s) < curCells)
+  return smaller.length ? smaller[smaller.length - 1] : undefined
+}
 /**
  * 优先级 = kind 权重 + urgency 权重，表在 src/config/priority.ts。
  * kind 描述「谁建的卡」，urgency 描述「这事有多急」—— 两个维度正交。
@@ -77,6 +94,25 @@ const canShrink = (c: { size: Size; minSize?: Size; urgency?: Urgency; template?
  * 抢位时按 LRU 决定谁活。
  */
 const PRIO = (c: { kind: Kind; urgency?: Urgency }) => prioOf(c.kind, c.urgency)
+
+/**
+ * 两个排序族，各有唯一实现。
+ *
+ * 以前这两条公式在 desk 里抄了四份（evictFromStage、fit 的 byPriorityLRU、
+ * tick 的上台队列、layout 的 staged 输出），"队列顺序即上台顺序"这条不变量
+ * 全靠复制粘贴维持——谁改了 tick 里的 tie-break 而没动 layout，
+ * 边缘条显示的排队顺序就和真实上台顺序错位。
+ */
+/** 谁先让位：优先级低的先走，同级最久没碰的先走 */
+const byVictimOrder = (a: Card, b: Card) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt
+/** 谁先上台：优先级高的先来，同级先到先得 */
+const byStageOrder = (a: Card, b: Card) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt
+
+/**
+ * 腾位模式。取代原来 4 个准正交布尔标志的组合爆炸——
+ * 每种模式对应一个真实场景，语义在 fit() 的文档注释里一处说清。
+ */
+export type FitMode = 'assert' | 'reconcile' | 'recall' | 'grow'
 
 export interface Card {
   id: string
@@ -185,9 +221,11 @@ const STAGE_CAP = 8
  *
  * 这不是"贴心逻辑"（那是 Tool 内不许有的东西），是**卡片契约**：
  * 一张列表卡的意思就是"这里有几条东西"，0 条时这句话是假的。
+ * 判据来自模板自己声明的 requireItems——仲裁引擎不认识具体模板名，
+ * 新增列表类模板只要加那一个字段（以前得回这里补 || 分支，漏了就是空卡上屏）。
  */
 const isEmptyList = (template: string, data: any) =>
-  (template === 'list' || template === 'capability')
+  CARD_TEMPLATES.find(t => t.id === template)?.requireItems === true
   && Array.isArray(data?.items) && data.items.length === 0
 
 export function createDesk(clock: () => number = Date.now) {
@@ -222,7 +260,7 @@ export function createDesk(clock: () => number = Date.now) {
    * 这是等位区里**唯一**会真正消失的通道，必须告知（跟挤出同一条纪律）。
    */
   function evictFromStage() {
-    const victim = [...staged.values()].sort((a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt)[0]
+    const victim = [...staged.values()].sort(byVictimOrder)[0]
     if (!victim) return
     staged.delete(victim.id)
     const note = `「${titleOf(victim)}」排队太久，先撤了`
@@ -309,48 +347,78 @@ export function createDesk(clock: () => number = Date.now) {
   const others = () => [...cards.values()].filter(c => c.id !== overlay)
 
   /**
-   * 腾位循环：① 原尺寸直接放 ② 降一张低优先级卡的尺寸 ③ 降新卡自己的尺寸
+   * 腾位循环：① 原尺寸直接放 ② 降一张低优先级卡的尺寸 ③ 降候选自己的尺寸
    * ④ LRU 挤出一张低优先级卡（进等位区，不是消失）⑤ 几何死局的最后手段：
    * 降高优先级卡的尺寸（绝不挤出高优先级卡）⑥ 都不行 → 候选自己进等位区
-   * （opts.onNoSpace='reject' 时仍返回 rejected，供 critical 走覆盖层用）。
+   * （onNoSpace='reject' 时仍返回 rejected，供 critical 走覆盖层用）。
    * 每步之后从头再试。
+   *
+   * **四种模式，不是四个布尔开关。** 以前是 {onNoSpace, passive, recall,
+   * preferEvict} 四个准正交标志堆在一起：16 种组合里只有 4 种有意义，
+   * 其余组合无人测试、语义未定义，改任何一条分支都要人肉推演全部调用点。
+   * 收成具名模式后每种模式的语义在一处说清：
+   *   assert    新卡断言（show/render）——②③④⑤ 全开，按优先级比较
+   *   reconcile 被动上台（tick 巡查等位区）——只许候选自己缩，不惊动任何人
+   *   recall    用户点名召回（focus）——压过优先级比较，但不破硬约束
+   *   grow      放大按钮——压过优先级比较 + 挤别人优先于缩自己 + 够不到就拒绝
    */
-  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean; recall?: boolean; preferEvict?: boolean } = {}): DeskResult {
-    const shrunk: string[] = []
+  function fit(candidate: Card, mode: FitMode = 'assert', onNoSpace: 'stage' | 'reject' = 'stage'): DeskResult {
+    /**
+     * **试算阶段一律只动副本。** 老实现直接改台上卡的 size，只有成功路径
+     * 算"提交"；候选最终放不下时那些压缩既不回滚也不设 releasedAt——
+     * 用户看到"加了一张根本没显示的卡，桌面却全变小了还回不来"。
+     * 现在把计划记在 plan/evicted 里，成功才落到真卡上，失败什么都没动。
+     */
+    const plan = new Map<string, Size>()      // id → 试算中的新尺寸
     const evicted: string[] = []
     const titles: string[] = []
-    const existing = others()
+    const evictedSet = new Set<string>()
+    // 候选可能已经在台上（放大自己）——它不该同时作为"别人"参与试放
+    const existing = others().filter(c => c.id !== candidate.id)
+    const wasOnstage = cards.has(candidate.id)
     let size = candidate.size
 
-    // urgent 以上不可挤 —— 安全告警被 LRU 挤掉是事故，等着用户回应的问题卡也一样。
-    // 显式 evictable:false 仍然优先（导航中的导航卡）
-    const alive = () => existing.filter(c => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id))
-    const byPriorityLRU = (a: Card, b: Card) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt
-    // recall（focus 召回）压过优先级比较：台下卡就是挤不过台上的才排队的，
-    // 召回还用同一比较必然在同样格局下永远失败。用户点名是意愿层——
+    const sizeOf = (c: Card) => plan.get(c.id) ?? c.size
+    // urgent 以上不可挤/不可借 —— 安全告警被 LRU 挤掉是事故，等着用户回应的
+    // 问题卡也一样。显式 evictable:false 仍然优先（导航中的导航卡）
+    const alive = () => existing.filter(c => c.evictable && evictableAt(c.urgency) && !evictedSet.has(c.id))
+    // recall / grow 压过优先级比较：台下卡就是挤不过台上的才排队的，
+    // 召回还用同一比较必然在同样格局下永远失败；用户点名与点放大都是意愿层。
     // 但 alive() 的硬约束（evictable:false、urgent+）照旧，意愿不破物理
+    const overridesPriority = mode === 'recall' || mode === 'grow'
     const victims = () => alive()
-      .filter(c => opts.recall || PRIO(c) <= PRIO(candidate))
-      .sort(byPriorityLRU)
-    const shrunkOut = new Set<string>() // 已挤出的不再参与
+      .filter(c => overridesPriority || PRIO(c) <= PRIO(candidate))
+      .sort(byVictimOrder)
+    const shrinkableOf = (list: Card[]) =>
+      list.find(c => smallerSize(c, sizeOf(c)) !== undefined)
 
     for (;;) {
       const trial = { ...candidate, size }
-      const pool = existing.filter(c => !shrunkOut.has(c.id))
+      const pool = existing.filter(c => !evictedSet.has(c.id)).map(c => ({ ...c, size: sizeOf(c) }))
       if (tryPlace([...pool, trial])) {
+        /* ── 提交：到这一步才碰真卡 ── */
+        const shrunk: string[] = []
+        for (const [id, s] of plan) {
+          const c = cards.get(id)
+          if (c && c.size !== s) { c.size = s; shrunk.push(id) }
+        }
         if (size !== candidate.size) shrunk.push(candidate.id)
         candidate.size = size
         // 被挤的卡进等位区，不是真的消失（2026-08-13）——数据全保留，
         // 空间释放后自动请回来。跟⑥自我进队一个纪律："排队按该有的大小
         // 记账"：被挤时它可能已经被压缩过好几档，不重置的话被动上台
-        // （fit passive）会直接从压缩后的小尺寸原地落座，永远等不到
-        // 「回落」——那条通道只扫台上的卡，staged 里的东西它看不见
+        // 会直接从压缩后的小尺寸原地落座，永远等不到「回落」
         for (const id of evicted) {
           const victim = cards.get(id)
           cards.delete(id)
-          if (victim) { victim.size = victim.desiredSize ?? victim.size; stage(victim) }
+          if (victim) {
+            victim.size = victim.desiredSize ?? victim.size
+            victim.touchedAt = clock()   // 排队顺序按"什么时候下的台"，别拿上午的旧戳
+            stage(victim)
+          }
         }
-        staged.delete(candidate.id)   // 若是从等位区召回（focus）成功上台，摘掉排队身份
+        staged.delete(candidate.id)   // 若是从等位区召回成功上台，摘掉排队身份
+        candidate.touchedAt = clock() // 刚上台的卡不该在下一轮 LRU 里当最老的
         cards.set(candidate.id, candidate)
         sweepFamily(candidate)
         const note = titles.length ? `${titles.map(t => `「${t}」`).join('、')}先收后台了，随时说"看${titles[0]}"叫回` : undefined
@@ -362,59 +430,61 @@ export function createDesk(clock: () => number = Date.now) {
           ...(evicted.length && { evicted, note }),
         }
       }
-      // 被动上台（reconcile 每 tick 巡查等位区）只用**真空出来的空间**，
-      // 不惊动任何人——不缩别人、不挤别人。只允许候选自己缩（③）
-      if (!opts.passive) {
-        // ② 降一张已有低优先级卡
-        const shrinkable = victims().find(canShrink)
-        if (shrinkable) { shrinkable.size = LADDER[rung(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
+
+      // reconcile（被动上台，tick 每轮巡查等位区）只用**真空出来的空间**，
+      // 不惊动任何人：不缩别人、不挤别人，只许候选自己缩
+      if (mode !== 'reconcile') {
+        // ② 降一张低优先级卡
+        const shrinkable = shrinkableOf(victims())
+        if (shrinkable) { plan.set(shrinkable.id, smallerSize(shrinkable, sizeOf(shrinkable))!); continue }
       }
-      // preferEvict（放大按钮）：候选要的是"更大"，不是"随便多大都行"——
-      // 挤别人比缩自己优先，否则③会在真正尝试挤人之前就把候选缩回原样，
-      // "放大"两个字变成静默的原地不动
-      if (opts.preferEvict) {
+      // grow（放大按钮）：候选要的是"更大"，挤别人优先于缩自己——否则 ③ 会在
+      // 真正尝试挤人之前就把候选缩回原样，"放大"变成静默的原地不动
+      if (mode === 'grow') {
         const victim = victims()[0]
         if (victim) {
-          shrunkOut.add(victim.id)
-          evicted.push(victim.id)
-          titles.push(titleOf(victim))
+          evictedSet.add(victim.id); evicted.push(victim.id); titles.push(titleOf(victim))
           size = candidate.size
           continue
         }
+      } else {
+        // ③ 降候选自己。**放大模式没有这一步**：够不到目标就如实拒绝，
+        // 悄悄降回原尺寸再报 ok 就是用户实拍抱怨的"点了没反应"
+        const smaller = smallerSize(candidate, size)
+        if (smaller) { size = smaller; continue }
       }
-      // ③ 降新卡自己
-      const selfIdx = rung(size)
-      if (selfIdx > floorIdx(candidate)) { size = LADDER[selfIdx - 1]; continue }
-      if (opts.passive) return { status: 'ok', cardId: candidate.id, staged: true }   // 真没地方，继续排队
-      // ④ LRU 挤出（只挤优先级不高于来者的）
-      const victim = victims()[0]
-      if (victim) {
-        shrunkOut.add(victim.id)
-        evicted.push(victim.id)
-        titles.push(titleOf(victim))
-        size = candidate.size // 腾出空间后恢复原始期望尺寸重试
-        continue
+      if (mode === 'reconcile') return { status: 'ok', cardId: candidate.id, staged: true }   // 真没地方，继续排队
+      // ④ LRU 挤出（grow 模式上面已经挤过一轮，这里是其余模式的通道）
+      if (mode !== 'grow') {
+        const victim = victims()[0]
+        if (victim) {
+          evictedSet.add(victim.id); evicted.push(victim.id); titles.push(titleOf(victim))
+          size = candidate.size   // 腾出空间后恢复原始期望尺寸重试
+          continue
+        }
       }
-      // ⑤ 几何死局最后手段：高优先级卡也可降尺寸（如 2/3 导航到来时 system 1/3 放不进右列）
-      const highShrinkable = alive().filter(canShrink).sort(byPriorityLRU)[0]
-      if (highShrinkable) {
-        // 必须走 rung()：LADDER 存的是新档位名，直接 indexOf('1/3') 是 -1，
-        // 再减一取到 LADDER[-2] = undefined，卡片的 size 就没了
-        highShrinkable.size = LADDER[rung(highShrinkable.size) - 1]
-        shrunk.push(highShrinkable.id)
-        continue
-      }
-      // ⑥ 都不行：候选自己进等位区（不再是失败）。critical 走覆盖层的调用方
-      // （show()）传 onNoSpace:'reject' 拦在这——它们不该出现在等位区里
-      if (opts.onNoSpace === 'reject')
+      // ⑤ 几何死局最后手段：高优先级卡也可降尺寸（如 2/3 导航到来时右列放不下）。
+      // 只降不挤——evictable:false 的卡永远不会被踢下桌
+      const highShrinkable = shrinkableOf(alive().sort(byVictimOrder))
+      if (highShrinkable) { plan.set(highShrinkable.id, smallerSize(highShrinkable, sizeOf(highShrinkable))!); continue }
+
+      /* ── 放弃：试算全在副本上，这里天然无需回滚 ── */
+      // 放大够不到目标：卡片原样留在台上，如实告诉调用方放不下
+      if (mode === 'grow' && wasOnstage)
+        return { status: 'rejected', code: 'NO_ROOM', message: '放不下这个尺寸，先收起一张卡再试' }
+      // critical 走覆盖层的调用方（show()）传 onNoSpace:'reject' 拦在这——
+      // 它们不该出现在等位区里
+      if (onNoSpace === 'reject')
         return { status: 'rejected', code: 'DESKTOP_FULL', message: '桌面已满，且没有可以让位的卡片' }
+      // 已经在台上的卡（放大/重排失败）不该被自己的操作送下台，维持原状
+      if (wasOnstage)
+        return { status: 'rejected', code: 'NO_ROOM', message: '放不下这个尺寸' }
       // 已经排队的卡再次断言仍然没地方 → 什么都没变，不 emit。
       // render() 会在规则每次重刷时重试上台（refill 订阅了 desk 变化），
       // 失败了还硬 emit 就是自己触发自己，桌面真满的时候直接栈溢出
       const alreadyStaged = staged.has(candidate.id)
-      candidate.size = candidate.desiredSize ?? candidate.size   // 排队按"该有的大小"记账，上台时重新按此尝试
-      // 家族清扫台上台下一视同仁——新一轮到了，旧批不管排没排上号都该退场，
-      // 不然"成都天气"会跟"北京天气"一起在等位区里排队，两地天气一起排队没道理
+      candidate.size = candidate.desiredSize ?? candidate.size   // 排队按"该有的大小"记账
+      // 家族清扫台上台下一视同仁——新一轮到了，旧批不管排没排上号都该退场
       sweepFamily(candidate)
       stage(candidate)
       if (!alreadyStaged) emit()
@@ -454,6 +524,14 @@ export function createDesk(clock: () => number = Date.now) {
     }
 
     const toOverlay = (): DeskResult => { // 整屏覆盖：不占栅格，退出还原
+      /**
+       * **进新的先退旧的。** 不清旧覆盖层的话它会留在 cards 里变成孤儿：
+       * others() 只排除**当前**那张，于是这张占满 12×4 的卡参与每一次布局
+       * 试放，tryPlace 恒失败被 `?? []` 吞成空数组——桌面上所有卡一起消失；
+       * 紧接着 refill 看到规则卡"不在台上"就重新断言 → update → emit →
+       * refill…… 同步无限递归直接爆栈，整个页面死掉。
+       */
+      if (overlay && overlay !== id) cards.delete(overlay)
       cards.set(id, card)
       sweepFamily(card)
       overlay = id
@@ -465,7 +543,7 @@ export function createDesk(clock: () => number = Date.now) {
     const isCritical = channelOf({ urgency: card.urgency }) === 'overlay'
     // critical 放不下时要拦在"进等位区"之前改走覆盖层——覆盖层不是垃圾桶，
     // 但 critical 更不该在后台队列里等，它必须立刻可见
-    const r = fit(card, { onNoSpace: isCritical ? 'reject' : 'stage' })
+    const r = fit(card, 'assert', isCritical ? 'reject' : 'stage')
     /**
      * **安全告警被拒是事故。**
      *
@@ -534,20 +612,9 @@ export function createDesk(clock: () => number = Date.now) {
    * 从小到大排序——2/3 天然排在最后，导航卡从 1/2 grow 上去就是它。
    * 到头不是拒绝一次性能力，是按钮下一次该自己失效（越界照样返回 rejected 供调用方判断）。
    */
-  /** step()/canStep() 共用：这张卡按钮能走到的尺寸表，按占用单元数从小到大排 */
-  function sizeSteps(c: Card): { allowed: string[]; pos: number } {
-    const tmpl = CARD_TEMPLATES.find(t => t.id === c.template)
-    const pool = tmpl?.sizes ?? COMMON_SIZES
-    // 调用方 minSize / 紧急度下限一样管——按钮缩不破这两条线
-    const floorCells = Math.max(
-      c.minSize ? cellsOfTier(c.minSize) : 0,
-      cellsOfTier(minTierFor(c.urgency)),
-    )
-    const seen = new Set<string>()
-    const allowed = [...pool]
-      .filter(s => cellsOfTier(s) >= floorCells)
-      .filter(s => { const key = normalizeTier(s); if (seen.has(key)) return false; seen.add(key); return true })
-      .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+  /** step()/canStep() 共用：这张卡按钮能走到的尺寸表 —— 跟仲裁降级同一张表 */
+  function sizeSteps(c: Card): { allowed: Size[]; pos: number } {
+    const allowed = allowedSizes(c)
     const curKey = normalizeTier(c.size)
     const pos = Math.max(0, allowed.findIndex(s => normalizeTier(s) === curKey))
     return { allowed, pos }
@@ -555,19 +622,24 @@ export function createDesk(clock: () => number = Date.now) {
 
   /**
    * 放大：用户点了放大按钮就是明确表态"这张卡现在最重要"——优先级最高，
-   * 需要地方就挤（recall 语义，跟台下卡被 focus 召回同一条道理）。
-   * 硬保护不因为这是"放大"就被打破：evictableAt 的 urgent+ 依旧摸不到，
-   * 挤不动就是挤不动，候选自己会退回原来能站住的尺寸，不会比之前更小。
+   * 需要地方就挤。硬保护不因为这是"放大"就被打破：evictableAt 的 urgent+
+   * 与 evictable:false 依旧摸不到。
+   *
+   * **够不到就原样还原并如实拒绝。** 老实现先把卡从 cards 里摘掉再 fit，
+   * 失败时它就留在了等位区——卡片被自己的放大按钮送下台，而且 sizeLocked
+   * 已锁在够不到的档位上，reconcile 永远重试失败，再也回不来（实拍复现）。
    */
   function growTo(id: string, size: Size): DeskResult {
     const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
-    cards.delete(id)
-    staged.delete(id)
+    const prev = { size: c.size, desiredSize: c.desiredSize, sizeLocked: c.sizeLocked }
     c.size = size
     c.desiredSize = size
     c.sizeLocked = true
-    return fit(c, { onNoSpace: 'stage', recall: true, preferEvict: true })
+    const r = fit(c, 'grow')
+    // 没长大就当无事发生：尺寸、恢复目标、尺寸锁全部还原
+    if (r.status !== 'ok' || r.staged) Object.assign(c, prev)
+    return r
   }
 
   function step(id: string, dir: 'up' | 'down'): DeskResult {
@@ -612,7 +684,7 @@ export function createDesk(clock: () => number = Date.now) {
     // 台下卡的 focus = 召回：立即尝试上台，必要时挤走优先级不高于它的
     // （用户点名要看的卡，等位区规则不该让它继续等）
     const staging = staged.get(id)
-    if (staging) return fit(staging, { onNoSpace: 'stage', recall: true })
+    if (staging) return fit(staging, 'recall')
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     c.touchedAt = clock()
@@ -655,7 +727,7 @@ export function createDesk(clock: () => number = Date.now) {
         exist.touchedAt = clock()
         if (changed) dataChangeListeners.forEach(l => l(exist.id))
         if (!exist.sizeLocked) exist.size = want
-        return fit(exist, { onNoSpace: 'stage' })   // 成功才 emit；再次失败保持静默
+        return fit(exist, 'assert')   // 成功才 emit；再次失败保持静默
       }
       // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
       // 就重刷一次，不认这个锁的话"地图小一点"下一秒就被弹回去
@@ -687,13 +759,15 @@ export function createDesk(clock: () => number = Date.now) {
       releasedAt = undefined
       const pressed = [...cards.values()]
         .filter(c => c.desiredSize && cellsOfTier(c.size) < cellsOfTier(c.desiredSize))
+        // 回落序：只看优先级，不做 tie-break——谁先回落对用户没有可辨差别，
+        // 刻意不复用 byStageOrder（那条的 createdAt 次序是"排队先后"，语义不同）
         .sort((a, b) => PRIO(b) - PRIO(a))
       for (const c of pressed) resize(c.id, c.desiredSize!, false)   // 失败就留在原档，下次释放再试
     }
     // 等位区上台：每 tick 依序尝试，只用真空出来的空间（被动，不惊动任何人）——
     // "放不下"是状态不是失败，空间够了它自己会回来
-    const queue = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt)
-    for (const c of queue) if (staged.has(c.id)) fit(c, { passive: true })
+    const queue = [...staged.values()].sort(byStageOrder)
+    for (const c of queue) if (staged.has(c.id)) fit(c, 'reconcile')
     emit()
   }
 
@@ -707,7 +781,7 @@ export function createDesk(clock: () => number = Date.now) {
     // 仲裁过程中的试算（fit 里的 tryPlace）不算数
     for (const pc of placed) { const c = cards.get(pc.id); if (c) c.prevPos = { row: pc.row, col: pc.col } }
     // 队列顺序即上台顺序——UI（边缘条/台下清单卡）和 reconcile 看到的是同一个排序
-    const staging = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt)
+    const staging = [...staged.values()].sort(byStageOrder)
     return {
       cards: placed,
       free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),

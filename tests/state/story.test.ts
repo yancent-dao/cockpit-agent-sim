@@ -138,6 +138,70 @@ describe('成书历史', () => {
     expect(() => s.saveBook(book('x'))).not.toThrow()
   })
 
+  /**
+   * ══════════ 配额撑爆是**必然**不是意外（2026-08-14 真实跑通后补） ══════════
+   *
+   * 实测一张图 358–588KB，base64 之后 ~580KB；七页的书 4MB，
+   * 而 localStorage 的 5MB 配额是按 **UTF-16 双字节**算的 ——
+   * 4MB 字符 = 8MB 占用，**一本书都存不下**。
+   *
+   * 原来的写法是"存不下就算了"，后果是：讲了一路的故事在 storyFinish
+   * 那一刻静默蒸发，用户点导出拿到的是**上一本**（`books()[0]` 还在），
+   * 或者干脆 NO_BOOK。交付物没了，还没人知道。
+   *
+   * 所以要有降级阶梯，而且**结果必须能被上层看见**。
+   */
+  const big = (title: string, kb: number) => ({
+    title, createdAt: 1000,
+    pages: [{ text: '从前有座桥', image: 'x'.repeat(kb * 1024) }],
+    ideas: ['会飞的自行车'],
+  })
+  /** 假的 localStorage：超过配额就抛，跟浏览器一个行为 */
+  const capped = (kb: number) => {
+    const m = new Map<string, string>()
+    return {
+      get: (k: string) => m.get(k) ?? null,
+      set: (k: string, v: string) => {
+        const other = [...m].filter(([kk]) => kk !== k).reduce((n, [, vv]) => n + vv.length, 0)
+        if (other + v.length > kb * 1024) throw new Error('QuotaExceededError')
+        m.set(k, v)
+      },
+    }
+  }
+
+  it('新书存不下时先淘汰老书 —— 保住刚讲完的这本', () => {
+    const s = createStoryStore(capped(300))
+    s.saveBook({ ...big('第一本', 100), createdAt: 1000 })
+    s.saveBook({ ...big('第二本', 100), createdAt: 2000 })
+    s.saveBook({ ...big('第三本', 100), createdAt: 3000 })
+    // 三本 300KB 刚好压线，加上 JSON 外壳必然超 —— 老的该让位
+    expect(s.books().map(b => b.title), '最新那本必须在').toContain('第三本')
+    expect(s.books().length).toBeLessThan(3)
+  })
+
+  /**
+   * 连一本都塞不下时**剥掉图存文字**。图没了故事还在 ——
+   * "再讲一遍那个会飞的自行车"仍然成立，这是这本书真正的价值。
+   * 整本丢掉是最坏的选择。
+   */
+  it('一本都塞不下时剥图保文字，不是整本丢掉', () => {
+    const s = createStoryStore(capped(20))
+    const r = s.saveBook(big('太大了', 100))
+    expect(r).toBe('text')
+    expect(s.books()[0].title).toBe('太大了')
+    expect(s.books()[0].pages[0].text).toBe('从前有座桥')
+    expect(s.books()[0].pages[0].image, '图该被剥掉').toBeUndefined()
+  })
+
+  it('顺利存下时说 full —— 上层靠它决定要不要告诉用户', () => {
+    expect(createStoryStore(mem().store).saveBook(book('x'))).toBe('full')
+  })
+
+  it('文字都存不下时说 failed，不假装成功', () => {
+    const s = createStoryStore({ get: () => null, set: () => { throw new Error('Quota') } })
+    expect(s.saveBook(book('x'))).toBe('failed')
+  })
+
   it('存储里是坏数据时当没有，不把整个功能带崩', () => {
     const s = createStoryStore({ get: () => '{不是 json', set: () => {} })
     expect(s.books()).toEqual([])

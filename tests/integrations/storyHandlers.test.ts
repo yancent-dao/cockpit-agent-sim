@@ -138,6 +138,83 @@ describe('开篇', () => {
     expect(card.data.line, '第一句话立刻就有').toContain('第0句')
   })
 
+  /**
+   * **开篇不等图画完**。实测一章两页要 22 秒（每张 11 秒串行），
+   * 而设计是"文字先出（约 2 秒）立刻开讲，图片后台流式补齐" ——
+   * 等图画完再返回，用户就是干等 22 秒看着空屏。
+   *
+   * 节奏由车机屏的 `afterRead` 接住：pending > 0 时它返回 wait，让画面追上声音。
+   */
+  it('开篇立刻返回，不等图 —— pending 还大于 0 就已经能讲了', async () => {
+    boot()
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    // 卡住画图，模拟真实的 11 秒/张
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h = createStoryHandlers(store, () => desk, () => story, () => ({
+      async generate(o: any) { drawn.push(o.prompt); await gate; return { dataUrl: 'data:image/png;base64,X', cost: 0 } },
+    }) as any)
+    const r = await h.storyBegin({ title: 'T', pages: pages('第一句', '第二句') })
+    expect(r.status).toBe('ok')
+    expect(store.get('story.pending'), '图还在画').toBeGreaterThan(0)
+    expect(desk.layout().cards.find(c => c.template === 'storybook')!.data.line,
+      '但第一句话已经在屏幕上了').toBe('第一句')
+    release()
+  })
+
+  /**
+   * **一章的图并发画，不是一张画完再画下一张**（2026-08-14 真实跑通后改）。
+   *
+   * 实测一张 9–10 秒。串行的话第一章 3 页要 30 秒才画齐，而一句童书正文
+   * 念出来只要 6–8 秒 —— 讲到第二页图还没到，`afterRead` 就把节奏卡住，
+   * 孩子对着空画框等。并发之后三张一起在 ~10 秒到齐，钱一分不多花。
+   *
+   * 上限是一章的页数（2–3 张），不是无限并发。
+   */
+  it('一章的图并发画 —— 三张同时在飞，不是排队', async () => {
+    boot()
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    let live = 0, peak = 0
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    h = createStoryHandlers(store, () => desk, () => story, () => ({
+      async generate() {
+        live++; peak = Math.max(peak, live)
+        await gate
+        live--
+        return { dataUrl: 'data:image/png;base64,X', cost: 0 }
+      },
+    }) as any)
+    await h.storyBegin({ title: 'T', pages: pages('一', '二', '三') })
+    await Promise.resolve()
+    expect(peak, '三张该同时在画').toBe(3)
+    release()
+  })
+
+  /** 并发之后先画完的先落位 —— 图必须落到自己那一页，不能按完成顺序错位 */
+  it('乱序返回时每张图仍落在自己那一页', async () => {
+    boot()
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    const gates: Array<() => void> = []
+    let n = 0
+    h = createStoryHandlers(store, () => desk, () => story, () => ({
+      async generate() {
+        const i = n++
+        await new Promise<void>(r => gates.push(r))
+        return { dataUrl: 'IMG' + i, cost: 0 }
+      },
+    }) as any)
+    await h.storyBegin({ title: 'T', pages: pages('一', '二', '三') })
+    await new Promise(r => setTimeout(r, 0))
+    // 倒着放行：第三张先画完
+    gates.reverse().forEach(g => g())
+    await new Promise(r => setTimeout(r, 0))
+    await h.storyPage({ dir: 'next' })
+    await h.storyPage({ dir: 'next' })
+    const card = desk.layout().cards.find(c => c.template === 'storybook')!
+    expect(card.data.image, '第三页拿的该是第三张').toBe('IMG2')
+  })
+
   it('进 telling 阶段，story.active 置真', async () => {
     await begin()
     expect(store.get('story.active')).toBe(true)
@@ -204,6 +281,49 @@ describe('收尾成书', () => {
     expect(b.title).toBe('妞妞和小熊的雨天')
     expect(b.pages).toHaveLength(6)   // 3 + 2 + 结尾
     expect(b.pages[5].text).toBe('他们回到了外婆家')
+  })
+
+  /**
+   * **存不下必须说出来**。域仓的降级阶梯（图文 → 只剩文字 → 存不下）
+   * 结果要走到模型的上下文里 —— 不然用户听到"讲完了"，转头点导出
+   * 拿到的是上一本书，或者干脆没有。交付物没了还没人知道，是最坏的失败。
+   */
+  it('只存下文字时，收尾播报要说清楚图没留住', async () => {
+    boot()
+    const fake = { ...story, saveBook: () => 'text' as const }
+    h = createStoryHandlers(store, () => desk, () => fake as any, () => ({
+      async generate() { return { dataUrl: 'IMG', cost: 0 } },
+    }) as any)
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    await h.storyBegin({ title: 'T', pages: pages('a') })
+    const r = await h.storyFinish({ ending: '完' })
+    expect(r.status).toBe('ok')
+    expect(r.message, '得让模型知道图没了').toMatch(/图|插图/)
+  })
+
+  it('整本都存不下时不假装存好了', async () => {
+    boot()
+    const fake = { ...story, saveBook: () => 'failed' as const }
+    h = createStoryHandlers(store, () => desk, () => fake as any, () => ({
+      async generate() { return { dataUrl: 'IMG', cost: 0 } },
+    }) as any)
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    await h.storyBegin({ title: 'T', pages: pages('a') })
+    const r = await h.storyFinish({ ending: '完' })
+    expect(r.message, '得说没存下').toMatch(/存不下|没存|没能存/)
+    /**
+     * 存不下也要**能导出**。刚讲完的这本还在内存里，导出（Blob + download）
+     * 根本不需要经过 localStorage —— 让配额问题连带毁掉交付物，
+     * 是把两件不相干的事绑在了一起。
+     */
+    const e = await h.storyExport()
+    expect(e.status, '刚讲完的这本必须导得出来').toBe('ok')
+    expect((e.data as any).book.title).toBe('T')
+  })
+
+  it('顺利存下时不提存储的事 —— 别拿实现细节烦用户', async () => {
+    const r = await full()
+    expect(r.message).not.toMatch(/存不下|没存/)
   })
 
   it('进 done 阶段，active 归假', async () => {

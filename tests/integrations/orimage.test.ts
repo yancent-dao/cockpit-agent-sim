@@ -57,11 +57,19 @@ describe('生成一张图', () => {
 })
 
 describe('角色一致性：参考图', () => {
-  it('参考图原样进 input_references', async () => {
+  /**
+   * **线上契约实测确认**（2026-08-14）：`input_references` 收的是
+   * `{type:'image_url', image_url:{url}}`，不是裸字符串。
+   * 第一版按设计稿写成字符串，真实调用直接被 schema 拒：
+   * "expected object, received string"。这条只有打真实 API 才发现得了。
+   */
+  it('参考图按 image_url 对象包装 —— 不是裸字符串', async () => {
     const { fetcher, seen } = mk(okReply())
     const c = createImageClient(fetcher as any, () => 'k')
     await c.generate({ prompt: 'x', refs: ['data:image/png;base64,AAA'] })
-    expect(seen[0].body.input_references).toEqual(['data:image/png;base64,AAA'])
+    expect(seen[0].body.input_references).toEqual([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+    ])
   })
 
   it('没有参考图时不发这个字段 —— 别给服务端塞空数组', async () => {

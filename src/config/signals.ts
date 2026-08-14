@@ -310,6 +310,15 @@ export const SIGNALS: Signal[] = [
 
   // 进度点里那几个虚线圈靠它。"故事一边讲一边长"这件事必须让人看见，
   // 否则用户会以为卡住了
+  /**
+   * 这本书累计花了多少美分。**图像比文本贵一个量级** ——
+   * 实测 $0.068/张（设计估算 $0.04 的 1.7 倍），一本 7 页约 $0.5。
+   * 不显示的话跑几轮就烧掉 Key 的额度还不知道。用美分是为了避免浮点噪音。
+   */
+  { alias: 'story.cents', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryCents',
+    type: 'number', label: '这本书花了多少美分',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
   { alias: 'story.pending', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryPending',
     type: 'number', label: '还有几页在画',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },

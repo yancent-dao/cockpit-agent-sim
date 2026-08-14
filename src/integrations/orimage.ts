@@ -72,8 +72,16 @@ export function createImageClient(
     if (!k) throw new ImageError('还没配 OpenRouter 的 Key，画不了图', 'NO_KEY')
 
     const body: Record<string, unknown> = { model: o.model ?? DEFAULT_MODEL, prompt: o.prompt }
-    // 空数组也别发 —— 服务端对"给了这个字段但是空的"和"没给"未必一视同仁
-    if (o.refs?.length) body.input_references = o.refs.slice(0, REF_CAP)
+    /**
+     * 参考图。**线上契约是 `{type:'image_url', image_url:{url}}`，不是裸字符串** ——
+     * 按设计稿写成字符串时真实调用直接被 schema 拒（expected object, received string）。
+     * 这条只有打真实 API 才发现得了，单测里的假 fetcher 什么都不校验。
+     *
+     * 空数组也别发 —— 服务端对"给了这个字段但是空的"和"没给"未必一视同仁。
+     */
+    if (o.refs?.length)
+      body.input_references = o.refs.slice(0, REF_CAP)
+        .map(url => ({ type: 'image_url', image_url: { url } }))
     if (o.aspect) body.aspect_ratio = o.aspect
 
     let timer!: ReturnType<typeof setTimeout>

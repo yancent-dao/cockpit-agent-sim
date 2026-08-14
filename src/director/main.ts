@@ -7,6 +7,7 @@ import { createPrefs } from '../state/prefs'
 import { createStoryStore } from '../state/story'
 import { createImageClient } from '../integrations/orimage'
 import { buildBookHtml, bookFileName } from '../integrations/h5book'
+import { planShrink, withShrink, WEBP_Q } from '../integrations/shrink'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -61,7 +62,14 @@ const state = createDomainState()
  * 加一家图像服务商就要加一个 Key、一套鉴权、一份跨域风险，换不来任何东西。
  */
 const story = createStoryStore(defaultStorage())
-const imageGen = createImageClient(fetch.bind(window), () => apiKey)
+/**
+ * **压缩接在出图那一刻**，不是导出那一刻（2026-08-14 真跑之后改）。
+ * 原图 base64 ~580KB/张，只在导出时压的话它一路走完全程：进卡片、
+ * 进 localStorage（七页 4MB，配额按 UTF-16 双字节算 —— 一本都存不下，
+ * 而且写失败是静默的），每页还要把这么大的定妆照当参考图传回去。
+ * 接在客户端后面，下游全都白捡。
+ */
+const imageGen = withShrink(createImageClient(fetch.bind(window), () => apiKey), shrinkDataUrl)
 
 /* ── 绘本的照片来源与导出（控制面板那一小块） ── */
 const $s = (id: string) => document.getElementById(id) as any
@@ -71,10 +79,18 @@ function renderStoryNote() {
   if (pic) { pic.src = photo || ''; pic.style.display = photo ? '' : 'none' }
   if (ok) ok.checked = story.consented()
   const b = story.books()[0]
-  if (note) note.textContent = b
+  /**
+   * 花了多少钱要**看得见**。图像比文本贵一个量级（实测 $0.068/张，
+   * 一本 7 页约 $0.55），不显示的话跑几轮就烧掉 Key 的额度还不知道 ——
+   * 跟「带着上回的记忆」同一条：看不见的状态等于没有状态。
+   */
+  const cents = Number(store.get('story.cents') || 0)
+  const money = cents ? `　本次已花 $${(cents / 100).toFixed(2)}` : ''
+  if (note) note.textContent = (b
     ? `上一本：《${b.title}》，${b.pages.length} 页`
-    : (photo ? '照片就位，说「给孩子讲个故事」就能开始' : '还没有照片')
+    : (photo ? '照片就位，说「给孩子讲个故事」就能开始' : '还没有照片')) + money
 }
+store.subscribe('story.cents', renderStoryNote)
 /**
  * 项目目录里的照片。**只在没上传过时才读** —— 上传的优先级更高，
  * 不然用户换了图刷新一下又被目录里那张顶回去。
@@ -86,7 +102,7 @@ async function loadHeroFromPublic() {
       const r = await fetch('/hero/' + n)
       if (!r.ok) continue
       const blob = await r.blob()
-      story.savePhoto(await new Promise<string>(res => {
+      await savePhoto(await new Promise<string>(res => {
         const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.readAsDataURL(blob)
       }))
       break
@@ -94,10 +110,20 @@ async function loadHeroFromPublic() {
   }
   renderStoryNote()
 }
+/**
+ * 存照片前先重采样。**手机原图 3–5MB，base64 之后 6MB** ——
+ * localStorage 配额（5MB，还按 UTF-16 双字节算）当场爆，而域仓的写是
+ * 静默失败的：家长上传了照片，界面上什么都没发生，接着定妆报"还没有照片"。
+ * 缩到长边 1280 对定妆完全够用（参考图本来也会被模型降采样）。
+ */
+async function savePhoto(dataUrl: string) {
+  story.savePhoto(await shrinkDataUrl(dataUrl))
+  renderStoryNote()
+}
 $s('heroFile')?.addEventListener('change', (e: any) => {
   const f = e.target.files?.[0]; if (!f) return
   const fr = new FileReader()
-  fr.onload = () => { story.savePhoto(String(fr.result)); renderStoryNote() }
+  fr.onload = () => void savePhoto(String(fr.result))
   fr.readAsDataURL(f)
 })
 $s('heroOk')?.addEventListener('change', (e: any) => {
@@ -109,14 +135,47 @@ $s('heroForget')?.addEventListener('click', () => { story.revoke(); renderStoryN
  * 导出：Blob + `<a download>`。**零依赖**，也不需要后端 ——
  * 自包含 H5 双击就能开，这是家长真正会转发的东西。
  */
-$s('bookExport')?.addEventListener('click', () => {
-  const b = story.books()[0]
-  if (!b) return
+/**
+ * 导出前把每张图重采样成 webp。**不压等于交付不了** ——
+ * 实测 Gemini 出的一张图 358–588KB，七页的 H5 会到 4.5MB，微信发不出去，
+ * 而"家长发给爷爷奶奶"正是这个产品的交付方式。
+ * 决策（缩到多大、压不压）在 `shrink.ts` 的纯函数里，这里只做 canvas 重采样。
+ */
+async function shrinkDataUrl(url: string): Promise<string> {
+  try {
+    const im = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url
+    })
+    const plan = planShrink(im.naturalWidth, im.naturalHeight)
+    if (plan.skip && url.startsWith('data:image/webp')) return url   // 已经是压好的
+    const cv = document.createElement('canvas')
+    cv.width = plan.w; cv.height = plan.h
+    cv.getContext('2d')!.drawImage(im, 0, 0, plan.w, plan.h)
+    const out = cv.toDataURL('image/webp', WEBP_Q)
+    // 压完反而更大就用原图（小图转码有时会胀）
+    return out.length < url.length ? out : url
+  } catch { return url }   // 压不了就用原图，别让整本书导不出来
+}
+
+$s('bookExport')?.addEventListener('click', async () => {
+  const raw = story.books()[0]
+  if (!raw) return
+  const btn = $s('bookExport'); btn.disabled = true; btn.textContent = '正在打包…'
+  const cast = story.cast()
+  const b = {
+    ...raw,
+    pages: await Promise.all(raw.pages.map(async pg =>
+      pg.image ? { ...pg, image: await shrinkDataUrl(pg.image) } : pg)),
+  }
   const p = story.profile() ?? {}
-  const html = buildBookHtml(b, { name: p.name, age: p.age, cast: story.cast() ?? undefined })
+  const html = buildBookHtml(b, { name: p.name, age: p.age,
+    cast: cast ? await shrinkDataUrl(cast) : undefined })
+  btn.disabled = false; btn.textContent = '导出上一本书'
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
   const a = document.createElement('a')
   a.href = url; a.download = bookFileName(b); a.click()
+  const note = $s('storyNote')
+  if (note) note.textContent = `《${b.title}》已导出，${(html.length / 1024 / 1024).toFixed(1)}MB`
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 })
 loadHeroFromPublic()

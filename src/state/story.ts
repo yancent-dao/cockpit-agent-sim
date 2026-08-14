@@ -67,9 +67,9 @@ export function createStoryStore(storage: DomainStorage) {
       return raw ? JSON.parse(raw) as T : fallback
     } catch { return fallback }
   }
-  /** 写失败不抛：讲了一路的故事不该因为存不下而报错给用户 */
+  /** 写失败不抛：讲了一路的故事不该因为存不下而报错给用户。但**要说清成没成** */
   const write = (k: string, v: unknown) => {
-    try { storage.set(k, JSON.stringify(v)) } catch { /* 配额满了就算了 */ }
+    try { storage.set(k, JSON.stringify(v)); return true } catch { return false }
   }
 
   return {
@@ -111,11 +111,32 @@ export function createStoryStore(storage: DomainStorage) {
     /** 最新的排最前 —— 孩子想接着讲的多半是刚才那本 */
     books: () => read<Book[]>(K.books, [])
       .slice().sort((a, b) => b.createdAt - a.createdAt),
-    saveBook(b: Book) {
-      const all = [...read<Book[]>(K.books, []), b]
+
+    /**
+     * 存这本书。**配额撑爆是必然不是意外**：实测一张图 base64 之后 ~580KB，
+     * 七页 4MB，而 localStorage 的 5MB 配额按 **UTF-16 双字节**算 ——
+     * 4MB 字符等于 8MB 占用，**一本书都存不下**。
+     *
+     * 原来的写法是"存不下就算了"，后果是讲了一路的故事在这一刻静默蒸发：
+     * 用户点导出拿到的是**上一本**（`books()[0]` 还在），或者干脆 NO_BOOK。
+     * 交付物没了还没人知道 —— 这是最坏的一种失败。
+     *
+     * 所以走三级阶梯，并且**把结果交出去**让上层能说人话：
+     *   full   → 图文都存下了
+     *   text   → 剥掉图存了文字（故事还在，"再讲一遍会飞的自行车"仍然成立）
+     *   failed → 真存不下，别假装成功
+     */
+    saveBook(b: Book): 'full' | 'text' | 'failed' {
+      const older = read<Book[]>(K.books, [])
+        .filter(x => x.createdAt !== b.createdAt)
         .sort((x, y) => y.createdAt - x.createdAt)
-        .slice(0, BOOK_CAP)
-      write(K.books, all)
+        .slice(0, BOOK_CAP - 1)
+      // ① 连老书一起写；② 写不下就一本本淘汰最老的；③ 最后只留这一本
+      for (let keep = older.length; keep >= 0; keep--)
+        if (write(K.books, [b, ...older.slice(0, keep)])) return 'full'
+      // ④ 一本都塞不下 → 剥图保文字。图没了故事还在，整本丢掉才是最坏的
+      const light = { ...b, pages: b.pages.map(({ text }) => ({ text })) }
+      return write(K.books, [light]) ? 'text' : 'failed'
     },
   }
 }

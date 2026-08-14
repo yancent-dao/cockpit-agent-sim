@@ -96,8 +96,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   background:rgba(255,255,255,.6);border:1px solid rgba(0,0,0,.06);cursor:pointer;user-select:none}
 .cardctl .cbtn.off{opacity:.25;pointer-events:none}
 .cardctl .cbtn.cclose{color:#b4483f}
-/* chip/strip/bar 太小放不下三个圆点，且这三档本来就只给一眼扫过的信息，不是交互目标 */
-.t-chip .cardctl,.t-strip .cardctl,.t-bar .cardctl{display:none}
+/* chip/strip/bar 太小放不下三个圆点，缩/关按钮先收起——但放大按钮必须留着，
+   不然缩到这三档就成了单行道，用户再也点不回大尺寸（实拍反馈：缩到最小后没有放大按钮了） */
+.t-chip .cardctl .cbtn:not([data-act="tap:grow"]),
+.t-strip .cardctl .cbtn:not([data-act="tap:grow"]),
+.t-bar .cardctl .cbtn:not([data-act="tap:grow"]){display:none}
 /* 等位区方向动画（2026-08-13）：下台=滑向右缘（去了"界面之外"），
    上台=从右缘滑入。跟普通进退场分开——用户能读出"收起来了"vs"没了" */
 .card.tostage{animation:toStage var(--d2,.26s) var(--ez-in,ease-in) forwards;pointer-events:none}

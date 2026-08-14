@@ -583,8 +583,8 @@ describe('navigation.search', () => {
   })
 
   // 卡片没上屏而 Tool 说 ok，Agent 就会照常说"你说第几个"，用户对着空屏幕懵。
-  // 桌面确实可能满，但那时候必须让 Agent 知道
-  it('候选卡上不了屏时，Tool 结果里要带得出这件事', async () => {
+  // 桌面确实可能满，但那时候必须让 Agent 知道——即使它现在进的是等位区而不是被拒绝
+  it('候选卡进等位区时，Tool 结果里要带得出这件事', async () => {
     const desk = createDesk()
     // 先用一张挤不走的 2/3 导航卡 + 两张 1/6 把桌面占死
     desk.show({ template: 'nav', size: '2/3', kind: 'system', evictable: false, ttl: 'untilDismissed' })
@@ -598,9 +598,10 @@ describe('navigation.search', () => {
       ] } }),
     })
     const res = await r.invoke('navigation.search', { query: 'x' })
-    expect(res.status).toBe('ok')            // 搜索本身是成功的
-    expect(res.code).toBe('CARD_NOT_SHOWN')  // 但得让 Agent 知道屏幕上没东西
+    expect(res.status).toBe('ok')         // 搜索本身是成功的
+    expect(res.code).toBe('CARD_STAGED')  // 但得让 Agent 知道屏幕上暂时没东西（排队中，不是消失）
     expect(res.message).toBeTruthy()
+    expect(desk.findByKey('candidates'), '数据还在——排在等位区').toBeTruthy()
   })
 
   // 实测用户在成都说"临平出口"，全国搜命中了杭州临平区，规划出 1800 公里。

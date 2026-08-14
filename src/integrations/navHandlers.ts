@@ -94,9 +94,9 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
       key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,   // 尺寸交给内容建议：3 条小卡、10 条大卡
       data: { title: '你要去哪个？', items: pois.map(p => ({ label: p.name, sub: p.address })) },
     })
-    // 桌面满到连 1/6 都塞不下时，得让 Agent 知道——不然它照常说"你说第几个"，
-    // 用户对着空屏幕不知道该数什么
-    return r && r.status !== 'ok'
+    // 桌面满时不再是"没显示"——它进了等位区，空位一出现自动上台（2026-08-13）。
+    // 但那一刻屏幕上确实还没有它，Agent 仍需要知道，别对着空屏幕说"你说第几个"
+    return !!(r && (r as any).staged)
   }
   /** 目的地定了，候选列表、方案对比、周边搜索都完成使命（实拍：从"附近的停车场"
    *  挑一个设成目的地后那张列表一直留着）。比路线时只撤候选、留下路线卡 */
@@ -131,8 +131,8 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         return {
           status: 'ok', data: { pois },
           ...(notShown && {
-            code: 'CARD_NOT_SHOWN',
-            message: '候选列表没能显示到屏幕上（桌面满了），播报时把候选念出来，别让用户去屏幕上找',
+            code: 'CARD_STAGED',
+            message: '候选列表先排队等桌面腾地方了（不是消失，位置一空自动显示），播报时把候选念出来，别让用户去屏幕上找',
           }),
         }
       } catch (e) {

@@ -13,7 +13,7 @@ import type { Card, PlacedCard } from './desk'
 export const titleOf = (c: Card) =>
   c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template
 
-export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card }): string {
+export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card; staged?: Card[] }): string {
   const lines: string[] = []
   if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`)
   // 摘要是给**模型**看的。48 单元下说"剩余 16 格"它没法换算成
@@ -33,5 +33,9 @@ export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card
     const n = Number(c.data?.moreCount ?? Math.max(0, total - visible))
     if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`)
   }
+  // 等位区（2026-08-13）：模型必须知道台下还有什么，否则会当成"没了"重新建卡，
+  // 或者对着已经查过的东西说"我再帮你查查"。没有排队的东西不提这茬
+  if (l.staged?.length)
+    lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join('、')}（不是没了，有空位自动显示，或说"看XX"叫回）`)
   return lines.join('\n')
 }

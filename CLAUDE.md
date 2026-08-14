@@ -54,7 +54,11 @@ src/integrations/  三方适配。分两层，预算口径不同：
                     分文件（amap/place.ts、amap/route.ts…），暂时记在这里不装看不见
                ② handler 层 —— 业务逻辑，行数跟 Tool 数量成正比，按**每 Tool < 40 行**看
                   mediaHandlers 413 / 17 Tool = 24 · navHandlers 376 / 11 Tool = 34
-src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占 · 恢复      < 800 行（现 737）
+src/cards/     卡片桌面 · 栅格 · 编排器 · 生命周期 · 抢占 · 恢复 · 等位区   < 900 行（现 855）
+               > 2026-08-13 从 800 上调：等位区（offstage/staged）进驻——
+               "放不下"从失败变状态，挤出/放不下的卡排队而非消失，
+               reconcile 补一条被动上台通道、render() 补一条主动重试通道。
+               见 docs/superpowers/specs/2026-08-13-desk-offstage-design.md
                > 2026-08-12 从 700 上调：家族机制、reconcile 恢复通道、几何闸
                （contract）、尺寸自愈（heal）、模型视角生成器（summary）五块
                **机制**进驻——都是本轮设计新增的职责，不是逻辑漏进来。

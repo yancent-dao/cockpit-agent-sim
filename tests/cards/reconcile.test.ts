@@ -118,9 +118,13 @@ describe('规则卡补回：桌面回到 f(车辆状态)', () => {
     store.setDirect('media.track', '晴天')
     expect(desk.findByKey('player'), '规则建卡').toBeTruthy()
     const ids = flood(desk, tick)
-    expect(desk.findByKey('player'), '被挤出').toBeUndefined()
+    // 被挤出 ≠ 消失（2026-08-13）：findByKey 台上台下都认得到，这正是它
+    // 数据不丢的原因——断言改成"不在台上"，不是"找不到"
+    expect(desk.layout().cards.some(c => c.key === 'player'), '被挤出台面').toBe(false)
+    expect(desk.findByKey('player'), '但还在——排在等位区').toBeTruthy()
     for (const id of ids.slice(0, 8)) desk.dismiss(id)
     expect(desk.findByKey('player'), '空间释放后补回').toBeTruthy()
+    expect(desk.layout().cards.some(c => c.key === 'player'), '而且回到台上了').toBe(true)
   })
 
   it('用户亲手关掉的规则卡不许立刻诈尸——直到信号再变', () => {

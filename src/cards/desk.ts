@@ -160,12 +160,20 @@ export interface DeskResult {
   message?: string
   /** 为了腾位被降过尺寸的卡（含新卡自己） */
   shrunk?: string[]
-  /** 被挤出的卡 —— 必须告知用户 */
+  /** 被挤出的卡 —— 进等位区，不算消失，但仍要告知用户"先收后台了" */
   evicted?: string[]
   /** 人话，供 Agent 播报 */
   note?: string
   level?: 'L1' | 'L2' | 'L3'
+  /**
+   * 放不下不再是失败——它进了等位区，空间释放后自动上台（2026-08-13）。
+   * status 仍是 'ok'：调用方（模型/规则）不用改一行建卡代码。
+   */
+  staged?: boolean
 }
+
+/** 等位区上限。超限淘汰优先级最低+最老的一张——只有淘汰才算真消失 */
+const STAGE_CAP = 8
 
 
 /**
@@ -184,10 +192,16 @@ const isEmptyList = (template: string, data: any) =>
 
 export function createDesk(clock: () => number = Date.now) {
   const cards = new Map<string, Card>()
+  /**
+   * 等位区（2026-08-13）：放不下的新卡、被挤出的卡在这排队，不算消失。
+   * 空间释放后 reconcile 静默把它们请回台上——"放不下"是状态不是失败。
+   */
+  const staged = new Map<string, Card>()
   let overlay: string | undefined
   let seq = 0
   const listeners: Array<() => void> = []
   const emit = () => listeners.forEach(l => l())
+  const getById = (id: string) => cards.get(id) ?? staged.get(id)
   /**
    * 挤出告知。desk 只发**事实**（这几张卡被收起来了、人话怎么说），
    * 怎么显示由 UI 决定 —— 走横幅还是走播报不是桌面该管的事。
@@ -203,7 +217,27 @@ export function createDesk(clock: () => number = Date.now) {
   /** 没带轮次的家族卡按"每次都是新批"处理（顺序替换语义）——desk 内部自增 */
   let familyAutoRound = 0
 
-  /** 新批落地 → 同族旧批退场。同 key 刷新不在此列（render 走 update 不新建） */
+  /**
+   * 淘汰一张等位区里的卡：优先级最低+最老的先走。
+   * 这是等位区里**唯一**会真正消失的通道，必须告知（跟挤出同一条纪律）。
+   */
+  function evictFromStage() {
+    const victim = [...staged.values()].sort((a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt)[0]
+    if (!victim) return
+    staged.delete(victim.id)
+    const note = `「${titleOf(victim)}」排队太久，先撤了`
+    noticeListeners.forEach(l => l({ note, titles: [titleOf(victim)] }))
+  }
+
+  /** 塞进等位区，超限先淘汰。挤出/放不下都走这——不占栅格，不算消失 */
+  function stage(c: Card) {
+    // 已经在排队的卡再次断言（render() 重试上台失败）不算净新增——
+    // 不然一张卡反复重试会把自己或别人挤出等位区
+    if (!staged.has(c.id) && staged.size >= STAGE_CAP) evictFromStage()
+    staged.set(c.id, c)
+  }
+
+  /** 新批落地 → 同族旧批退场（台上台下都算）。同 key 刷新不在此列（render 走 update 不新建） */
   function sweepFamily(c: Card) {
     if (!c.family) return
     let removed = false
@@ -212,6 +246,8 @@ export function createDesk(clock: () => number = Date.now) {
         cards.delete(other.id)   // 静默退场：被新批替换是内容更迭，不是挤出，不用告知
         removed = true
       }
+    for (const other of [...staged.values()])
+      if (other.id !== c.id && other.family === c.family && other.round !== c.round) staged.delete(other.id)
     // 清扫也是空间释放——五张县城天气换成一张北京，腾出的位置要让
     // 被压缩的卡回落（自省补：直接 delete 绕过 dismiss 就绕过了 releasedAt）
     if (removed) releasedAt = clock()
@@ -274,10 +310,12 @@ export function createDesk(clock: () => number = Date.now) {
 
   /**
    * 腾位循环：① 原尺寸直接放 ② 降一张低优先级卡的尺寸 ③ 降新卡自己的尺寸
-   * ④ LRU 挤出一张低优先级卡 ⑤ 几何死局的最后手段：降高优先级卡的尺寸
-   * （绝不挤出高优先级卡）⑥ 都不行才拒绝。每步之后从头再试。
+   * ④ LRU 挤出一张低优先级卡（进等位区，不是消失）⑤ 几何死局的最后手段：
+   * 降高优先级卡的尺寸（绝不挤出高优先级卡）⑥ 都不行 → 候选自己进等位区
+   * （opts.onNoSpace='reject' 时仍返回 rejected，供 critical 走覆盖层用）。
+   * 每步之后从头再试。
    */
-  function fit(candidate: Card): DeskResult {
+  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean } = {}): DeskResult {
     const shrunk: string[] = []
     const evicted: string[] = []
     const titles: string[] = []
@@ -299,10 +337,17 @@ export function createDesk(clock: () => number = Date.now) {
       if (tryPlace([...pool, trial])) {
         if (size !== candidate.size) shrunk.push(candidate.id)
         candidate.size = size
-        for (const id of evicted) cards.delete(id)
+        // 被挤的卡进等位区，不是真的消失（2026-08-13）——数据全保留，
+        // 空间释放后自动请回来
+        for (const id of evicted) {
+          const victim = cards.get(id)
+          cards.delete(id)
+          if (victim) stage(victim)
+        }
+        staged.delete(candidate.id)   // 若是从等位区召回（focus）成功上台，摘掉排队身份
         cards.set(candidate.id, candidate)
         sweepFamily(candidate)
-        const note = titles.length ? `我把${titles.map(t => `「${t}」`).join('、')}收起来了` : undefined
+        const note = titles.length ? `${titles.map(t => `「${t}」`).join('、')}先收后台了，随时说"看${titles[0]}"叫回` : undefined
         if (note) noticeListeners.forEach(l => l({ note, titles: [...titles] }))
         emit()
         return {
@@ -311,12 +356,17 @@ export function createDesk(clock: () => number = Date.now) {
           ...(evicted.length && { evicted, note }),
         }
       }
-      // ② 降一张已有低优先级卡
-      const shrinkable = victims().find(canShrink)
-      if (shrinkable) { shrinkable.size = LADDER[rung(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
+      // 被动上台（reconcile 每 tick 巡查等位区）只用**真空出来的空间**，
+      // 不惊动任何人——不缩别人、不挤别人。只允许候选自己缩（③）
+      if (!opts.passive) {
+        // ② 降一张已有低优先级卡
+        const shrinkable = victims().find(canShrink)
+        if (shrinkable) { shrinkable.size = LADDER[rung(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
+      }
       // ③ 降新卡自己
       const selfIdx = rung(size)
       if (selfIdx > floorIdx(candidate)) { size = LADDER[selfIdx - 1]; continue }
+      if (opts.passive) return { status: 'ok', cardId: candidate.id, staged: true }   // 真没地方，继续排队
       // ④ LRU 挤出（只挤优先级不高于来者的）
       const victim = victims()[0]
       if (victim) {
@@ -335,7 +385,21 @@ export function createDesk(clock: () => number = Date.now) {
         shrunk.push(highShrinkable.id)
         continue
       }
-      return { status: 'rejected', code: 'DESKTOP_FULL', message: '桌面已满，且没有可以让位的卡片' }
+      // ⑥ 都不行：候选自己进等位区（不再是失败）。critical 走覆盖层的调用方
+      // （show()）传 onNoSpace:'reject' 拦在这——它们不该出现在等位区里
+      if (opts.onNoSpace === 'reject')
+        return { status: 'rejected', code: 'DESKTOP_FULL', message: '桌面已满，且没有可以让位的卡片' }
+      // 已经排队的卡再次断言仍然没地方 → 什么都没变，不 emit。
+      // render() 会在规则每次重刷时重试上台（refill 订阅了 desk 变化），
+      // 失败了还硬 emit 就是自己触发自己，桌面真满的时候直接栈溢出
+      const alreadyStaged = staged.has(candidate.id)
+      candidate.size = candidate.desiredSize ?? candidate.size   // 排队按"该有的大小"记账，上台时重新按此尝试
+      // 家族清扫台上台下一视同仁——新一轮到了，旧批不管排没排上号都该退场，
+      // 不然"成都天气"会跟"北京天气"一起在等位区里排队，两地天气一起排队没道理
+      sweepFamily(candidate)
+      stage(candidate)
+      if (!alreadyStaged) emit()
+      return { status: 'ok', cardId: candidate.id, staged: true }
     }
   }
 
@@ -379,7 +443,10 @@ export function createDesk(clock: () => number = Date.now) {
     }
     // 通道分派统一走判据表（channelOf）——它不再是带测试的死代码
     if (channelOf({ size, urgency: card.urgency }) === 'overlay' && size === 'full') return toOverlay()
-    const r = fit(card)
+    const isCritical = channelOf({ urgency: card.urgency }) === 'overlay'
+    // critical 放不下时要拦在"进等位区"之前改走覆盖层——覆盖层不是垃圾桶，
+    // 但 critical 更不该在后台队列里等，它必须立刻可见
+    const r = fit(card, { onNoSpace: isCritical ? 'reject' : 'stage' })
     /**
      * **安全告警被拒是事故。**
      *
@@ -391,12 +458,12 @@ export function createDesk(clock: () => number = Date.now) {
      * `channelOf()` 给 critical 的答案。只对 critical 生效 ——
      * 覆盖层不是放不下就往里扔的垃圾桶。
      */
-    if (r.status === 'rejected' && channelOf({ urgency: card.urgency }) === 'overlay') return toOverlay()
+    if (r.status === 'rejected' && isCritical) return toOverlay()
     return r
   }
 
   function update(id: string, data: any): DeskResult {
-    const c = cards.get(id)
+    const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     const next = { ...c.data, ...data }
     // 真变了才通知（JSON 比对够用：卡片 data 本来就是可序列化的投影数据）
@@ -413,20 +480,22 @@ export function createDesk(clock: () => number = Date.now) {
    *   render() 内部的放大传 false——那是系统在恢复默认值，不是用户要求的
    */
   function resizeGate(id: string, size: Size): DeskResult | null {
-    const c = cards.get(id)
+    const c = getById(id)
     if (!c) return null
     const err = checkSize(c.template, size)
     return err ? { status: 'rejected', ...err } : null
   }
 
   function resize(id: string, size: Size, byUser = true): DeskResult {
-    const c = cards.get(id)
+    const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     const gateErr = resizeGate(id, size)
     if (gateErr) return gateErr
     const prev = c.size
     c.size = size
-    if (!tryPlace(others())) {
+    // 台上的卡要过几何检查；等位区里的卡不占栅格，不需要——它的尺寸
+    // 在上台那一刻由 fit() 重新校验
+    if (cards.has(id) && !tryPlace(others())) {
       c.size = prev
       return { status: 'rejected', code: 'NO_ROOM', message: '这个尺寸放不下了' }
     }
@@ -438,19 +507,26 @@ export function createDesk(clock: () => number = Date.now) {
   }
 
   function dismiss(id: string, opts?: { byUser?: boolean }): DeskResult {
-    const c = cards.get(id)
+    const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     // 用户亲手关的规则卡不许被 reconcile 立刻补回（诈尸）——
     // 抑制到 watch 信号下次变化（render 会清除抑制，规则重新断言）
     if (opts?.byUser && c.key) suppressed.add(c.key)
+    const wasOnstage = cards.has(id)
     cards.delete(id)
+    staged.delete(id)
     if (overlay === id) overlay = undefined
+    if (!wasOnstage) { emit(); return { status: 'ok', cardId: id } }   // 台下卡撤走不占栅格，不触发回落
     releasedAt = clock()   // 空间释放：2 秒迟滞后尺寸回落（tick 里做）
     emit()
     return { status: 'ok', cardId: id }
   }
 
   const focus = (id: string): DeskResult => {
+    // 台下卡的 focus = 召回：立即尝试上台，必要时挤走优先级不高于它的
+    // （用户点名要看的卡，等位区规则不该让它继续等）
+    const staging = staged.get(id)
+    if (staging) return fit(staging, { onNoSpace: 'stage' })
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     c.touchedAt = clock()
@@ -461,7 +537,8 @@ export function createDesk(clock: () => number = Date.now) {
   /** 反馈级联核心：优先复用已有卡(L1) → 放大(L2) → 最后才新建(L3) */
   function render(i: ShowInput & { key: string }): DeskResult {
     suppressed.delete(i.key)   // 规则/handler 重新断言这张卡 → 抑制解除
-    const exist = [...cards.values()].find(c => c.key === i.key)
+    // 台上台下都要认——不然刷新一张排队中的卡会被当成新卡重建，家族/轮次全丢
+    const exist = [...cards.values(), ...staged.values()].find(c => c.key === i.key)
     // 刷新成空列表 = 这批内容没了，撤卡而不是留个空壳在那儿
     if (isEmptyList(i.template, i.data)) {
       if (exist) dismiss(exist.id)
@@ -480,6 +557,20 @@ export function createDesk(clock: () => number = Date.now) {
         exist.round = i.round ?? ++familyAutoRound
         sweepFamily(exist)   // 同城再查也是新批——别的城该走了
       }
+      // 排队中的卡被重新断言 = 一次上台机会，不必干等下一次 tick。
+      // 规则每次重刷都会 render() 同一个 key（比如车还在放歌，player 一直被重新断言）——
+      // 这正是"空间一释放自动回来"的真实路径：不靠内部定时器，靠外部信号驱动重试。
+      // 直接改 data 不走 update()：update() 的 emit 会重入 refill() 订阅，
+      // 桌面真满、fit() 注定失败时会跟 refill() 互相递归，栈溢出
+      if (staged.has(exist.id)) {
+        const next = { ...exist.data, ...(i.data ?? {}) }
+        const changed = JSON.stringify(next) !== JSON.stringify(exist.data)
+        exist.data = next
+        exist.touchedAt = clock()
+        if (changed) dataChangeListeners.forEach(l => l(exist.id))
+        if (!exist.sizeLocked) exist.size = want
+        return fit(exist, { onNoSpace: 'stage' })   // 成功才 emit；再次失败保持静默
+      }
       // 用户显式调过尺寸就只更新数据。桌面是 f(车辆状态)，导航中 ETA 每变一次
       // 就重刷一次，不认这个锁的话"地图小一点"下一秒就被弹回去
       if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {
@@ -495,11 +586,15 @@ export function createDesk(clock: () => number = Date.now) {
     return r.status === 'ok' ? { ...r, level: 'L3' } : r
   }
 
-  /** ttl 到期清理 + 尺寸回落 */
+  /** ttl 到期清理 + 尺寸回落 + 等位区上台巡查 */
   function tick() {
     const t = clock()
     for (const c of [...cards.values()])
       if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) dismiss(c.id)
+    // 等位区里秒数 ttl 照样算——没人看到的问题卡更不该继续排队等一个
+    // 谁都看不见的超时（untilDismissed 的 ttl 不是 number，天然跳过这条）
+    for (const c of [...staged.values()])
+      if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) staged.delete(c.id)
     // 尺寸回落：空间释放满 2 秒才动手（防抖——候选卡进进出出时天气不能跟着抖），
     // 静默进行：挤出打扰了用户所以要告知，恢复不是打扰
     if (releasedAt !== undefined && t - releasedAt >= 2000) {
@@ -509,6 +604,11 @@ export function createDesk(clock: () => number = Date.now) {
         .sort((a, b) => PRIO(b) - PRIO(a))
       for (const c of pressed) resize(c.id, c.desiredSize!, false)   // 失败就留在原档，下次释放再试
     }
+    // 等位区上台：每 tick 依序尝试，只用真空出来的空间（被动，不惊动任何人）——
+    // "放不下"是状态不是失败，空间够了它自己会回来
+    const queue = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt)
+    for (const c of queue) if (staged.has(c.id)) fit(c, { passive: true })
+    emit()
   }
 
   function endTask() {
@@ -520,10 +620,13 @@ export function createDesk(clock: () => number = Date.now) {
     // 落位写回记忆——下次布局先试这里。只在真实布局（layout()）写，
     // 仲裁过程中的试算（fit 里的 tryPlace）不算数
     for (const pc of placed) { const c = cards.get(pc.id); if (c) c.prevPos = { row: pc.row, col: pc.col } }
+    // 队列顺序即上台顺序——UI（边缘条/台下清单卡）和 reconcile 看到的是同一个排序
+    const staging = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt)
     return {
       cards: placed,
       free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
       overlay: overlay ? cards.get(overlay) : undefined,
+      staged: staging,
     }
   }
 
@@ -532,8 +635,8 @@ export function createDesk(clock: () => number = Date.now) {
 
   return {
     show, update, resize, dismiss, focus, render, tick, endTask, layout, summary,
-    get: (id: string) => cards.get(id),
-    findByKey: (key: string) => [...cards.values()].find(c => c.key === key),
+    get: (id: string) => getById(id),
+    findByKey: (key: string) => [...cards.values(), ...staged.values()].find(c => c.key === key),
     isSuppressed: (key: string) => suppressed.has(key),
     cellsOf: (s: Size) => cellsOfTier(s),
     ladder: () => [...LADDER],

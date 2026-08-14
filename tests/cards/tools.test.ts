@@ -101,12 +101,11 @@ describe('卡片调度 Tool', () => {
     expect(r.message).toContain('搜索结果')
   })
 
-  it('桌面满且无可让位时返回 rejected + 可读原因', async () => {
+  it('桌面满且无可让位时进等位区，不再拒绝（2026-08-13：放不下是状态不是失败）', async () => {
     for (let i = 0; i < 24; i++) { await show({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
     const r = await show({ kind: 'task', size: 'chip', minSize: 'chip' })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('DESKTOP_FULL')
-    expect(r.message).toBeTruthy()
+    expect(r.status).toBe('ok')
+    expect((r.data as any)?.staged).toBe(true)
   })
 
   it('card.update / card.resize / card.focus / card.dismiss', async () => {

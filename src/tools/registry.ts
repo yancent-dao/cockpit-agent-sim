@@ -215,9 +215,12 @@ export function createRegistry(
   }
   const toResult = (r: any): ToolResult =>
     r.status === 'ok'
-      ? { status: 'ok', data: { cardId: r.cardId, ...(r.level && { level: r.level }) },
+      ? { status: 'ok', data: { cardId: r.cardId, ...(r.staged && { staged: true }), ...(r.level && { level: r.level }) },
           ...(r.shrunk && { code: 'CARD_SHRUNK' }),
-          ...(r.note && { message: r.note }) }
+          // staged 优先于 shrunk 当 code：对模型来说"排队去了"比"变小了"更该知道
+          ...(r.staged && { code: 'CARD_STAGED' }),
+          ...(r.note ? { message: r.note }
+            : r.staged ? { message: '桌面满了，先排在台下，有空位自动显示；想立刻看就说"看XX"能叫回' } : {}) }
       : { status: 'rejected', code: r.code, message: r.message }
 
 

@@ -44,15 +44,19 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
   }
 
   /**
-   * 补回通道（reconcile 第一步）：规则条件仍成立但卡不在场（被挤掉了）→ 补回。
+   * 补回通道（reconcile 第一步）：规则条件仍成立但卡不在台上（被挤掉了，
+   * 台上台下都算"不在场"——`findByKey` 现在等位区也认得到，所以判据必须
+   * 明确是"不在台上"，不是"哪都找不到"）→ 重新断言。
+   *
    * 这修的是核心不变量：桌面 = f(车辆状态)，不是 f(状态, 历史路径)——
-   * 播放器被挤掉后歌还在放，屏上就该有它。
+   * 播放器被挤掉后歌还在放，屏上就该有它。等位区里的卡再次断言正是它
+   * 重新尝试上台的机会（desk.render 对排队中的卡会立即重试 fit，不必等 tick）。
    * 用户亲手关掉的跳过（isSuppressed），直到 watch 信号变化让规则重新断言。
-   * 补回失败（还是放不下）不重试，等下一次 desk 变化。
    */
   const refill = () => {
+    const onstage = new Set(desk.layout().cards.map(c => c.key))
     for (const r of rules)
-      if (r.when && isActive(r) && !desk.findByKey(r.card.key) && !desk.isSuppressed(r.card.key))
+      if (r.when && isActive(r) && !onstage.has(r.card.key) && !desk.isSuppressed(r.card.key))
         apply(r)
   }
 

@@ -102,11 +102,13 @@ describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () 
     expect(r.shrunk).toBeTruthy()
   })
 
-  it('同一时刻最多一张 2/3——第二张放不下且第一张不可挤则拒绝', () => {
+  it('同一时刻最多一张 2/3——第二张放不下且第一张不可挤则进等位区（2026-08-13 改：不再拒绝）', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
     const r = mk({ size: '2/3', template: 'nav', kind: 'rule' })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('DESKTOP_FULL')
+    expect(r.status).toBe('ok')
+    expect(r.staged).toBe(true)
+    expect(desk.layout().cards).toHaveLength(1)   // 只有第一张上台
+    expect(desk.layout().staged.map(c => c.id)).toContain(r.cardId)
   })
 })
 
@@ -312,6 +314,19 @@ describe('桌面摘要（注入 system prompt）', () => {
     for (let i = 0; i < 6; i++) { mk(); now += 10 }
     expect(desk.summary()).toMatch(/满|放不下/)
   })
+
+  // 等位区（2026-08-13）：模型必须知道台下还有什么，不然它会当成"没了"重复建卡
+  it('台下有排队的卡时，摘要里说得出——不然模型会以为没了', () => {
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    mk({ template: 'weather', size: '1/6', data: { title: '成都天气' } })
+    expect(desk.summary()).toContain('成都天气')
+    expect(desk.summary()).toMatch(/台下|排队|等/)
+  })
+
+  it('台下没有排队的卡时不提这茬——没有的事别说', () => {
+    mk({ data: { title: 'A' } })
+    expect(desk.summary()).not.toMatch(/台下|排队等/)
+  })
 })
 
 /**
@@ -456,12 +471,13 @@ describe('urgency 参与仲裁', () => {
     expect(desk.layout().cards.some(c => c.data?.title === '胎压过低')).toBe(true)
   })
 
-  it('非 critical 卡放不下还是照常拒绝 —— 覆盖层不是垃圾桶', () => {
+  it('非 critical 卡放不下不再拒绝也不滥用覆盖层——进等位区（2026-08-13 改）', () => {
     mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
     const r = mk({ size: '1/2', kind: 'system', data: { title: '普通提示' } })
     expect(r.status).toBe('ok')       // 会被降档放进右边竖条
     const r2 = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张大卡' } })
-    expect(r2.status).toBe('rejected')
+    expect(r2.status).toBe('ok')
+    expect(r2.staged).toBe(true)
     expect(desk.layout().overlay).toBeUndefined()
   })
 
@@ -512,5 +528,138 @@ describe('降级阶梯七档，缩得比 1/6 更小', () => {
     expect(desk.cellsOf('chip' as any)).toBe(2)
     expect(desk.cellsOf('bar' as any)).toBe(6)
     expect(desk.cellsOf('1/6')).toBe(8)
+  })
+})
+
+/**
+ * 等位区（offstage/staged）—— 2026-08-13 设计
+ * docs/superpowers/specs/2026-08-13-desk-offstage-design.md
+ *
+ * 核心转变：**"放不下"从一种失败变成一种状态**。放不下的新卡、被挤出的卡
+ * 都不再消失，进等位区排队；空间释放后 reconcile 静默把它们请回台上。
+ */
+describe('等位区：放不下不再是失败，是一种状态', () => {
+  it('放不下的新卡 status 仍是 ok，staged:true，不占桌面', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张' } })
+    expect(r.status).toBe('ok')
+    expect(r.staged).toBe(true)
+    expect(desk.layout().cards.some(c => c.data?.title === '第二张')).toBe(false)
+    expect(desk.layout().staged.some(c => c.data?.title === '第二张')).toBe(true)
+  })
+
+  it('被挤出的卡进等位区，不是真的消失', () => {
+    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: `卡${i}` } }); now += 10 }
+    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
+    expect(r.status).toBe('ok')
+    expect(r.evicted?.length).toBeGreaterThan(0)
+    const evictedId = r.evicted![0]
+    expect(desk.layout().cards.some(c => c.id === evictedId)).toBe(false)
+    expect(desk.layout().staged.some(c => c.id === evictedId)).toBe(true)
+  })
+
+  it('空间释放后，staged 卡自动上台（静默，reconcile）', () => {
+    const a = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: 'A' } }).cardId!
+    now += 10
+    const rb = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: 'B' } })
+    expect(rb.staged).toBe(true)
+    desk.dismiss(a)   // 腾出空间
+    desk.tick()
+    expect(desk.layout().cards.some(c => c.data?.title === 'B')).toBe(true)
+    expect(desk.layout().staged.some(c => c.data?.title === 'B')).toBe(false)
+  })
+
+  it('挤位时优先级决定谁走：来的是高优先级，走的是场上低优先级那张（不是它自己进等位区）', () => {
+    mk({ size: '1/2', kind: 'system', evictable: false, data: { title: '占位' } }); now += 10
+    mk({ size: '1/2', kind: 'task', minSize: '1/2', data: { title: '低优先级' } })
+    now += 10
+    const r = mk({ size: '1/2', kind: 'system', data: { title: '高优先级' } })
+    expect(r.status).toBe('ok')
+    expect(r.staged, '高优先级自己上台了，不是进队').toBeFalsy()
+    const onstage = desk.layout().cards.map(c => c.data?.title)
+    expect(onstage).toContain('高优先级')
+    expect(onstage).not.toContain('低优先级')
+    expect(desk.layout().staged.some(c => c.data?.title === '低优先级'), '低优先级被挤去排队').toBe(true)
+  })
+
+  it('等位区里 untilDismissed 卡不因为久候而过期', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '排队中' }, ttl: 'untilDismissed' })
+    now += 100_000; desk.tick(); now += 100_000; desk.tick()
+    expect(desk.layout().staged.some(c => c.data?.title === '排队中')).toBe(true)
+  })
+
+  it('等位区里秒数 ttl 的卡照常过期——没人看到的问题卡更该散', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '问题卡' }, ttl: 5 })
+    now += 6000; desk.tick()
+    expect(desk.layout().staged.some(c => c.data?.title === '问题卡')).toBe(false)
+  })
+
+  it('等位区上限 8：超限淘汰优先级最低+最老的一张，真消失并通知', () => {
+    // 填满 48 单元且全用更高优先级、不可挤——后来的 task 卡一张都进不了台上
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    const notices: string[] = []
+    desk.onNotice(n => notices.push(n.note))
+    for (let i = 0; i < 8; i++) { mk({ size: '1/6', data: { title: `排队${i}` } }); now += 10 }
+    expect(desk.layout().staged).toHaveLength(8)
+    const r = mk({ size: '1/6', data: { title: '第九个' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().staged).toHaveLength(8)   // 仍然是 8，淘汰了一个
+    expect(desk.layout().staged.some(c => c.data?.title === '排队0'), '最旧的被淘汰').toBe(false)
+    expect(desk.layout().staged.some(c => c.data?.title === '第九个')).toBe(true)
+    expect(notices.some(n => n.includes('排队0'))).toBe(true)
+  })
+
+  it('新一轮家族清扫也波及等位区——旧批不管在不在台上都退场', () => {
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    desk.render({ key: 'weather:a', family: 'weather', round: 1, template: 'weather',
+      size: '1/6', ttl: 'untilDismissed', data: { title: '成都天气' } })
+    expect(desk.layout().staged.some(c => c.data?.title === '成都天气')).toBe(true)
+    desk.render({ key: 'weather:b', family: 'weather', round: 2, template: 'weather',
+      size: '1/6', ttl: 'untilDismissed', data: { title: '北京天气' } })
+    expect(desk.layout().staged.some(c => c.data?.title === '成都天气'), '旧批退场').toBe(false)
+  })
+
+  it('findByKey/get 认得等位区里的卡——render() 刷新它不会被当成新卡重建', () => {
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    const r = desk.render({ key: 'w1', template: 'weather', size: '1/6', ttl: 'untilDismissed',
+      data: { title: '天气V1' } })
+    expect(r.staged).toBe(true)
+    const id = r.cardId!
+    expect(desk.get(id)?.data.title).toBe('天气V1')
+    expect(desk.findByKey('w1')?.id).toBe(id)
+    desk.render({ key: 'w1', template: 'weather', size: '1/6', ttl: 'untilDismissed',
+      data: { title: '天气V2' } })
+    expect(desk.layout().staged.filter(c => c.key === 'w1')).toHaveLength(1)   // 刷新不是新建
+    expect(desk.get(id)?.data.title).toBe('天气V2')
+  })
+
+  it('focus() 召回等位区的卡：不必等 tick，立即重新尝试上台', () => {
+    const blockerId = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }).cardId!
+    now += 10
+    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '待召回' } })
+    expect(r.staged).toBe(true)
+    const id = r.cardId!
+    desk.dismiss(blockerId)   // 腾出空间，但不调用 tick()
+    desk.focus(id)            // 立即召回，不必等下一次 tick 才上台
+    expect(desk.layout().cards.some(c => c.id === id), '召回后应在台上').toBe(true)
+    expect(desk.layout().staged.some(c => c.id === id)).toBe(false)
+  })
+
+  it('用户划走等位区的卡：直接消失，不占位不诈尸', () => {
+    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ key: 'q1', size: '2/3', template: 'nav', kind: 'rule', data: { title: 'Q' } })
+    desk.dismiss(r.cardId!, { byUser: true })
+    expect(desk.layout().staged.some(c => c.id === r.cardId)).toBe(false)
+  })
+
+  it('critical 卡永不进等位区——放不下走覆盖层，行为不变', () => {
+    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ template: 'notice', size: '1/2', kind: 'system', urgency: 'critical', ttl: 60,
+      data: { title: '车门未关' } })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().overlay?.data?.title).toBe('车门未关')
+    expect(desk.layout().staged.some(c => c.data?.title === '车门未关')).toBe(false)
   })
 })

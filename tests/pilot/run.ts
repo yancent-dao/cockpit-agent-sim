@@ -106,9 +106,15 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
 
   for (const c of calls) {
     const code = c.result?.code
-    if (['DESKTOP_FULL', 'DATA_SHAPE_MISMATCH', 'SIZE_NOT_SUPPORTED', 'NO_HANDLER', 'HANDLER_ERROR'].includes(code))
+    // DESKTOP_FULL 从硬伤名单移除（2026-08-13）：桌面满了不再是失败，是进等位区
+    // 排队（status 仍是 ok），CARD_STAGED 是正常告知不是错误
+    if (['DATA_SHAPE_MISMATCH', 'SIZE_NOT_SUPPORTED', 'NO_HANDLER', 'HANDLER_ERROR'].includes(code))
       out.push(`Tool ${c.name} 返回 ${code}：${c.result?.message ?? ''}`)
   }
+  // 等位区滞留：排太久说明这场景桌面压力大，值得人看一眼排版，不是错误
+  if ((layout.staged?.length ?? 0) >= 3)
+    out.push(`提示 · 等位区排了 ${layout.staged.length} 张卡（${
+      layout.staged.map((c: any) => c.data?.title ?? c.template).join('、')}），桌面压力大`)
   if (store.get('navigation.active') === true && !keys.includes('nav'))
     out.push('导航进行中但桌面没有导航卡')
   if (keys.includes('nav-candidates') && keys.includes('ask'))

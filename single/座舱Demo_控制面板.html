@@ -2234,7 +2234,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         // 尺寸交给内容建议：3 条小卡、10 条大卡
         data: { title: "你要去哪个？", items: pois.map((p) => ({ label: p.name, sub: p.address })) }
       });
-      return r && r.status !== "ok";
+      return !!(r && r.staged);
     };
     const dismissCandidates = (keys = [CANDIDATES, "routes", "along"]) => {
       const d = desk2?.();
@@ -2265,8 +2265,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             status: "ok",
             data: { pois },
             ...notShown && {
-              code: "CARD_NOT_SHOWN",
-              message: "候选列表没能显示到屏幕上（桌面满了），播报时把候选念出来，别让用户去屏幕上找"
+              code: "CARD_STAGED",
+              message: "候选列表先排队等桌面腾地方了（不是消失，位置一空自动显示），播报时把候选念出来，别让用户去屏幕上找"
             }
           };
         } catch (e) {
@@ -2712,9 +2712,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
     const toResult = (r) => r.status === "ok" ? {
       status: "ok",
-      data: { cardId: r.cardId, ...r.level && { level: r.level } },
+      data: { cardId: r.cardId, ...r.staged && { staged: true }, ...r.level && { level: r.level } },
       ...r.shrunk && { code: "CARD_SHRUNK" },
-      ...r.note && { message: r.note }
+      // staged 优先于 shrunk 当 code：对模型来说"排队去了"比"变小了"更该知道
+      ...r.staged && { code: "CARD_STAGED" },
+      ...r.note ? { message: r.note } : r.staged ? { message: '桌面满了，先排在台下，有空位自动显示；想立刻看就说"看XX"能叫回' } : {}
     } : { status: "rejected", code: r.code, message: r.message };
     const checkDataShape = (tmpl, data, opts) => {
       if (!tmpl.fields) return null;
@@ -4139,6 +4141,8 @@ ${text}` });
       const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
       if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
     }
+    if (l.staged?.length)
+      lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join("、")}（不是没了，有空位自动显示，或说"看XX"叫回）`);
     return lines.join("\n");
   }
 
@@ -4195,18 +4199,32 @@ ${text}` });
   };
   var canShrink = (c) => rung(c.size) > floorIdx(c);
   var PRIO = (c) => priorityOf(c.kind, c.urgency);
+  var STAGE_CAP = 8;
   var isEmptyList = (template, data) => (template === "list" || template === "capability") && Array.isArray(data?.items) && data.items.length === 0;
   function createDesk(clock = Date.now) {
     const cards = /* @__PURE__ */ new Map();
+    const staged = /* @__PURE__ */ new Map();
     let overlay;
     let seq = 0;
     const listeners = [];
     const emit = () => listeners.forEach((l) => l());
+    const getById = (id) => cards.get(id) ?? staged.get(id);
     const noticeListeners = [];
     const dataChangeListeners = [];
     const suppressed = /* @__PURE__ */ new Set();
     let releasedAt;
     let familyAutoRound = 0;
+    function evictFromStage() {
+      const victim = [...staged.values()].sort((a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt)[0];
+      if (!victim) return;
+      staged.delete(victim.id);
+      const note = `「${titleOf(victim)}」排队太久，先撤了`;
+      noticeListeners.forEach((l) => l({ note, titles: [titleOf(victim)] }));
+    }
+    function stage(c) {
+      if (!staged.has(c.id) && staged.size >= STAGE_CAP) evictFromStage();
+      staged.set(c.id, c);
+    }
     function sweepFamily(c) {
       if (!c.family) return;
       let removed = false;
@@ -4215,6 +4233,8 @@ ${text}` });
           cards.delete(other.id);
           removed = true;
         }
+      for (const other of [...staged.values()])
+        if (other.id !== c.id && other.family === c.family && other.round !== c.round) staged.delete(other.id);
       if (removed) releasedAt = clock();
     }
     function tryPlace(list) {
@@ -4262,7 +4282,7 @@ ${text}` });
       return out;
     }
     const others = () => [...cards.values()].filter((c) => c.id !== overlay);
-    function fit(candidate) {
+    function fit(candidate, opts = {}) {
       const shrunk = [];
       const evicted = [];
       const titles = [];
@@ -4278,10 +4298,15 @@ ${text}` });
         if (tryPlace([...pool, trial])) {
           if (size !== candidate.size) shrunk.push(candidate.id);
           candidate.size = size;
-          for (const id of evicted) cards.delete(id);
+          for (const id of evicted) {
+            const victim2 = cards.get(id);
+            cards.delete(id);
+            if (victim2) stage(victim2);
+          }
+          staged.delete(candidate.id);
           cards.set(candidate.id, candidate);
           sweepFamily(candidate);
-          const note = titles.length ? `我把${titles.map((t) => `「${t}」`).join("、")}收起来了` : void 0;
+          const note = titles.length ? `${titles.map((t) => `「${t}」`).join("、")}先收后台了，随时说"看${titles[0]}"叫回` : void 0;
           if (note) noticeListeners.forEach((l) => l({ note, titles: [...titles] }));
           emit();
           return {
@@ -4291,17 +4316,20 @@ ${text}` });
             ...evicted.length && { evicted, note }
           };
         }
-        const shrinkable = victims().find(canShrink);
-        if (shrinkable) {
-          shrinkable.size = LADDER3[rung(shrinkable.size) - 1];
-          shrunk.push(shrinkable.id);
-          continue;
+        if (!opts.passive) {
+          const shrinkable = victims().find(canShrink);
+          if (shrinkable) {
+            shrinkable.size = LADDER3[rung(shrinkable.size) - 1];
+            shrunk.push(shrinkable.id);
+            continue;
+          }
         }
         const selfIdx = rung(size);
         if (selfIdx > floorIdx(candidate)) {
           size = LADDER3[selfIdx - 1];
           continue;
         }
+        if (opts.passive) return { status: "ok", cardId: candidate.id, staged: true };
         const victim = victims()[0];
         if (victim) {
           shrunkOut.add(victim.id);
@@ -4316,7 +4344,14 @@ ${text}` });
           shrunk.push(highShrinkable.id);
           continue;
         }
-        return { status: "rejected", code: "DESKTOP_FULL", message: "桌面已满，且没有可以让位的卡片" };
+        if (opts.onNoSpace === "reject")
+          return { status: "rejected", code: "DESKTOP_FULL", message: "桌面已满，且没有可以让位的卡片" };
+        const alreadyStaged = staged.has(candidate.id);
+        candidate.size = candidate.desiredSize ?? candidate.size;
+        sweepFamily(candidate);
+        stage(candidate);
+        if (!alreadyStaged) emit();
+        return { status: "ok", cardId: candidate.id, staged: true };
       }
     }
     function show(input) {
@@ -4359,12 +4394,13 @@ ${text}` });
         return { status: "ok", cardId: id };
       };
       if (channelOf({ size, urgency: card.urgency }) === "overlay" && size === "full") return toOverlay();
-      const r = fit(card);
-      if (r.status === "rejected" && channelOf({ urgency: card.urgency }) === "overlay") return toOverlay();
+      const isCritical = channelOf({ urgency: card.urgency }) === "overlay";
+      const r = fit(card, { onNoSpace: isCritical ? "reject" : "stage" });
+      if (r.status === "rejected" && isCritical) return toOverlay();
       return r;
     }
     function update(id, data) {
-      const c = cards.get(id);
+      const c = getById(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       const next = { ...c.data, ...data };
       const changed = JSON.stringify(next) !== JSON.stringify(c.data);
@@ -4375,19 +4411,19 @@ ${text}` });
       return { status: "ok", cardId: id };
     }
     function resizeGate(id, size) {
-      const c = cards.get(id);
+      const c = getById(id);
       if (!c) return null;
       const err = checkSize(c.template, size);
       return err ? { status: "rejected", ...err } : null;
     }
     function resize(id, size, byUser = true) {
-      const c = cards.get(id);
+      const c = getById(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       const gateErr = resizeGate(id, size);
       if (gateErr) return gateErr;
       const prev = c.size;
       c.size = size;
-      if (!tryPlace(others())) {
+      if (cards.has(id) && !tryPlace(others())) {
         c.size = prev;
         return { status: "rejected", code: "NO_ROOM", message: "这个尺寸放不下了" };
       }
@@ -4398,16 +4434,24 @@ ${text}` });
       return { status: "ok", cardId: id };
     }
     function dismiss(id, opts) {
-      const c = cards.get(id);
+      const c = getById(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       if (opts?.byUser && c.key) suppressed.add(c.key);
+      const wasOnstage = cards.has(id);
       cards.delete(id);
+      staged.delete(id);
       if (overlay === id) overlay = void 0;
+      if (!wasOnstage) {
+        emit();
+        return { status: "ok", cardId: id };
+      }
       releasedAt = clock();
       emit();
       return { status: "ok", cardId: id };
     }
     const focus = (id) => {
+      const staging = staged.get(id);
+      if (staging) return fit(staging, { onNoSpace: "stage" });
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       c.touchedAt = clock();
@@ -4416,7 +4460,7 @@ ${text}` });
     };
     function render(i) {
       suppressed.delete(i.key);
-      const exist = [...cards.values()].find((c) => c.key === i.key);
+      const exist = [...cards.values(), ...staged.values()].find((c) => c.key === i.key);
       if (isEmptyList(i.template, i.data)) {
         if (exist) dismiss(exist.id);
         return { status: "rejected", code: "EMPTY_CARD", message: "一条都没有，卡撤了" };
@@ -4428,6 +4472,15 @@ ${text}` });
           exist.family = i.family;
           exist.round = i.round ?? ++familyAutoRound;
           sweepFamily(exist);
+        }
+        if (staged.has(exist.id)) {
+          const next = { ...exist.data, ...i.data ?? {} };
+          const changed = JSON.stringify(next) !== JSON.stringify(exist.data);
+          exist.data = next;
+          exist.touchedAt = clock();
+          if (changed) dataChangeListeners.forEach((l) => l(exist.id));
+          if (!exist.sizeLocked) exist.size = want;
+          return fit(exist, { onNoSpace: "stage" });
         }
         if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {
           const r3 = update(exist.id, i.data ?? {});
@@ -4448,11 +4501,16 @@ ${text}` });
       const t = clock();
       for (const c of [...cards.values()])
         if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) dismiss(c.id);
+      for (const c of [...staged.values()])
+        if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) staged.delete(c.id);
       if (releasedAt !== void 0 && t - releasedAt >= 2e3) {
         releasedAt = void 0;
         const pressed = [...cards.values()].filter((c) => c.desiredSize && cellsOfTier(c.size) < cellsOfTier(c.desiredSize)).sort((a, b) => PRIO(b) - PRIO(a));
         for (const c of pressed) resize(c.id, c.desiredSize, false);
       }
+      const queue = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt);
+      for (const c of queue) if (staged.has(c.id)) fit(c, { passive: true });
+      emit();
     }
     function endTask() {
       for (const c of [...cards.values()]) if (c.ttl === "untilTaskEnd") dismiss(c.id);
@@ -4463,10 +4521,12 @@ ${text}` });
         const c = cards.get(pc.id);
         if (c) c.prevPos = { row: pc.row, col: pc.col };
       }
+      const staging = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt);
       return {
         cards: placed,
         free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
-        overlay: overlay ? cards.get(overlay) : void 0
+        overlay: overlay ? cards.get(overlay) : void 0,
+        staged: staging
       };
     }
     const summary = () => summarize(layout());
@@ -4481,8 +4541,8 @@ ${text}` });
       endTask,
       layout,
       summary,
-      get: (id) => cards.get(id),
-      findByKey: (key) => [...cards.values()].find((c) => c.key === key),
+      get: (id) => getById(id),
+      findByKey: (key) => [...cards.values(), ...staged.values()].find((c) => c.key === key),
       isSuppressed: (key) => suppressed.has(key),
       cellsOf: (s) => cellsOfTier(s),
       ladder: () => [...LADDER3],
@@ -4524,8 +4584,9 @@ ${text}` });
       });
     };
     const refill = () => {
+      const onstage = new Set(desk2.layout().cards.map((c) => c.key));
       for (const r of rules)
-        if (r.when && isActive(r) && !desk2.findByKey(r.card.key) && !desk2.isSuppressed(r.card.key))
+        if (r.when && isActive(r) && !onstage.has(r.card.key) && !desk2.isSuppressed(r.card.key))
           apply(r);
     };
     const retire = (r) => {

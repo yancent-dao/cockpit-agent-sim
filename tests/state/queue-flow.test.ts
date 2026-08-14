@@ -149,3 +149,33 @@ describe('续播保险丝', () => {
     expect(store.get('media.playing')).toBe(true)
   })
 })
+
+/**
+ * 播放失败通道（2026-08-14 代码审查）。
+ *
+ * 车机屏的 player 会上报四种设备事实：ended / error / ready / blocked，
+ * 但 director 只处理 ended，其余落到 `if (m.type !== 'hello') return` 被静默吞掉。
+ * 后果：流媒体 404 或中途断流时，store 的 media.playing 仍是 true，
+ * 播放器卡继续显示"播放中"，autoplay 不续播，Agent 的信号注入也认为在放歌——
+ * 用户听到寂静，问"怎么不响了"时模型对着 playing=true 答非所问，
+ * 整个播放队列就此静默停摆。CLAUDE.md 写明 bus 双向、车机屏上报
+ * "放完了/放不出来"两类事实，"放不出来"这半边一直没人消费。
+ */
+describe('播放出错：不能静默停摆', () => {
+  it('onError 把 playing 置为 false —— 世界观不再声称正在播放', () => {
+    store.set('media.playing', true)
+    const ap = createAutoplay(store, state)
+    ap.onError()
+    expect(store.get('media.playing')).toBe(false)
+  })
+
+  it('onError 不吃掉队列：修好后还能接着放（不清空队列）', () => {
+    state.queue.set([
+      { track: 'A', streamUrl: 'a', source: 'music' },
+      { track: 'B', streamUrl: 'b', source: 'music' },
+    ] as any, 0, 'test')
+    const ap = createAutoplay(store, state)
+    ap.onError()
+    expect(state.queue.list().length, '队列还在').toBe(2)
+  })
+})

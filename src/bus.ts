@@ -9,7 +9,7 @@ export type BusMsg =
    * 塞进桌面会占掉 1/6 格子还跟内容卡长得一样。
    * reason 决定语义色（rejected 红 / constraint 橙 / evicted 蓝 / done 绿）。
    */
-  | { type: 'banner'; on: boolean; title?: string; desc?: string; reason?: string; ttl?: number; jump?: boolean }
+  | { type: 'banner'; on: boolean; title?: string; desc?: string; code?: string; reason?: string; ttl?: number; jump?: boolean }
   | { type: 'highlight'; ids: string[] }
   | { type: 'card'; action: 'show' | 'dismiss'; id: string; zone?: string; size?: string; title?: string; body?: string }
   /**
@@ -32,12 +32,43 @@ export type BusMsg =
   | { type: 'userAction'; cardId: string; act: string; value?: string }
   | { type: 'mediaEvent'; event: 'ended' | 'error' | 'blocked' | 'ready'; detail?: string }
 
+/** 去重记忆的容量。够覆盖同一条消息的多通道投递即可，不需要记住整个会话 */
+export const DEDUPE_CAP = 64
+
+/**
+ * 收到过这个 id 吗（true = 重复，该丢弃）。
+ *
+ * send() 一条消息走三条通道，接收端两个入口共用一个 handle——不去重的话
+ * 用户点一次「下一曲」会跳两首歌。抽成纯函数是因为 createBus 依赖
+ * window/BroadcastChannel，node 测试环境构造不出来。
+ * 没有 id 的消息（外部来源、旧版本页面）一律放行：宁可重复也不吞消息。
+ */
+export function createDedupe() {
+  const seen = new Set<string>()
+  return (id?: string): boolean => {
+    if (!id) return false
+    if (seen.has(id)) return true
+    seen.add(id)
+    // Set 迭代序即插入序，删第一个就是删最老的
+    if (seen.size > DEDUPE_CAP) seen.delete(seen.values().next().value as string)
+    return false
+  }
+}
+
 export function createBus(onMsg: (m: BusMsg) => void) {
   let bc: BroadcastChannel | null = null
   try { bc = new BroadcastChannel('cockpit-sim') } catch { /* file:// 可能不支持 */ }
 
   let peer: Window | null = null
-  const handle = (m: any) => { if (m && m.type) onMsg(m as BusMsg) }
+  const isDup = createDedupe()
+  // 发送方前缀：两个窗口各自从 1 开始计数，只有计数器会撞车
+  const src = Math.random().toString(36).slice(2, 8)
+  let seq = 0
+  const handle = (m: any) => {
+    if (!m || !m.type) return
+    if (isDup(m.__id)) return   // 同一条消息经第二条通道又来了一次
+    onMsg(m as BusMsg)
+  }
 
   addEventListener('message', e => {
     if (e.data?.type === 'hello' && e.source) peer = e.source as Window
@@ -47,9 +78,10 @@ export function createBus(onMsg: (m: BusMsg) => void) {
 
   return {
     send(m: BusMsg) {
-      try { if (peer && !(peer as any).closed) peer.postMessage(m, '*') } catch { /* noop */ }
-      try { if (opener) (opener as Window).postMessage(m, '*') } catch { /* noop */ }
-      bc?.postMessage(m)
+      const tagged = { ...m, __id: `${src}-${++seq}` }
+      try { if (peer && !(peer as any).closed) peer.postMessage(tagged, '*') } catch { /* noop */ }
+      try { if (opener) (opener as Window).postMessage(tagged, '*') } catch { /* noop */ }
+      bc?.postMessage(tagged)
     },
     setPeer(w: Window | null) { peer = w },
     get connected() { return !!peer || !!opener },

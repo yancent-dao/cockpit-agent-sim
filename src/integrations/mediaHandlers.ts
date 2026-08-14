@@ -86,6 +86,19 @@ export function createAutoplay(store: Store, state: DomainState, clock: () => nu
       if (qt) { playQueueTrack(store, qt); state.history.push(qt); lastAdvance = clock() }
       else store.set('media.playing', false)   // 到尾了就停，不静音挂着
     },
+    /**
+     * 放不出来（流 404、中途断流、被自动播放策略拦下）。
+     *
+     * 这半边以前没人消费：车机屏 report('error') 发出来，director 只认 ended，
+     * 于是 media.playing 一直是 true——播放器卡显示"播放中"、Agent 的信号注入
+     * 也认为在放歌，用户听到寂静一问，模型对着 playing=true 答非所问。
+     * 只落"停了"这个事实，**不自动跳下一首**：坏流常常整批都坏，
+     * 连跳会把整个队列在几秒内烧完（跟 onEnded 的保险丝同一个道理）。
+     * 队列保留原样，用户说"下一首"或修好后还能接着放。
+     */
+    onError() {
+      store.set('media.playing', false)
+    },
   }
 }
 

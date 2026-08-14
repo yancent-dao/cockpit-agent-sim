@@ -192,6 +192,23 @@ const bus = createBus(m => {
     log('p', store.get('media.playing') ? `放完了，自动下一首：${store.get('media.track')}` : '队列放完了')
     return
   }
+  /**
+   * 放不出来（流 404 / 中途断流 / 被自动播放策略拦下）。
+   *
+   * 以前这三种事实全被下面那句 `if (m.type !== 'hello') return` 静默吞掉：
+   * playing 一直挂在 true，播放器卡显示"播放中"、Agent 也以为在放歌，
+   * 用户却只听到寂静。现在落到信号上，规则会自己收掉播放器卡。
+   * blocked 是"还没解锁"不是"坏了"，车机屏那边已有引导横幅，这里只同步状态。
+   */
+  if (m.type === 'mediaEvent' && (m.event === 'error' || m.event === 'blocked')) {
+    autoplay.onError()
+    if (m.event === 'error') {
+      log('e', `放不出来：${store.get('media.track') || '当前内容'}${m.detail ? ' · ' + m.detail : ''}`)
+      bus.send({ type: 'banner', on: true, reason: 'rejected', title: '这个放不出来',
+        desc: '换一个试试，或者说"下一首"', ttl: 6000 })
+    }
+    return
+  }
   if (m.type === 'canvasNote') {
     const prev = canvasNotes.get(m.cardId) ?? { bumps: 0 }
     const note = {
@@ -494,7 +511,7 @@ async function ask(text: string) {
           .filter((p: string) => p.startsWith('cabin.window.'))
           .map((p: string) => p.split('.')[2])
         if (ids.length) bus.send({ type: 'highlight', ids })
-        if (res.code === 'SPEED_LIMITED') bus.send({ type: 'banner', on: true, reason: 'constraint', title: '已限位', desc: `${res.message} · <code>${res.code}</code>`, ttl: 6000 })
+        if (res.code === 'SPEED_LIMITED') bus.send({ type: 'banner', on: true, reason: 'constraint', title: '已限位', desc: res.message, code: res.code, ttl: 6000 })
         const cid = (res.data as any)?.cardId
         if (cid) bus.send({ type: 'highlight', ids: [], cards: [cid] } as any)
       }

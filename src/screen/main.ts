@@ -2,7 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
-import { createBannerQueue, toneOf } from './banner'
+import { createBannerQueue, toneOf, bannerHtml } from './banner'
 import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { classifyGesture } from './gestures'
 import { sanitize } from './sanitize'
@@ -118,8 +118,10 @@ const banners = createBannerQueue({
   show: b => {
     const el = $('banner')
     $('bnT').textContent = b.title ?? ''
-    // desc 里允许 <code> 标记错误码——这段由平台自己拼，不是模型输出
-    $('bnD').innerHTML = b.text
+    // 正文一律转义，只有 code 字段被包成 <code>——desc 的来源里有模型
+    // 完全可控的字符串（挤出告知内嵌的卡片标题、模型话术、子 Agent summary），
+    // 而这个页面的 localStorage 里放着 OpenRouter 和高德的 Key
+    $('bnD').innerHTML = bannerHtml(b)
     $('bnI').textContent = BAN_ICON[b.tone ?? 'info'] ?? 'i'
     el.className = `a-${b.tone ?? 'info'} on`
   },
@@ -563,8 +565,10 @@ function renderDesk() {
   // 卡片被移除时（不再出现在新状态里），才真正清掉对应 DOM 节点
   for (const [id, node] of cardNodes) {
     if (!seen.has(id)) {
-      // 播放器卡退场意味着 media.playing 变 false，声音得跟着停
-      if (node.classList.contains('tpl-media')) player.stop()
+      // 播放器卡**真的消失**才停声。下台进等位区不算消失——设计不变量是
+      // 「播放器被挤掉后歌还在放」，在这里停的话 store 的 playing 仍是 true，
+      // 模型和规则都以为在播放，用户却只听到寂静（召回后还会从 0 秒重播）
+      if (!stagedIds.has(id) && node.classList.contains('tpl-media')) player.stop()
       // 退场：先缩到 .94 再淡出，动画结束才真正移除节点。
       // 直接 remove 的话卡片是"啪"地不见的，用户不知道刚才那儿有过东西
       cardNodes.delete(id)
@@ -753,7 +757,7 @@ const bus = createBus((m: BusMsg | any) => {
       break
     case 'banner':
       if (!m.on) { banners.clear(); break }
-      banners.push({ title: m.title, text: m.desc ?? '', tone: toneOf(m.reason), ttl: m.ttl, jump: m.jump })
+      banners.push({ title: m.title, text: m.desc ?? '', code: (m as any).code, tone: toneOf(m.reason), ttl: m.ttl, jump: m.jump })
       break
   }
 })

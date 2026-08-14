@@ -9,10 +9,21 @@
  * 「三条提示同时来该显示哪条」这件事必须可测。
  */
 
+import { esc } from '../text'
+
 export interface Banner {
   text: string
   /** 标题行，可省 */
   title?: string
+  /**
+   * 机器可读错误码，渲染成 <code> 小标记。
+   *
+   * 独立成字段而不是让调用方自己往 text 里拼 `<code>` 标签——正文必须能
+   * 无条件转义。desc 的真实来源包含模型完全可控的字符串（挤出告知里内嵌的
+   * 卡片标题、模型话术、子 Agent 的 summary），而宿主页面的 localStorage
+   * 里放着 OpenRouter 和高德的 Key。
+   */
+  code?: string
   /** 语义色。不给就按 reason 查 toneOf */
   tone?: 'danger' | 'warn' | 'info' | 'ok'
   /** 停留多久（毫秒）。不给就一直挂着，等下一条来才换 */
@@ -20,6 +31,15 @@ export interface Banner {
   /** 插队到最前面。安全相关的横幅在队尾等着不可接受 */
   jump?: boolean
 }
+
+/**
+ * 横幅正文 → 安全 HTML。**正文一律转义**，只有错误码那一小段是我们自己包的标签。
+ *
+ * 抽成纯函数是为了能测：车机屏那边是 DOM 操作跑不了单测，而"模型可控文本
+ * 不许进宿主 DOM"这条安全边界必须有测试钉住。
+ */
+export const bannerHtml = (b: Pick<Banner, 'text' | 'code'>) =>
+  esc(b.text) + (b.code ? ` · <code>${esc(b.code)}</code>` : '')
 
 /**
  * 原因 → 语义色。

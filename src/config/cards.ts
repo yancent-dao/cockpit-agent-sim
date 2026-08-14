@@ -82,6 +82,14 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'list', label: '列表卡', defaultSize: '1/2', sizes: [...LIST_SIZES],
     desc: '搜索结果或候选项。data: {title, items:[{label, sub}]}',
     fields: { items: { type: 'array', required: true } } },
+  /**
+   * 台下清单（2026-08-13 等位区 W2）：点边缘条弹出的"界面之外还有什么"。
+   * systemOnly——它由机制按 desk.layout().staged 生成，模型手建的话
+   * 内容是编的不是台下真实名单。条目 value 带卡 id，点击直调 card.focus 召回。
+   */
+  { id: 'stagedlist', label: '台下清单', defaultSize: '1/3', sizes: [...LIST_SIZES], systemOnly: true,
+    desc: '台下排队卡片的清单，由系统按等位区状态自动生成，不要手动建。',
+    fields: { items: { type: 'array', required: true } } },
   { id: 'info', label: '信息卡', defaultSize: '1/6',
     desc: '只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。',
     fields: { text: { type: 'string', required: true } } },

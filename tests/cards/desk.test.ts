@@ -647,6 +647,27 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
     expect(desk.layout().staged.some(c => c.id === id)).toBe(false)
   })
 
+  // 台下卡恰恰是挤不过台上的卡才排队的——召回若还用同一套优先级比较，
+  // focus 永远失败于同样的格局，"说'看天气'叫回"就成了摆设。
+  // 用户点名 = 意愿层，压过优先级比较（物理 > 意愿 > 建议 里的中间层）
+  it('focus() 召回压过优先级比较：能挤走台上更高优先级的可挤卡', () => {
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
+    const r = mk({ kind: 'task', template: 'weather', data: { title: '成都天气' } })
+    expect(r.staged, 'task 挤不过 system，先排队').toBe(true)
+    const f = desk.focus(r.cardId!)
+    expect(f.status).toBe('ok')
+    expect(desk.layout().cards.some(c => c.id === r.cardId), '召回后在台上').toBe(true)
+  })
+
+  it('召回动不了 evictable:false 的卡——用户意愿不破硬约束，继续排队', () => {
+    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    const r = mk({ kind: 'task', template: 'weather', data: { title: 'W' } })
+    const f = desk.focus(r.cardId!)
+    expect(f.status, '排队不是失败').toBe('ok')
+    expect((f as any).staged).toBe(true)
+    expect(desk.layout().cards.some(c => c.id === r.cardId)).toBe(false)
+  })
+
   it('用户划走等位区的卡：直接消失，不占位不诈尸', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
     const r = mk({ key: 'q1', size: '2/3', template: 'nav', kind: 'rule', data: { title: 'Q' } })

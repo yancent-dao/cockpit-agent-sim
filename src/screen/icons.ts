@@ -16,6 +16,8 @@ export const TPL_ICONS: Record<string, string> = {
   vehicle: svg('<path d="M5 12l1.6-4.2A2 2 0 0 1 8.5 6.5h7a2 2 0 0 1 1.9 1.3L19 12M4.5 12h15a1.5 1.5 0 0 1 1.5 1.5V16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2.5A1.5 1.5 0 0 1 4.5 12zM7 17v1.5M17 17v1.5"/>'),
   media: svg('<path d="M9 18.5V6l10-2v12.2"/><circle cx="6.8" cy="18.5" r="2.4"/><circle cx="16.8" cy="16.2" r="2.4"/>'),
   list: svg('<path d="M8.5 6h11M8.5 12h11M8.5 18h11M4 6h.01M4 12h.01M4 18h.01"/>'),
+  // 台下清单：三层卡片叠影——"界面之外还有内容"
+  stagedlist: svg('<rect x="4" y="9" width="13" height="11" rx="2"/><path d="M7 5.5h13a0 0 0 0 1 0 0V15M10 2.5h10.5"/>'),
   confirm: svg('<circle cx="12" cy="12" r="9"/><path d="M9 12.5l2.2 2.2L15.5 10"/>'),
   feedback: svg('<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.4 2.4 4.8-5.3"/>'),
   notice: svg('<path d="M12 4a5.5 5.5 0 0 1 5.5 5.5c0 4 1.5 5.2 1.5 5.2H5s1.5-1.2 1.5-5.2A5.5 5.5 0 0 1 12 4zM10.2 18.5a2 2 0 0 0 3.6 0"/>'),

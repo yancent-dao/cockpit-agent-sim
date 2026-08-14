@@ -57,7 +57,8 @@ interface CardView {
   id: string; template: string; size: string; kind: string; title: string; data: any
   row: number; col: number; rowSpan: number; colSpan: number
 }
-let deskState: { cards: CardView[]; overlay?: CardView; free: number } = { cards: [], free: 6 }
+let deskState: { cards: CardView[]; overlay?: CardView; free: number;
+  staged?: Array<{ id: string; template: string; title: string }> } = { cards: [], free: 6 }
 let hotCards = new Set<string>()
 
 const CAR_SVG = `<svg viewBox="0 0 520 900" preserveAspectRatio="xMidYMid meet" style="height:100%;width:100%">
@@ -414,9 +415,19 @@ const cardNodes = new Map<string, HTMLDivElement>()
 // 六个信号引出一串 highlight 时，卡片就跟着连闪（用户实拍的"卡片闪烁"）
 const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}`
 
+// 上一帧的台下名单：这一帧新出现的卡若上一帧在台下 = 上台（从右缘滑入）；
+// 这一帧消失的卡若进了台下 = 下台（滑向右缘）。方向让用户读出"收起来了"vs"没了"
+let prevStagedIds = new Set<string>()
+
 function renderDesk() {
   const desk = $('desk')
   const seen = new Set<string>()
+  const stagedNow = deskState.staged ?? []
+  const stagedIds = new Set(stagedNow.map(s => s.id))
+  // 右缘边缘条："界面之外还有内容"。数字就是台下张数，点击开/收台下清单
+  const tab = $('stagedTab')
+  tab.classList.toggle('on', stagedNow.length > 0)
+  $('stagedN').textContent = String(stagedNow.length)
   // FLIP：位置真的变了才记 first rect。车窗过渡每帧调 renderDesk()，
   // 每帧都跑 FLIP 会打架，卡片抖得像坏掉的
   const moves: Move[] = []
@@ -429,6 +440,11 @@ function renderDesk() {
       // 多张卡同时进场要错峰 45ms，一起弹出来像抽搐。
       // 用 CSS 的 nth-child 不行：桌面里卡片和占位块混在一起，序号对不上
       node.style.animationDelay = `${fresh++ * 45}ms`
+      // 上台（此前在台下）：从右缘滑入，跟"新卡从下方抬起"分开
+      if (prevStagedIds.has(c.id)) {
+        node.classList.add('fromstage')
+        node.addEventListener('animationend', () => node!.classList.remove('fromstage'), { once: true })
+      }
       cardNodes.set(c.id, node)
       desk.appendChild(node)
     }
@@ -534,11 +550,13 @@ function renderDesk() {
       // 退场：先缩到 .94 再淡出，动画结束才真正移除节点。
       // 直接 remove 的话卡片是"啪"地不见的，用户不知道刚才那儿有过东西
       cardNodes.delete(id)
-      node.classList.add('leaving')
+      // 下台（进了等位区）滑向右缘；真消失才缩淡——两个方向两种含义
+      node.classList.add(stagedIds.has(id) ? 'tostage' : 'leaving')
       node.addEventListener('animationend', () => node.remove(), { once: true })
       setTimeout(() => node.remove(), 400)   // 动画被打断（切标签页）时的兜底
     }
   }
+  prevStagedIds = stagedIds
 
   // FLIP 收尾：位置真变了的卡片滑过去，不是瞬移
   if (moves.length) commitMoves(moves, stageScale)
@@ -627,6 +645,7 @@ function renderStatus() {
 }
 
 $('chipTask').onclick = () => bus.send({ type: 'taskChip' } as any)
+$('stagedTab').onclick = () => bus.send({ type: 'stagedChip' } as any)
 
 /* ── 过渡动画：车窗位置由车机屏本地逼近 target ── */
 let last = performance.now()

@@ -86,6 +86,22 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 等位区方向动画（2026-08-13）：下台=滑向右缘（去了"界面之外"），
+   上台=从右缘滑入。跟普通进退场分开——用户能读出"收起来了"vs"没了" */
+.card.tostage{animation:toStage var(--d2,.26s) var(--ez-in,ease-in) forwards;pointer-events:none}
+@keyframes toStage{to{opacity:0;transform:translateX(90px) scale(.9)}}
+.card.fromstage{animation:fromStage var(--d3,.32s) var(--ez,var(--ease))}
+@keyframes fromStage{from{opacity:0;transform:translateX(90px) scale(.95)}to{opacity:1;transform:none}}
+/* 右缘边缘条："界面之外还有内容"的最小视觉隐喻。不占栅格，贴桌面右缘垂直居中 */
+#stagedTab{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:5;
+  display:none;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+  padding:22px 10px 22px 14px;border-radius:22px 0 0 22px;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(14px);
+  border:1px solid rgba(0,0,0,.06);border-right:none;box-shadow:var(--sh-1,0 4px 16px rgba(0,0,0,.08));
+  color:var(--tx-2,#5b6472);font-size:26px;font-weight:600;letter-spacing:.05em}
+#stagedTab.on{display:flex}
+#stagedTab .dots{letter-spacing:2px;line-height:.6;writing-mode:vertical-rl}
+#stagedTab b{font-size:30px;color:var(--tx-1,#1c2430)}
 /* 错峰 45ms 由 JS 按「这一批第几张新卡」设 style.animationDelay。
    用 nth-child 不行：节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
@@ -546,6 +562,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   </div>
 
   <div id="desk"></div>
+  <div id="stagedTab"><span class="dots">⋯</span><b id="stagedN">0</b></div>
   <div id="overlay"></div>
 
   <div id="banner"><div class="bico" id="bnI">!</div>
@@ -873,6 +890,20 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       defaultSize: "1/2",
       sizes: [...LIST_SIZES],
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
+      fields: { items: { type: "array", required: true } }
+    },
+    /**
+     * 台下清单（2026-08-13 等位区 W2）：点边缘条弹出的"界面之外还有什么"。
+     * systemOnly——它由机制按 desk.layout().staged 生成，模型手建的话
+     * 内容是编的不是台下真实名单。条目 value 带卡 id，点击直调 card.focus 召回。
+     */
+    {
+      id: "stagedlist",
+      label: "台下清单",
+      defaultSize: "1/3",
+      sizes: [...LIST_SIZES],
+      systemOnly: true,
+      desc: "台下排队卡片的清单，由系统按等位区状态自动生成，不要手动建。",
       fields: { items: { type: "array", required: true } }
     },
     {
@@ -1458,6 +1489,8 @@ ${BRIDGE}
     vehicle: svg('<path d="M5 12l1.6-4.2A2 2 0 0 1 8.5 6.5h7a2 2 0 0 1 1.9 1.3L19 12M4.5 12h15a1.5 1.5 0 0 1 1.5 1.5V16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2.5A1.5 1.5 0 0 1 4.5 12zM7 17v1.5M17 17v1.5"/>'),
     media: svg('<path d="M9 18.5V6l10-2v12.2"/><circle cx="6.8" cy="18.5" r="2.4"/><circle cx="16.8" cy="16.2" r="2.4"/>'),
     list: svg('<path d="M8.5 6h11M8.5 12h11M8.5 18h11M4 6h.01M4 12h.01M4 18h.01"/>'),
+    // 台下清单：三层卡片叠影——"界面之外还有内容"
+    stagedlist: svg('<rect x="4" y="9" width="13" height="11" rx="2"/><path d="M7 5.5h13a0 0 0 0 1 0 0V15M10 2.5h10.5"/>'),
     confirm: svg('<circle cx="12" cy="12" r="9"/><path d="M9 12.5l2.2 2.2L15.5 10"/>'),
     feedback: svg('<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.4 2.4 4.8-5.3"/>'),
     notice: svg('<path d="M12 4a5.5 5.5 0 0 1 5.5 5.5c0 4 1.5 5.2 1.5 5.2H5s1.5-1.2 1.5-5.2A5.5 5.5 0 0 1 12 4zM10.2 18.5a2 2 0 0 0 3.6 0"/>'),
@@ -1508,7 +1541,7 @@ ${BRIDGE}
       return `<div class="lstcount"><b>${all.length}</b><span>项</span></div>`;
     const { shown, rest } = truncate(all, max);
     return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i, n) => `
-    <li data-act="tap:item" data-value="${esc2(`第${n + 1}个：${i.label ?? i}`)}"><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
+    <li data-act="tap:item" data-value="${esc2(i.value ?? `第${n + 1}个：${i.label ?? i}`)}"><b>${esc2(i.label ?? i)}</b>${i.sub ? `<small>${esc2(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc2(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
   var tierClass = (size) => `t-${normalizeTier(size)}`;
   var ACCENT = {
@@ -1519,6 +1552,7 @@ ${BRIDGE}
     media: "media",
     list: "pick",
     confirm: "pick",
+    stagedlist: "pick",
     feedback: "ok",
     notice: "warn",
     capability: "sys",
@@ -1560,6 +1594,8 @@ ${BRIDGE}
       case "notice":
         return `<div class="sub">${esc2(d.text)}</div>${d.suggestion ? `<div class="sug">${esc2(d.suggestion)}</div>` : ""}`;
       case "list":
+        return listBody(d.items, formOf("list", ...dimsOf(c.size)));
+      case "stagedlist":
         return listBody(d.items, formOf("list", ...dimsOf(c.size)));
       case "capability": {
         const items = d.items ?? [];
@@ -2065,9 +2101,15 @@ ${BRIDGE}
   }
   var cardNodes = /* @__PURE__ */ new Map();
   var cardSig = (c) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}`;
+  var prevStagedIds = /* @__PURE__ */ new Set();
   function renderDesk() {
     const desk = $("desk");
     const seen = /* @__PURE__ */ new Set();
+    const stagedNow = deskState.staged ?? [];
+    const stagedIds = new Set(stagedNow.map((s) => s.id));
+    const tab = $("stagedTab");
+    tab.classList.toggle("on", stagedNow.length > 0);
+    $("stagedN").textContent = String(stagedNow.length);
     const moves = [];
     let fresh = 0;
     for (const c of deskState.cards) {
@@ -2076,6 +2118,10 @@ ${BRIDGE}
       if (!node) {
         node = document.createElement("div");
         node.style.animationDelay = `${fresh++ * 45}ms`;
+        if (prevStagedIds.has(c.id)) {
+          node.classList.add("fromstage");
+          node.addEventListener("animationend", () => node.classList.remove("fromstage"), { once: true });
+        }
         cardNodes.set(c.id, node);
         desk.appendChild(node);
       }
@@ -2144,11 +2190,12 @@ ${BRIDGE}
       if (!seen.has(id)) {
         if (node.classList.contains("tpl-media")) player.stop();
         cardNodes.delete(id);
-        node.classList.add("leaving");
+        node.classList.add(stagedIds.has(id) ? "tostage" : "leaving");
         node.addEventListener("animationend", () => node.remove(), { once: true });
         setTimeout(() => node.remove(), 400);
       }
     }
+    prevStagedIds = stagedIds;
     if (moves.length) commitMoves(moves, stageScale);
     const ov = $("overlay");
     if (deskState.overlay) {
@@ -2217,6 +2264,7 @@ ${BRIDGE}
       el.innerHTML = `${weatherIcon(wl)}<span>车外 ${Math.round(meta.outTemp)}°C</span>`;
   }
   $("chipTask").onclick = () => bus.send({ type: "taskChip" });
+  $("stagedTab").onclick = () => bus.send({ type: "stagedChip" });
   var last = performance.now();
   var loop = (t) => {
     const dt = t - last;

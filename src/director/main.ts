@@ -90,8 +90,33 @@ function pushDesk() {
   bus.send({ type: 'cards', src: ME.src, boot: ME.boot, desk: {
     cards: l.cards.map(brief),
     overlay: l.overlay ? brief(l.overlay) : undefined, free: l.free,
+    // 台下排队（等位区）：车机屏只要 数量 + 名字 就能画边缘条，几何不发
+    staged: l.staged.map((c: any) => ({ id: c.id, template: c.template,
+      title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template })),
   } } as any)
 }
+
+/**
+ * 台下清单卡：机制按 desk.layout().staged 生成（模型零参与）。
+ * 名单是活的——台下有卡上台/淘汰时开着的清单要跟着变，空了自己退场。
+ */
+function renderStagedList(openIt = false) {
+  const open = desk.findByKey('stagedlist')
+  if (!open && !openIt) return
+  const l = desk.layout()
+  const items = l.staged.map((c: any) => ({
+    label: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template,
+    sub: CARD_TEMPLATES.find(t => t.id === c.template)?.label, value: c.id,
+  }))
+  if (!items.length) { if (open) desk.dismiss(open.id); return }
+  // 名单没变就不动——update() 无条件 emit，订阅里不设这道闸会自己触发自己
+  if (open && JSON.stringify(open.data?.items) === JSON.stringify(items)) return
+  // urgent：用户点名要看的清单不能自己也进等位区（台下清单排队进台下是笑话），
+  // urgent 档不可挤且压得过 normal 卡，一定进得来
+  desk.render({ key: 'stagedlist', template: 'stagedlist', size: '1/3', kind: 'system',
+    urgency: 'urgent', ttl: 'untilTaskEnd', data: { title: '还在后台的内容', items } })
+}
+desk.subscribe(() => renderStagedList())
 /** 生成式卡的自检结果。车机屏那边量的（Node 里没有 DOM 量不了），这里只做记录 */
 const canvasNotes = new Map<string, { stripped?: string[]; overflow?: boolean; bumps?: number }>()
 
@@ -205,7 +230,9 @@ const bus = createBus(m => {
       log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
     } else if (decl.route === 'tool') {
       log('u', `[屏幕] ${m.act} → ${decl.tool}`)
-      registry.invoke(decl.tool!, (decl.args ?? {}) as any).then(r => {
+      // valueParam：条目携带的 value 填进参数（台下清单点某项 → focus 那张卡）
+      const args = { ...(decl.args ?? {}), ...(decl.valueParam && m.value ? { [decl.valueParam]: m.value } : {}) }
+      registry.invoke(decl.tool!, args as any).then(r => {
         if (r.status !== 'ok') log('r', `${decl.tool}: ${r.message ?? r.code}`)
       })
     } else {
@@ -219,6 +246,13 @@ const bus = createBus(m => {
   if ((m as any).type === 'overlayClose') {
     desk.dismiss((m as any).cardId, { byUser: true })
     log('u', '[屏幕] 关掉了覆盖层')
+    return
+  }
+  // 边缘条同样是开关：开着再点收回
+  if ((m as any).type === 'stagedChip') {
+    const open = desk.findByKey('stagedlist')
+    if (open) desk.dismiss(open.id, { byUser: true })
+    else renderStagedList(true)
     return
   }
   // 芯片是开关：开着再点就收回（实拍：展开后没法收）
@@ -309,6 +343,9 @@ function renderSnap() {
 }
 setInterval(() => { store.tick(200); push() }, 200)
 pushDesk()
+// 调试句柄：控制面板本来就是调试/演示面板，控制台里能直接戳机制层
+// （无业务逻辑，只是把已有对象挂出来）
+;(window as any).__sim = { desk, registry, store }
 
 /**
  * 任务进展卡（§6.2）：Claude 式步骤流——✓ 已完成（带耗时）/ ⟳ 进行中。

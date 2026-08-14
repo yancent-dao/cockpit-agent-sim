@@ -192,6 +192,22 @@ describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => 
     expect(d.cards).toEqual([])
     expect(d.slots).toBe(6)
   })
+
+  // 等位区（2026-08-13 §5）：模型召回台下卡需要 cardId——getLayout 是它拿 id 的地方
+  it('台下排队的卡出现在 staged 段，带 cardId 供 card.focus 召回', async () => {
+    // system chip 可挤但优先级压过 task——建卡时排队，focus 召回（意愿层）时才挤得动
+    for (let i = 0; i < 24; i++) { await show({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
+    const r = await show({ template: 'weather', data: { title: '成都天气', now: { temperature: 30, weather: '晴' } } })
+    const stagedId = (r.data as any).cardId
+    const d = (await reg.invoke('desktop.getLayout', {})).data as any
+    expect(d.staged).toHaveLength(1)
+    expect(d.staged[0].id).toBe(stagedId)
+    expect(d.staged[0].title).toBe('成都天气')
+    // 召回闭环：focus 台下卡 = 提到队首立即上台（挤走低优先级的）
+    const f = await reg.invoke('card.focus', { cardId: stagedId })
+    expect(f.status).toBe('ok')
+    expect(desk.layout().cards.some(c => c.id === stagedId), '召回后在台上').toBe(true)
+  })
 })
 
 describe('已作废的 Tool 不应存在', () => {

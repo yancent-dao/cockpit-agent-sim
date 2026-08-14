@@ -66,6 +66,15 @@ describe('交互声明：模板契约第三件套（数据，不是代码）', (
     expect(routeOf('weather', 'tap:next')).toBeUndefined()
   })
 
+  // 等位区清单（2026-08-13 W2）：召回是桌面管理的机械动作，点一下要等 LLM
+  // 转一圈是灾难——直调 card.focus，条目携带的卡 id 经 valueParam 填进参数
+  it('台下清单的条目点击 → 直调 card.focus，value 即 cardId', () => {
+    const r = routeOf('stagedlist', 'tap:item')!
+    expect(r.route).toBe('tool')
+    expect(r.tool).toBe('card.focus')
+    expect(r.valueParam).toBe('cardId')
+  })
+
   it('声明里的 tool 路由都指向真实存在的 Tool 名', async () => {
     const { INTERACTIONS } = await import('../../src/config/interactions')
     const { TOOLS } = await import('../../src/config/tools')

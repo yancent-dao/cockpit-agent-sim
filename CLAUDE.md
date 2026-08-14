@@ -124,6 +124,13 @@ agents/        Agent 实例：manifest + 人设 + fast.ts（快层微人设）+ 
   只看 kind 的话，车门没关且已起步的安全告警跟天气卡同为 rule，抢位时按 LRU 决定谁活。
   权重表在 `src/config/priority.ts`，urgency 步长 10 而 kind 步长 1——差一个数量级
   紧急度才压得过来源。`critical` 放不下时改走覆盖层，**绝不返回 DESKTOP_FULL**
+- **等位区（无限屏，2026-08-13，详见 docs/superpowers/specs/2026-08-13-desk-offstage-design.md）**：
+  放不下/被挤出是**状态不是失败**——卡进 `staged` 队列（上限 8，超限按最低优先级+最老淘汰，
+  只有淘汰才真消失+横幅）。空位出现自动上台（被动 fit 不惊动别人）；`card.focus` 台下卡
+  = 召回，**recall 压过优先级比较**（用户点名是意愿层）但不破 evictable:false。
+  可见化：车机屏右缘"⋯ N"边缘条 → 台下清单卡（stagedlist 模板，systemOnly，机制生成），
+  点条目直调 focus 不叫醒模型（交互声明 `valueParam` 把条目 value 填进参数）。
+  上/下台走右缘方向动画——用户能读出"收起来了"vs"没了"
 - **三条显示通道**（2026-08-12）：卡片（常态内容，进桌面）· 横幅（拒绝原因、约束不满足、
   挤出告知——这些是对某个动作的**解释**不是内容，塞进桌面会占掉 1/6 格子还跟内容卡长得一样）·
   覆盖层（critical 告警 / full 档内容）。分派在 `channelOf()`，判据只看卡片自己的字段

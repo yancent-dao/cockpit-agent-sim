@@ -54,7 +54,7 @@ export function listBody(items: any[], opts: ListOpts = {}): string {
   // data-act/-value：触控命中目标。点第 2 项 = 说"第二个"（回答类路由），
   // value 带序号和名字，模型收到的合成输入跟语音说法同构
   return `<ol class="listcard${opts.cols === 2 ? ' c2' : ''}">${shown.map((i: any, n: number) => `
-    <li data-act="tap:item" data-value="${esc(`第${n + 1}个：${i.label ?? i}`)}"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
+    <li data-act="tap:item" data-value="${esc(i.value ?? `第${n + 1}个：${i.label ?? i}`)}"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
       i.right ? `<em class="rr">${esc(i.right)}</em>` : ''}</li>`).join('')}</ol>${
     rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ''}`
 }
@@ -78,7 +78,7 @@ export const tierClass = (size: string) => `t-${normalizeTier(size)}`
  */
 const ACCENT: Record<string, string> = {
   nav: 'brand', weather: 'info', control: 'info', vehicle: 'info',
-  media: 'media', list: 'pick', confirm: 'pick',
+  media: 'media', list: 'pick', confirm: 'pick', stagedlist: 'pick',
   feedback: 'ok', notice: 'warn', capability: 'sys', generic: 'sys', info: 'sys',
   canvas: 'media', 'canvas-app': 'media',   // 紫色——生成式跟固定模板要一眼分得出
 }
@@ -163,6 +163,9 @@ export function cardBody(c: CardView): string {
       // maxItems 由形态函数按档位给，这里只负责画
       // 放几条由卡片**自己的档位**算，不信 data 里带的数字——
       // 卡被仲裁改小了 data 不会跟着变，那样就会画出放不下的东西
+      return listBody(d.items, formOf('list', ...dimsOf(c.size)))
+    case 'stagedlist':
+      // 台下清单长得就是列表，只是条目 value 带卡 id（点击直调召回）
       return listBody(d.items, formOf('list', ...dimsOf(c.size)))
     case 'capability': {
       const items = d.items ?? []

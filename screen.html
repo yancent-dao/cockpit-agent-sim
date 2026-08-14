@@ -86,6 +86,22 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 等位区方向动画（2026-08-13）：下台=滑向右缘（去了"界面之外"），
+   上台=从右缘滑入。跟普通进退场分开——用户能读出"收起来了"vs"没了" */
+.card.tostage{animation:toStage var(--d2,.26s) var(--ez-in,ease-in) forwards;pointer-events:none}
+@keyframes toStage{to{opacity:0;transform:translateX(90px) scale(.9)}}
+.card.fromstage{animation:fromStage var(--d3,.32s) var(--ez,var(--ease))}
+@keyframes fromStage{from{opacity:0;transform:translateX(90px) scale(.95)}to{opacity:1;transform:none}}
+/* 右缘边缘条："界面之外还有内容"的最小视觉隐喻。不占栅格，贴桌面右缘垂直居中 */
+#stagedTab{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:5;
+  display:none;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+  padding:22px 10px 22px 14px;border-radius:22px 0 0 22px;
+  background:rgba(255,255,255,.55);backdrop-filter:blur(14px);
+  border:1px solid rgba(0,0,0,.06);border-right:none;box-shadow:var(--sh-1,0 4px 16px rgba(0,0,0,.08));
+  color:var(--tx-2,#5b6472);font-size:26px;font-weight:600;letter-spacing:.05em}
+#stagedTab.on{display:flex}
+#stagedTab .dots{letter-spacing:2px;line-height:.6;writing-mode:vertical-rl}
+#stagedTab b{font-size:30px;color:var(--tx-1,#1c2430)}
 /* 错峰 45ms 由 JS 按「这一批第几张新卡」设 style.animationDelay。
    用 nth-child 不行：节点复用时 append 顺序不等于视觉顺序 */
 .card.hot{box-shadow:0 0 0 3px var(--ac,var(--brand)),var(--sh-2)}
@@ -546,6 +562,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   </div>
 
   <div id="desk"></div>
+  <div id="stagedTab"><span class="dots">⋯</span><b id="stagedN">0</b></div>
   <div id="overlay"></div>
 
   <div id="banner"><div class="bico" id="bnI">!</div>

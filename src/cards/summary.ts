@@ -10,8 +10,9 @@ import { formOf } from '../config/forms'
 import { dimsOf, cellsOfTier } from '../config/grid'
 import type { Card, PlacedCard } from './desk'
 
+// || 而不是 ??：时钟卡的 title 是空串，?? 放它过去，挤出横幅就写成「」
 export const titleOf = (c: Card) =>
-  c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template
+  c.data?.title || CARD_TEMPLATES.find(t => t.id === c.template)?.label || c.template
 
 export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card; staged?: Card[] }): string {
   const lines: string[] = []

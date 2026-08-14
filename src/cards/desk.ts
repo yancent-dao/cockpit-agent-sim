@@ -315,7 +315,7 @@ export function createDesk(clock: () => number = Date.now) {
    * （opts.onNoSpace='reject' 时仍返回 rejected，供 critical 走覆盖层用）。
    * 每步之后从头再试。
    */
-  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean } = {}): DeskResult {
+  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean; recall?: boolean } = {}): DeskResult {
     const shrunk: string[] = []
     const evicted: string[] = []
     const titles: string[] = []
@@ -326,8 +326,11 @@ export function createDesk(clock: () => number = Date.now) {
     // 显式 evictable:false 仍然优先（导航中的导航卡）
     const alive = () => existing.filter(c => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id))
     const byPriorityLRU = (a: Card, b: Card) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt
+    // recall（focus 召回）压过优先级比较：台下卡就是挤不过台上的才排队的，
+    // 召回还用同一比较必然在同样格局下永远失败。用户点名是意愿层——
+    // 但 alive() 的硬约束（evictable:false、urgent+）照旧，意愿不破物理
     const victims = () => alive()
-      .filter(c => PRIO(c) <= PRIO(candidate))
+      .filter(c => opts.recall || PRIO(c) <= PRIO(candidate))
       .sort(byPriorityLRU)
     const shrunkOut = new Set<string>() // 已挤出的不再参与
 
@@ -526,7 +529,7 @@ export function createDesk(clock: () => number = Date.now) {
     // 台下卡的 focus = 召回：立即尝试上台，必要时挤走优先级不高于它的
     // （用户点名要看的卡，等位区规则不该让它继续等）
     const staging = staged.get(id)
-    if (staging) return fit(staging, { onNoSpace: 'stage' })
+    if (staging) return fit(staging, { onNoSpace: 'stage', recall: true })
     const c = cards.get(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
     c.touchedAt = clock()

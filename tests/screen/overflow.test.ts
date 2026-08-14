@@ -59,6 +59,14 @@ describe('列表截断与「还有 N 条」', () => {
     expect(listBody(items.slice(0, 3), { maxItems: 4 })).not.toMatch(/还有/)
   })
 
+  // 台下清单（2026-08-13 W2）：条目点击直调 card.focus，data-value 必须是
+  // 卡 id 而不是"第 N 个：标题"——后者只对 answer 路由（进对话）有意义
+  it('条目自带 value 时 data-value 用它，不再合成"第 N 个"', () => {
+    const h = listBody([{ label: '成都天气', value: 'c12' }])
+    expect(h).toContain('data-value="c12"')
+    expect(h).not.toContain('第1个')
+  })
+
   it('count 策略只报数量，一条都不列 —— chip 档放不下选项', () => {
     const h = listBody(items, { maxItems: 0, overflow: 'count' })
     expect(h).toContain('12')

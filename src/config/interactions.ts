@@ -14,6 +14,8 @@ export interface InteractionDecl {
   route: 'answer' | 'tool' | 'desk'
   tool?: string
   args?: Record<string, unknown>
+  /** tool 路由的动态参数：条目携带的 value 填进这个名字的参数（args 管不了逐条不同的场合） */
+  valueParam?: string
   op?: 'dismiss'
 }
 
@@ -28,6 +30,8 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
     SWIPE_AWAY,
   ],
   list: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY],
+  /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
+  stagedlist: [{ on: 'tap:item', route: 'tool', tool: 'card.focus', valueParam: 'cardId' }, SWIPE_AWAY],
   confirm: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY],
   capability: [SWIPE_AWAY],
   weather: [SWIPE_AWAY],

@@ -746,7 +746,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'card.focus',
     brief: '高亮提示一张卡',
-    desc: '把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。',
+    desc: '把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。**排在台下（桌面满时的等位区）的卡 focus 即召回**：立即上台，必要时挤走不重要的——用户说"看天气/把XX调出来"就 getLayout 找到 staged 里的 id 然后 focus 它。',
     permission: '彩',
     params: { cardId: { type: 'string', required: true, desc: '卡片 id' } },
     handler: 'cardFocus',
@@ -754,7 +754,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'desktop.getLayout',
     brief: '读桌面布局',
-    desc: '读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。',
+    desc: '读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。返回里的 staged 是台下排队的卡（桌面满时不消失，排队等空位）——召回用 card.focus。',
     permission: '彩',
     params: {},
     handler: 'deskLayout',

@@ -157,6 +157,9 @@ export function createRegistry(
         data: {
           cards: l.cards.map(brief),
           overlay: l.overlay ? brief(l.overlay) : null,
+          // 台下排队的卡（2026-08-13）：模型召回要靠这里的 id——
+          // 用户说"看天气"时它 focus 这个 id，卡就上台
+          staged: (l.staged ?? []).map(brief),
           // 给模型的是"还放得下几张小卡"，不是内部单元数 ——
           // 48 单元下报 16 它没法换算成"能不能再上一张"，只会瞎猜
           slots: Math.floor(l.free / 8),

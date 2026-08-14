@@ -650,6 +650,20 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
       fields: { items: { type: "array", required: true } }
     },
+    /**
+     * 台下清单（2026-08-13 等位区 W2）：点边缘条弹出的"界面之外还有什么"。
+     * systemOnly——它由机制按 desk.layout().staged 生成，模型手建的话
+     * 内容是编的不是台下真实名单。条目 value 带卡 id，点击直调 card.focus 召回。
+     */
+    {
+      id: "stagedlist",
+      label: "台下清单",
+      defaultSize: "1/3",
+      sizes: [...LIST_SIZES],
+      systemOnly: true,
+      desc: "台下排队卡片的清单，由系统按等位区状态自动生成，不要手动建。",
+      fields: { items: { type: "array", required: true } }
+    },
     {
       id: "info",
       label: "信息卡",
@@ -1406,7 +1420,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       name: "card.focus",
       brief: "高亮提示一张卡",
-      desc: "把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。",
+      desc: '把卡片提到主位并高亮，同时刷新它的活跃时间，避免被挤掉。**排在台下（桌面满时的等位区）的卡 focus 即召回**：立即上台，必要时挤走不重要的——用户说"看天气/把XX调出来"就 getLayout 找到 staged 里的 id 然后 focus 它。',
       permission: "彩",
       params: { cardId: { type: "string", required: true, desc: "卡片 id" } },
       handler: "cardFocus"
@@ -1414,7 +1428,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       name: "desktop.getLayout",
       brief: "读桌面布局",
-      desc: "读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。",
+      desc: "读取当前桌面布局：有哪些卡片、多大、还剩几格。编排卡片前先看这个。导航卡等基础卡片由系统按状态自动管理，你只需要为搜索候选、临时提醒这类内容建卡。返回里的 staged 是台下排队的卡（桌面满时不消失，排队等空位）——召回用 card.focus。",
       permission: "彩",
       params: {},
       handler: "deskLayout"
@@ -2661,6 +2675,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           data: {
             cards: l.cards.map(brief2),
             overlay: l.overlay ? brief2(l.overlay) : null,
+            // 台下排队的卡（2026-08-13）：模型召回要靠这里的 id——
+            // 用户说"看天气"时它 focus 这个 id，卡就上台
+            staged: (l.staged ?? []).map(brief2),
             // 给模型的是"还放得下几张小卡"，不是内部单元数 ——
             // 48 单元下报 16 它没法换算成"能不能再上一张"，只会瞎猜
             slots: Math.floor(l.free / 8)
@@ -3106,6 +3123,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       SWIPE_AWAY
     ],
     list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
+    /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
+    stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY],
     confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
     capability: [SWIPE_AWAY],
     weather: [SWIPE_AWAY],
@@ -4128,7 +4147,7 @@ ${text}` });
   }
 
   // src/cards/summary.ts
-  var titleOf = (c) => c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template;
+  var titleOf = (c) => c.data?.title || CARD_TEMPLATES.find((t) => t.id === c.template)?.label || c.template;
   function summarize(l) {
     const lines = [];
     if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
@@ -4290,7 +4309,7 @@ ${text}` });
       let size = candidate.size;
       const alive = () => existing.filter((c) => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id));
       const byPriorityLRU = (a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt;
-      const victims = () => alive().filter((c) => PRIO(c) <= PRIO(candidate)).sort(byPriorityLRU);
+      const victims = () => alive().filter((c) => opts.recall || PRIO(c) <= PRIO(candidate)).sort(byPriorityLRU);
       const shrunkOut = /* @__PURE__ */ new Set();
       for (; ; ) {
         const trial = { ...candidate, size };
@@ -4451,7 +4470,7 @@ ${text}` });
     }
     const focus = (id) => {
       const staging = staged.get(id);
-      if (staging) return fit(staging, { onNoSpace: "stage" });
+      if (staging) return fit(staging, { onNoSpace: "stage", recall: true });
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       c.touchedAt = clock();
@@ -6024,9 +6043,40 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     bus.send({ type: "cards", src: ME.src, boot: ME.boot, desk: {
       cards: l.cards.map(brief),
       overlay: l.overlay ? brief(l.overlay) : void 0,
-      free: l.free
+      free: l.free,
+      // 台下排队（等位区）：车机屏只要 数量 + 名字 就能画边缘条，几何不发
+      staged: l.staged.map((c) => ({
+        id: c.id,
+        template: c.template,
+        title: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template
+      }))
     } });
   }
+  function renderStagedList(openIt = false) {
+    const open2 = desk.findByKey("stagedlist");
+    if (!open2 && !openIt) return;
+    const l = desk.layout();
+    const items = l.staged.map((c) => ({
+      label: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template,
+      sub: CARD_TEMPLATES.find((t) => t.id === c.template)?.label,
+      value: c.id
+    }));
+    if (!items.length) {
+      if (open2) desk.dismiss(open2.id);
+      return;
+    }
+    if (open2 && JSON.stringify(open2.data?.items) === JSON.stringify(items)) return;
+    desk.render({
+      key: "stagedlist",
+      template: "stagedlist",
+      size: "1/3",
+      kind: "system",
+      urgency: "urgent",
+      ttl: "untilTaskEnd",
+      data: { title: "还在后台的内容", items }
+    });
+  }
+  desk.subscribe(() => renderStagedList());
   var canvasNotes = /* @__PURE__ */ new Map();
   function renderInspector() {
     const l = desk.layout();
@@ -6121,7 +6171,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
       } else if (decl.route === "tool") {
         log("u", `[屏幕] ${m.act} → ${decl.tool}`);
-        registry.invoke(decl.tool, decl.args ?? {}).then((r) => {
+        const args = { ...decl.args ?? {}, ...decl.valueParam && m.value ? { [decl.valueParam]: m.value } : {} };
+        registry.invoke(decl.tool, args).then((r) => {
           if (r.status !== "ok") log("r", `${decl.tool}: ${r.message ?? r.code}`);
         });
       } else {
@@ -6134,6 +6185,12 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     if (m.type === "overlayClose") {
       desk.dismiss(m.cardId, { byUser: true });
       log("u", "[屏幕] 关掉了覆盖层");
+      return;
+    }
+    if (m.type === "stagedChip") {
+      const open2 = desk.findByKey("stagedlist");
+      if (open2) desk.dismiss(open2.id, { byUser: true });
+      else renderStagedList(true);
       return;
     }
     if (m.type === "taskChip") {
@@ -6228,6 +6285,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     push();
   }, 200);
   pushDesk();
+  window.__sim = { desk, registry, store };
   function renderBgTasks(force = false) {
     if (!force && !desk.findByKey("bgtasks")) return;
     const ST = { done: "✓ 完成", failed: "✗ 没成", cancelled: "— 已取消" };

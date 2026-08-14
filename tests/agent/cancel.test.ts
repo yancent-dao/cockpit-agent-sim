@@ -124,3 +124,60 @@ describe('后台任务的拒绝不该打断当前对话', () => {
     expect(rejects.length, `后台任务的拒绝不该弹到当前对话，实际弹了 ${rejects.length} 条`).toBe(0)
   })
 })
+
+/**
+ * 跨会话记忆的可控性（2026-08-14 实拍：用户说"打开车窗、打开空调、你有哪些功能"，
+ * Agent 却接着上个会话的话头问"你要去哪个充电站"）。
+ *
+ * 根因是 pipeline 一创建就把 localStorage 里的上回摘要压进 thread 第 0 条。
+ * 三条都得治：
+ *   ① 它以 assistant 角色注入——模型看到的是"这是我自己刚说过的话"，
+ *      牵引力远强于一条背景说明，宁可接着讲充电站也不理当前的三个明确指令
+ *   ② reset() 不碰它，用户点了"重置会话"当下是干净的，一刷新它又回来了
+ *   ③ 用户完全看不见自己带着上回的记忆，出了事只能翻代码才明白
+ */
+describe('跨会话记忆：注入得克制，清得掉，看得见', () => {
+  const withMemory = (saved: string | null) => {
+    const store2 = createStore(SIGNALS, CONSTRAINTS)
+    const reg2 = createRegistry(store2, TOOLS)
+    let mem = saved
+    const p = createPipeline({
+      registry: reg2, store: store2,
+      fastLlm: scripted(() => ({ text: '' })), slowLlm: scripted(() => ({ text: 'ok' })),
+      fastManifest: FAST_AGENT, slowManifest: MAIN_AGENT,
+      memory: { load: () => mem, save: t => { mem = t } },
+    })
+    return { p, readMem: () => mem }
+  }
+
+  it('上回摘要以 system 角色注入，不冒充模型自己说过的话', () => {
+    const { p } = withMemory('用户在找沿途的充电站')
+    const first = p.thread[0]
+    expect(first, '带记忆时该有第 0 条').toBeTruthy()
+    expect(first.role, `实际角色：${first.role}`).toBe('system')
+  })
+
+  it('注入的文字要写明"以当前请求为准"，不然模型会接着上回讲', () => {
+    const { p } = withMemory('用户在找沿途的充电站')
+    expect(p.thread[0].content).toContain('用户在找沿途的充电站')
+    expect(p.thread[0].content, '得明说这只是背景').toMatch(/当前|这次|以.*为准/)
+  })
+
+  it('没有上回记忆时不凭空塞消息', () => {
+    const { p } = withMemory(null)
+    expect(p.thread.length).toBe(0)
+  })
+
+  it('forgetLastTime() 把跨会话那行也清掉——刷新后不会再回来', () => {
+    const { p, readMem } = withMemory('用户在找沿途的充电站')
+    expect(p.thread.length).toBe(1)
+    p.forgetLastTime()
+    expect(p.thread.length, '当前会话里的也清掉').toBe(0)
+    expect(readMem(), '持久化的那份也清掉').toBeFalsy()
+  })
+
+  it('hasLastTime() 让界面能显示"当前带着上回的记忆"', () => {
+    expect(withMemory('上回的事').p.hasLastTime()).toBe(true)
+    expect(withMemory(null).p.hasLastTime()).toBe(false)
+  })
+})

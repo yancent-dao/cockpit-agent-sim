@@ -25,6 +25,10 @@ h2{font-size:11px;letter-spacing:1.8px;color:var(--t3);text-transform:uppercase;
 h2 .n{background:var(--el);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0}
 button{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);border-radius:10px;
   padding:9px 12px;font-size:13px;cursor:pointer;transition:.16s;font-family:inherit}
+/* 跨会话记忆提示：用户得看得见自己带着上回的上下文 */
+.hint{font-size:11px;line-height:1.5;color:#b8862a;background:#fdf6e3;
+  border:1px solid #ecd9a0;border-radius:6px;padding:5px 8px}
+button[disabled]{opacity:.4;cursor:default}
 button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
 button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
 button:disabled{opacity:.4;cursor:not-allowed}
@@ -117,7 +121,10 @@ input::placeholder{color:#4A5462}
   <section>
     <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
     <div id="trace"></div>
-    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button><button id="forgetMem">忘掉上回</button></div>
+    <!-- 跨会话记忆的可见化：不显示的话用户根本不知道自己带着上回的上下文
+         （实拍：开机第一句问车窗空调，Agent 接着上个会话问"你要去哪个充电站"） -->
+    <div id="memNote" class="hint" style="display:none;margin-top:6px"></div>
   </section>
  </div>
 
@@ -3732,8 +3739,16 @@ ${extras.desktop}`);
     let gen = 0;
     let boundary = 0;
     let toolRound = 0;
+    const lastTimeLine = (t) => `${SUM_MARK}上回说到：${t}
+（这只是上一次对话的背景，用户这次要什么以当前消息为准，别接着上回的话头往下讲）`;
     const lastTime = deps.memory?.load();
-    if (lastTime) thread.push({ role: "assistant", content: `${SUM_MARK}上回说到：${lastTime}` });
+    if (lastTime) thread.push({ role: "system", content: lastTimeLine(lastTime) });
+    const hasLastTime = () => !!deps.memory?.load();
+    const forgetLastTime = () => {
+      const i = thread.findIndex((m) => m.role === "system" && (m.content ?? "").startsWith(SUM_MARK));
+      if (i >= 0) thread.splice(i, 1);
+      deps.memory?.save("");
+    };
     const stale = (g) => g !== gen;
     let resetGen = 0;
     const discarded = (g) => g < resetGen;
@@ -4092,6 +4107,7 @@ ${text}` });
       thread.length = 0;
       boundary = 0;
       resetGen = ++gen;
+      deps.memory?.save("");
     };
     return {
       run,
@@ -4100,6 +4116,8 @@ ${text}` });
       thread,
       tasks,
       cancelTask,
+      hasLastTime,
+      forgetLastTime,
       get generation() {
         return gen;
       },
@@ -6550,10 +6568,24 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     traceEl.scrollTop = traceEl.scrollHeight;
   }
   $("clr").onclick = () => traceEl.innerHTML = "";
+  function renderMemNote() {
+    const el = $("memNote");
+    const on = pipeline.hasLastTime();
+    el.style.display = on ? "" : "none";
+    if (on) el.textContent = "带着上回的记忆（会影响这次的回答，点「忘掉上回」清掉）";
+    $("forgetMem").toggleAttribute("disabled", !on);
+  }
+  $("forgetMem").onclick = () => {
+    pipeline.forgetLastTime();
+    renderMemNote();
+    log("p", "── 已忘掉上回的记忆 ──");
+  };
   $("resetSess").onclick = () => {
     pipeline.reset();
-    log("p", "── 会话已重置 ──");
+    renderMemNote();
+    log("p", "── 会话已重置（含上回的记忆）──");
   };
+  renderMemNote();
   var voiceBusy = false;
   var deliveries = [];
   var flushDeliveries = () => {

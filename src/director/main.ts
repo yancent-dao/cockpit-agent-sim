@@ -425,7 +425,31 @@ function log(cls: string, text: string) {
   traceEl.appendChild(div); traceEl.scrollTop = traceEl.scrollHeight
 }
 $('clr').onclick = () => (traceEl.innerHTML = '')
-$('resetSess').onclick = () => { pipeline.reset(); log('p', '── 会话已重置 ──') }
+/**
+ * 跨会话记忆的可见化 + 一键清除。
+ *
+ * 实拍事故：用户开机第一句是"打开车窗、打开空调、你有哪些功能"，三件事一件没做，
+ * Agent 接着上个会话的话头问"你要去哪个充电站"——上回的压缩摘要一直躺在
+ * localStorage 里，页面一加载就被塞进 thread，而界面上没有任何地方说这件事。
+ */
+function renderMemNote() {
+  const el = $('memNote')
+  const on = pipeline.hasLastTime()
+  el.style.display = on ? '' : 'none'
+  if (on) el.textContent = '带着上回的记忆（会影响这次的回答，点「忘掉上回」清掉）'
+  $('forgetMem').toggleAttribute('disabled', !on)
+}
+$('forgetMem').onclick = () => {
+  pipeline.forgetLastTime()
+  renderMemNote()
+  log('p', '── 已忘掉上回的记忆 ──')
+}
+$('resetSess').onclick = () => {
+  pipeline.reset()          // 连跨会话那行一起清，不然刷新后它又回来了
+  renderMemNote()
+  log('p', '── 会话已重置（含上回的记忆）──')
+}
+renderMemNote()
 
 /* ══════════ Pipeline 事件 → 车机屏 ══════════ */
 // 后台任务交付排队：语音正忙（在播报）就压着，idle 再放——通知不打断对话（§6.1）

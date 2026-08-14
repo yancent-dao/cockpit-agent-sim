@@ -1,5 +1,10 @@
 export interface Msg {
-  role: 'user' | 'assistant' | 'tool'
+  /**
+   * system 只用于**跨会话前情摘要**那一条（thread 第 0 位）。
+   * 常规的 system prompt 走 LLMRequest.system 字段，不进 thread。
+   * 摘要不能用 assistant——那样模型会当成"自己刚说过的话"接着往下讲（实拍踩过）。
+   */
+  role: 'user' | 'assistant' | 'tool' | 'system'
   content: string
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
   tool_call_id?: string

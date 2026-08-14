@@ -25,6 +25,10 @@ h2{font-size:11px;letter-spacing:1.8px;color:var(--t3);text-transform:uppercase;
 h2 .n{background:var(--el);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0}
 button{background:var(--el);color:#C9D2E0;border:1px solid rgba(255,255,255,.09);border-radius:10px;
   padding:9px 12px;font-size:13px;cursor:pointer;transition:.16s;font-family:inherit}
+/* 跨会话记忆提示：用户得看得见自己带着上回的上下文 */
+.hint{font-size:11px;line-height:1.5;color:#b8862a;background:#fdf6e3;
+  border:1px solid #ecd9a0;border-radius:6px;padding:5px 8px}
+button[disabled]{opacity:.4;cursor:default}
 button:hover{background:#2A3340;color:#fff;border-color:rgba(77,163,255,.5)}
 button.on,button.pri{background:var(--brand);color:#06121F;border-color:var(--brand);font-weight:600}
 button:disabled{opacity:.4;cursor:not-allowed}
@@ -117,7 +121,10 @@ input::placeholder{color:#4A5462}
   <section>
     <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
     <div id="trace"></div>
-    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button><button id="forgetMem">忘掉上回</button></div>
+    <!-- 跨会话记忆的可见化：不显示的话用户根本不知道自己带着上回的上下文
+         （实拍：开机第一句问车窗空调，Agent 接着上个会话问"你要去哪个充电站"） -->
+    <div id="memNote" class="hint" style="display:none;margin-top:6px"></div>
   </section>
  </div>
 

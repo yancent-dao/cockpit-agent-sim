@@ -166,9 +166,30 @@ export function createPipeline(deps: PipelineDeps) {
   /** 最新 turn 的用户消息位置：旧代慢层的迟到消息插它前面——时间线不交错（§4.1） */
   let boundary = 0
   let toolRound = 0
-  // 上回说到：跨会话留一行，"接着昨天那个路线"接得上（§7.5）
+  /**
+   * 上回说到：跨会话留一行，"接着昨天那个路线"接得上（§7.5）。
+   *
+   * **用 system 角色，而且要写明"以当前请求为准"。** 以前它是 assistant 角色，
+   * 模型看到的是"这是我自己刚说过的话"，牵引力远强于一条背景说明——实拍抓到过：
+   * 用户开机第一句是"打开车窗、打开空调、你有哪些功能"，Agent 三件事一件没做，
+   * 接着上个会话的话头问"你要去哪个充电站"。
+   */
+  const lastTimeLine = (t: string) =>
+    `${SUM_MARK}上回说到：${t}\n（这只是上一次对话的背景，用户这次要什么以当前消息为准，别接着上回的话头往下讲）`
   const lastTime = deps.memory?.load()
-  if (lastTime) thread.push({ role: 'assistant', content: `${SUM_MARK}上回说到：${lastTime}` })
+  if (lastTime) thread.push({ role: 'system', content: lastTimeLine(lastTime) })
+
+  /** 界面拿它显示"当前带着上回的记忆"——用户看不见就没法预期，出了事只能翻代码 */
+  const hasLastTime = () => !!deps.memory?.load()
+  /**
+   * 忘掉跨会话记忆：当前 thread 里那条和持久化的那份一起清。
+   * 只清一边的话"清除"名不副实——清了内存的，刷新页面它又回来了。
+   */
+  const forgetLastTime = () => {
+    const i = thread.findIndex(m => m.role === 'system' && (m.content ?? '').startsWith(SUM_MARK))
+    if (i >= 0) thread.splice(i, 1)
+    deps.memory?.save('')
+  }
 
   const stale = (g: number) => g !== gen
   /**
@@ -594,9 +615,14 @@ export function createPipeline(deps: PipelineDeps) {
    * 从未说过的幽灵对话），compaction 会拿重置前算的 cutAt 对新 thread 做 splice，
    * 把上一个会话的【前情摘要】塞进新会话开头并持久化。
    */
-  const reset = () => { thread.length = 0; boundary = 0; resetGen = ++gen }
+  const reset = () => {
+    thread.length = 0; boundary = 0; resetGen = ++gen
+    // 跨会话那行也一起忘掉。只清 thread 的话"重置"名不副实：
+    // 当下看着干净，一刷新页面上回的记忆又回来了（实拍踩过）
+    deps.memory?.save('')
+  }
 
-  return { run, on, reset, thread, tasks, cancelTask,
+  return { run, on, reset, thread, tasks, cancelTask, hasLastTime, forgetLastTime,
     get generation() { return gen }, get compaction() { return compaction } }
 }
 

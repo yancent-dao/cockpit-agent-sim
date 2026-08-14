@@ -29,9 +29,18 @@ export class ItunesError extends Error {
 export type Jsonp = (url: string, callbackParam: string) => Promise<any>
 
 /** 浏览器实现：动态 script 标签。iTunes 没有 CORS，这是唯一的路 */
+/**
+ * 回调名的自增序号。**不能只靠时间戳**：浏览器出于 Spectre 缓解会把
+ * performance.now() 粗化到 100µs~1ms，同一轮并行发两个 music.search
+ * （项目明确鼓励并行调用）大概率取到同一个名字——第二次注册覆盖第一次的
+ * resolver，先回来的响应会 resolve 到另一个 Promise 上（用户搜周杰伦拿到
+ * 儿歌列表），另一个则挂到 4 秒超时。
+ */
+let jsonpSeq = 0
+
 export const browserJsonp: Jsonp = (url, cbParam) =>
   new Promise((resolve, reject) => {
-    const name = `__itunes_cb_${Math.floor(performance.now() * 1000)}`
+    const name = `__itunes_cb_${++jsonpSeq}_${Math.floor(performance.now() * 1000)}`
     const el = document.createElement('script')
     const done = (fn: () => void) => {
       delete (window as any)[name]

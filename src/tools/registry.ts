@@ -356,8 +356,19 @@ export function createRegistry(
     if (!t) return { status: 'unavailable', code: 'UNKNOWN_TOOL', message: `没有名为 ${name} 的能力` }
     name = t.name // 归一化成内部点号形式：鉴权白名单、token 绑定都按这个来
 
-    if (t.permission === '黑')
-      return { status: 'unavailable', code: 'BLOCKED', message: `${name} 属于安全禁区，不对 AI 开放` }
+    /**
+     * 黑闸必须查**动态**权限。以前这里查的是静态 t.permission、下面的灰闸查的是
+     * permissionOf()（含 escalate 折算）——一个 escalate 到 '黑' 的工具
+     * （类型完全允许，语义即"行驶中彻底禁用"）静态等级不是黑就过了黑闸，
+     * 动态等级是黑又 !== '灰' 于是也过了灰闸：最该被禁的状态下反而免确认直接执行。
+     * 当前配置只用到 to:'灰' 所以没引爆，但加一条数据就触发——正撞上"加能力=加数据"。
+     */
+    const level = permissionOf(name)
+    if (t.permission === '黑' || level === '黑')
+      return t.permission === '黑'
+        ? { status: 'unavailable', code: 'BLOCKED', message: `${name} 属于安全禁区，不对 AI 开放` }
+        : { status: 'rejected', code: 'FORBIDDEN', message: `当前状态下 ${name} 被禁用`,
+            suggestion: '等条件变了再试' }
 
     if (!authorized(name, ctx.allow))
       return { status: 'unavailable', code: 'NOT_AUTHORIZED', message: `当前 Agent 无权调用 ${name}` }
@@ -369,11 +380,14 @@ export function createRegistry(
     // token 既可由 ctx 传入（程序化调用），也可由模型作为 confirmToken 参数回传（标准 MRTR）
     // 空字符串按未提供处理：部分模型会主动补一个空的 confirmToken
     const supplied = ctx.confirmToken || (args.confirmToken as string | undefined) || undefined
-    if (permissionOf(name) === '灰' && !ctx.force) {
+    if (level === '灰' && !ctx.force) {
       const tk = supplied && tokens.get(supplied)
       const valid = tk && tk.tool === name && tk.expires > clock()
       if (!valid) {
         const token = `ct_${(++seq).toString(36)}_${clock().toString(36)}`
+        // 顺手清掉过期的：只在成功消费时 delete 的话，Map 在长会话里无界增长，
+        // pendingConfirm 每次还要全量扫一遍
+        for (const [k, v] of tokens) if (v.expires <= clock()) tokens.delete(k)
         tokens.set(token, { tool: name, expires: clock() + CONFIRM_TTL })
         const message = t.confirmPrompt ?? `即将执行 ${name}，确认吗？`
         // 确认卡自动上屏（需求书 §4.5 P0 模板）——用户在屏上能看到自己在确认什么。
@@ -489,7 +503,14 @@ export function createRegistry(
     return null
   }
 
-  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm }
+  /**
+   * 作废所有待确认。用户放弃了这次确认（说"算了"、开口聊别的）就该立刻清掉——
+   * 不清的话那个未过期的 token 会继续劫持输入路由满 60 秒：pipeline 见到
+   * pending 就跳过快层直送慢层，用户会觉得"怎么突然每句话都变慢了"。
+   */
+  const clearConfirms = () => tokens.clear()
+
+  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms }
 }
 
 export type Registry = ReturnType<typeof createRegistry>

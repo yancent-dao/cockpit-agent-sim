@@ -158,3 +158,34 @@ describe('radio.play', () => {
     expect(String(store.get('media.artist'))).toContain('China')
   })
 })
+
+/**
+ * 节点故障切换的完整性（2026-08-14 代码审查）。
+ *
+ * viaNodes 逐节点串行重试，但只对"快速 reject / !res.ok"有效。真实节点故障
+ * 的常见形态是**建连成功后挂起不响应**——那时 `await fetcher(...)` 永不结算，
+ * for 循环走不到下一个节点，后面 3 个健康节点永远不会被尝试，
+ * 最终靠 registry 的 60 秒兜底报"电台服务连不上"，而实际上 4 个里 3 个是好的。
+ * 更糟的是 preferred 记着这个曾经成功、现在挂起的节点，之后每次搜台都先撞它。
+ */
+describe('电台节点：挂起的节点不许拖垮整次调用', () => {
+  it('首选节点挂起不响应时，仍然切到下一个健康节点', async () => {
+    const hang: Fetcher = (url) => {
+      // 第一个节点：永不结算（除非被 abort）
+      if (url.includes('de1.api')) return new Promise(() => {}) as any
+      return Promise.resolve({ ok: true, json: async () => [station(1)] } as any)
+    }
+    const client = createRadioClient(hang, { nodeTimeoutMs: 30 })
+    const list = await client.search({ name: '音乐' })
+    expect(list.length, '健康节点顶上了').toBeGreaterThan(0)
+  })
+
+  it('每个节点都有独立超时，不靠调用方的总超时兜底', async () => {
+    const allHang: Fetcher = () => new Promise(() => {}) as any
+    const client = createRadioClient(allHang, { nodeTimeoutMs: 20 })
+    const t0 = Date.now()
+    await expect(client.search({ name: 'x' })).rejects.toThrow()
+    // 4 个节点 × 20ms 远小于 registry 的 60 秒兜底
+    expect(Date.now() - t0, '全挂也要快速失败').toBeLessThan(3000)
+  })
+})

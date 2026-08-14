@@ -1382,3 +1382,60 @@ describe('wiper.set', () => {
     expect((await reg.invoke('wiper.set', { mode: 'turbo' })).code).toBe('INVALID_PARAMS')
   })
 })
+
+/**
+ * ══════════ 权限与确认的边界（2026-08-14 代码审查） ══════════
+ */
+describe('黑名单闸必须认动态权限', () => {
+  /**
+   * invoke 先用**静态** t.permission 判黑、后用**动态** permissionOf() 判灰：
+   * 一个 escalate 到 '黑' 的工具（类型完全允许，语义即"行驶中彻底禁用"）
+   * 静态等级不是黑 → 过黑闸；动态结果是黑而不是灰 → 也过灰闸，
+   * 最该被禁的状态下反而免确认直接执行。当前配置只用到 to:'灰' 所以没引爆，
+   * 但这是权限机制层的次序漏洞，加一条数据就触发——正撞上"加能力=加数据"。
+   */
+  it('escalate 升到黑的工具，在升级条件成立时被拒（不是免确认执行）', async () => {
+    const store = createStore(SIGNALS, CONSTRAINTS)
+    const tools = [{
+      name: 'test.blackOnMove', desc: 't', permission: '彩' as const, brief: 't',
+      params: { v: { type: 'number' as const, desc: 'v' } },
+      writes: [{ path: 'cabin.ambientLight.brightness', from: 'v' }],
+      escalate: [{ when: ['vehicle.speed', '>', 5] as [string, any, any], to: '黑' as const }],
+    }]
+    const r = createRegistry(store, tools as any)
+    store.setDirect('vehicle.speed', 0)
+    expect((await r.invoke('test.blackOnMove', { v: 50 })).status, '静止时照常执行').toBe('ok')
+    store.setDirect('vehicle.speed', 60)
+    const moving = await r.invoke('test.blackOnMove', { v: 80 })
+    expect(moving.status, '行驶中该被彻底拒绝').toBe('rejected')
+    expect(moving.code).toBe('FORBIDDEN')
+  })
+})
+
+describe('MRTR 确认令牌的生命周期', () => {
+  /**
+   * token 只在成功消费时 delete，过期条目永不清理：Map 在长会话下无界增长，
+   * pendingConfirm 每次全量扫描。更直接的用户可见后果是——用户触发确认后
+   * 说"算了"，那个未过期的 token 会继续劫持输入路由满 60 秒
+   * （pipeline 见到 pending 就跳过快层直送慢层），快层的秒回能力凭空消失一分钟。
+   */
+  it('过期的 token 会被清掉，不再劫持输入路由', async () => {
+    const store = createStore(SIGNALS, CONSTRAINTS)
+    let now = 1000
+    const r = createRegistry(store, TOOLS, () => now)
+    const first = await r.invoke('door.set', { door: 'driver', action: 'open' })
+    expect(first.status).toBe('inputRequired')
+    expect(r.pendingConfirm(), '确认挂着').toBeTruthy()
+    now += 61_000                                   // 过了 TTL
+    expect(r.pendingConfirm(), '过期后不再算 pending').toBeFalsy()
+  })
+
+  it('用户放弃的确认可以显式作废，不用干等 60 秒', async () => {
+    const store = createStore(SIGNALS, CONSTRAINTS)
+    const r = createRegistry(store, TOOLS)
+    await r.invoke('door.set', { door: 'driver', action: 'open' })
+    expect(r.pendingConfirm()).toBeTruthy()
+    r.clearConfirms()
+    expect(r.pendingConfirm(), '放弃之后立刻不再劫持').toBeFalsy()
+  })
+})

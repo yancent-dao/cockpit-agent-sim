@@ -171,8 +171,20 @@ export function createPipeline(deps: PipelineDeps) {
   if (lastTime) thread.push({ role: 'assistant', content: `${SUM_MARK}上回说到：${lastTime}` })
 
   const stale = (g: number) => g !== gen
-  /** 落 thread：当前代直接追加；旧代插到最新 turn 的用户输入之前 */
+  /**
+   * 会话被清空时的世代线。比它老的代 = 属于已经不存在的那个会话，产物直接丢弃。
+   *
+   * 只有 stale 一个判据是不够的：barge-in（用户插话）和 reset（清空会话）都会
+   * 让旧 turn 变 stale，但处置完全相反——前者的消息该插到新用户输入之前保住
+   * 上下文，后者的消息一条都不该留。不区分的话，重置后旧 turn 跑完会把
+   * assistant/tool 消息 splice 进空 thread，下次提问时模型看到一段用户
+   * 从未说过的幽灵对话。
+   */
+  let resetGen = 0
+  const discarded = (g: number) => g < resetGen
+  /** 落 thread：当前代直接追加；旧代插到最新 turn 的用户输入之前；已重置的代丢弃 */
   const commit = (g: number, ...msgs: Msg[]) => {
+    if (discarded(g)) return
     if (!stale(g)) thread.push(...msgs)
     else { thread.splice(boundary, 0, ...msgs); boundary += msgs.length }
   }
@@ -182,23 +194,31 @@ export function createPipeline(deps: PipelineDeps) {
     g: number, calls: NonNullable<Awaited<ReturnType<LLM['chat']>>['toolCalls']>,
     allow: string[], trace: TraceStep[],
     interceptors: Record<string, (args: any) => ToolResult | Promise<ToolResult>>,
-    opts: { quietRejects?: boolean } = {},
+    opts: { quietRejects?: boolean; background?: boolean } = {},
   ): Promise<Msg[]> {
+    /**
+     * 这一轮的事件该不该露面。以前 emit 既不看世代也不看来源（g 参数在函数体里
+     * 根本没被用过）：后台子 Agent 的工具被业务规则拒绝时，会往**当前对话**
+     * 弹一条红色横幅，用户正进行的对话被一条跟上下文毫无关系的解释打断，
+     * 且无从知道它来自哪个后台任务；barge-in 之后旧 turn 的拒绝同样盖在新 turn 上
+     * （话术那半边早有 lateNote 降级通道，工具事件这半边一直是裸奔的）。
+     */
+    const audible = () => !opts.background && !stale(g)
     const round = ++toolRound
     const results = await Promise.all(calls.map(async c => {
       const metaKey = Object.keys(interceptors).find(k => isMeta(c.name, k))
       const name = metaKey ?? registry.canonicalName(c.name)
       trace.push({ type: 'toolCall', at: clock(), name, args: c.args, permission: registry.permissionOf(c.name) })
-      emit({ type: 'executing', name })
+      if (audible()) emit({ type: 'executing', name })
       const s = clock()
       const result = metaKey
         ? await interceptors[metaKey](c.args)
         : await registry.invoke(c.name, c.args, { allow, round })
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
-      if (result.status === 'inputRequired') emit({ type: 'confirming', text: result.message ?? '需要确认' })
+      if (result.status === 'inputRequired' && audible()) emit({ type: 'confirming', text: result.message ?? '需要确认' })
       // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
       // 结果都如实进报告，慢层看得到（用户实拍："已拒绝执行 无权调用 navigation.setDestination"）
-      if (!opts.quietRejects && (result.status === 'rejected' || result.status === 'unavailable')
+      if (!opts.quietRejects && audible() && (result.status === 'rejected' || result.status === 'unavailable')
           && !SELF_FIX_CODES.has(result.code ?? ''))
         emit({ type: 'rejected', text: result.message ?? '无法执行' })
       return { c, result }
@@ -355,10 +375,10 @@ export function createPipeline(deps: PipelineDeps) {
       if (!reply.toolCalls?.length) return { summary: reply.text ?? '' }
       for (const c of reply.toolCalls) step(task, `正在${stepLabel(c.name)}`)
       view.push(asstMsg(reply))
-      const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
+      const toolMsgs = await execRound(gen, reply.toolCalls, allow, trace, {
         'tools.load': mkLoader(loaded),
         'skill.use': mkSkillUse(loaded),
-      })
+      }, { background: true })
       view.push(...toolMsgs)
     }
     return { summary: '' }
@@ -396,8 +416,14 @@ export function createPipeline(deps: PipelineDeps) {
         .finally(() => { activeSubs-- })
       return { status: 'ok', data: { taskId: task.id }, message: '已转后台，完成会自动通知用户' }
     }
+    // 同步分支以前没有 .catch：子 Agent 的 LLM 一挂（429/超时/网络），异常经
+    // execRound 的 Promise.all 穿透 runSlow（那里的 await 在 try 之外）直到 run()，
+    // 既不 emit error 也不 emit done——avatar 永远停在 thinking。
+    // 子任务失败是**工具失败**，按工具契约返回 failed，让模型自己决定怎么办
     return subRun(goal, preload)
       .then(({ summary }) => ({ status: 'ok' as const, data: { summary } }))
+      .catch(e => ({ status: 'failed' as const, code: 'SUBAGENT_ERROR',
+        message: `子任务没跑成：${String(e)}`, suggestion: '可以自己直接查，或稍后再派一次' }))
       .finally(() => { activeSubs-- })
   }
 
@@ -503,22 +529,43 @@ export function createPipeline(deps: PipelineDeps) {
     // 状态分支不是意图分支——看的是系统状态，不是话的内容
     const pending = registry.pendingConfirm()
     let fast = { suggested: [] as string[], said: '', rounds: 0 }
-    if (!pending) fast = await runFast(g, trace)
-    else fast.suggested = [pending.tool]
+    /**
+     * 这一轮结束后，上一轮悬着的确认就该作废——用户已经说了别的。
+     * 不清的话那个未过期的 token 会继续劫持输入路由满 60 秒（见到 pending
+     * 就跳过快层直送慢层），用户会觉得"怎么突然每句话都变慢了"。
+     * 放在 finally 里：无论这轮怎么结束都清。
+     */
+    /**
+     * **本轮的错误边界。** 以前 runFast/runSlow 的 await 有一段在 try 之外
+     * （execRound 里元工具拦截器的异常不经 registry.invoke 的 try/catch），
+     * 异常一路穿透到调用方：既不 emit error 也不 emit done，avatar 永远停在
+     * thinking，用户以为还在想，其实这一轮已经死了，只能刷新页面。
+     * 一轮无论怎么结束，UI 都必须收到收尾事件。
+     */
+    try {
+      if (!pending) fast = await runFast(g, trace)
+      else fast.suggested = [pending.tool]
 
-    const slow = await runSlow(g, fast.suggested, trace)
-    // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
-    if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
-    return {
-      reply: [fast.said, slow.said].filter(Boolean).join(' '),
-      trace, rounds: fast.rounds + slow.rounds,
-      stopReason: slow.stop,
+      const slow = await runSlow(g, fast.suggested, trace)
+      // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
+      if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
+      return {
+        reply: [fast.said, slow.said].filter(Boolean).join(' '),
+        trace, rounds: fast.rounds + slow.rounds,
+        stopReason: slow.stop,
+      }
+    } catch (e) {
+      if (!stale(g)) { emit({ type: 'error', message: String(e) }); emit({ type: 'done' }) }
+      return { reply: fast.said, trace, rounds: fast.rounds, stopReason: 'error' }
+    } finally {
+      if (pending && !stale(g)) registry.clearConfirms?.()
     }
   }
 
   /* ── 异步记忆压缩：thread = 摘要头 + 最近 K 轮全文 ── */
   let compaction: Promise<void> = Promise.resolve()
   async function doCompact(g: number) {
+    if (discarded(g)) return   // 会话已清空，别拿旧 cutAt 去 splice 新 thread
     const userIdx = thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0)
     if (userIdx.length <= KEEP_ROUNDS) return
     const cutAt = userIdx[userIdx.length - KEEP_ROUNDS]
@@ -540,7 +587,14 @@ export function createPipeline(deps: PipelineDeps) {
     deps.memory?.save(text)
   }
 
-  const reset = () => { thread.length = 0; boundary = 0 }
+  /**
+   * 清空会话。**必须递增世代**：正在跑的旧 turn 和在飞的异步压缩都拿 g 跟 gen
+   * 比对来判断自己是否作废，不递增的话它们的 stale(g) 仍是 false——旧 turn 会把
+   * assistant/tool 消息 commit 进已清空的 thread（下次提问时模型看到一段用户
+   * 从未说过的幽灵对话），compaction 会拿重置前算的 cutAt 对新 thread 做 splice，
+   * 把上一个会话的【前情摘要】塞进新会话开头并持久化。
+   */
+  const reset = () => { thread.length = 0; boundary = 0; resetGen = ++gen }
 
   return { run, on, reset, thread, tasks, cancelTask,
     get generation() { return gen }, get compaction() { return compaction } }

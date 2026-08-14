@@ -45,9 +45,17 @@ const NODES = [
   'https://at1.api.radio-browser.info/json',
 ]
 
-export function createRadioClient(fetcher: Fetcher) {
+export function createRadioClient(fetcher: Fetcher, opts: { nodeTimeoutMs?: number } = {}) {
   /** 上次成功的节点。大概率还活着，别每次都从头重试 */
   let preferred = 0
+  /**
+   * 单节点超时。**故障切换的前提是失败得快**：只对"快速 reject / !res.ok"
+   * 做切换是不够的，真实节点故障的常见形态是建连成功后挂起不响应——
+   * 那时 await 永不结算，for 循环走不到下一个节点，后面几个健康节点
+   * 永远轮不到，最后靠调用方 60 秒的总超时报"电台服务连不上"，
+   * 而实际上多数节点是好的（这个文件自己就记着"节点会挂"）。
+   */
+  const NODE_TIMEOUT = opts.nodeTimeoutMs ?? 5000
 
   /** 依次试各节点，任一成功即返回；全挂才抛 */
   async function viaNodes<T>(path: string): Promise<T> {
@@ -55,7 +63,11 @@ export function createRadioClient(fetcher: Fetcher) {
     let last: unknown
     for (const base of order) {
       try {
-        const res = await fetcher(base + path)
+        let timer!: ReturnType<typeof setTimeout>
+        const timeout = new Promise<never>((_, rej) => {
+          timer = setTimeout(() => rej(new RadioError('节点没响应（超时）', 'NODE_TIMEOUT')), NODE_TIMEOUT)
+        })
+        const res = await Promise.race([fetcher(base + path), timeout]).finally(() => clearTimeout(timer))
         if (!res.ok) { last = new RadioError('节点没响应'); continue }
         preferred = NODES.indexOf(base)
         return await res.json()

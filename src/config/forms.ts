@@ -35,7 +35,6 @@ export interface Form {
 
 export type FormFn = (cols: number, rows: number) => Form
 
-export { listCapacity, contentCols } from './grid'
 
 /** 一屏 12×4 = 48 单元。12 单元 ≈ 屏幕 1/4，是"放得下一段解释"的分界 */
 const area = (c: number, r: number) => c * r
@@ -46,9 +45,16 @@ const area = (c: number, r: number) => c * r
  * 先砍地图后砍 ETA —— 一格宽的地图看不出路，不如把空间让给转向指令。
  */
 export const navForm: FormFn = (c, r) => {
-  const blocks = ['turn']
+  /**
+   * dest（目的地名）是**恒在块**：转向指令要有 navigation.nextInstruction
+   * 才画得出来，而刚设完目的地还没取到指引、或没有高德 Key 的降级演示时
+   * 它就是空串——最小档 strip 只声明 turn 的话，三个块全 display:none，
+   * 标题又被 CSS 藏着，桌面上留一条只有边框的空玻璃条，
+   * 用户不知道这是导航卡还是渲染坏了。
+   */
+  const blocks = ['dest', 'turn']
   // 地图要"看得出路"：面积够 **且** 不能是竖条（tower 4×4 面积 16 但宽只有 4）
-  if (area(c, r) >= 24 && c >= 8) blocks.splice(1, 0, 'map')
+  if (area(c, r) >= 24 && c >= 8) blocks.splice(2, 0, 'map')
   if (area(c, r) >= 12) blocks.push('foot')
   return { blocks }
 }
@@ -157,6 +163,9 @@ export const CARD_FORMS: Record<string, FormFn> = {
   feedback: textDetail,
   notice: textDetail,
   list: listForm,
+  // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
+  // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
+  stagedlist: listForm,
   info: genericForm,
   media: mediaForm,
   weather: weatherForm,

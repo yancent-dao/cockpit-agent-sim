@@ -10,7 +10,18 @@ import { formOf } from '../config/forms'
 import { dimsOf, cellsOfTier } from '../config/grid'
 import type { Card, PlacedCard } from './desk'
 
-// || 而不是 ??：时钟卡的 title 是空串，?? 放它过去，挤出横幅就写成「」
+/**
+ * 教给用户的召回口令。**唯一出处**——挤出横幅、工具返回、system 注入
+ * 三处都要教同一句话；散着写的话，召回语义一改（比如改成以点边缘条为主，
+ * 或话术换成"打开XX"），改了横幅漏了 system 注入，模型会继续教用户
+ * 一句已经不生效的口令，而这类文案不匹配没有任何测试抓得到。
+ */
+export const recallHint = (name = 'XX') => `说"看${name}"就能叫回来`
+
+/**
+ * 卡片标题兜底的**唯一实现**（车机屏推送、台下清单、deskLayout、挤出横幅都用它）。
+ * 用 || 而不是 ??：时钟卡的 title 是空串，?? 会放它过去，挤出横幅就写成「」。
+ */
 export const titleOf = (c: Card) =>
   c.data?.title || CARD_TEMPLATES.find(t => t.id === c.template)?.label || c.template
 
@@ -37,6 +48,6 @@ export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card
   // 等位区（2026-08-13）：模型必须知道台下还有什么，否则会当成"没了"重新建卡，
   // 或者对着已经查过的东西说"我再帮你查查"。没有排队的东西不提这茬
   if (l.staged?.length)
-    lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join('、')}（不是没了，有空位自动显示，或说"看XX"叫回）`)
+    lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join('、')}（不是没了，有空位自动显示，或${recallHint()}）`)
   return lines.join('\n')
 }

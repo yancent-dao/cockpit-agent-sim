@@ -1,10 +1,12 @@
 import type { Store } from '../core/store'
-import type { Permission, Value, Op } from '../core/types'
+import { compare } from '../core/types'
+import type { Permission, Value } from '../core/types'
 import type { ToolDef, ParamDef } from '../config/tools'
 import { CAPABILITY_DOMAINS } from '../config/tools'
 import { globMatch } from '../core/glob'
 import type { Desk } from '../cards/desk'
 import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
+import { titleOf, recallHint } from '../cards/summary'
 import type { AmapClient } from '../integrations/amap'
 import type { ItunesClient } from '../integrations/itunes'
 import type { RadioClient } from '../integrations/radio'
@@ -38,10 +40,6 @@ export interface InvokeCtx {
   /** runtime 的调用轮次：同一轮并行工具调用共批（家族机制的批号） */
   round?: number
 }
-
-const compare = (a: any, op: Op, b: any) =>
-  op === '>' ? a > b : op === '<' ? a < b : op === '>=' ? a >= b
-  : op === '<=' ? a <= b : op === '==' ? a === b : a !== b
 
 const CONFIRM_TTL = 60_000
 
@@ -137,13 +135,10 @@ export function createRegistry(
       if (shapeErr) return shapeErr
       return toResult(need().update(args.cardId, args.data))
     },
-    cardResize: args => {
-      // 模板声明的尺寸这里也得认。之前只有 cardShow 校验，于是"地图小一点"
-      // 把只支持 2/3 的导航卡缩成了 1/3，再也调不回去
-      const card = need().get(args.cardId)
-      const tmpl = card && CARD_TEMPLATES.find(t => t.id === card.template)
-      return toResult(need().resize(args.cardId, args.size))
-    },
+    // 尺寸闸在 desk（三条建卡路一个闸，见 cards/contract.ts）——这里以前
+    // 取出 card/tmpl 却一行没用，注释还宣称"这里也得认"，是段说谎的空壳：
+    // 读的人以为闸在 registry，真闸在 desk.resize 里的 resizeGate
+    cardResize: args => toResult(need().resize(args.cardId, args.size)),
     // byUser：模型撤卡是在替用户执行"把它收起来"——规则卡被抑制，
     // 不许下一秒被 reconcile 补回（诈尸），直到 watch 信号重新断言
     cardDismiss: args => toResult(need().dismiss(args.cardId, { byUser: true })),
@@ -151,7 +146,7 @@ export function createRegistry(
     deskLayout: () => {
       const l = need().layout()
       const brief = (c: any) => ({ id: c.id, key: c.key, template: c.template, size: c.size,
-        title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template })
+        title: titleOf(c) })   // 标题兜底的唯一实现在 cards/summary.ts
       return {
         status: 'ok',
         data: {
@@ -223,7 +218,7 @@ export function createRegistry(
           // staged 优先于 shrunk 当 code：对模型来说"排队去了"比"变小了"更该知道
           ...(r.staged && { code: 'CARD_STAGED' }),
           ...(r.note ? { message: r.note }
-            : r.staged ? { message: '桌面满了，先排在台下，有空位自动显示；想立刻看就说"看XX"能叫回' } : {}) }
+            : r.staged ? { message: `桌面满了，先排在台下，有空位自动显示；想立刻看就${recallHint()}` } : {}) }
       : { status: 'rejected', code: r.code, message: r.message }
 
 

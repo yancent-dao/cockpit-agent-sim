@@ -10,22 +10,32 @@
  * sizeLocked 例外——用户缩小过的卡宁可折角提示，意愿 > 建议。
  */
 import { pixelsOf, cellsOfTier, normalizeTier } from '../config/grid'
+import { CARD_TEMPLATES, COMMON_SIZES } from '../config/cards'
 
 /**
- * 自愈阶梯：按面积升序，**tower 除外**——它是 4×4 竖条（专用档），
- * 混进序列会让 1/2 的"下一步"变成宽度砍半、内容反而更高。
- * 模型要竖条卡自己显式声明，自愈不路过它。
- * 1/6 溢出的第一步是 wide（加宽）：文字回流后高度自然缩，
- * 加宽治不好的下一步再加高（1/3 → 1/2 → 2/3），bump 上限 2 兜底防振荡。
+ * 自愈阶梯 = **这张卡的模板自己声明的尺寸表**，按面积升序，tower 除外
+ * （4×4 竖条是专用档，混进序列会让 1/2 的"下一步"变成宽度砍半、内容反而更高；
+ * 模型要竖条卡自己显式声明，自愈不路过它）。
+ *
+ * 以前这里手抄了第二份阶梯，里面还留着 'full'——而产品裁定后 canvas 的上限
+ * 是 2/3、full 明令禁止：2/3 的卡溢出时 healStep 每次返回 full、resize 每次被
+ * SIZE_NOT_SUPPORTED 拒绝，而 bumps 只在成功时才 +1，于是 ≤2 次的防振荡闸
+ * 永远闭合不了，每条 canvasNote 都空转一次。跟 desk 的仲裁同一条纪律：
+ * **卡片只会出现在自己声明过的档位上**，别处不该再有第二份阶梯。
  */
-const LADDER = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', '2/3', 'full']
-  .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+const ladderFor = (template?: string) => {
+  const tmpl = template ? CARD_TEMPLATES.find(t => t.id === template) : undefined
+  return [...(tmpl?.sizes ?? COMMON_SIZES)]
+    .filter(z => normalizeTier(z) !== 'tower')
+    .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+}
 
-export interface HealOpts { bumps: number; sizeLocked?: boolean }
+export interface HealOpts { bumps: number; sizeLocked?: boolean; template?: string }
 
 export function healStep(size: string, contentPx: number, opts: HealOpts): string | null {
   if (opts.sizeLocked) return null
   if (opts.bumps >= 2) return null
+  const LADDER = ladderFor(opts.template)
   const idx = LADDER.findIndex(z => normalizeTier(z) === normalizeTier(size))
   if (idx < 0) return null
   const canvasH = pixelsOf(size).h

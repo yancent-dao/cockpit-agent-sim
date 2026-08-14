@@ -1,19 +1,9 @@
-import type { Signal, Constraint, Value, SetOutcome, Listener, Invariant, Op } from './types'
+import { compare } from './types'
+import type { Signal, Constraint, Value, SetOutcome, Listener, Invariant } from './types'
 import { globMatch } from './glob'
 import { INVARIANTS } from '../config/constraints'
 
 interface Cell { sig: Signal; current: Value; target: Value }
-
-const compare = (a: any, op: Op, b: any): boolean => {
-  switch (op) {
-    case '>': return a > b
-    case '<': return a < b
-    case '>=': return a >= b
-    case '<=': return a <= b
-    case '==': return a === b
-    case '!=': return a !== b
-  }
-}
 
 export function createStore(
   signals: Signal[],

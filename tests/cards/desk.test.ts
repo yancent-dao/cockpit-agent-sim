@@ -663,10 +663,6 @@ describe('urgency 参与仲裁', () => {
  * 让出 6 单元给新卡，两张卡都在场。
  */
 describe('降级阶梯七档，缩得比 1/6 更小', () => {
-  it('阶梯覆盖 chip 到 banner 七档', () => {
-    expect(desk.ladder()).toEqual(['chip', 'strip', 'bar', 'card', 'wide', 'panel', 'banner'])
-  })
-
   it('桌面填满后，ambient 卡缩小让位而不是被挤掉', () => {
     for (let i = 0; i < 5; i++) { mk({ data: { title: '常规' + i } }); now += 10 }
     mk({ urgency: 'ambient', data: { title: '正在播放' } }); now += 10

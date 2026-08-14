@@ -1,6 +1,6 @@
 import { CARD_TEMPLATES } from '../config/cards'
 import type { Store } from '../core/store'
-import type { Op } from '../core/types'
+import { compare } from '../core/types'
 import type { Desk } from './desk'
 import type { CardRule, BuilderDeps } from '../config/cardRules'
 
@@ -10,10 +10,6 @@ import type { CardRule, BuilderDeps } from '../config/cardRules'
  * 订阅 Store → 评估规则 → 通过与 Agent 相同的 desk API 建/更/撤卡。
  * 同一布局仲裁，不开后门；模型只为规则覆盖不到的临场内容（候选列表、临时提醒）建卡。
  */
-
-const compare = (a: any, op: Op, b: any) =>
-  op === '>' ? a > b : op === '<' ? a < b : op === '>=' ? a >= b
-  : op === '<=' ? a <= b : op === '==' ? a === b : a !== b
 
 export interface OrchestratorOpts {
   store: Store

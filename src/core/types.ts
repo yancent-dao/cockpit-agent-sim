@@ -4,6 +4,24 @@ export type ChangeMode = 'STATIC' | 'ONCHANGE' | 'CONTINUOUS'
 /** 对齐行业「黑/灰/彩」车控权限分级 */
 export type Permission = '黑' | '灰' | '彩'
 
+/**
+ * 三元组比较的**唯一实现**。约束引擎、Tool 前置条件、卡片规则的 when
+ * 都用它——以前三处各写一份，语义还悄悄分了岔（switch 版对未知 op 返回
+ * undefined，三元链版把一切非枚举 op 当成 '!='）。给 Op 加新操作符时
+ * 要改三处，漏一处的后果是同一条 [path, op, value] 在约束引擎里判不满足、
+ * 在卡片规则里却判满足——"桌面 = f(车辆状态)"的 f 在两个子系统里不相等。
+ */
+export const compare = (a: any, op: Op, b: any): boolean => {
+  switch (op) {
+    case '>': return a > b
+    case '<': return a < b
+    case '>=': return a >= b
+    case '<=': return a <= b
+    case '==': return a === b
+    case '!=': return a !== b
+  }
+}
+
 export type Value = number | boolean | string
 
 export interface Signal {

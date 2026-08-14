@@ -295,6 +295,24 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   var shortPlace = (name) => String(name ?? "").replace(/^.{2,8}?(省|自治区)/, "");
 
+  // src/core/types.ts
+  var compare = (a, op, b) => {
+    switch (op) {
+      case ">":
+        return a > b;
+      case "<":
+        return a < b;
+      case ">=":
+        return a >= b;
+      case "<=":
+        return a <= b;
+      case "==":
+        return a === b;
+      case "!=":
+        return a !== b;
+    }
+  };
+
   // src/core/glob.ts
   var cache = /* @__PURE__ */ new Map();
   function globMatch(pattern, path) {
@@ -405,22 +423,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   ];
 
   // src/core/store.ts
-  var compare = (a, op, b) => {
-    switch (op) {
-      case ">":
-        return a > b;
-      case "<":
-        return a < b;
-      case ">=":
-        return a >= b;
-      case "<=":
-        return a <= b;
-      case "==":
-        return a === b;
-      case "!=":
-        return a !== b;
-    }
-  };
   function createStore(signals, constraints, invariants = INVARIANTS) {
     const cells = /* @__PURE__ */ new Map();
     for (const sig of signals) cells.set(sig.alias, { sig, current: sig.initial, target: sig.initial });
@@ -552,7 +554,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     full: { w: 12, h: 4 }
     // 铺满
   };
-  var LADDER = ["chip", "strip", "bar", "card", "wide", "panel", "banner"];
   var ALIAS = {
     "1/6": "card",
     "1/3": "panel",
@@ -647,6 +648,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "列表卡",
       defaultSize: "1/2",
       sizes: [...LIST_SIZES],
+      requireItems: true,
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
       fields: { items: { type: "array", required: true } }
     },
@@ -661,6 +663,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       defaultSize: "1/3",
       sizes: [...LIST_SIZES],
       systemOnly: true,
+      requireItems: true,
       desc: "台下排队卡片的清单，由系统按等位区状态自动生成，不要手动建。",
       fields: { items: { type: "array", required: true } }
     },
@@ -717,6 +720,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "能力目录卡",
       defaultSize: "full",
       sizes: ["1/6", "1/2", "full"],
+      requireItems: true,
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
@@ -1502,6 +1506,124 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     { match: ["memory"], icon: "🧠", label: "记忆", blurb: '"记住我喜欢 24 度"，下次直接照做' }
   ];
 
+  // src/config/forms.ts
+  var area = (c, r) => c * r;
+  var navForm = (c, r) => {
+    const blocks = ["dest", "turn"];
+    if (area(c, r) >= 24 && c >= 8) blocks.splice(2, 0, "map");
+    if (area(c, r) >= 12) blocks.push("foot");
+    return { blocks };
+  };
+  var controlForm = (c, r) => {
+    const blocks = [];
+    if (r >= 4 && c >= 4) blocks.push("vehicle");
+    blocks.push("items");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var confirmForm = (c, r) => {
+    const blocks = ["what"];
+    if (area(c, r) >= 16) blocks.push("why");
+    blocks.push("hint");
+    return { blocks };
+  };
+  var textDetail = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 12) blocks.push("detail");
+    return { blocks };
+  };
+  var listForm = (c, r) => {
+    const n = listCapacity(c, r);
+    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: contentCols(c) };
+  };
+  var genericForm = (c, r) => {
+    const blocks = ["text"];
+    if (area(c, r) >= 8) blocks.push("items", "actions");
+    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+  };
+  var mediaForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = ["art", "title"];
+    if (a >= 8) blocks.push("sub");
+    if (c >= 6 || a >= 8) blocks.push("bar");
+    blocks.push("toggle");
+    if (r >= 2 && a >= 12) blocks.push("hint");
+    if (a >= 16) blocks.push("next");
+    return { blocks };
+  };
+  var weatherForm = (c, r) => {
+    const a = area(c, r);
+    const days = a >= 32 ? 5 : a >= 12 ? 3 : 0;
+    const blocks = ["temp"];
+    if (days > 0) blocks.push("forecast");
+    return { blocks, maxItems: days, cols: c >= 12 ? days : 1 };
+  };
+  var capForm = (c, r) => {
+    const a = area(c, r);
+    const mode = a >= 24 && c >= 8 ? "grid" : a >= 12 ? "list" : "count";
+    const cols = mode === "grid" ? contentCols(c) : 1;
+    return {
+      blocks: ["groups"],
+      mode,
+      cols,
+      maxItems: mode === "count" ? 0 : cols * r * 2,
+      overflow: mode === "count" ? "count" : "more"
+    };
+  };
+  var clockForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = ["time"];
+    if (a >= 8) blocks.push("date");
+    if (a >= 16) blocks.push("wx");
+    return { blocks };
+  };
+  var CARD_FORMS = {
+    nav: navForm,
+    control: controlForm,
+    confirm: confirmForm,
+    feedback: textDetail,
+    notice: textDetail,
+    list: listForm,
+    // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
+    // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
+    stagedlist: listForm,
+    info: genericForm,
+    media: mediaForm,
+    weather: weatherForm,
+    capability: capForm,
+    generic: genericForm,
+    clock: clockForm
+  };
+  var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
+  function suggestSize(templateId, count) {
+    const tmpl = CARD_TEMPLATES.find((t) => t.id === templateId);
+    const allowed = [...tmpl?.sizes ?? COMMON_SIZES].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+    for (const z of allowed) {
+      const max = formOf(templateId, ...dimsOf(z)).maxItems;
+      if (max !== void 0 && max >= count) return z;
+    }
+    return allowed[allowed.length - 1];
+  }
+
+  // src/cards/summary.ts
+  var recallHint = (name = "XX") => `说"看${name}"就能叫回来`;
+  var titleOf = (c) => c.data?.title || CARD_TEMPLATES.find((t) => t.id === c.template)?.label || c.template;
+  function summarize(l) {
+    const lines = [];
+    if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
+    const slots = Math.floor(l.free / cellsOfTier("1/6"));
+    const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`;
+    lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
+    for (const c of l.cards) {
+      const total = Array.isArray(c.data?.items) ? c.data.items.length : 0;
+      const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total;
+      const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
+      if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
+    }
+    if (l.staged?.length)
+      lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join("、")}（不是没了，有空位自动显示，或${recallHint()}）`);
+    return lines.join("\n");
+  }
+
   // src/integrations/amap.ts
   var BASE = "https://restapi.amap.com";
   var AmapError = class extends Error {
@@ -1792,6 +1914,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           state2.history.push(qt);
           lastAdvance = clock();
         } else store2.set("media.playing", false);
+      },
+      /**
+       * 放不出来（流 404、中途断流、被自动播放策略拦下）。
+       *
+       * 这半边以前没人消费：车机屏 report('error') 发出来，director 只认 ended，
+       * 于是 media.playing 一直是 true——播放器卡显示"播放中"、Agent 的信号注入
+       * 也认为在放歌，用户听到寂静一问，模型对着 playing=true 答非所问。
+       * 只落"停了"这个事实，**不自动跳下一首**：坏流常常整批都坏，
+       * 连跳会把整个队列在几秒内烧完（跟 onEnded 的保险丝同一个道理）。
+       * 队列保留原样，用户说"下一首"或修好后还能接着放。
+       */
+      onError() {
+        store2.set("media.playing", false);
       }
     };
   }
@@ -2587,7 +2722,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   }
 
   // src/tools/registry.ts
-  var compare2 = (a, op, b) => op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : op === "<=" ? a <= b : op === "==" ? a === b : a !== b;
   var CONFIRM_TTL = 6e4;
   function createRegistry(store2, tools, clock = Date.now, deps = {}) {
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -2666,11 +2800,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         if (shapeErr) return shapeErr;
         return toResult(need().update(args.cardId, args.data));
       },
-      cardResize: (args) => {
-        const card = need().get(args.cardId);
-        const tmpl = card && CARD_TEMPLATES.find((t) => t.id === card.template);
-        return toResult(need().resize(args.cardId, args.size));
-      },
+      // 尺寸闸在 desk（三条建卡路一个闸，见 cards/contract.ts）——这里以前
+      // 取出 card/tmpl 却一行没用，注释还宣称"这里也得认"，是段说谎的空壳：
+      // 读的人以为闸在 registry，真闸在 desk.resize 里的 resizeGate
+      cardResize: (args) => toResult(need().resize(args.cardId, args.size)),
       // byUser：模型撤卡是在替用户执行"把它收起来"——规则卡被抑制，
       // 不许下一秒被 reconcile 补回（诈尸），直到 watch 信号重新断言
       cardDismiss: (args) => toResult(need().dismiss(args.cardId, { byUser: true })),
@@ -2682,7 +2815,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           key: c.key,
           template: c.template,
           size: c.size,
-          title: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template
+          title: titleOf(c)
         });
         return {
           status: "ok",
@@ -2747,7 +2880,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       ...r.shrunk && { code: "CARD_SHRUNK" },
       // staged 优先于 shrunk 当 code：对模型来说"排队去了"比"变小了"更该知道
       ...r.staged && { code: "CARD_STAGED" },
-      ...r.note ? { message: r.note } : r.staged ? { message: '桌面满了，先排在台下，有空位自动显示；想立刻看就说"看XX"能叫回' } : {}
+      ...r.note ? { message: r.note } : r.staged ? { message: `桌面满了，先排在台下，有空位自动显示；想立刻看就${recallHint()}` } : {}
     } : { status: "rejected", code: r.code, message: r.message };
     const checkDataShape = (tmpl, data, opts) => {
       if (!tmpl.fields) return null;
@@ -2782,7 +2915,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       let perm = t.permission;
       for (const e of t.escalate ?? []) {
         const [path, op, val] = e.when;
-        if (compare2(store2.get(path), op, val)) perm = e.to;
+        if (compare(store2.get(path), op, val)) perm = e.to;
       }
       return perm;
     }
@@ -2846,18 +2979,25 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const t = resolve(name);
       if (!t) return { status: "unavailable", code: "UNKNOWN_TOOL", message: `没有名为 ${name} 的能力` };
       name = t.name;
-      if (t.permission === "黑")
-        return { status: "unavailable", code: "BLOCKED", message: `${name} 属于安全禁区，不对 AI 开放` };
+      const level = permissionOf(name);
+      if (t.permission === "黑" || level === "黑")
+        return t.permission === "黑" ? { status: "unavailable", code: "BLOCKED", message: `${name} 属于安全禁区，不对 AI 开放` } : {
+          status: "rejected",
+          code: "FORBIDDEN",
+          message: `当前状态下 ${name} 被禁用`,
+          suggestion: "等条件变了再试"
+        };
       if (!authorized(name, ctx.allow))
         return { status: "unavailable", code: "NOT_AUTHORIZED", message: `当前 Agent 无权调用 ${name}` };
       const bad = validate(t, args);
       if (bad) return { status: "rejected", code: "INVALID_PARAMS", message: bad };
       const supplied = ctx.confirmToken || args.confirmToken || void 0;
-      if (permissionOf(name) === "灰" && !ctx.force) {
+      if (level === "灰" && !ctx.force) {
         const tk = supplied && tokens.get(supplied);
         const valid = tk && tk.tool === name && tk.expires > clock();
         if (!valid) {
           const token = `ct_${(++seq).toString(36)}_${clock().toString(36)}`;
+          for (const [k, v] of tokens) if (v.expires <= clock()) tokens.delete(k);
           tokens.set(token, { tool: name, expires: clock() + CONFIRM_TTL });
           const message = t.confirmPrompt ?? `即将执行 ${name}，确认吗？`;
           autoCard({
@@ -2923,7 +3063,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         return { name, description: t.desc, inputSchema: parameters };
       });
     }
-    const briefCatalog = (allow) => list(allow).filter((t) => !t.meta && t.brief).map((t) => `- ${t.name}: ${t.brief}`).join("\n");
+    const catalogCache = /* @__PURE__ */ new Map();
+    const briefCatalog = (allow) => {
+      const key = allow ? allow.join(",") : "*";
+      let v = catalogCache.get(key);
+      if (v === void 0) {
+        v = list(allow).filter((t) => !t.meta && t.brief).map((t) => `- ${t.name}: ${t.brief}`).join("\n");
+        catalogCache.set(key, v);
+      }
+      return v;
+    };
     function signalsFor(names) {
       const out = /* @__PURE__ */ new Set();
       for (const n of names) {
@@ -2948,7 +3097,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       for (const [, t] of tokens) if (t.expires > clock()) return { tool: t.tool };
       return null;
     };
-    return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm };
+    const clearConfirms = () => tokens.clear();
+    return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms };
   }
 
   // src/state/domain.ts
@@ -3115,15 +3265,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   }
 
   // src/cards/heal.ts
-  var LADDER2 = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "2/3", "full"].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+  var ladderFor = (template) => {
+    const tmpl = template ? CARD_TEMPLATES.find((t) => t.id === template) : void 0;
+    return [...tmpl?.sizes ?? COMMON_SIZES].filter((z) => normalizeTier(z) !== "tower").sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+  };
   function healStep(size, contentPx, opts) {
     if (opts.sizeLocked) return null;
     if (opts.bumps >= 2) return null;
-    const idx = LADDER2.findIndex((z) => normalizeTier(z) === normalizeTier(size));
+    const LADDER = ladderFor(opts.template);
+    const idx = LADDER.findIndex((z) => normalizeTier(z) === normalizeTier(size));
     if (idx < 0) return null;
     const canvasH = pixelsOf(size).h;
-    if (contentPx > canvasH + 2) return idx < LADDER2.length - 1 ? LADDER2[idx + 1] : null;
-    if (contentPx < canvasH * 0.6) return idx > 0 ? LADDER2[idx - 1] : null;
+    if (contentPx > canvasH + 2) return idx < LADDER.length - 1 ? LADDER[idx + 1] : null;
+    if (contentPx < canvasH * 0.6) return idx > 0 ? LADDER[idx - 1] : null;
     return null;
   }
 
@@ -3178,8 +3332,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       this.code = code;
     }
   };
+  var jsonpSeq = 0;
   var browserJsonp = (url, cbParam) => new Promise((resolve, reject) => {
-    const name = `__itunes_cb_${Math.floor(performance.now() * 1e3)}`;
+    const name = `__itunes_cb_${++jsonpSeq}_${Math.floor(performance.now() * 1e3)}`;
     const el = document.createElement("script");
     const done = (fn) => {
       delete window[name];
@@ -3225,14 +3380,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     "https://nl1.api.radio-browser.info/json",
     "https://at1.api.radio-browser.info/json"
   ];
-  function createRadioClient(fetcher) {
+  function createRadioClient(fetcher, opts = {}) {
     let preferred = 0;
+    const NODE_TIMEOUT = opts.nodeTimeoutMs ?? 5e3;
     async function viaNodes(path) {
       const order = [...NODES.slice(preferred), ...NODES.slice(0, preferred)];
       let last;
       for (const base of order) {
         try {
-          const res = await fetcher(base + path);
+          let timer;
+          const timeout = new Promise((_, rej) => {
+            timer = setTimeout(() => rej(new RadioError("节点没响应（超时）", "NODE_TIMEOUT")), NODE_TIMEOUT);
+          });
+          const res = await Promise.race([fetcher(base + path), timeout]).finally(() => clearTimeout(timer));
           if (!res.ok) {
             last = new RadioError("节点没响应");
             continue;
@@ -3575,7 +3735,10 @@ ${extras.desktop}`);
     const lastTime = deps.memory?.load();
     if (lastTime) thread.push({ role: "assistant", content: `${SUM_MARK}上回说到：${lastTime}` });
     const stale = (g) => g !== gen;
+    let resetGen = 0;
+    const discarded = (g) => g < resetGen;
     const commit = (g, ...msgs) => {
+      if (discarded(g)) return;
       if (!stale(g)) thread.push(...msgs);
       else {
         thread.splice(boundary, 0, ...msgs);
@@ -3583,17 +3746,18 @@ ${extras.desktop}`);
       }
     };
     async function execRound(g, calls, allow, trace, interceptors, opts = {}) {
+      const audible = () => !opts.background && !stale(g);
       const round = ++toolRound;
       const results = await Promise.all(calls.map(async (c) => {
         const metaKey = Object.keys(interceptors).find((k) => isMeta(c.name, k));
         const name = metaKey ?? registry2.canonicalName(c.name);
         trace.push({ type: "toolCall", at: clock(), name, args: c.args, permission: registry2.permissionOf(c.name) });
-        emit({ type: "executing", name });
+        if (audible()) emit({ type: "executing", name });
         const s = clock();
         const result = metaKey ? await interceptors[metaKey](c.args) : await registry2.invoke(c.name, c.args, { allow, round });
         trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
-        if (result.status === "inputRequired") emit({ type: "confirming", text: result.message ?? "需要确认" });
-        if (!opts.quietRejects && (result.status === "rejected" || result.status === "unavailable") && !SELF_FIX_CODES.has(result.code ?? ""))
+        if (result.status === "inputRequired" && audible()) emit({ type: "confirming", text: result.message ?? "需要确认" });
+        if (!opts.quietRejects && audible() && (result.status === "rejected" || result.status === "unavailable") && !SELF_FIX_CODES.has(result.code ?? ""))
           emit({ type: "rejected", text: result.message ?? "无法执行" });
         return { c, result };
       }));
@@ -3735,10 +3899,10 @@ ${extras.desktop}`);
         if (!reply.toolCalls?.length) return { summary: reply.text ?? "" };
         for (const c of reply.toolCalls) step(task, `正在${stepLabel(c.name)}`);
         view.push(asstMsg(reply));
-        const toolMsgs = await execRound(0, reply.toolCalls, allow, trace, {
+        const toolMsgs = await execRound(gen, reply.toolCalls, allow, trace, {
           "tools.load": mkLoader(loaded),
           "skill.use": mkSkillUse(loaded)
-        });
+        }, { background: true });
         view.push(...toolMsgs);
       }
       return { summary: "" };
@@ -3774,7 +3938,12 @@ ${extras.desktop}`);
         });
         return { status: "ok", data: { taskId: task.id }, message: "已转后台，完成会自动通知用户" };
       }
-      return subRun(goal, preload).then(({ summary }) => ({ status: "ok", data: { summary } })).finally(() => {
+      return subRun(goal, preload).then(({ summary }) => ({ status: "ok", data: { summary } })).catch((e) => ({
+        status: "failed",
+        code: "SUBAGENT_ERROR",
+        message: `子任务没跑成：${String(e)}`,
+        suggestion: "可以自己直接查，或稍后再派一次"
+      })).finally(() => {
         activeSubs--;
       });
     };
@@ -3874,20 +4043,31 @@ ${extras.desktop}`);
       emit({ type: "thinking" });
       const pending = registry2.pendingConfirm();
       let fast = { suggested: [], said: "", rounds: 0 };
-      if (!pending) fast = await runFast(g, trace);
-      else fast.suggested = [pending.tool];
-      const slow = await runSlow(g, fast.suggested, trace);
-      if (!stale(g)) compaction = doCompact(g).catch(() => {
-      });
-      return {
-        reply: [fast.said, slow.said].filter(Boolean).join(" "),
-        trace,
-        rounds: fast.rounds + slow.rounds,
-        stopReason: slow.stop
-      };
+      try {
+        if (!pending) fast = await runFast(g, trace);
+        else fast.suggested = [pending.tool];
+        const slow = await runSlow(g, fast.suggested, trace);
+        if (!stale(g)) compaction = doCompact(g).catch(() => {
+        });
+        return {
+          reply: [fast.said, slow.said].filter(Boolean).join(" "),
+          trace,
+          rounds: fast.rounds + slow.rounds,
+          stopReason: slow.stop
+        };
+      } catch (e) {
+        if (!stale(g)) {
+          emit({ type: "error", message: String(e) });
+          emit({ type: "done" });
+        }
+        return { reply: fast.said, trace, rounds: fast.rounds, stopReason: "error" };
+      } finally {
+        if (pending && !stale(g)) registry2.clearConfirms?.();
+      }
     }
     let compaction = Promise.resolve();
     async function doCompact(g) {
+      if (discarded(g)) return;
       const userIdx = thread.map((m, i) => m.role === "user" ? i : -1).filter((i) => i >= 0);
       if (userIdx.length <= KEEP_ROUNDS) return;
       const cutAt = userIdx[userIdx.length - KEEP_ROUNDS];
@@ -3911,6 +4091,7 @@ ${text}` });
     const reset = () => {
       thread.length = 0;
       boundary = 0;
+      resetGen = ++gen;
     };
     return {
       run,
@@ -4026,6 +4207,17 @@ ${text}` });
   }
 
   // src/bus.ts
+  var DEDUPE_CAP = 64;
+  function createDedupe() {
+    const seen = /* @__PURE__ */ new Set();
+    return (id) => {
+      if (!id) return false;
+      if (seen.has(id)) return true;
+      seen.add(id);
+      if (seen.size > DEDUPE_CAP) seen.delete(seen.values().next().value);
+      return false;
+    };
+  }
   function createBus(onMsg) {
     let bc = null;
     try {
@@ -4033,8 +4225,13 @@ ${text}` });
     } catch {
     }
     let peer = null;
+    const isDup = createDedupe();
+    const src = Math.random().toString(36).slice(2, 8);
+    let seq = 0;
     const handle = (m) => {
-      if (m && m.type) onMsg(m);
+      if (!m || !m.type) return;
+      if (isDup(m.__id)) return;
+      onMsg(m);
     };
     addEventListener("message", (e) => {
       if (e.data?.type === "hello" && e.source) peer = e.source;
@@ -4043,15 +4240,16 @@ ${text}` });
     if (bc) bc.onmessage = (e) => handle(e.data);
     return {
       send(m) {
+        const tagged = { ...m, __id: `${src}-${++seq}` };
         try {
-          if (peer && !peer.closed) peer.postMessage(m, "*");
+          if (peer && !peer.closed) peer.postMessage(tagged, "*");
         } catch {
         }
         try {
-          if (opener) opener.postMessage(m, "*");
+          if (opener) opener.postMessage(tagged, "*");
         } catch {
         }
-        bc?.postMessage(m);
+        bc?.postMessage(tagged);
       },
       setPeer(w) {
         peer = w;
@@ -4060,101 +4258,6 @@ ${text}` });
         return !!peer || !!opener;
       }
     };
-  }
-
-  // src/config/forms.ts
-  var area = (c, r) => c * r;
-  var navForm = (c, r) => {
-    const blocks = ["turn"];
-    if (area(c, r) >= 24 && c >= 8) blocks.splice(1, 0, "map");
-    if (area(c, r) >= 12) blocks.push("foot");
-    return { blocks };
-  };
-  var controlForm = (c, r) => {
-    const blocks = [];
-    if (r >= 4 && c >= 4) blocks.push("vehicle");
-    blocks.push("items");
-    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
-  };
-  var confirmForm = (c, r) => {
-    const blocks = ["what"];
-    if (area(c, r) >= 16) blocks.push("why");
-    blocks.push("hint");
-    return { blocks };
-  };
-  var textDetail = (c, r) => {
-    const blocks = ["text"];
-    if (area(c, r) >= 12) blocks.push("detail");
-    return { blocks };
-  };
-  var listForm = (c, r) => {
-    const n = listCapacity(c, r);
-    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: contentCols(c) };
-  };
-  var genericForm = (c, r) => {
-    const blocks = ["text"];
-    if (area(c, r) >= 8) blocks.push("items", "actions");
-    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
-  };
-  var mediaForm = (c, r) => {
-    const a = area(c, r);
-    const blocks = ["art", "title"];
-    if (a >= 8) blocks.push("sub");
-    if (c >= 6 || a >= 8) blocks.push("bar");
-    blocks.push("toggle");
-    if (r >= 2 && a >= 12) blocks.push("hint");
-    if (a >= 16) blocks.push("next");
-    return { blocks };
-  };
-  var weatherForm = (c, r) => {
-    const a = area(c, r);
-    const days = a >= 32 ? 5 : a >= 12 ? 3 : 0;
-    const blocks = ["temp"];
-    if (days > 0) blocks.push("forecast");
-    return { blocks, maxItems: days, cols: c >= 12 ? days : 1 };
-  };
-  var capForm = (c, r) => {
-    const a = area(c, r);
-    const mode = a >= 24 && c >= 8 ? "grid" : a >= 12 ? "list" : "count";
-    const cols = mode === "grid" ? contentCols(c) : 1;
-    return {
-      blocks: ["groups"],
-      mode,
-      cols,
-      maxItems: mode === "count" ? 0 : cols * r * 2,
-      overflow: mode === "count" ? "count" : "more"
-    };
-  };
-  var clockForm = (c, r) => {
-    const a = area(c, r);
-    const blocks = ["time"];
-    if (a >= 8) blocks.push("date");
-    if (a >= 16) blocks.push("wx");
-    return { blocks };
-  };
-  var CARD_FORMS = {
-    nav: navForm,
-    control: controlForm,
-    confirm: confirmForm,
-    feedback: textDetail,
-    notice: textDetail,
-    list: listForm,
-    info: genericForm,
-    media: mediaForm,
-    weather: weatherForm,
-    capability: capForm,
-    generic: genericForm,
-    clock: clockForm
-  };
-  var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
-  function suggestSize(templateId, count) {
-    const tmpl = CARD_TEMPLATES.find((t) => t.id === templateId);
-    const allowed = [...tmpl?.sizes ?? COMMON_SIZES].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
-    for (const z of allowed) {
-      const max = formOf(templateId, ...dimsOf(z)).maxItems;
-      if (max !== void 0 && max >= count) return z;
-    }
-    return allowed[allowed.length - 1];
   }
 
   // src/cards/contract.ts
@@ -4170,25 +4273,6 @@ ${text}` });
     if (!knownSize(size)) return fail();
     const want = normalizeTier(size);
     return allowed.some((z) => normalizeTier(z) === want) ? null : fail();
-  }
-
-  // src/cards/summary.ts
-  var titleOf = (c) => c.data?.title || CARD_TEMPLATES.find((t) => t.id === c.template)?.label || c.template;
-  function summarize(l) {
-    const lines = [];
-    if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
-    const slots = Math.floor(l.free / cellsOfTier("1/6"));
-    const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`;
-    lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
-    for (const c of l.cards) {
-      const total = Array.isArray(c.data?.items) ? c.data.items.length : 0;
-      const visible = formOf(c.template, ...dimsOf(c.size)).maxItems ?? total;
-      const n = Number(c.data?.moreCount ?? Math.max(0, total - visible));
-      if (n > 0) lines.push(`「${titleOf(c)}」屏上只显示了前 ${total - n} 条，还有 ${n} 条没显示——别提没显示的那些`);
-    }
-    if (l.staged?.length)
-      lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join("、")}（不是没了，有空位自动显示，或说"看XX"叫回）`);
-    return lines.join("\n");
   }
 
   // src/config/priority.ts
@@ -4227,32 +4311,46 @@ ${text}` });
     const [w, h] = dimsOf(size);
     return { w, h };
   };
-  var LADDER3 = [...LADDER];
-  var rung = (s) => LADDER3.indexOf(normalizeTier(s));
-  var floorIdx = (c) => {
-    const rungs = [0];
-    if (c.minSize) rungs.push(rung(c.minSize));
+  function allowedSizes(c) {
     const tmpl = c.template ? CARD_TEMPLATES.find((t) => t.id === c.template) : void 0;
-    if (tmpl?.sizes?.length) {
-      const smallest = tmpl.sizes.reduce((a, b) => cellsOfTier(a) <= cellsOfTier(b) ? a : b);
-      const i = LADDER3.indexOf(normalizeTier(smallest));
-      if (i >= 0) rungs.push(i);
-    }
-    const i2 = LADDER3.findIndex((t) => cellsOfTier(t) >= cellsOfTier(minTierFor(c.urgency)));
-    if (i2 >= 0) rungs.push(i2);
-    return Math.max(...rungs);
-  };
-  var canShrink = (c) => rung(c.size) > floorIdx(c);
+    const pool = tmpl?.sizes ?? COMMON_SIZES;
+    const floorCells = Math.max(
+      c.minSize ? cellsOfTier(c.minSize) : 0,
+      cellsOfTier(minTierFor(c.urgency))
+    );
+    const seen = /* @__PURE__ */ new Set();
+    return pool.filter((s) => cellsOfTier(s) >= floorCells).filter((s) => {
+      const k = normalizeTier(s);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+  }
+  function smallerSize(c, cur) {
+    const allowed = allowedSizes(c);
+    const i = allowed.findIndex((s) => normalizeTier(s) === normalizeTier(cur));
+    if (i >= 0) return i > 0 ? allowed[i - 1] : void 0;
+    const curCells = cellsOfTier(cur);
+    const smaller = allowed.filter((s) => cellsOfTier(s) < curCells);
+    return smaller.length ? smaller[smaller.length - 1] : void 0;
+  }
   var PRIO = (c) => priorityOf(c.kind, c.urgency);
+  var byVictimOrder = (a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt;
+  var byStageOrder = (a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt;
   var STAGE_CAP = 8;
-  var isEmptyList = (template, data) => (template === "list" || template === "capability") && Array.isArray(data?.items) && data.items.length === 0;
+  var isEmptyList = (template, data) => CARD_TEMPLATES.find((t) => t.id === template)?.requireItems === true && Array.isArray(data?.items) && data.items.length === 0;
   function createDesk(clock = Date.now) {
     const cards = /* @__PURE__ */ new Map();
     const staged = /* @__PURE__ */ new Map();
     let overlay;
     let seq = 0;
     const listeners = [];
-    const emit = () => listeners.forEach((l) => l());
+    let deskGen = 0;
+    let layoutCache;
+    const emit = () => {
+      deskGen++;
+      listeners.forEach((l) => l());
+    };
     const getById = (id) => cards.get(id) ?? staged.get(id);
     const noticeListeners = [];
     const dataChangeListeners = [];
@@ -4260,7 +4358,7 @@ ${text}` });
     let releasedAt;
     let familyAutoRound = 0;
     function evictFromStage() {
-      const victim = [...staged.values()].sort((a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt)[0];
+      const victim = [...staged.values()].sort(byVictimOrder)[0];
       if (!victim) return;
       staged.delete(victim.id);
       const note = `「${titleOf(victim)}」排队太久，先撤了`;
@@ -4327,34 +4425,47 @@ ${text}` });
       return out;
     }
     const others = () => [...cards.values()].filter((c) => c.id !== overlay);
-    function fit(candidate, opts = {}) {
-      const shrunk = [];
+    function fit(candidate, mode = "assert", onNoSpace = "stage") {
+      const plan = /* @__PURE__ */ new Map();
       const evicted = [];
       const titles = [];
-      const existing = others();
+      const evictedSet = /* @__PURE__ */ new Set();
+      const existing = others().filter((c) => c.id !== candidate.id);
+      const wasOnstage = cards.has(candidate.id);
       let size = candidate.size;
-      const alive = () => existing.filter((c) => c.evictable && evictableAt(c.urgency) && !shrunkOut.has(c.id));
-      const byPriorityLRU = (a, b) => PRIO(a) - PRIO(b) || a.touchedAt - b.touchedAt;
-      const victims = () => alive().filter((c) => opts.recall || PRIO(c) <= PRIO(candidate)).sort(byPriorityLRU);
-      const shrunkOut = /* @__PURE__ */ new Set();
+      const sizeOf = (c) => plan.get(c.id) ?? c.size;
+      const alive = () => existing.filter((c) => c.evictable && evictableAt(c.urgency) && !evictedSet.has(c.id));
+      const overridesPriority = mode === "recall" || mode === "grow";
+      const victims = () => alive().filter((c) => overridesPriority || PRIO(c) <= PRIO(candidate)).sort(byVictimOrder);
+      const shrinkableOf = (list) => list.find((c) => smallerSize(c, sizeOf(c)) !== void 0);
       for (; ; ) {
         const trial = { ...candidate, size };
-        const pool = existing.filter((c) => !shrunkOut.has(c.id));
+        const pool = existing.filter((c) => !evictedSet.has(c.id)).map((c) => ({ ...c, size: sizeOf(c) }));
         if (tryPlace([...pool, trial])) {
+          const shrunk = [];
+          for (const [id, s] of plan) {
+            const c = cards.get(id);
+            if (c && c.size !== s) {
+              c.size = s;
+              shrunk.push(id);
+            }
+          }
           if (size !== candidate.size) shrunk.push(candidate.id);
           candidate.size = size;
           for (const id of evicted) {
-            const victim2 = cards.get(id);
+            const victim = cards.get(id);
             cards.delete(id);
-            if (victim2) {
-              victim2.size = victim2.desiredSize ?? victim2.size;
-              stage(victim2);
+            if (victim) {
+              victim.size = victim.desiredSize ?? victim.size;
+              victim.touchedAt = clock();
+              stage(victim);
             }
           }
           staged.delete(candidate.id);
+          candidate.touchedAt = clock();
           cards.set(candidate.id, candidate);
           sweepFamily(candidate);
-          const note = titles.length ? `${titles.map((t) => `「${t}」`).join("、")}先收后台了，随时说"看${titles[0]}"叫回` : void 0;
+          const note = titles.length ? `${titles.map((t) => `「${t}」`).join("、")}先收后台了，${recallHint(titles[0])}` : void 0;
           if (note) noticeListeners.forEach((l) => l({ note, titles: [...titles] }));
           emit();
           return {
@@ -4364,46 +4475,51 @@ ${text}` });
             ...evicted.length && { evicted, note }
           };
         }
-        if (!opts.passive) {
-          const shrinkable = victims().find(canShrink);
+        if (mode !== "reconcile") {
+          const shrinkable = shrinkableOf(victims());
           if (shrinkable) {
-            shrinkable.size = LADDER3[rung(shrinkable.size) - 1];
-            shrunk.push(shrinkable.id);
+            plan.set(shrinkable.id, smallerSize(shrinkable, sizeOf(shrinkable)));
             continue;
           }
         }
-        if (opts.preferEvict) {
-          const victim2 = victims()[0];
-          if (victim2) {
-            shrunkOut.add(victim2.id);
-            evicted.push(victim2.id);
-            titles.push(titleOf(victim2));
+        if (mode === "grow") {
+          const victim = victims()[0];
+          if (victim) {
+            evictedSet.add(victim.id);
+            evicted.push(victim.id);
+            titles.push(titleOf(victim));
+            size = candidate.size;
+            continue;
+          }
+        } else {
+          const smaller = smallerSize(candidate, size);
+          if (smaller) {
+            size = smaller;
+            continue;
+          }
+        }
+        if (mode === "reconcile") return { status: "ok", cardId: candidate.id, staged: true };
+        if (mode !== "grow") {
+          const victim = victims()[0];
+          if (victim) {
+            evictedSet.add(victim.id);
+            evicted.push(victim.id);
+            titles.push(titleOf(victim));
             size = candidate.size;
             continue;
           }
         }
-        const selfIdx = rung(size);
-        if (selfIdx > floorIdx(candidate)) {
-          size = LADDER3[selfIdx - 1];
-          continue;
-        }
-        if (opts.passive) return { status: "ok", cardId: candidate.id, staged: true };
-        const victim = victims()[0];
-        if (victim) {
-          shrunkOut.add(victim.id);
-          evicted.push(victim.id);
-          titles.push(titleOf(victim));
-          size = candidate.size;
-          continue;
-        }
-        const highShrinkable = alive().filter(canShrink).sort(byPriorityLRU)[0];
+        const highShrinkable = shrinkableOf(alive().sort(byVictimOrder));
         if (highShrinkable) {
-          highShrinkable.size = LADDER3[rung(highShrinkable.size) - 1];
-          shrunk.push(highShrinkable.id);
+          plan.set(highShrinkable.id, smallerSize(highShrinkable, sizeOf(highShrinkable)));
           continue;
         }
-        if (opts.onNoSpace === "reject")
+        if (mode === "grow" && wasOnstage)
+          return { status: "rejected", code: "NO_ROOM", message: "放不下这个尺寸，先收起一张卡再试" };
+        if (onNoSpace === "reject")
           return { status: "rejected", code: "DESKTOP_FULL", message: "桌面已满，且没有可以让位的卡片" };
+        if (wasOnstage)
+          return { status: "rejected", code: "NO_ROOM", message: "放不下这个尺寸" };
         const alreadyStaged = staged.has(candidate.id);
         candidate.size = candidate.desiredSize ?? candidate.size;
         sweepFamily(candidate);
@@ -4445,6 +4561,7 @@ ${text}` });
         message: "一条都没搜到，这张卡是空的，没往屏上放——直接开口告诉用户没找到"
       };
       const toOverlay = () => {
+        if (overlay && overlay !== id) cards.delete(overlay);
         cards.set(id, card);
         sweepFamily(card);
         overlay = id;
@@ -4453,7 +4570,7 @@ ${text}` });
       };
       if (channelOf({ size, urgency: card.urgency }) === "overlay" && size === "full") return toOverlay();
       const isCritical = channelOf({ urgency: card.urgency }) === "overlay";
-      const r = fit(card, { onNoSpace: isCritical ? "reject" : "stage" });
+      const r = fit(card, "assert", isCritical ? "reject" : "stage");
       if (r.status === "rejected" && isCritical) return toOverlay();
       return r;
     }
@@ -4492,19 +4609,7 @@ ${text}` });
       return { status: "ok", cardId: id };
     }
     function sizeSteps(c) {
-      const tmpl = CARD_TEMPLATES.find((t) => t.id === c.template);
-      const pool = tmpl?.sizes ?? COMMON_SIZES;
-      const floorCells = Math.max(
-        c.minSize ? cellsOfTier(c.minSize) : 0,
-        cellsOfTier(minTierFor(c.urgency))
-      );
-      const seen = /* @__PURE__ */ new Set();
-      const allowed = [...pool].filter((s) => cellsOfTier(s) >= floorCells).filter((s) => {
-        const key = normalizeTier(s);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      }).sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+      const allowed = allowedSizes(c);
       const curKey = normalizeTier(c.size);
       const pos = Math.max(0, allowed.findIndex((s) => normalizeTier(s) === curKey));
       return { allowed, pos };
@@ -4512,12 +4617,13 @@ ${text}` });
     function growTo(id, size) {
       const c = getById(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
-      cards.delete(id);
-      staged.delete(id);
+      const prev = { size: c.size, desiredSize: c.desiredSize, sizeLocked: c.sizeLocked };
       c.size = size;
       c.desiredSize = size;
       c.sizeLocked = true;
-      return fit(c, { onNoSpace: "stage", recall: true, preferEvict: true });
+      const r = fit(c, "grow");
+      if (r.status !== "ok" || r.staged) Object.assign(c, prev);
+      return r;
     }
     function step(id, dir) {
       const c = getById(id);
@@ -4553,7 +4659,7 @@ ${text}` });
     }
     const focus = (id) => {
       const staging = staged.get(id);
-      if (staging) return fit(staging, { onNoSpace: "stage", recall: true });
+      if (staging) return fit(staging, "recall");
       const c = cards.get(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
       c.touchedAt = clock();
@@ -4582,7 +4688,7 @@ ${text}` });
           exist.touchedAt = clock();
           if (changed) dataChangeListeners.forEach((l) => l(exist.id));
           if (!exist.sizeLocked) exist.size = want;
-          return fit(exist, { onNoSpace: "stage" });
+          return fit(exist, "assert");
         }
         if (exist.sizeLocked || cellsOfTier(exist.size) >= cellsOfTier(want)) {
           const r3 = update(exist.id, i.data ?? {});
@@ -4601,29 +4707,40 @@ ${text}` });
     }
     function tick() {
       const t = clock();
+      const before = deskGen;
+      let touched = false;
       for (const c of [...cards.values()])
         if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) dismiss(c.id);
       for (const c of [...staged.values()])
-        if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) staged.delete(c.id);
+        if (typeof c.ttl === "number" && t - c.createdAt >= c.ttl * 1e3) {
+          staged.delete(c.id);
+          touched = true;
+        }
       if (releasedAt !== void 0 && t - releasedAt >= 2e3) {
         releasedAt = void 0;
         const pressed = [...cards.values()].filter((c) => c.desiredSize && cellsOfTier(c.size) < cellsOfTier(c.desiredSize)).sort((a, b) => PRIO(b) - PRIO(a));
         for (const c of pressed) resize(c.id, c.desiredSize, false);
       }
-      const queue = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt);
-      for (const c of queue) if (staged.has(c.id)) fit(c, { passive: true });
-      emit();
+      const queue = [...staged.values()].sort(byStageOrder);
+      for (const c of queue) if (staged.has(c.id)) fit(c, "reconcile");
+      if (touched && deskGen === before) emit();
     }
     function endTask() {
       for (const c of [...cards.values()]) if (c.ttl === "untilTaskEnd") dismiss(c.id);
     }
     function layout() {
+      if (layoutCache && layoutCache.gen === deskGen) return layoutCache.value;
+      const value = computeLayout();
+      layoutCache = { gen: deskGen, value };
+      return value;
+    }
+    function computeLayout() {
       const placed = tryPlace(others()) ?? [];
       for (const pc of placed) {
         const c = cards.get(pc.id);
         if (c) c.prevPos = { row: pc.row, col: pc.col };
       }
-      const staging = [...staged.values()].sort((a, b) => PRIO(b) - PRIO(a) || a.createdAt - b.createdAt);
+      const staging = [...staged.values()].sort(byStageOrder);
       return {
         cards: placed,
         free: GRID.cols * GRID.rows - placed.reduce((n, c) => n + cellsOfTier(c.size), 0),
@@ -4649,7 +4766,6 @@ ${text}` });
       findByKey: (key) => [...cards.values(), ...staged.values()].find((c) => c.key === key),
       isSuppressed: (key) => suppressed.has(key),
       cellsOf: (s) => cellsOfTier(s),
-      ladder: () => [...LADDER3],
       priorityOf: (k, u) => priorityOf(k, u),
       subscribe: (cb) => {
         listeners.push(cb);
@@ -4667,10 +4783,9 @@ ${text}` });
   }
 
   // src/cards/orchestrator.ts
-  var compare3 = (a, op, b) => op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : op === "<=" ? a <= b : op === "==" ? a === b : a !== b;
   function createOrchestrator({ store: store2, desk: desk2, rules, builders, deps }) {
     const unsubs = [];
-    const isActive = (r) => (r.when ?? []).every(([path, op, value]) => compare3(store2.get(path), op, value));
+    const isActive = (r) => (r.when ?? []).every(([path, op, value]) => compare(store2.get(path), op, value));
     const apply = (r) => {
       const build = builders[r.card.data];
       const size = r.card.size ?? CARD_TEMPLATES.find((t) => t.id === r.card.template)?.defaultSize;
@@ -6123,7 +6238,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     // 紧急度下限），车机屏不重算一遍
     canShrink: desk.canStep(c.id, "down"),
     canGrow: desk.canStep(c.id, "up"),
-    title: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template,
+    title: titleOf(c),
     data: c.data
   });
   function pushDesk() {
@@ -6134,11 +6249,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       overlay: l.overlay ? brief(l.overlay) : void 0,
       free: l.free,
       // 台下排队（等位区）：车机屏只要 数量 + 名字 就能画边缘条，几何不发
-      staged: l.staged.map((c) => ({
-        id: c.id,
-        template: c.template,
-        title: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template
-      }))
+      staged: l.staged.map((c) => ({ id: c.id, template: c.template, title: titleOf(c) }))
     } });
   }
   function renderStagedList(openIt = false) {
@@ -6146,7 +6257,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     if (!open2 && !openIt) return;
     const l = desk.layout();
     const items = l.staged.map((c) => ({
-      label: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template,
+      label: titleOf(c),
       sub: CARD_TEMPLATES.find((t) => t.id === c.template)?.label,
       value: c.id
     }));
@@ -6219,9 +6330,25 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       }
       return;
     }
+    if (muted && m.type !== "hello") return;
     if (m.type === "mediaEvent" && m.event === "ended") {
       autoplay.onEnded();
       log("p", store.get("media.playing") ? `放完了，自动下一首：${store.get("media.track")}` : "队列放完了");
+      return;
+    }
+    if (m.type === "mediaEvent" && (m.event === "error" || m.event === "blocked")) {
+      autoplay.onError();
+      if (m.event === "error") {
+        log("e", `放不出来：${store.get("media.track") || "当前内容"}${m.detail ? " · " + m.detail : ""}`);
+        bus.send({
+          type: "banner",
+          on: true,
+          reason: "rejected",
+          title: "这个放不出来",
+          desc: '换一个试试，或者说"下一首"',
+          ttl: 6e3
+        });
+      }
       return;
     }
     if (m.type === "canvasNote") {
@@ -6236,7 +6363,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       if (typeof m.contentPx === "number") {
         const card = desk.get(m.cardId);
         if (card) {
-          const next = healStep(card.size, m.contentPx, { bumps: note.bumps, sizeLocked: card.sizeLocked });
+          const next = healStep(card.size, m.contentPx, { bumps: note.bumps, sizeLocked: card.sizeLocked, template: card.template });
           if (next) {
             const r = desk.resize(m.cardId, next, false);
             if (r.status === "ok") {
@@ -6257,7 +6384,16 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       if (!decl) return;
       if (decl.route === "desk") {
         if (decl.op === "shrink" || decl.op === "grow") {
-          desk.step(m.cardId, decl.op === "shrink" ? "down" : "up");
+          const r = desk.step(m.cardId, decl.op === "shrink" ? "down" : "up");
+          if (r.status === "rejected" && r.code === "NO_ROOM")
+            bus.send({
+              type: "banner",
+              on: true,
+              reason: "constraint",
+              title: "放不下",
+              desc: r.message ?? "先收起一张卡再试",
+              ttl: 4e3
+            });
         } else {
           desk.dismiss(m.cardId, { byUser: true });
           log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
@@ -6437,7 +6573,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         break;
       case "confirming":
         bus.send({ type: "voice", s: "confirming", text: e.text, who: "agent" });
-        bus.send({ type: "card", action: "show", id: "confirm", title: "需要确认", body: e.text });
         break;
       case "rejected":
         bus.send({ type: "voice", s: "rejected" });
@@ -6505,7 +6640,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     }
     $("busy").textContent = "思考中…";
     bus.send({ type: "banner", on: false });
-    bus.send({ type: "card", action: "dismiss", id: "confirm" });
     bus.send({ type: "voice", s: "listening", text, who: "user" });
     log("u", `
 ▸ ${text}`);
@@ -6531,7 +6665,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         if (res.status === "ok" && res.changed?.length) {
           const ids = res.changed.filter((p) => p.startsWith("cabin.window.")).map((p) => p.split(".")[2]);
           if (ids.length) bus.send({ type: "highlight", ids });
-          if (res.code === "SPEED_LIMITED") bus.send({ type: "banner", on: true, reason: "constraint", title: "已限位", desc: `${res.message} · <code>${res.code}</code>`, ttl: 6e3 });
+          if (res.code === "SPEED_LIMITED") bus.send({ type: "banner", on: true, reason: "constraint", title: "已限位", desc: res.message, code: res.code, ttl: 6e3 });
           const cid = res.data?.cardId;
           if (cid) bus.send({ type: "highlight", ids: [], cards: [cid] });
         }

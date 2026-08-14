@@ -20,6 +20,8 @@
  */
 
 /** 连内容一起丢。这些标签的文本本身就是攻击载荷（脚本体、样式体） */
+import { esc } from '../text'
+
 const DROP_WITH_CONTENT = new Set([
   'script', 'style', 'iframe', 'object', 'embed', 'noscript',
   'form', 'input', 'button', 'select', 'textarea', 'option',
@@ -67,8 +69,6 @@ const VOID = new Set(['br', 'hr', 'img'])
  */
 const CSS_BAN = /url\s*\(|expression\s*\(|@import|position\s*:\s*(fixed|sticky)/i
 
-const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 function cleanStyle(v: string): string {
   return v.split(';')

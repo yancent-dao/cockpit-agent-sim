@@ -7,6 +7,7 @@ import { createPrefs } from '../state/prefs'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
+import { titleOf } from '../cards/summary'   // 标题兜底的唯一实现（空串也要退回模板名）
 import { routeOf } from '../config/interactions'
 import { yieldsTo, type Writer } from './election'
 import { createAmapClient } from '../integrations/amap'
@@ -86,7 +87,7 @@ const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind:
   // 右上角缩放按钮该不该置灰——desk 是唯一权威（模板允许的尺寸表 + minSize +
   // 紧急度下限），车机屏不重算一遍
   canShrink: desk.canStep(c.id, 'down'), canGrow: desk.canStep(c.id, 'up'),
-  title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template, data: c.data })
+  title: titleOf(c), data: c.data })
 function pushDesk() {
   if (muted) return   // 让位期间不写屏——两个面板轮流推就是"整屏两秒一闪"的根
   const l = desk.layout()
@@ -94,8 +95,7 @@ function pushDesk() {
     cards: l.cards.map(brief),
     overlay: l.overlay ? brief(l.overlay) : undefined, free: l.free,
     // 台下排队（等位区）：车机屏只要 数量 + 名字 就能画边缘条，几何不发
-    staged: l.staged.map((c: any) => ({ id: c.id, template: c.template,
-      title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template })),
+    staged: l.staged.map((c: any) => ({ id: c.id, template: c.template, title: titleOf(c) })),
   } } as any)
 }
 
@@ -108,8 +108,7 @@ function renderStagedList(openIt = false) {
   if (!open && !openIt) return
   const l = desk.layout()
   const items = l.staged.map((c: any) => ({
-    label: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template,
-    sub: CARD_TEMPLATES.find(t => t.id === c.template)?.label, value: c.id,
+    label: titleOf(c), sub: CARD_TEMPLATES.find(t => t.id === c.template)?.label, value: c.id,
   }))
   if (!items.length) { if (open) desk.dismiss(open.id); return }
   // 名单没变就不动——update() 无条件 emit，订阅里不设这道闸会自己触发自己
@@ -185,6 +184,17 @@ const bus = createBus(m => {
     if (!muted) { muted = true; log('r', '检测到另一个控制面板在写屏，本面板已让位（在这里说句话即可接管）') }
     return
   }
+  /**
+   * 让位期间不执行任何来自屏幕的副作用。
+   *
+   * muted 以前只闸住 pushDesk/push（写屏），而 mediaEvent / userAction /
+   * canvasNote / 各种芯片开关照常处理——两个控制面板并存时（选举机制存在的
+   * 前提场景）一次屏幕点击被两个面板各执行一遍：media.control 调两次
+   * 一次点击跳两首歌，autoplay 双进、history 往共享的 localStorage 里
+   * 写重复条目，让位面板的 store/desk 还在背地里持续演化并与真相分叉。
+   * hello 例外——那是连接握手，pushDesk/push 自己会看 muted。
+   */
+  if (muted && (m as any).type !== 'hello') return
   // ended → 机制自动续播，零模型调用（公理 4）。写的是信号，
   // 规则会自己刷新播放器卡——桌面 = f(状态) 的又一次兑现
   if (m.type === 'mediaEvent' && m.event === 'ended') {
@@ -222,7 +232,7 @@ const bus = createBus(m => {
     if (typeof m.contentPx === 'number') {
       const card = desk.get(m.cardId)
       if (card) {
-        const next = healStep(card.size, m.contentPx, { bumps: note.bumps, sizeLocked: card.sizeLocked })
+        const next = healStep(card.size, m.contentPx, { bumps: note.bumps, sizeLocked: card.sizeLocked, template: card.template })
         if (next) {
           const r = desk.resize(m.cardId, next as any, false)
           if (r.status === 'ok') { note.bumps++; log('p', `生成式卡自适应：${card.size} → ${next}`) }
@@ -250,7 +260,12 @@ const bus = createBus(m => {
       // dismiss 走既有的划走逻辑，shrink/grow 直调 desk.step —— 到头了
       // 静默不动就行（按钮下一次该自己置灰），不用横幅打扰
       if (decl.op === 'shrink' || decl.op === 'grow') {
-        desk.step(m.cardId, decl.op === 'shrink' ? 'down' : 'up')
+        const r = desk.step(m.cardId, decl.op === 'shrink' ? 'down' : 'up')
+        // 放不下要说一声。desk 现在会如实返回 NO_ROOM 而不是假装 ok，
+        // 但用户看到的仍然是"点了没反应"——除非我们把原因摆出来
+        if (r.status === 'rejected' && r.code === 'NO_ROOM')
+          bus.send({ type: 'banner', on: true, reason: 'constraint', title: '放不下',
+            desc: r.message ?? '先收起一张卡再试', ttl: 4000 })
       } else {
         desk.dismiss(m.cardId, { byUser: true })
         log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
@@ -428,7 +443,6 @@ pipeline.on(e => {
       bus.send({ type: 'voice', s: 'speaking', text: e.text, who: 'agent' }); break
     case 'confirming':
       bus.send({ type: 'voice', s: 'confirming', text: e.text, who: 'agent' })
-      bus.send({ type: 'card', action: 'show', id: 'confirm', title: '需要确认', body: e.text })
       break
     case 'rejected':
       bus.send({ type: 'voice', s: 'rejected' })
@@ -480,7 +494,6 @@ async function ask(text: string) {
   if (!modelId) { log('e', '✗ 请先选择模型'); return }
   $('busy').textContent = '思考中…'
   bus.send({ type: 'banner', on: false })
-  bus.send({ type: 'card', action: 'dismiss', id: 'confirm' })
   bus.send({ type: 'voice', s: 'listening', text, who: 'user' })
   log('u', `\n▸ ${text}`)
 

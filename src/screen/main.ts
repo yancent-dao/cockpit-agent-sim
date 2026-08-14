@@ -382,6 +382,7 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
   const d = c.data ?? {}
   if (!node.querySelector('.navwrap')) {
     node.innerHTML = `<div class="navwrap">
+      <div class="navdesthead"></div>
       <div class="turnbar"></div>
       <div class="mapbox"></div>
       <div class="navfoot"></div>
@@ -391,8 +392,19 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
   const form = navForm(...dimsOf(c.size))
   const step = d.steps?.[0]?.instruction as string | undefined
   const turn = step ? parseTurn(step) : undefined
+  /**
+   * 目的地兜底行：**最小档不许渲染成空白**。转向条要有 nextInstruction 才
+   * 画得出来（刚设完目的地、或没有高德 Key 的降级演示时它是空的），
+   * 那时整张卡三个块全 display:none、标题又被 CSS 藏着，桌面上就只剩
+   * 一条带边框的空玻璃条。只在别的块都出不来时露面，不占大档的地方。
+   */
   const bar = node.querySelector('.turnbar') as HTMLElement
-  bar.style.display = turn && form.blocks.includes('turn') ? '' : 'none'
+  const showTurn = !!turn && form.blocks.includes('turn')
+  const head = node.querySelector('.navdesthead') as HTMLElement
+  const needHead = form.blocks.includes('dest') && !showTurn && !form.blocks.includes('foot')
+  head.style.display = needHead ? '' : 'none'
+  if (needHead) head.innerHTML = `<b>${esc(d.destination ?? '导航中')}</b>`
+  bar.style.display = showTurn ? '' : 'none'
   if (turn) bar.innerHTML = `<div class="arrow">${turn.icon}</div>
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ''}`
@@ -503,8 +515,10 @@ function renderDesk() {
     // 档位类给 --u（字号 = 字阶 × --u），语义色类给 --ac 一族。
     // sz-* 那 22 条硬怼 font-size 的规则被这一个类取代了
     // picking：等着用户开口选。用户是用语音选的（"第二个"），
-    // 屏上必须让他知道现在轮到他说话了
-    const picking = c.template === 'confirm' || (c.template === 'list' && c.data?.picking)
+    // 屏上必须让他知道现在轮到他说话了。
+    // 注：list 那半边（data.picking）全仓库没有生产者——触控落地后用户直接点
+    // 条目，不再需要"待选中"高亮，故只保留 confirm 卡这条活着的路
+    const picking = c.template === 'confirm'
     // fresh（流光两态）由挂载分支加、定时器摘——className 重写要保留它
     const isFresh = node.classList.contains('fresh')
     const cls = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
@@ -812,4 +826,3 @@ setInterval(() => {
     el.textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${'日一二三四五六'[new Date().getDay()]}`
 }, 1000)
 renderStatus(); renderDesk()
-export { CN }

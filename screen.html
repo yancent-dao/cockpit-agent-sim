@@ -353,7 +353,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    小卡（没有地图）时两块垂直居中，别被推到两端中间空一大片。
    字号跟着 --u 走，不再需要 .sz-1-3 / .sz-1-6 各写一遍。 */
 .tpl-nav{overflow:hidden;padding:0}
-.tpl-nav>h3{display:none} /* 目的地已在底部呈现，标题重复了 */
+.tpl-nav>h3{display:none}
+/* 目的地兜底行：导航卡最小档没有转向指引时唯一露面的块，不然是条空玻璃条 */
+.navdesthead{display:flex;align-items:center;height:100%;overflow:hidden}
+.navdesthead b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis} /* 目的地已在底部呈现，标题重复了 */
 .navwrap{display:flex;flex-direction:column;height:100%;gap:0}
 .tpl-nav.no-map .navwrap{justify-content:center;gap:calc(6px*var(--u))}
 .turnbar{flex:none;display:flex;align-items:center;gap:calc(20px*var(--u));

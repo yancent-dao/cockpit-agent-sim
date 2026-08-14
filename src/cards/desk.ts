@@ -1,8 +1,8 @@
 import { CARD_TEMPLATES, COMMON_SIZES } from '../config/cards'
 import { formOf, suggestSize } from '../config/forms'
 import { checkSize } from './contract'
-import { summarize, titleOf } from './summary'
-import { GRID, LADDER as TIER_LADDER, type TierName, listCapacity, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
+import { summarize, titleOf, recallHint } from './summary'
+import { GRID, type TierName, dimsOf, cellsOfTier, normalizeTier } from '../config/grid'
 import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeUrgency, channelOf } from '../config/priority'
 
 /**
@@ -34,18 +34,6 @@ export type Ttl = 'untilDismissed' | 'untilTaskEnd' | number
 
 const ROWS = GRID.rows, COLS = GRID.cols
 const shapeOf = (size: string) => { const [w, h] = dimsOf(size); return { w, h } }
-/**
- * 阶梯降尺寸，七档 —— 出处是 grid.ts，不在这儿抄第二份。
- *
- * 之前这里写死了老的三档（1/6·1/3·1/2），缩到 1/6 就缩无可缩。
- * 而 6 张 1/6 正好填满 48 单元，所以第 7 张卡一来必挤掉一张 ——
- * 用户看到的现象就是「超过六个就把音乐播放器关了」。
- * chip(2×1) 这些小档存在的意义正是「还想留着但没那么多地方」。
- *
- * tower/stage/full 是专用档不进阶梯：导航卡退成 tower 会变成一条竖缝。
- */
-const LADDER: Size[] = [...TIER_LADDER]
-
 /** 卡片尺寸相关的最小可辨识信息。仲裁和按钮共用同一份判据 */
 type Sizable = { size?: Size; minSize?: Size; urgency?: Urgency; template?: string }
 
@@ -432,7 +420,7 @@ export function createDesk(clock: () => number = Date.now) {
         candidate.touchedAt = clock() // 刚上台的卡不该在下一轮 LRU 里当最老的
         cards.set(candidate.id, candidate)
         sweepFamily(candidate)
-        const note = titles.length ? `${titles.map(t => `「${t}」`).join('、')}先收后台了，随时说"看${titles[0]}"叫回` : undefined
+        const note = titles.length ? `${titles.map(t => `「${t}」`).join('、')}先收后台了，${recallHint(titles[0])}` : undefined
         if (note) noticeListeners.forEach(l => l({ note, titles: [...titles] }))
         emit()
         return {
@@ -617,10 +605,8 @@ export function createDesk(clock: () => number = Date.now) {
   /**
    * 卡片右上角尺寸调节按钮的机制半边：在模板允许的尺寸表里按当前尺寸走一档。
    *
-   * **不走 LADDER**——LADDER 是"自动仲裁怎么退让"的内部实现，只有七档，
-   * 2/3（stage）/tower/full 这些专用档故意不进去（退成 tower 会变成一条竖缝）。
-   * 按钮认的是 checkSize 那张"这个模板到底允许哪些尺寸"的表，按占用单元数
-   * 从小到大排序——2/3 天然排在最后，导航卡从 1/2 grow 上去就是它。
+   * 走的是模板自己声明的尺寸表（allowedSizes），跟仲裁降级同一张——
+   * 按占用单元数从小到大排，2/3 这类专用档天然排在最后。
    * 到头不是拒绝一次性能力，是按钮下一次该自己失效（越界照样返回 rejected 供调用方判断）。
    */
   /** step()/canStep() 共用：这张卡按钮能走到的尺寸表 —— 跟仲裁降级同一张表 */
@@ -826,7 +812,6 @@ export function createDesk(clock: () => number = Date.now) {
     findByKey: (key: string) => [...cards.values(), ...staged.values()].find(c => c.key === key),
     isSuppressed: (key: string) => suppressed.has(key),
     cellsOf: (s: Size) => cellsOfTier(s),
-    ladder: () => [...LADDER],
     priorityOf: (k: Kind, u?: Urgency) => prioOf(k, u),
     subscribe: (cb: () => void) => { listeners.push(cb); return () => listeners.splice(listeners.indexOf(cb), 1) },
     onDataChange: (cb: (id: string) => void) => {

@@ -76,32 +76,62 @@ describe('桥消息校验', () => {
  */
 describe('healStep：升降档决策（机制，零模型）', () => {
   const h = (size: string) => pixelsOf(size).h
+  // 自愈只服务生成式卡，阶梯来自 canvas 模板自己声明的 sizes
+  const canvas = (bumps = 0, sizeLocked?: boolean) => ({ bumps, sizeLocked, template: 'canvas' })
 
   it('内容超出画布 → 升一档（第一步加宽，文字回流后高度自然缩）', () => {
-    expect(healStep('1/6', h('1/6') + 100, { bumps: 0 })).toBe('wide')
+    expect(healStep('1/6', h('1/6') + 100, canvas())).toBe('wide')
   })
 
   it('tower 不进自愈阶梯——1/2 的下一步不能是宽度砍半的竖条', () => {
-    expect(healStep('1/2', h('1/2') + 100, { bumps: 0 })).toBe('2/3')
+    expect(healStep('1/2', h('1/2') + 100, canvas())).toBe('2/3')
   })
 
   it('升到白名单顶就不再升', () => {
-    expect(healStep('full', h('full') + 100, { bumps: 0 })).toBeNull()
+    // canvas 的顶是 2/3（full 是禁档，2026-08-13 产品裁定）
+    expect(healStep('2/3', h('2/3') + 100, canvas())).toBeNull()
   })
 
   it('两次之后不再折腾——防振荡', () => {
-    expect(healStep('1/6', h('1/6') + 100, { bumps: 2 })).toBeNull()
+    expect(healStep('1/6', h('1/6') + 100, canvas(2))).toBeNull()
   })
 
   it('内容不足画布六成 → 缩一档还位给桌面', () => {
-    expect(healStep('1/2', h('1/2') * 0.3, { bumps: 0 })).toBe('1/3')
+    expect(healStep('1/2', h('1/2') * 0.3, canvas())).toBe('1/3')
   })
 
   it('内容量正常 → 不动', () => {
-    expect(healStep('1/3', h('1/3') * 0.8, { bumps: 0 })).toBeNull()
+    expect(healStep('1/3', h('1/3') * 0.8, canvas())).toBeNull()
   })
 
   it('sizeLocked 的卡不自动动——意愿大于建议', () => {
-    expect(healStep('1/6', h('1/6') + 100, { bumps: 0, sizeLocked: true })).toBeNull()
+    expect(healStep('1/6', h('1/6') + 100, canvas(0, true))).toBeNull()
+  })
+})
+
+/**
+ * 自愈阶梯必须读模板契约（2026-08-14 代码审查）。
+ *
+ * heal.ts 手抄了第二份阶梯，里面还留着 'full'——而 2026-08-13 产品裁定后
+ * canvas 的上限是 2/3、full 明令禁止。后果不是"多一个选项"这么轻：
+ * 一张 2/3 的生成式卡内容持续溢出时，healStep 每次都返回 'full'，
+ * desk.resize 每次都以 SIZE_NOT_SUPPORTED 拒绝，而 bumps 只在成功时才 +1，
+ * 于是 ≤2 次的防振荡闸永远闭合不了——每条 canvasNote 都空转一次，无休无止。
+ */
+describe('尺寸自愈只在模板声明的档位里走', () => {
+  it('canvas 卡在最大档溢出时不再指向 full（那是禁档）', () => {
+    const big = healStep('2/3', 99999, { bumps: 0, template: 'canvas' })
+    expect(big, 'canvas 上限就是 2/3，没有下一档').toBeNull()
+  })
+
+  it('自愈给出的档位一定在模板的 sizes 白名单里', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    const allowed = CARD_TEMPLATES.find(t => t.id === 'canvas')!.sizes!
+    for (const from of allowed) {
+      const up = healStep(from, 99999, { bumps: 0, template: 'canvas' })
+      if (up) expect(allowed, `${from} 溢出后升到 ${up}`).toContain(up)
+      const down = healStep(from, 1, { bumps: 0, template: 'canvas' })
+      if (down) expect(allowed, `${from} 内容少缩到 ${down}`).toContain(down)
+    }
   })
 })

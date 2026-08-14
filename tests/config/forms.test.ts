@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { CARD_FORMS, navForm, capForm, weatherForm, listForm } from '../../src/config/forms'
+import { dimsOf } from '../../src/config/grid'
 
 /**
  * 形态函数 = 「这个模板在这个大小下显示哪些块」。
@@ -29,11 +30,13 @@ describe('导航卡：转向条是命根子，地图先被砍', () => {
 
   // 一格宽的地图看不出路，不如把空间让给转向指令——真车机的小卡模式
   it('panel（原 1/3）退成小卡：没有地图，转向条和 ETA 都留着', () => {
-    expect(f(navForm, 'panel').blocks).toEqual(['turn', 'foot'])
+    // dest 是恒在的兜底块（没有转向指令时它是唯一能露面的），渲染端只在
+    // 别的块都出不来时才画它，所以这里只断言"没有 map、有 turn 和 foot"
+    expect(f(navForm, 'panel').blocks).toEqual(['dest', 'turn', 'foot'])
   })
 
   it('card（原 1/6）只剩转向指令，连 ETA 都放不下', () => {
-    expect(f(navForm, 'card').blocks).toEqual(['turn'])
+    expect(f(navForm, 'card').blocks).toEqual(['dest', 'turn'])
   })
 
   it('tower 高但窄，地图会变成一条竖缝 —— 不给地图', () => {
@@ -226,5 +229,30 @@ describe('11 个模板全覆盖，没有漏网的', () => {
         for (const b of small)
           expect(big, `${n}: ${chain[i]} 掉了 ${chain[i - 1]} 有的 ${b}`).toContain(b)
       }
+  })
+})
+
+/**
+ * 导航卡最小档不许渲染成空白（2026-08-14 代码审查）。
+ *
+ * nav 的最小档 strip 是 4×1，navForm 只给 ['turn']；而 turn 块要有
+ * navigation.nextInstruction 才画得出来（刚设完目的地还没取到指引、
+ * 或没有高德 Key 的降级演示时它就是空串），三个块于是全部 display:none，
+ * .tpl-nav>h3 又被 CSS 藏掉——桌面上留一条只有边框的空玻璃条，
+ * 用户不知道这是导航卡还是渲染坏了。
+ */
+describe('导航卡最小档：没有转向指引也不能是空白', () => {
+  it('strip 档声明了目的地兜底块', () => {
+    const f = navForm(...dimsOf('strip'))
+    expect(f.blocks, `strip 的块：${f.blocks.join(',')}`).toContain('dest')
+  })
+
+  it('每个允许的档位都至少有一个恒在的块', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    for (const z of CARD_TEMPLATES.find(t => t.id === 'nav')!.sizes!) {
+      const f = navForm(...dimsOf(z))
+      expect(f.blocks.length, `${z} 档不能一个块都没有`).toBeGreaterThan(0)
+      expect(f.blocks.some(b => b === 'dest' || b === 'turn'), `${z} 档要么有转向要么有目的地`).toBe(true)
+    }
   })
 })

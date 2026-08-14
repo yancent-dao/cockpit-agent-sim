@@ -11,7 +11,6 @@ export type BusMsg =
    */
   | { type: 'banner'; on: boolean; title?: string; desc?: string; code?: string; reason?: string; ttl?: number; jump?: boolean }
   | { type: 'highlight'; ids: string[] }
-  | { type: 'card'; action: 'show' | 'dismiss'; id: string; zone?: string; size?: string; title?: string; body?: string }
   /**
    * 车机屏 → 控制面板的唯一一类上报。播放器元素在车机屏那边（放控制面板的话，
    * 投屏后声音在错误的机器上），但播放会产生状态：放完了、放不出来、被浏览器拦了。

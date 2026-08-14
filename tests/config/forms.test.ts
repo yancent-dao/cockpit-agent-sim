@@ -342,3 +342,26 @@ describe('suggestSize：内容 → 建议形状', () => {
     }
   })
 })
+
+/**
+ * ══════════ 绘本卡：宽档改左图右文 ══════════
+ *
+ * 实拍（2026-08-14）：「图片没有显示全，建议左图右文，文字可以稍微多一点」。
+ *
+ * 上图下文在 1.63 宽高比的卡上把图压成一条 —— 图要么被裁要么很小。
+ * 左右分栏之后图能整张放下（contain 不裁），右边那一栏又高又窄，
+ * 正好放两三句话。
+ *
+ * 但**只有够宽才分栏**：court(6×8) 本来就是竖卡，强行分栏文字栏只剩两百来像素。
+ * 这正是形态函数按几何阈值判断的用途。
+ */
+describe('绘本卡：够宽才左图右文', () => {
+  it('stage / full 分栏', () => {
+    expect(has(storybookForm, 'stage', 'side')).toBe(true)
+    expect(has(storybookForm, 'full', 'side')).toBe(true)
+  })
+
+  it('court 是竖卡，维持上图下文 —— 分栏后文字栏太窄', () => {
+    expect(has(storybookForm, 'court', 'side')).toBe(false)
+  })
+})

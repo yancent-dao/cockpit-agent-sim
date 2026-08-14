@@ -103,7 +103,13 @@ export function createStoryHandlers(
    * 画一页。**失败不抛** —— 断网、额度用完都会遇到，画不出图不该让整个故事停下。
    * 文字全文先落本地，图缺就缺，纯语音继续讲。
    */
-  const draw = async (scene: string, aspect = '16:9'): Promise<string | undefined> => {
+  /**
+   * 画幅 **4:3**（2026-08-14 从 16:9 改）。屏幕上是左图右文，左栏在默认档
+   * （stage 8×8）上接近正方 —— 16:9 的图 contain 进去上下大片留白，
+   * 用户实拍的第一反应是"图片没有显示全"。4:3 是童书最常见的开本，
+   * 也同时兼顾窄档那套上图下文的版式。
+   */
+  const draw = async (scene: string, aspect = '4:3'): Promise<string | undefined> => {
     const cast = story().cast()
     try {
       /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { afterRead, ASK_DELAY_MS, WAIT_MAX_MS } from '../../src/screen/storyflow'
+import { afterRead, beforeRead, ASK_DELAY_MS, WAIT_MAX_MS, IMG_WAIT_MS } from '../../src/screen/storyflow'
 
 /**
  * ══════════ 共创闭环：读完一章要把话头交回给孩子 ══════════
@@ -112,5 +112,51 @@ describe('等图不能等到天荒地老', () => {
   it('图画完了就立刻翻，不用等满', () => {
     expect(afterRead({ page: 1, chapterEnd: 3, total: 3, phase: 'telling', pending: 0, waited: 100 }).do)
       .toBe('advance')
+  })
+})
+
+/**
+ * ══════════ 这一页的图没到，就别急着念 ══════════
+ *
+ * 实拍（2026-08-14）：「图片没生成好就开始讲故事了，等图片生成好这个故事都讲完了」。
+ *
+ * 原来的设计是"文字先出立刻开讲，图片后台补齐"——那是为了**别让用户干等**，
+ * 但代价被低估了：一句童书正文念完只要 6–8 秒，一章的图要 25 秒，
+ * 于是孩子对着空画框听完整章，图全部到齐时故事已经结束。
+ *
+ * 绘本的画面和声音**必须对上**，这是它区别于有声书的全部意义。
+ * 所以改成：本页的图没到就先等着，但**只在图真的在路上时等**，
+ * 而且等有上限。
+ */
+describe('本页的图没到就先别念', () => {
+  const b = (o: Partial<Parameters<typeof beforeRead>[0]>) =>
+    beforeRead({ hasImage: false, pending: 2, waited: 0, phase: 'telling', ...o })
+
+  it('图在路上就等一等 —— 让画面追上声音', () => {
+    expect(b({}).do).toBe('wait')
+  })
+
+  it('图已经在了就立刻念', () => {
+    expect(b({ hasImage: true }).do).toBe('speak')
+  })
+
+  /** 没有图在路上（画失败了、结尾页本来就没图）等也是白等 */
+  it('没有图在路上时不等 —— 等一个不会来的东西是纯粹的卡顿', () => {
+    expect(b({ pending: 0 }).do).toBe('speak')
+  })
+
+  it('等过头就开讲 —— 断网时宁可没图也别把故事卡死', () => {
+    expect(b({ waited: IMG_WAIT_MS + 1 }).do).toBe('speak')
+  })
+
+  /** 定妆卡、提问、成书都不该被这条卡住 */
+  it('不在讲述阶段一律直接念', () => {
+    for (const phase of ['cast', 'asking', 'done', 'idle'])
+      expect(b({ phase }).do, phase).toBe('speak')
+  })
+
+  it('等图上限比整章出齐的时间短 —— 等的是一张不是一章', () => {
+    expect(IMG_WAIT_MS).toBeGreaterThanOrEqual(8_000)
+    expect(IMG_WAIT_MS).toBeLessThan(WAIT_MAX_MS + 1)
   })
 })

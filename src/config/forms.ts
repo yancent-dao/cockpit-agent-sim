@@ -263,7 +263,15 @@ export const storybookForm: FormFn = (c, _r) => {
    * 根本没有翻页键。翻页之于绘本等同于播控之于播放器卡，是命根子不是奢侈品。
    */
   const blocks = ['art', 'line', 'dots', 'ctl']
-  if (c >= 8) blocks.push('chapter')
+  /**
+   * **够宽就左图右文**（2026-08-14 实拍：「图片没有显示全，建议左图右文，
+   * 文字可以稍微多一点」）。上图下文在 1.63 宽高比的卡上把图压成一条 ——
+   * 要么裁图要么很小。左右分栏之后图能整张放下，右边那一栏又高又窄，
+   * 正好放两三句话。
+   *
+   * court(6×8) 本来就是竖卡，强行分栏文字栏只剩两百来像素，维持上图下文。
+   */
+  if (c >= 8) blocks.push('chapter', 'side')
   if (c >= 12) blocks.push('lesson')
   return { blocks }
 }

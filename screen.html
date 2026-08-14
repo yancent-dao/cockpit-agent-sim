@@ -415,6 +415,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .sbart img{width:100%;height:100%;object-fit:cover;display:block;
   animation:sbkb 20s ease-in-out infinite alternate}
 @keyframes sbkb{from{transform:scale(1)}to{transform:scale(1.06)}}
+/* 左图右文（够宽的档）。实拍反馈「图片没有显示全，建议左图右文，
+   文字可以稍微多一点」——上图下文在 1.63 宽高比的卡上把图压成一条。
+   分栏之后图整张放得下（contain 不裁），右栏又高又窄正好放两三句话。 */
+.sb.side{flex-direction:row;gap:calc(22px*var(--u));align-items:stretch}
+.sb.side .sbart{flex:0 0 60%;background:transparent}
+/* **contain 不是 cover**：整张放下才叫"显示全"。Ken Burns 在 contain 下
+   会把边缘推出画面，所以分栏档取消推拉——不裁图比动效重要 */
+.sb.side .sbart img{object-fit:contain;animation:none}
+.sb.side .sbcap{flex:1;min-width:0;padding:calc(6px*var(--u)) calc(4px*var(--u)) 0;
+  justify-content:flex-start;gap:calc(14px*var(--u))}
 .sbcap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:calc(10px*var(--u));
   padding:calc(20px*var(--u)) calc(8px*var(--u)) 0}
 .sbch{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);letter-spacing:.04em}

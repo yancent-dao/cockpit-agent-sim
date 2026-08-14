@@ -30,6 +30,42 @@ export const ASK_DELAY_MS = 1000
  */
 export const WAIT_MAX_MS = 15_000
 
+/**
+ * 开口之前等本页的图最多等多久。
+ *
+ * 实拍（2026-08-14）：「图片没生成好就开始讲故事了，等图片生成好这个故事都讲完了」。
+ * 原来的设计是"文字先出立刻开讲，图片后台补齐"——那是为了别让用户干等，
+ * 但代价被低估了：一句童书正文念完只要 6–8 秒，一章的图要 25 秒，
+ * 于是孩子对着空画框听完整章，图全到齐时故事已经结束。
+ *
+ * **绘本的画面和声音必须对上**，这是它区别于有声书的全部意义。
+ * 12 秒是等**一张**图的量级（实测并发下单张 13–25 秒里的偏乐观值），
+ * 比 WAIT_MAX_MS 短 —— 那个等的是"下一页"，这个等的是"这一页"。
+ */
+export const IMG_WAIT_MS = 12_000
+
+export interface SpeakState {
+  /** 本页的图到了没 */
+  hasImage: boolean
+  /** 还有几页在画。为 0 说明没有图在路上，等也是白等 */
+  pending: number
+  /** 已经为这一页等了多久 */
+  waited: number
+  /** story.phase */
+  phase: string
+}
+
+/** 现在能开口念这一页了吗 */
+export function beforeRead(s: SpeakState): { do: 'speak' | 'wait' } {
+  // 定妆、提问、成书都不该被这条卡住
+  if (s.phase !== 'telling') return { do: 'speak' }
+  if (s.hasImage) return { do: 'speak' }
+  // 没有图在路上（画失败了、结尾页本来就没图）—— 等一个不会来的东西是纯粹的卡顿
+  if (!(s.pending > 0)) return { do: 'speak' }
+  if (s.waited > IMG_WAIT_MS) return { do: 'speak' }
+  return { do: 'wait' }
+}
+
 export interface ReadState {
   /** 当前第几页（1 开始） */
   page: number

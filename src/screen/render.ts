@@ -283,8 +283,9 @@ export function cardBody(c: CardView): string {
       const dots = Array.from({ length: Number(d.total) || 0 }, (_, i) =>
         `<i class="${i + 1 === Number(d.page) ? 'on' : ''}"></i>`).join('')
         + Array.from({ length: Number(d.pending) || 0 }, () => '<i class="pend"></i>').join('')
-      return `<div class="sb">
-        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : ''}</div>
+      // side：左图右文（够宽的档）。窄档维持上图下文，靠一个类切换整套版式
+      return `<div class="sb${has('side') ? ' side' : ''}">
+        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}</div>
         <div class="sbcap">
           ${has('chapter') && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ''}
           <p class="sbline">${esc(d.line)}</p>

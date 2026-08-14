@@ -1,6 +1,6 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
-import { afterRead, WAIT_MAX_MS } from './storyflow'
+import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto } from './speech'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
@@ -897,6 +897,13 @@ function decideNext(c: any, line: string) {
     setTimeout(() => bus.send({ type: 'storyChapterDone', chapter: Number(d.chapter) || 0 } as any), next.delay)
 }
 
+/**
+ * 正在等**本页**的图。跟 `sbWaiting`（等下一页的图）不是一回事：
+ * 那个决定"翻不翻页"，这个决定"张不张嘴"。
+ */
+let sbPending: { line: string; since: number; retry: ReturnType<typeof setTimeout> } | null = null
+const stopPending = () => { if (sbPending) clearTimeout(sbPending.retry); sbPending = null }
+
 function speakStory(node: HTMLElement, c: any) {
   const d = c?.data ?? {}
   const line = String(d.line ?? '')
@@ -906,6 +913,26 @@ function speakStory(node: HTMLElement, c: any) {
     if (sbWaiting?.line === line) decideNext(c, line)
     return
   }
+
+  /**
+   * **本页的图没到就先别开口**（2026-08-14 实拍：「图片没生成好就开始讲故事，
+   * 等图片生成好这个故事都讲完了」）。绘本的画面和声音必须对上 ——
+   * 对不上它就只是一本有声书。图落地会刷新卡片，借那次刷新再问一次。
+   */
+  const ready = beforeRead({
+    hasImage: !!d.image, pending: Number(d.pending) || 0, phase: String(d.phase ?? 'telling'),
+    waited: sbPending?.line === line ? Date.now() - sbPending.since : 0,
+  })
+  if (ready.do === 'wait') {
+    if (sbPending?.line !== line) {
+      stopPending()
+      // 图永远不来（断网、没额度）时也得有人叫醒 —— 到点自己再问一次
+      sbPending = { line, since: Date.now(), retry: setTimeout(() => speakStory(node, c), IMG_WAIT_MS + 200) }
+    }
+    return
+  }
+  stopPending()
+
   sbSpoken = line
   stopWaiting()
   const gen = ++sbGen

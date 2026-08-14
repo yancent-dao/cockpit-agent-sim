@@ -83,6 +83,9 @@ const pipeline = createPipeline({
 /* ══════════ 桌面 → 车机屏：位置由 desk 统一计算，车机屏只管画 ══════════ */
 const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind: c.kind, urgency: c.urgency,
   row: c.row, col: c.col, rowSpan: c.rowSpan, colSpan: c.colSpan,
+  // 右上角缩放按钮该不该置灰——desk 是唯一权威（模板允许的尺寸表 + minSize +
+  // 紧急度下限），车机屏不重算一遍
+  canShrink: desk.canStep(c.id, 'down'), canGrow: desk.canStep(c.id, 'up'),
   title: c.data?.title ?? CARD_TEMPLATES.find(t => t.id === c.template)?.label ?? c.template, data: c.data })
 function pushDesk() {
   if (muted) return   // 让位期间不写屏——两个面板轮流推就是"整屏两秒一闪"的根
@@ -226,8 +229,15 @@ const bus = createBus(m => {
     const decl = routeOf(card.template, m.act)
     if (!decl) return
     if (decl.route === 'desk') {
-      desk.dismiss(m.cardId, { byUser: true })
-      log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
+      // 右上角缩放按钮跟滑撤同一条路由（桌面管理，不叫醒模型），按 op 分派：
+      // dismiss 走既有的划走逻辑，shrink/grow 直调 desk.step —— 到头了
+      // 静默不动就行（按钮下一次该自己置灰），不用横幅打扰
+      if (decl.op === 'shrink' || decl.op === 'grow') {
+        desk.step(m.cardId, decl.op === 'shrink' ? 'down' : 'up')
+      } else {
+        desk.dismiss(m.cardId, { byUser: true })
+        log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
+      }
     } else if (decl.route === 'tool') {
       log('u', `[屏幕] ${m.act} → ${decl.tool}`)
       // valueParam：条目携带的 value 填进参数（台下清单点某项 → focus 那张卡）
@@ -368,7 +378,10 @@ function renderBgTasks(force = false) {
       })
     }
   }
-  desk.render({ key: 'bgtasks', template: 'list', kind: 'system', ttl: 120, refreshTtl: true,
+  // urgent：用户点名要看的进展卡不能被后续任意一次常规重刷挤走——
+  // 之前它是 normal 优先级，桌面满时随便一张同级卡重新断言就会把它挤进等位区，
+  // 用户看到的就是"点开闪一下就没了"（它自己没消失，是被别的卡顶下去了）
+  desk.render({ key: 'bgtasks', template: 'list', kind: 'system', urgency: 'urgent', ttl: 120, refreshTtl: true,
     data: { title: '后台任务进展', items } })
 }
 

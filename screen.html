@@ -86,6 +86,18 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 右上角控制簇（2026-08-13 实拍反馈）：缩放/关闭，跟模板无关的通用桌面管理动作。
+   绝对定位在 .card 的 padding 盒内（.card 本身 overflow:hidden，负偏移会被裁掉）*/
+.cardctl{position:absolute;top:calc(16px*var(--u));right:calc(18px*var(--u));z-index:3;
+  display:flex;align-items:center;gap:calc(6px*var(--u))}
+.cardctl .cbtn{width:calc(26px*var(--u));height:calc(26px*var(--u));border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex:none;
+  font-size:calc(16px*var(--u));line-height:1;color:var(--tx-2,#5b6472);
+  background:rgba(255,255,255,.6);border:1px solid rgba(0,0,0,.06);cursor:pointer;user-select:none}
+.cardctl .cbtn.off{opacity:.25;pointer-events:none}
+.cardctl .cbtn.cclose{color:#b4483f}
+/* chip/strip/bar 太小放不下三个圆点，且这三档本来就只给一眼扫过的信息，不是交互目标 */
+.t-chip .cardctl,.t-strip .cardctl,.t-bar .cardctl{display:none}
 /* 等位区方向动画（2026-08-13）：下台=滑向右缘（去了"界面之外"），
    上台=从右缘滑入。跟普通进退场分开——用户能读出"收起来了"vs"没了" */
 .card.tostage{animation:toStage var(--d2,.26s) var(--ez-in,ease-in) forwards;pointer-events:none}

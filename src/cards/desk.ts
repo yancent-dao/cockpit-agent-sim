@@ -1,4 +1,4 @@
-import { CARD_TEMPLATES } from '../config/cards'
+import { CARD_TEMPLATES, COMMON_SIZES } from '../config/cards'
 import { formOf, suggestSize } from '../config/forms'
 import { checkSize } from './contract'
 import { summarize, titleOf } from './summary'
@@ -509,6 +509,56 @@ export function createDesk(clock: () => number = Date.now) {
     return { status: 'ok', cardId: id }
   }
 
+  /**
+   * 卡片右上角尺寸调节按钮的机制半边：在模板允许的尺寸表里按当前尺寸走一档。
+   *
+   * **不走 LADDER**——LADDER 是"自动仲裁怎么退让"的内部实现，只有七档，
+   * 2/3（stage）/tower/full 这些专用档故意不进去（退成 tower 会变成一条竖缝）。
+   * 按钮认的是 checkSize 那张"这个模板到底允许哪些尺寸"的表，按占用单元数
+   * 从小到大排序——2/3 天然排在最后，导航卡从 1/2 grow 上去就是它。
+   * 到头不是拒绝一次性能力，是按钮下一次该自己失效（越界照样返回 rejected 供调用方判断）。
+   */
+  /** step()/canStep() 共用：这张卡按钮能走到的尺寸表，按占用单元数从小到大排 */
+  function sizeSteps(c: Card): { allowed: string[]; pos: number } {
+    const tmpl = CARD_TEMPLATES.find(t => t.id === c.template)
+    const pool = tmpl?.sizes ?? COMMON_SIZES
+    // 调用方 minSize / 紧急度下限一样管——按钮缩不破这两条线
+    const floorCells = Math.max(
+      c.minSize ? cellsOfTier(c.minSize) : 0,
+      cellsOfTier(minTierFor(c.urgency)),
+    )
+    const seen = new Set<string>()
+    const allowed = [...pool]
+      .filter(s => cellsOfTier(s) >= floorCells)
+      .filter(s => { const key = normalizeTier(s); if (seen.has(key)) return false; seen.add(key); return true })
+      .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+    const curKey = normalizeTier(c.size)
+    const pos = Math.max(0, allowed.findIndex(s => normalizeTier(s) === curKey))
+    return { allowed, pos }
+  }
+
+  function step(id: string, dir: 'up' | 'down'): DeskResult {
+    const c = getById(id)
+    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    const { allowed, pos } = sizeSteps(c)
+    const next = dir === 'down' ? pos - 1 : pos + 1
+    if (next < 0 || next >= allowed.length)
+      return { status: 'rejected', code: 'SIZE_NOT_SUPPORTED', message: dir === 'down' ? '已经是最小尺寸了' : '已经是最大尺寸了' }
+    return resize(id, allowed[next] as Size, true)
+  }
+
+  /**
+   * 按钮该不该显示/置灰查这个——车机屏（不许有业务逻辑）拿它决定渲染，
+   * 不用自己重算一遍"这个模板允许哪些尺寸"。
+   */
+  function canStep(id: string, dir: 'up' | 'down'): boolean {
+    const c = getById(id)
+    if (!c) return false
+    const { allowed, pos } = sizeSteps(c)
+    const next = dir === 'down' ? pos - 1 : pos + 1
+    return next >= 0 && next < allowed.length
+  }
+
   function dismiss(id: string, opts?: { byUser?: boolean }): DeskResult {
     const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
@@ -637,7 +687,7 @@ export function createDesk(clock: () => number = Date.now) {
   const summary = () => summarize(layout())
 
   return {
-    show, update, resize, dismiss, focus, render, tick, endTask, layout, summary,
+    show, update, resize, step, canStep, dismiss, focus, render, tick, endTask, layout, summary,
     get: (id: string) => getById(id),
     findByKey: (key: string) => [...cards.values(), ...staged.values()].find(c => c.key === key),
     isSuppressed: (key: string) => suppressed.has(key),

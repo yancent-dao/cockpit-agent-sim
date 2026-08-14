@@ -68,6 +68,25 @@ describe('交互声明：模板契约第三件套（数据，不是代码）', (
 
   // 等位区清单（2026-08-13 W2）：召回是桌面管理的机械动作，点一下要等 LLM
   // 转一圈是灾难——直调 card.focus，条目携带的卡 id 经 valueParam 填进参数
+  // 右上角尺寸调节按钮（2026-08-13 实拍反馈）：缩放是桌面管理的机械动作，
+  // 不叫醒模型；每个模板（包括导航卡）都该有，缩放本身不等于关闭
+  it('每个模板都能缩放——右上角按钮直调 desk，不叫醒模型', () => {
+    for (const tmpl of CARD_TEMPLATES.map(t => t.id)) {
+      expect(routeOf(tmpl, 'tap:shrink'), `${tmpl} 缺 shrink`).toEqual({ on: 'tap:shrink', route: 'desk', op: 'shrink' })
+      expect(routeOf(tmpl, 'tap:grow'), `${tmpl} 缺 grow`).toEqual({ on: 'tap:grow', route: 'desk', op: 'grow' })
+    }
+  })
+
+  it('导航卡刻意没有关闭按钮——导航中把导航关掉是事故，缩放不受影响', () => {
+    expect(routeOf('nav', 'tap:close')).toBeUndefined()
+    expect(routeOf('nav', 'tap:shrink')!.op).toBe('shrink')
+  })
+
+  it('除导航卡外，每个模板都有右上角关闭按钮', () => {
+    for (const tmpl of CARD_TEMPLATES.map(t => t.id).filter(id => id !== 'nav'))
+      expect(routeOf(tmpl, 'tap:close'), `${tmpl} 缺 close`).toEqual({ on: 'tap:close', route: 'desk', op: 'dismiss' })
+  })
+
   it('台下清单的条目点击 → 直调 card.focus，value 即 cardId', () => {
     const r = routeOf('stagedlist', 'tap:item')!
     expect(r.route).toBe('tool')

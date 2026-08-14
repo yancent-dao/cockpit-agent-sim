@@ -86,6 +86,18 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* 退场：先缩再淡。节点等动画结束才移除——直接 remove 的话卡片是"啪"地不见的 */
 .card.leaving{animation:cardOut var(--d2,.22s) var(--ez-in,ease-in) forwards;pointer-events:none}
 @keyframes cardOut{to{opacity:0;transform:scale(.94)}}
+/* 右上角控制簇（2026-08-13 实拍反馈）：缩放/关闭，跟模板无关的通用桌面管理动作。
+   绝对定位在 .card 的 padding 盒内（.card 本身 overflow:hidden，负偏移会被裁掉）*/
+.cardctl{position:absolute;top:calc(16px*var(--u));right:calc(18px*var(--u));z-index:3;
+  display:flex;align-items:center;gap:calc(6px*var(--u))}
+.cardctl .cbtn{width:calc(26px*var(--u));height:calc(26px*var(--u));border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex:none;
+  font-size:calc(16px*var(--u));line-height:1;color:var(--tx-2,#5b6472);
+  background:rgba(255,255,255,.6);border:1px solid rgba(0,0,0,.06);cursor:pointer;user-select:none}
+.cardctl .cbtn.off{opacity:.25;pointer-events:none}
+.cardctl .cbtn.cclose{color:#b4483f}
+/* chip/strip/bar 太小放不下三个圆点，且这三档本来就只给一眼扫过的信息，不是交互目标 */
+.t-chip .cardctl,.t-strip .cardctl,.t-bar .cardctl{display:none}
 /* 等位区方向动画（2026-08-13）：下台=滑向右缘（去了"界面之外"），
    上台=从右缘滑入。跟普通进退场分开——用户能读出"收起来了"vs"没了" */
 .card.tostage{animation:toStage var(--d2,.26s) var(--ez-in,ease-in) forwards;pointer-events:none}
@@ -1820,6 +1832,45 @@ ${BRIDGE}
     };
   }
 
+  // src/config/interactions.ts
+  var SWIPE_AWAY = { on: "swipe:away", route: "desk", op: "dismiss" };
+  var SHRINK = { on: "tap:shrink", route: "desk", op: "shrink" };
+  var GROW = { on: "tap:grow", route: "desk", op: "grow" };
+  var CLOSE = { on: "tap:close", route: "desk", op: "dismiss" };
+  var RESIZE = [SHRINK, GROW];
+  var INTERACTIONS = {
+    media: [
+      { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
+      { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "toggle" } },
+      { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
+      SWIPE_AWAY,
+      ...RESIZE,
+      CLOSE
+    ],
+    list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
+    stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    capability: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    weather: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    feedback: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    notice: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    info: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    generic: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    control: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
+    "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    /**
+     * 导航卡刻意没有 swipe:away / tap:close——导航中把导航关掉是事故。
+     * 但缩放不是关闭：加了缩放按钮后不用再把导航卡强制钉成最大（2026-08-13 实拍反馈），
+     * 用户可以随时缩小看更多桌面，优先级（左锚定、不可被挤下桌）不受影响。
+     */
+    nav: [...RESIZE]
+  };
+  var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
+
   // src/screen/main.ts
   injectTokens("screen");
   {
@@ -2185,6 +2236,15 @@ ${BRIDGE}
         }
         node.dataset.sig = sig;
       }
+      if (!node.querySelector(".cardctl")) {
+        const closable = !!routeOf(c.template, "tap:close");
+        const ctl = document.createElement("div");
+        ctl.className = "cardctl";
+        ctl.innerHTML = `<span class="cbtn" data-act="tap:shrink">−</span><span class="cbtn" data-act="tap:grow">＋</span>` + (closable ? `<span class="cbtn cclose" data-act="tap:close">✕</span>` : "");
+        node.appendChild(ctl);
+      }
+      node.querySelector('[data-act="tap:shrink"]')?.classList.toggle("off", c.canShrink === false);
+      node.querySelector('[data-act="tap:grow"]')?.classList.toggle("off", c.canGrow === false);
     }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
@@ -2210,17 +2270,17 @@ ${BRIDGE}
         node.className = `card tpl-${o.template} ${tierClass("full")} ${accentClass(o.template, { ...o.data, urgency: alert ? "critical" : o.data?.urgency })}`;
         ov.appendChild(node);
         const oc = { ...o, size: "full" };
-        const CLOSE = `<span class="ovclose" data-close="1">✕</span>`;
+        const CLOSE2 = `<span class="ovclose" data-close="1">✕</span>`;
         if (o.template === "canvas-app") {
-          node.innerHTML = `<h3><span class="ico">${TPL_ICONS["canvas-app"]}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"></div>`;
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS["canvas-app"]}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE2}</h3><div class="bd"></div>`;
           node.querySelector(".cvtitle").textContent = o.title ?? "";
           renderCanvasAppCard(node, oc);
         } else if (o.template === "canvas") {
-          node.innerHTML = `<h3><span class="ico">${TPL_ICONS.canvas}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE}</h3><div class="bd"><div class="cvhost"></div></div>`;
+          node.innerHTML = `<h3><span class="ico">${TPL_ICONS.canvas}</span><span class="cvtitle"></span><span class="genmark">生成式</span>${CLOSE2}</h3><div class="bd"><div class="cvhost"></div></div>`;
           node.querySelector(".cvtitle").textContent = o.title ?? "";
           renderCanvasCard(node, oc);
         } else {
-          node.innerHTML = `<h3>${esc2(o.title)}${CLOSE}</h3><div class="bd">${cardBody(oc)}</div>`;
+          node.innerHTML = `<h3>${esc2(o.title)}${CLOSE2}</h3><div class="bd">${cardBody(oc)}</div>`;
         }
         ;
         node.querySelector(".ovclose").onclick = () => bus.send({ type: "overlayClose", cardId: o.id });

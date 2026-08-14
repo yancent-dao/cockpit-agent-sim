@@ -3115,30 +3115,40 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
 
   // src/config/interactions.ts
   var SWIPE_AWAY = { on: "swipe:away", route: "desk", op: "dismiss" };
+  var SHRINK = { on: "tap:shrink", route: "desk", op: "shrink" };
+  var GROW = { on: "tap:grow", route: "desk", op: "grow" };
+  var CLOSE = { on: "tap:close", route: "desk", op: "dismiss" };
+  var RESIZE = [SHRINK, GROW];
   var INTERACTIONS = {
     media: [
       { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
       { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "toggle" } },
       { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
-      SWIPE_AWAY
+      SWIPE_AWAY,
+      ...RESIZE,
+      CLOSE
     ],
-    list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
+    list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
-    stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY],
-    confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY],
-    capability: [SWIPE_AWAY],
-    weather: [SWIPE_AWAY],
-    feedback: [SWIPE_AWAY],
-    notice: [SWIPE_AWAY],
-    info: [SWIPE_AWAY],
-    generic: [SWIPE_AWAY],
-    control: [SWIPE_AWAY],
-    canvas: [SWIPE_AWAY],
+    stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    capability: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    weather: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    feedback: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    notice: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    info: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    generic: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    control: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
-    "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY],
-    /** 导航卡刻意没有 swipe:away——导航中把导航划掉是事故 */
-    clock: [SWIPE_AWAY],
-    nav: []
+    "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    /**
+     * 导航卡刻意没有 swipe:away / tap:close——导航中把导航关掉是事故。
+     * 但缩放不是关闭：加了缩放按钮后不用再把导航卡强制钉成最大（2026-08-13 实拍反馈），
+     * 用户可以随时缩小看更多桌面，优先级（左锚定、不可被挤下桌）不受影响。
+     */
+    nav: [...RESIZE]
   };
   var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
 
@@ -4452,6 +4462,40 @@ ${text}` });
       emit();
       return { status: "ok", cardId: id };
     }
+    function sizeSteps(c) {
+      const tmpl = CARD_TEMPLATES.find((t) => t.id === c.template);
+      const pool = tmpl?.sizes ?? COMMON_SIZES;
+      const floorCells = Math.max(
+        c.minSize ? cellsOfTier(c.minSize) : 0,
+        cellsOfTier(minTierFor(c.urgency))
+      );
+      const seen = /* @__PURE__ */ new Set();
+      const allowed = [...pool].filter((s) => cellsOfTier(s) >= floorCells).filter((s) => {
+        const key = normalizeTier(s);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+      const curKey = normalizeTier(c.size);
+      const pos = Math.max(0, allowed.findIndex((s) => normalizeTier(s) === curKey));
+      return { allowed, pos };
+    }
+    function step(id, dir) {
+      const c = getById(id);
+      if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
+      const { allowed, pos } = sizeSteps(c);
+      const next = dir === "down" ? pos - 1 : pos + 1;
+      if (next < 0 || next >= allowed.length)
+        return { status: "rejected", code: "SIZE_NOT_SUPPORTED", message: dir === "down" ? "已经是最小尺寸了" : "已经是最大尺寸了" };
+      return resize(id, allowed[next], true);
+    }
+    function canStep(id, dir) {
+      const c = getById(id);
+      if (!c) return false;
+      const { allowed, pos } = sizeSteps(c);
+      const next = dir === "down" ? pos - 1 : pos + 1;
+      return next >= 0 && next < allowed.length;
+    }
     function dismiss(id, opts) {
       const c = getById(id);
       if (!c) return { status: "rejected", code: "NO_SUCH_CARD", message: `找不到卡片 ${id}` };
@@ -4553,6 +4597,8 @@ ${text}` });
       show,
       update,
       resize,
+      step,
+      canStep,
       dismiss,
       focus,
       render,
@@ -6034,6 +6080,10 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     col: c.col,
     rowSpan: c.rowSpan,
     colSpan: c.colSpan,
+    // 右上角缩放按钮该不该置灰——desk 是唯一权威（模板允许的尺寸表 + minSize +
+    // 紧急度下限），车机屏不重算一遍
+    canShrink: desk.canStep(c.id, "down"),
+    canGrow: desk.canStep(c.id, "up"),
     title: c.data?.title ?? CARD_TEMPLATES.find((t) => t.id === c.template)?.label ?? c.template,
     data: c.data
   });
@@ -6167,8 +6217,12 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       const decl = routeOf(card.template, m.act);
       if (!decl) return;
       if (decl.route === "desk") {
-        desk.dismiss(m.cardId, { byUser: true });
-        log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
+        if (decl.op === "shrink" || decl.op === "grow") {
+          desk.step(m.cardId, decl.op === "shrink" ? "down" : "up");
+        } else {
+          desk.dismiss(m.cardId, { byUser: true });
+          log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
+        }
       } else if (decl.route === "tool") {
         log("u", `[屏幕] ${m.act} → ${decl.tool}`);
         const args = { ...decl.args ?? {}, ...decl.valueParam && m.value ? { [decl.valueParam]: m.value } : {} };
@@ -6306,6 +6360,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       key: "bgtasks",
       template: "list",
       kind: "system",
+      urgency: "urgent",
       ttl: 120,
       refreshTtl: true,
       data: { title: "后台任务进展", items }

@@ -14,6 +14,7 @@ import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
 import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT, weatherIcon } from './icons'
+import { routeOf } from '../config/interactions'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
 injectTokens('screen')
@@ -56,6 +57,8 @@ const TRANSIT = 4000
 interface CardView {
   id: string; template: string; size: string; kind: string; title: string; data: any
   row: number; col: number; rowSpan: number; colSpan: number
+  /** 右上角缩放按钮该不该置灰——desk 算好直接发，屏幕不重算业务逻辑 */
+  canShrink?: boolean; canGrow?: boolean
 }
 let deskState: { cards: CardView[]; overlay?: CardView; free: number;
   staged?: Array<{ id: string; template: string; title: string }> } = { cards: [], free: 6 }
@@ -538,6 +541,21 @@ function renderDesk() {
       }
       node.dataset.sig = sig
     }
+    // 右上角控制簇（缩放/关闭，2026-08-13 实拍反馈）：跟模板无关的通用桌面
+    // 管理动作，挂在所有模板分支之外一次——不用每个模板的挂载代码都抄一遍。
+    // data-act 走既有的通用手势分发（tap → 命中 [data-act] → userAction），
+    // 这里不需要单独绑 click
+    if (!node.querySelector('.cardctl')) {
+      const closable = !!routeOf(c.template, 'tap:close')
+      const ctl = document.createElement('div')
+      ctl.className = 'cardctl'
+      ctl.innerHTML = `<span class="cbtn" data-act="tap:shrink">−</span>` +
+        `<span class="cbtn" data-act="tap:grow">＋</span>` +
+        (closable ? `<span class="cbtn cclose" data-act="tap:close">✕</span>` : '')
+      node.appendChild(ctl)
+    }
+    node.querySelector('[data-act="tap:shrink"]')?.classList.toggle('off', c.canShrink === false)
+    node.querySelector('[data-act="tap:grow"]')?.classList.toggle('off', c.canGrow === false)
   }
   // 占位虚线框曾按基准卡大小画过 6 块，产品拍板删掉——壁纸本身就是"空"，
   // 虚线框反而让空桌面像张没画完的表格

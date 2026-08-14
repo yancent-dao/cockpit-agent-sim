@@ -417,6 +417,93 @@ describe('尺寸粘性：显式改过就听用户的', () => {
   })
 })
 
+/**
+ * ══════════════ 卡片右上角尺寸调节按钮的机制半边 ══════════════
+ *
+ * 实拍反馈（2026-08-13）：卡片要有最小/最大/其它尺寸/关闭的操作按钮，放右上角。
+ * 按钮不认阶梯（LADDER 只是"自动仲裁怎么退让"的内部实现），只认**模板允许的
+ * 尺寸表**——用户点按钮就该在 checkSize 认可的范围内一档一档走，
+ * 到头就到头（不是拒绝，是按钮该自己失效）。
+ * 2/3（stage）这类专用档不在 LADDER 里，但在导航卡的 sizes 表里是合法的最大档，
+ * 用单元格数量排序而不是 LADDER 下标，天然就把它接进阶梯两端。
+ */
+describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
+  it('grow/shrink 按模板允许的尺寸表走一档', () => {
+    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    expect(desk.step(id, 'up').status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('wide')
+    expect(desk.step(id, 'up').status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('1/3')
+  })
+
+  it('已经是最小尺寸时 shrink 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
+    const id = mk({ template: 'weather', size: 'chip', data: { now: {} } }).cardId!
+    const r = desk.step(id, 'down')
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(desk.get(id)!.size).toBe('chip')
+  })
+
+  it('已经是最大尺寸时 grow 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
+    const id = mk({ template: 'weather', size: '1/2', data: { now: {} } }).cardId!
+    const r = desk.step(id, 'up')
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(desk.get(id)!.size).toBe('1/2')
+  })
+
+  it('导航卡的 2/3 是专用档不在 LADDER 里，仍能从 1/2 grow 上去——按单元格数量排序不看阶梯下标', () => {
+    const id = desk.show({ template: 'nav', size: '1/2', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航' } }).cardId!
+    const r = desk.step(id, 'up')
+    expect(r.status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('2/3')
+    // 已经是 2/3（导航卡的最大档），再 grow 就到头了
+    expect(desk.step(id, 'up').status).toBe('rejected')
+  })
+
+  it('尊重模板收窄过的尺寸表（list 只有 1/6·wide·1/3·1/2 四档）', () => {
+    const id = mk({ template: 'list', size: '1/6', data: { items: [{ label: 'a' }] } }).cardId!
+    const r = desk.step(id, 'down')   // list 没有比 1/6 更小的档
+    expect(r.status).toBe('rejected')
+  })
+
+  it('尊重调用方声明的 minSize——按钮缩不破这条线', () => {
+    const id = mk({ template: 'weather', size: '1/3', minSize: '1/3', data: { now: {} } }).cardId!
+    const r = desk.step(id, 'down')
+    expect(r.status).toBe('rejected')
+    expect(desk.get(id)!.size).toBe('1/3')
+  })
+
+  it('走一步即视为用户显式调整——之后规则重刷不会把尺寸弹回默认', () => {
+    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
+    const id = desk.findByKey('nav')!.id
+    desk.step(id, 'down')
+    expect(desk.get(id)!.size).toBe('1/2')
+    now += 10
+    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+      evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
+    expect(desk.findByKey('nav')!.size).toBe('1/2')   // 没被规则弹回 2/3
+  })
+
+  it('卡不存在时返回 NO_SUCH_CARD，不抛异常', () => {
+    expect(desk.step('nope', 'up').code).toBe('NO_SUCH_CARD')
+  })
+
+  // canStep 是给车机屏按钮"该不该置灰"用的只读查询——不许车机屏自己重算一遍
+  it('canStep 只读查询按钮该不该置灰，不改变尺寸', () => {
+    const id = mk({ template: 'weather', size: 'chip', data: { now: {} } }).cardId!
+    expect(desk.canStep(id, 'down')).toBe(false)   // 已经最小
+    expect(desk.canStep(id, 'up')).toBe(true)
+    expect(desk.get(id)!.size).toBe('chip')        // 只读，没被改动
+  })
+
+  it('canStep 对不存在的卡返回 false', () => {
+    expect(desk.canStep('nope', 'up')).toBe(false)
+  })
+})
+
 /* ══════════════ urgency：正交于 kind 的紧急度 ══════════════ */
 /**
  * 之前 PRIORITY 只看 kind，描述的是「谁建的卡」。

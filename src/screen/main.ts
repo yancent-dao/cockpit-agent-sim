@@ -10,7 +10,8 @@ import { sanitize } from './sanitize'
 import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
 import { tokensFor } from '../design/tokens'
 import { dimsOf, GRID, TIERS, SCREEN } from '../config/grid'
-import { cardBody, tierClass, accentClass, fmtTime, progressPct } from './render'
+import { cardBody, tierClass, accentClass, fmtTime, progressPct,
+  NAV_SKELETON, NAV_SLOTS, PLAYER_SKELETON, PLAYER_SLOTS } from './render'
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
@@ -198,30 +199,40 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   const isVideo = d.source === 'video'
   const form = mediaForm(...dimsOf(c.size))
   if (!node.querySelector('.plwrap')) {
-    node.innerHTML = `<div class="plwrap">
-      <div class="plart"></div>
-      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
-        <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
-          <span class="pltime"></span></div>
-        <div class="pl-next"></div>
-        <div class="plctl">
-          <span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>
-        </div>
-        <div class="pl-hint"></div></div>
-    </div>`
+    node.innerHTML = PLAYER_SKELETON
+    ;(node.querySelector('.plctl') as HTMLElement).innerHTML =
+      `<span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>`
+    // 全套播控与音量：hall 起才有。是**状态指示**不是按钮，语音才是主通道
+    ;(node.querySelector('.plmix') as HTMLElement).innerHTML =
+      `<span>🔀 随机</span><span>🔁 循环</span><span>♥ 收藏</span>`
+    ;(node.querySelector('.plvol') as HTMLElement).innerHTML =
+      `<span>🔈</span><div class="pltrk"><div class="plfl" style="width:60%"></div></div><span>🔊</span>`
+  }
+  /**
+   * 按**槽位表**统一显隐。以前每个块手写一行 `form.blocks.includes('x')`，
+   * 加一个块要记得同时改形态函数和这里 —— 漏一边就是"声明了却从不显示"
+   * （车身图那次就是这么死的，图画好了从没在屏幕上出现过）。
+   */
+  const slot = (name: string) => node.querySelector(PLAYER_SLOTS[name]) as HTMLElement | null
+  for (const [name, sel] of Object.entries(PLAYER_SLOTS)) {
+    const el = node.querySelector(sel) as HTMLElement | null
+    if (el) el.style.display = form.blocks.includes(name) ? '' : 'none'
+  }
+  // 完整队列：court 起。跟"接下来"预告分开——一个是一行预告，一个是列表
+  const q = slot('queue')
+  if (q && form.blocks.includes('queue')) {
+    const list: any[] = d.queue ?? []
+    q.innerHTML = list.slice(0, 4).map(t =>
+      `<div class="qi">${esc(t.track ?? t)}</div>`).join('')
   }
   // 竖排只给竖条卡（tower）：宽度不够封面和文字并排。以前用"没有 sub"判断，
   // 封面改成任何档位都在之后，chip/strip 会被误判成竖排——一行高的卡竖着摞必然溢出
   const [pc, pr] = dimsOf(c.size)
   node.classList.toggle('narrow', pr >= 4 && pc <= 4)
-  const art = node.querySelector('.plart') as HTMLElement
-  art.style.display = form.blocks.includes('art') ? '' : 'none'
-  const sub = node.querySelector('.plartist') as HTMLElement
-  sub.style.display = form.blocks.includes('sub') ? '' : 'none'
   // 控制条是**状态指示不是按钮**——屏幕不可交互，画成图标就有诱导点击的风险。
   // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
   const barEl = node.querySelector('.plbar') as HTMLElement
-  barEl.style.display = form.blocks.includes('bar') ? '' : 'none'
+  const art = node.querySelector('.plart') as HTMLElement
   // 控制条从"状态指示"变成真按钮（触控落地，§10 的约定反转）。
   // 电台没有上下曲，藏掉两端只留播放/暂停
   const ctl = node.querySelector('.plctl') as HTMLElement
@@ -236,7 +247,7 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   // 卡被挤到 1/6 时完全没按钮，想停都停不了）
   const full = form.blocks.includes('bar')
   const single = !full && form.blocks.includes('toggle')
-  ctl.style.display = full || single ? '' : 'none'
+  if (!(full || single)) ctl.style.display = 'none'
   for (const el of Array.from(ctl.children) as HTMLElement[]) {
     const isMid = el.dataset.act === 'tap:toggle'
     el.style.display = (single && !isMid) || (d.source === 'radio' && !isMid) ? 'none' : ''
@@ -245,10 +256,9 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   barEl.classList.toggle('live', d.source === 'radio')
   const nxt = node.querySelector('.pl-next') as HTMLElement
   const upcoming: string[] = d.nextUp ?? []
-  nxt.style.display = form.blocks.includes('next') && upcoming.length ? '' : 'none'
+  if (!upcoming.length) nxt.style.display = 'none'
   nxt.textContent = upcoming.length ? `接下来：${upcoming.join(' · ')}` : ''
   const hint = node.querySelector('.pl-hint') as HTMLElement
-  hint.style.display = form.blocks.includes('hint') ? '' : 'none'
   hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`
   if (isVideo) {
     player.attachVideo(art)
@@ -381,14 +391,7 @@ function renderCanvasAppCard(node: HTMLDivElement, c: CardView) {
  */
 function renderNavCard(node: HTMLDivElement, c: CardView) {
   const d = c.data ?? {}
-  if (!node.querySelector('.navwrap')) {
-    node.innerHTML = `<div class="navwrap">
-      <div class="navdesthead"></div>
-      <div class="turnbar"></div>
-      <div class="mapbox"></div>
-      <div class="navfoot"></div>
-    </div>`
-  }
+  if (!node.querySelector('.navwrap')) node.innerHTML = NAV_SKELETON
   // 尺寸决定形态：一格宽的地图看不出路，不如把空间让给转向指令
   const form = navForm(...dimsOf(c.size))
   const step = d.steps?.[0]?.instruction as string | undefined
@@ -412,12 +415,31 @@ function renderNavCard(node: HTMLDivElement, c: CardView) {
 
   // 途经点要写出来：语音说了"先去充电站再去太古里"，屏幕只写终点的话用户不知道要绕路
   const via = (d.via ?? []).length ? `<em>经 ${esc((d.via as string[]).join('、'))}</em>` : ''
-  const foot = node.querySelector('.navfoot') as HTMLElement
-  foot.style.display = form.blocks.includes('foot') ? '' : 'none'
+  const foot = node.querySelector(NAV_SLOTS.eta) as HTMLElement
+  foot.style.display = form.blocks.includes('eta') ? '' : 'none'
+  /**
+   * **到达时刻排在最前**。Android for Cars 把它列为 TravelEstimate 的必填字段 ——
+   * 人真正想知道的是"几点到"，不是"还要多久"。以前它只在最大档露面。
+   */
   foot.innerHTML = `
+    ${d.arriveAt ? `<div class="navbig"><b>${esc(d.arriveAt)}</b><span>到达</span></div>` : ''}
     <div class="navbig"><b>${d.eta ?? '--'}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? '--'}</b><span>公里</span></div>
     <div class="navdest">${via}${esc(d.destination ?? '')}</div>`
+  /**
+   * 车道指引 —— Android 数据模型里的一等组件，我们一直没有。
+   * 路口最关键的信息是"在哪条道"，比 ETA 重要得多。跟着地图走：
+   * 没地图的扁条档放不下五个车道箭头。
+   */
+  const lane = node.querySelector(NAV_SLOTS.lane) as HTMLElement
+  const lanes: any[] = d.lanes ?? []
+  lane.style.display = form.blocks.includes('lane') && lanes.length ? '' : 'none'
+  if (lanes.length) lane.innerHTML = lanes.map(l =>
+    `<i class="${l.use ? 'use' : ''}">${esc(l.dir ?? '↑')}</i>`).join('')
+  // 下一步预告：hall 和 stage 唯一的内容差别，否则大档就是中档放大留白
+  const then = node.querySelector(NAV_SLOTS.then) as HTMLElement
+  then.style.display = form.blocks.includes('then') && d.nextTurn ? '' : 'none'
+  if (d.nextTurn) then.textContent = String(d.nextTurn)
 
   const box = node.querySelector('.mapbox') as HTMLElement
   const hasMap = form.blocks.includes('map')

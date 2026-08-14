@@ -1742,6 +1742,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     blocks.push("toggle");
     if (a >= 36) blocks.push("mix", "vol");
     if (a >= 36) blocks.push("next");
+    if (a >= 24) blocks.push("hint");
     if (r >= 8) blocks.push("queue");
     return { blocks };
   };

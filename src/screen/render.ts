@@ -132,6 +132,45 @@ export function blocksBody(items: any[], opts: BlockOpts = {}): string {
   }).join('')}</div>`
 }
 
+/**
+ * 导航卡与播放器卡是**固定骨架 + 按 form 显隐**（活地图和视频元素有状态，
+ * 不能跟着文字一起重绘）。骨架和"哪个块对应哪个元素"放这里，
+ * 是为了让**「形态函数声明过的块，渲染层必须有地方画」**成为一条可测的不变量。
+ *
+ * 这条不变量正是车身图死掉的那种缺口的解药：它要求高度 ≥4 行而档位最高 2 行，
+ * 图画好了从没在屏幕上出现过 —— 声明和实现之间没人对账。
+ */
+export const NAV_SKELETON = `<div class="navwrap">
+  <div class="navdesthead"></div>
+  <div class="turnbar"></div>
+  <div class="lanebar"></div>
+  <div class="mapbox"></div>
+  <div class="navthen"></div>
+  <div class="navfoot"></div>
+</div>`
+export const NAV_SLOTS: Record<string, string> = {
+  dest: '.navdesthead', turn: '.turnbar', lane: '.lanebar',
+  map: '.mapbox', then: '.navthen', eta: '.navfoot',
+}
+
+export const PLAYER_SKELETON = `<div class="plwrap">
+  <div class="plart"></div>
+  <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+    <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
+      <span class="pltime"></span></div>
+    <div class="plmix"></div>
+    <div class="plvol"></div>
+    <div class="pl-next"></div>
+    <div class="plctl"></div>
+    <div class="pl-hint"></div>
+    <div class="plqueue"></div></div>
+</div>`
+export const PLAYER_SLOTS: Record<string, string> = {
+  art: '.plart', title: '.pltrack', sub: '.plartist', bar: '.plbar',
+  mix: '.plmix', vol: '.plvol', next: '.pl-next', toggle: '.plctl',
+  hint: '.pl-hint', queue: '.plqueue',
+}
+
 export function cardBody(c: CardView): string {
   const d = c.data ?? {}
   switch (c.template) {
@@ -148,16 +187,43 @@ export function cardBody(c: CardView): string {
       const cols = shown.length >= 4 && (form.cols ?? 1) === 1 ? 2 : form.cols
       return blocksBody(shown.map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols })
     }
-    case 'confirm':
+    case 'confirm': {
+      /**
+       * **按档位分块**（2026-08-14）。以前这个分支压根不读 form，三档在屏幕上
+       * 长得一模一样：用户点放大，卡变大了内容没变。
+       * `why`（为什么要问你）是解释性内容，只有宽档才给。
+       */
+      const cf = formOf('confirm', ...dimsOf(c.size))
+      const why = cf.blocks.includes('why') && d.why
+        ? `<div class="why">${esc(d.why)}</div>` : ''
       // 跟列表卡同一条道理：用户是用语音选的（"第二个"），屏上必须能对上号。
       // 只有"确认/取消"两个字时不编号——那种问句是"要不要"，不是"选第几个"
-      return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (
+      return `<div class="sub">${esc(d.question ?? d.text)}</div>${why}` + (
         d.options?.length
           ? `<ol class="listcard opts">${d.options.map((o: string, n: number) =>
               `<li data-act="tap:item" data-value="${esc(`第${n + 1}个：${o}`)}"><b>${esc(o)}</b></li>`).join('')}</ol>`
           : `<div>${['确认', '取消'].map(o => `<span class="opt">${o}</span>`).join('')}</div>`)
-    case 'notice':
-      return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ''}`
+    }
+    case 'notice': {
+      /**
+       * `suggestion` 是**恒在块** ——「拒绝必须携带机器可读原因」是项目核心原则，
+       * 只说"不行"不说"怎么办"等于原则没落地。大档才多出"为什么"这层解释。
+       */
+      const nf = formOf('notice', ...dimsOf(c.size))
+      const why = nf.blocks.includes('why') && d.why ? `<div class="why">${esc(d.why)}</div>` : ''
+      return `<div class="sub">${esc(d.text)}</div>${why}${
+        d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ''}`
+    }
+    case 'feedback': {
+      /**
+       * 两档：chip 只有结论（「已开窗」），box 多一句说明。
+       * 以前它落到 default 分支、用的是 `formOf('generic')` —— 自己声明的形态从未生效。
+       */
+      const ff = formOf('feedback', ...dimsOf(c.size))
+      const detail = ff.blocks.includes('detail') && (d.detail ?? d.sub)
+        ? `<div class="sug">${esc(d.detail ?? d.sub)}</div>` : ''
+      return `<div class="sub">${esc(d.text ?? d.title ?? '')}</div>${detail}`
+    }
     case 'list':
       // 序号是刚需：用户是用语音选的（"第二个"），屏上必须能对上号。
       // maxItems 由形态函数按档位给，这里只负责画
@@ -205,7 +271,11 @@ export function cardBody(c: CardView): string {
           ${has('chapter') && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ''}
           <p class="sbline">${esc(d.line)}</p>
           ${has('lesson') && d.ideas?.length ? `<div class="sbidea">${esc(d.ideas.join(' · '))}</div>` : ''}
-          <div class="sbdots">${dots}</div>
+          <div class="sbfoot">
+            <div class="sbdots">${dots}</div>
+            ${has('ctl') ? `<div class="sbctl"><span data-act="tap:prev">‹</span>
+              <span data-act="tap:toggle">⏸</span><span data-act="tap:next">›</span></div>` : ''}
+          </div>
         </div></div>`
     }
     case 'weather': {
@@ -214,17 +284,34 @@ export function cardBody(c: CardView): string {
       const sub = d.now
         ? [d.now.wind, d.now.humidity !== undefined ? `湿度${d.now.humidity}%` : ''].filter(Boolean).join(' · ')
         : ''
-      const cast = (d.forecast ?? []).slice(0, w.maxItems ?? 0)
+      const cast = (d.forecast ?? []).slice(0, w.days ?? 0)
+      /**
+       * 今日最高/最低是最基本的一项，之前连大档都没有（2026-08-14 调研）。
+       * 恒在块，任何档位都给。
+       */
+      const rng = d.range
+        ? `<small class="wxrng">${Math.round(d.range.high)}° / ${Math.round(d.range.low)}°</small>` : ''
+      /**
+       * 逐时降水条 —— **车里天气卡的主角**。通行判据是「一秒读懂：当前温度、
+       * 下一次降水、今日温差、预警状态」；5 天预报是手机首页的逻辑。
+       * 柱高表示气温，蓝色表示这个钟点会下雨。
+       */
+      const hrs = (d.hourly ?? []).slice(0, w.hours ?? 0)
+      const hourly = hrs.length ? `<div class="hourly">${hrs.map((h: any) => {
+        const wet = Number(h.pop) >= 40
+        return `<i style="height:${Math.max(18, Math.min(100, Number(h.temp) * 2.6))}%"${
+          wet ? ' class="wet"' : ''}></i>`
+      }).join('')}</div>` : ''
       return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
-          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+          <div class="wxmeta"><span>${esc(d.now.weather)}</span>${rng}<small>${esc(sub)}</small></div>
           <span class="wxico">${weatherIcon(d.now.weather)}</span>
-        </div>` : ''}${cast.length
+        </div>` : ''}${hourly}${cast.length
         // 预报也是并列数据，走块状均分——省掉一套只给天气用的 CSS
-        ? blocksBody(cast.map((f: any) => ({
+        ? `<div class="fc">${blocksBody(cast.map((f: any) => ({
             label: dayLabel(f.date),
             value: `${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°`,
-          })), { cols: (w.cols ?? 1) > 1 ? 3 : 1 })
+          })), { cols: w.days ?? 1 })}</div>`
         : ''}`
     }
     case 'nav':

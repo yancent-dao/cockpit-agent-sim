@@ -321,6 +321,33 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxico svg{width:100%;height:100%;stroke-width:1.4}
 .t-chip .wxico,.t-strip .wxico{width:calc(52px*var(--u));height:calc(52px*var(--u))}
 
+/* ── 导航：车道指引 + 下一步预告（2026-08-14） ── */
+/* 路口最关键的信息是"在哪条道"。Android for Cars 把 Lane 列为一等组件 */
+.lanebar{display:flex;justify-content:center;gap:calc(18px*var(--u));flex:none;
+  padding:calc(8px*var(--u)) 0;font-size:calc(var(--t-lead)*var(--u));color:var(--n4,#CBD5E1)}
+.lanebar i{font-style:normal}
+.lanebar i.use{color:var(--ac)}
+.navthen{flex:none;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);text-align:right}
+
+/* ── 天气：今日温差 + 逐时降水条 ── */
+.wxrng{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-left:calc(10px*var(--u))}
+/* 柱高=气温，蓝柱=这个钟点会下雨。"接下来会不会下雨"是车里最想知道的 */
+.hourly{display:flex;align-items:flex-end;gap:calc(6px*var(--u));flex:1;min-height:calc(48px*var(--u));
+  margin-top:calc(10px*var(--u))}
+.hourly i{flex:1;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
+.hourly i.wet{background:var(--brand-fg,#1D4ED8)}
+.fc{margin-top:calc(10px*var(--u))}
+
+/* ── 播放器：全套播控 + 音量 + 完整队列 ── */
+.plmix{display:flex;gap:calc(16px*var(--u));font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-2);margin-top:calc(6px*var(--u))}
+.plvol{display:flex;align-items:center;gap:calc(10px*var(--u));margin-top:calc(6px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.plvol .pltrk{flex:1}
+.plqueue{margin-top:calc(10px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
@@ -337,8 +364,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .sbline .lit{background:var(--pick-bg);border-radius:calc(6px*var(--u));padding:0 calc(4px*var(--u))}
 .sbidea{font-size:calc(var(--t-cap)*var(--u));color:var(--warm-fg,var(--tx-2))}
 /* 进度点：实心=已生成，加粗=当前，虚线=还在画。**不显示总数** */
-.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center;margin-top:auto;
-  padding-bottom:calc(4px*var(--u))}
+.sbfoot{display:flex;align-items:center;justify-content:space-between;gap:calc(16px*var(--u));
+  margin-top:auto;padding-bottom:calc(4px*var(--u))}
+.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center}
+.sbctl{display:flex;gap:calc(18px*var(--u));font-size:calc(var(--t-lead)*var(--u));
+  color:var(--ac);cursor:pointer;user-select:none}
 .sbdots i{width:calc(10px*var(--u));height:calc(10px*var(--u));border-radius:999px;
   background:var(--n3,#E2E8F0);flex:none}
 .sbdots i.on{background:var(--ac);width:calc(28px*var(--u))}
@@ -1185,6 +1215,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     blocks.push("toggle");
     if (a >= 36) blocks.push("mix", "vol");
     if (a >= 36) blocks.push("next");
+    if (a >= 24) blocks.push("hint");
     if (r >= 8) blocks.push("queue");
     return { blocks };
   };
@@ -1730,6 +1761,46 @@ ${BRIDGE}
     </div>`;
     }).join("")}</div>`;
   }
+  var NAV_SKELETON = `<div class="navwrap">
+  <div class="navdesthead"></div>
+  <div class="turnbar"></div>
+  <div class="lanebar"></div>
+  <div class="mapbox"></div>
+  <div class="navthen"></div>
+  <div class="navfoot"></div>
+</div>`;
+  var NAV_SLOTS = {
+    dest: ".navdesthead",
+    turn: ".turnbar",
+    lane: ".lanebar",
+    map: ".mapbox",
+    then: ".navthen",
+    eta: ".navfoot"
+  };
+  var PLAYER_SKELETON = `<div class="plwrap">
+  <div class="plart"></div>
+  <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+    <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
+      <span class="pltime"></span></div>
+    <div class="plmix"></div>
+    <div class="plvol"></div>
+    <div class="pl-next"></div>
+    <div class="plctl"></div>
+    <div class="pl-hint"></div>
+    <div class="plqueue"></div></div>
+</div>`;
+  var PLAYER_SLOTS = {
+    art: ".plart",
+    title: ".pltrack",
+    sub: ".plartist",
+    bar: ".plbar",
+    mix: ".plmix",
+    vol: ".plvol",
+    next: ".pl-next",
+    toggle: ".plctl",
+    hint: ".pl-hint",
+    queue: ".plqueue"
+  };
   function cardBody(c) {
     const d = c.data ?? {};
     switch (c.template) {
@@ -1742,10 +1813,21 @@ ${BRIDGE}
         const cols = shown.length >= 4 && (form.cols ?? 1) === 1 ? 2 : form.cols;
         return blocksBody(shown.map((it) => ({ ...it, hot: hot.includes(it.key) })), { cols });
       }
-      case "confirm":
-        return `<div class="sub">${esc(d.question ?? d.text)}</div>` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o, n) => `<li data-act="tap:item" data-value="${esc(`第${n + 1}个：${o}`)}"><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
-      case "notice":
-        return `<div class="sub">${esc(d.text)}</div>${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
+      case "confirm": {
+        const cf = formOf("confirm", ...dimsOf(c.size));
+        const why = cf.blocks.includes("why") && d.why ? `<div class="why">${esc(d.why)}</div>` : "";
+        return `<div class="sub">${esc(d.question ?? d.text)}</div>${why}` + (d.options?.length ? `<ol class="listcard opts">${d.options.map((o, n) => `<li data-act="tap:item" data-value="${esc(`第${n + 1}个：${o}`)}"><b>${esc(o)}</b></li>`).join("")}</ol>` : `<div>${["确认", "取消"].map((o) => `<span class="opt">${o}</span>`).join("")}</div>`);
+      }
+      case "notice": {
+        const nf = formOf("notice", ...dimsOf(c.size));
+        const why = nf.blocks.includes("why") && d.why ? `<div class="why">${esc(d.why)}</div>` : "";
+        return `<div class="sub">${esc(d.text)}</div>${why}${d.suggestion ? `<div class="sug">${esc(d.suggestion)}</div>` : ""}`;
+      }
+      case "feedback": {
+        const ff = formOf("feedback", ...dimsOf(c.size));
+        const detail = ff.blocks.includes("detail") && (d.detail ?? d.sub) ? `<div class="sug">${esc(d.detail ?? d.sub)}</div>` : "";
+        return `<div class="sub">${esc(d.text ?? d.title ?? "")}</div>${detail}`;
+      }
       case "list":
         return listBody(d.items, formOf("list", ...dimsOf(c.size)));
       case "stagedlist":
@@ -1781,21 +1863,31 @@ ${BRIDGE}
           ${has("chapter") && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ""}
           <p class="sbline">${esc(d.line)}</p>
           ${has("lesson") && d.ideas?.length ? `<div class="sbidea">${esc(d.ideas.join(" · "))}</div>` : ""}
-          <div class="sbdots">${dots}</div>
+          <div class="sbfoot">
+            <div class="sbdots">${dots}</div>
+            ${has("ctl") ? `<div class="sbctl"><span data-act="tap:prev">‹</span>
+              <span data-act="tap:toggle">⏸</span><span data-act="tap:next">›</span></div>` : ""}
+          </div>
         </div></div>`;
       }
       case "weather": {
         const w = weatherForm(...dimsOf(c.size));
         const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
-        const cast = (d.forecast ?? []).slice(0, w.maxItems ?? 0);
+        const cast = (d.forecast ?? []).slice(0, w.days ?? 0);
+        const rng = d.range ? `<small class="wxrng">${Math.round(d.range.high)}° / ${Math.round(d.range.low)}°</small>` : "";
+        const hrs = (d.hourly ?? []).slice(0, w.hours ?? 0);
+        const hourly = hrs.length ? `<div class="hourly">${hrs.map((h) => {
+          const wet = Number(h.pop) >= 40;
+          return `<i style="height:${Math.max(18, Math.min(100, Number(h.temp) * 2.6))}%"${wet ? ' class="wet"' : ""}></i>`;
+        }).join("")}</div>` : "";
         return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
-          <div class="wxmeta"><span>${esc(d.now.weather)}</span><small>${esc(sub)}</small></div>
+          <div class="wxmeta"><span>${esc(d.now.weather)}</span>${rng}<small>${esc(sub)}</small></div>
           <span class="wxico">${weatherIcon(d.now.weather)}</span>
-        </div>` : ""}${cast.length ? blocksBody(cast.map((f) => ({
+        </div>` : ""}${hourly}${cast.length ? `<div class="fc">${blocksBody(cast.map((f) => ({
           label: dayLabel(f.date),
           value: `${Math.round(f.dayTemp)}°/${Math.round(f.nightTemp)}°`
-        })), { cols: (w.cols ?? 1) > 1 ? 3 : 1 }) : ""}`;
+        })), { cols: w.days ?? 1 })}</div>` : ""}`;
       }
       case "nav":
         return "";
@@ -2173,26 +2265,25 @@ ${BRIDGE}
     const isVideo = d.source === "video";
     const form = mediaForm(...dimsOf(c.size));
     if (!node.querySelector(".plwrap")) {
-      node.innerHTML = `<div class="plwrap">
-      <div class="plart"></div>
-      <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
-        <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
-          <span class="pltime"></span></div>
-        <div class="pl-next"></div>
-        <div class="plctl">
-          <span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>
-        </div>
-        <div class="pl-hint"></div></div>
-    </div>`;
+      node.innerHTML = PLAYER_SKELETON;
+      node.querySelector(".plctl").innerHTML = `<span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>`;
+      node.querySelector(".plmix").innerHTML = `<span>🔀 随机</span><span>🔁 循环</span><span>♥ 收藏</span>`;
+      node.querySelector(".plvol").innerHTML = `<span>🔈</span><div class="pltrk"><div class="plfl" style="width:60%"></div></div><span>🔊</span>`;
+    }
+    const slot = (name) => node.querySelector(PLAYER_SLOTS[name]);
+    for (const [name, sel] of Object.entries(PLAYER_SLOTS)) {
+      const el = node.querySelector(sel);
+      if (el) el.style.display = form.blocks.includes(name) ? "" : "none";
+    }
+    const q = slot("queue");
+    if (q && form.blocks.includes("queue")) {
+      const list = d.queue ?? [];
+      q.innerHTML = list.slice(0, 4).map((t) => `<div class="qi">${esc(t.track ?? t)}</div>`).join("");
     }
     const [pc, pr] = dimsOf(c.size);
     node.classList.toggle("narrow", pr >= 4 && pc <= 4);
-    const art = node.querySelector(".plart");
-    art.style.display = form.blocks.includes("art") ? "" : "none";
-    const sub = node.querySelector(".plartist");
-    sub.style.display = form.blocks.includes("sub") ? "" : "none";
     const barEl = node.querySelector(".plbar");
-    barEl.style.display = form.blocks.includes("bar") ? "" : "none";
+    const art = node.querySelector(".plart");
     const ctl = node.querySelector(".plctl");
     const mid = ctl.children[1];
     if (mid.dataset.st !== String(!!d.playing)) {
@@ -2201,7 +2292,7 @@ ${BRIDGE}
     }
     const full = form.blocks.includes("bar");
     const single = !full && form.blocks.includes("toggle");
-    ctl.style.display = full || single ? "" : "none";
+    if (!(full || single)) ctl.style.display = "none";
     for (const el of Array.from(ctl.children)) {
       const isMid = el.dataset.act === "tap:toggle";
       el.style.display = single && !isMid || d.source === "radio" && !isMid ? "none" : "";
@@ -2209,10 +2300,9 @@ ${BRIDGE}
     barEl.classList.toggle("live", d.source === "radio");
     const nxt = node.querySelector(".pl-next");
     const upcoming = d.nextUp ?? [];
-    nxt.style.display = form.blocks.includes("next") && upcoming.length ? "" : "none";
+    if (!upcoming.length) nxt.style.display = "none";
     nxt.textContent = upcoming.length ? `接下来：${upcoming.join(" · ")}` : "";
     const hint = node.querySelector(".pl-hint");
-    hint.style.display = form.blocks.includes("hint") ? "" : "none";
     hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`;
     if (isVideo) {
       player.attachVideo(art);
@@ -2299,14 +2389,7 @@ ${BRIDGE}
   }
   function renderNavCard(node, c) {
     const d = c.data ?? {};
-    if (!node.querySelector(".navwrap")) {
-      node.innerHTML = `<div class="navwrap">
-      <div class="navdesthead"></div>
-      <div class="turnbar"></div>
-      <div class="mapbox"></div>
-      <div class="navfoot"></div>
-    </div>`;
-    }
+    if (!node.querySelector(".navwrap")) node.innerHTML = NAV_SKELETON;
     const form = navForm(...dimsOf(c.size));
     const step = d.steps?.[0]?.instruction;
     const turn = step ? parseTurn(step) : void 0;
@@ -2321,12 +2404,20 @@ ${BRIDGE}
     <div class="turntext"><b>${esc(turn.dist)}</b><span>${esc(turn.action)}</span></div>
     ${turn.road ? `<div class="turnroad">${esc(turn.road)}</div>` : ""}`;
     const via = (d.via ?? []).length ? `<em>经 ${esc(d.via.join("、"))}</em>` : "";
-    const foot = node.querySelector(".navfoot");
-    foot.style.display = form.blocks.includes("foot") ? "" : "none";
+    const foot = node.querySelector(NAV_SLOTS.eta);
+    foot.style.display = form.blocks.includes("eta") ? "" : "none";
     foot.innerHTML = `
+    ${d.arriveAt ? `<div class="navbig"><b>${esc(d.arriveAt)}</b><span>到达</span></div>` : ""}
     <div class="navbig"><b>${d.eta ?? "--"}</b><span>分钟</span></div>
     <div class="navbig"><b>${d.distance ?? "--"}</b><span>公里</span></div>
     <div class="navdest">${via}${esc(d.destination ?? "")}</div>`;
+    const lane = node.querySelector(NAV_SLOTS.lane);
+    const lanes = d.lanes ?? [];
+    lane.style.display = form.blocks.includes("lane") && lanes.length ? "" : "none";
+    if (lanes.length) lane.innerHTML = lanes.map((l) => `<i class="${l.use ? "use" : ""}">${esc(l.dir ?? "↑")}</i>`).join("");
+    const then = node.querySelector(NAV_SLOTS.then);
+    then.style.display = form.blocks.includes("then") && d.nextTurn ? "" : "none";
+    if (d.nextTurn) then.textContent = String(d.nextTurn);
     const box = node.querySelector(".mapbox");
     const hasMap = form.blocks.includes("map");
     node.classList.toggle("no-map", !hasMap);

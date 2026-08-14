@@ -321,6 +321,33 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxico svg{width:100%;height:100%;stroke-width:1.4}
 .t-chip .wxico,.t-strip .wxico{width:calc(52px*var(--u));height:calc(52px*var(--u))}
 
+/* ── 导航：车道指引 + 下一步预告（2026-08-14） ── */
+/* 路口最关键的信息是"在哪条道"。Android for Cars 把 Lane 列为一等组件 */
+.lanebar{display:flex;justify-content:center;gap:calc(18px*var(--u));flex:none;
+  padding:calc(8px*var(--u)) 0;font-size:calc(var(--t-lead)*var(--u));color:var(--n4,#CBD5E1)}
+.lanebar i{font-style:normal}
+.lanebar i.use{color:var(--ac)}
+.navthen{flex:none;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);text-align:right}
+
+/* ── 天气：今日温差 + 逐时降水条 ── */
+.wxrng{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-left:calc(10px*var(--u))}
+/* 柱高=气温，蓝柱=这个钟点会下雨。"接下来会不会下雨"是车里最想知道的 */
+.hourly{display:flex;align-items:flex-end;gap:calc(6px*var(--u));flex:1;min-height:calc(48px*var(--u));
+  margin-top:calc(10px*var(--u))}
+.hourly i{flex:1;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
+.hourly i.wet{background:var(--brand-fg,#1D4ED8)}
+.fc{margin-top:calc(10px*var(--u))}
+
+/* ── 播放器：全套播控 + 音量 + 完整队列 ── */
+.plmix{display:flex;gap:calc(16px*var(--u));font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-2);margin-top:calc(6px*var(--u))}
+.plvol{display:flex;align-items:center;gap:calc(10px*var(--u));margin-top:calc(6px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.plvol .pltrk{flex:1}
+.plqueue{margin-top:calc(10px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
@@ -337,8 +364,11 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .sbline .lit{background:var(--pick-bg);border-radius:calc(6px*var(--u));padding:0 calc(4px*var(--u))}
 .sbidea{font-size:calc(var(--t-cap)*var(--u));color:var(--warm-fg,var(--tx-2))}
 /* 进度点：实心=已生成，加粗=当前，虚线=还在画。**不显示总数** */
-.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center;margin-top:auto;
-  padding-bottom:calc(4px*var(--u))}
+.sbfoot{display:flex;align-items:center;justify-content:space-between;gap:calc(16px*var(--u));
+  margin-top:auto;padding-bottom:calc(4px*var(--u))}
+.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center}
+.sbctl{display:flex;gap:calc(18px*var(--u));font-size:calc(var(--t-lead)*var(--u));
+  color:var(--ac);cursor:pointer;user-select:none}
 .sbdots i{width:calc(10px*var(--u));height:calc(10px*var(--u));border-radius:999px;
   background:var(--n3,#E2E8F0);flex:none}
 .sbdots i.on{background:var(--ac);width:calc(28px*var(--u))}

@@ -189,6 +189,8 @@ export const mediaForm: FormFn = (c, r) => {
   blocks.push('toggle')
   if (a >= 36) blocks.push('mix', 'vol')   // hall 起：全套播控
   if (a >= 36) blocks.push('next')          // "接下来：A · B"
+  // 「说『换一首』『大点声』都可以」——把播控标回语音能力，能力曝光度的一半
+  if (a >= 24) blocks.push('hint')
   if (r >= 8) blocks.push('queue')          // court 起：完整队列列表
   return { blocks }
 }

@@ -60,10 +60,18 @@ for (const t of CARD_TEMPLATES) {
     // 缩放容器：外层按缩放后的尺寸占位，内层保持真实像素再 scale ——
     // 直接把 frame 的高度设成缩放后的值会把卡片压扁（第一版就是这么错的）
     fig.style.width = `${b.w * S}px`
+    /**
+     * **绘本卡在车机屏上没有标题栏**（`node.innerHTML = cardBody(c)`，
+     * 不套 h3 也不套 .bd）—— 章节名在卡片内部自己排。画廊照着别的模板
+     * 一律加 h3 的话，绘本这一张就凭空多出 80px 的顶栏，
+     * 版式判断（出血、留白）全是假的。画廊失真等于画廊没用。
+     */
+    const bare = t.id === 'storybook'
+    const body = cardBody({ id: 'g', template: t.id, size, kind: 'task', data: DATA[t.id] ?? {} } as any)
     fig.innerHTML = `<div class="frame" style="overflow:hidden">
       <div class="card ${tierClass(size)} ${accentClass(t.id, DATA[t.id])}" style="width:100%;height:100%">
-        <h3><span class="ttl">${DATA[t.id]?.title ?? t.label}</span></h3>
-        <div class="bd">${cardBody({ id: 'g', template: t.id, size, kind: 'task', data: DATA[t.id] ?? {} } as any)}</div>
+        ${bare ? body : `<h3><span class="ttl">${DATA[t.id]?.title ?? t.label}</span></h3>
+        <div class="bd">${body}</div>`}
       </div></div>
       <figcaption>${size} · ${b.w}×${b.h}\n</figcaption>`
     const holder = fig.firstElementChild as HTMLElement

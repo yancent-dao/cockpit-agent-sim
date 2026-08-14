@@ -412,3 +412,29 @@ describe('讲起来之后定妆照要退场', () => {
     expect(desk.layout().cards.find(c => c.template === 'storybook')!.data.photo).toBeFalsy()
   })
 })
+
+/**
+ * ══════════ 画幅要跟版式对得上 ══════════
+ *
+ * 实拍两轮（2026-08-14）：先是「图片没有显示全」，改成左图右文之后又变成
+ * 「一点都不像一个画册，图片的上下还有留白」。
+ *
+ * 根因是同一个：**图的比例跟它要待的那个框对不上**。左栏是满高的一竖条，
+ * 在默认档上接近正方；塞 16:9 或 4:3 进去，contain 必留白、cover 必裁图。
+ * 方形画幅让它**恰好填满**——不裁也不留白，图直接出血到卡片边缘，
+ * 这才是画册的样子。
+ */
+describe('正文用方形画幅', () => {
+  it('每一页都按 1:1 画 —— 左栏是方的，方图才填得满', async () => {
+    boot()
+    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    const seen: string[] = []
+    h = createStoryHandlers(store, () => desk, () => story, () => ({
+      async generate(o: any) { seen.push(o.aspect); return { dataUrl: 'IMG', cost: 0 } },
+    }) as any)
+    await h.storyBegin({ title: 'T', pages: pages('一', '二') })
+    await new Promise(r => setTimeout(r, 0))
+    expect(seen.length).toBeGreaterThan(0)
+    for (const a of seen) expect(a, '正文页画幅').toBe('1:1')
+  })
+})

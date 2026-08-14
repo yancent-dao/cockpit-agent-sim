@@ -104,12 +104,15 @@ export function createStoryHandlers(
    * 文字全文先落本地，图缺就缺，纯语音继续讲。
    */
   /**
-   * 画幅 **4:3**（2026-08-14 从 16:9 改）。屏幕上是左图右文，左栏在默认档
-   * （stage 8×8）上接近正方 —— 16:9 的图 contain 进去上下大片留白，
-   * 用户实拍的第一反应是"图片没有显示全"。4:3 是童书最常见的开本，
-   * 也同时兼顾窄档那套上图下文的版式。
+   * 画幅 **1:1**（2026-08-14 两轮实拍之后定的：16:9 → 4:3 → 1:1）。
+   *
+   * 屏幕上是左图右文，左栏是**满高的一竖条**，在默认档（stage）上正好是方的。
+   * 横画幅塞进去只有两种结局：contain 上下留白（"一点都不像画册"），
+   * 或者 cover 把画面裁掉一截（"图片没有显示全"）。方图**恰好填满** ——
+   * 不裁也不留白，图能直接出血到卡片边缘，那才是画册的样子。
+   * 方开本本身也是童书的常见规格。
    */
-  const draw = async (scene: string, aspect = '4:3'): Promise<string | undefined> => {
+  const draw = async (scene: string, aspect = '1:1'): Promise<string | undefined> => {
     const cast = story().cast()
     try {
       /**

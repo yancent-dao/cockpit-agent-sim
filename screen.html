@@ -409,22 +409,40 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
-.sbart{flex:1.5;min-height:0;border-radius:calc(18px*var(--u));overflow:hidden;
+/* 图**出血到卡片边缘**（上/左/右），由 .card 的 overflow:hidden + 圆角裁 ——
+   浮在白卡里镶白边的那版被实拍判为"一点都不像一个画册" */
+.sbart{flex:1.5;min-height:0;overflow:hidden;
+  margin:calc(-8px*var(--u)) calc(-20px*var(--u)) 0;
   background:linear-gradient(160deg,#FDE9C0,#C7E0FF)}
 /* Ken Burns：极缓慢的推拉，静态图立刻有动画感。纯 CSS，零成本 */
-.sbart img{width:100%;height:100%;object-fit:cover;display:block;
+/* 窄档是上图下文，方图铺进一条横带必然裁掉上下 ——
+   偏上取景，童书插画的人物基本都在中上部 */
+.sbart img{width:100%;height:100%;object-fit:cover;object-position:center 38%;display:block;
   animation:sbkb 20s ease-in-out infinite alternate}
+/* 生成中的占位：.sbart 不是 flex 容器，`flex:1` 在这里无效会塌成 0 高 */
+.sbart>.sbwait{height:100%}
 @keyframes sbkb{from{transform:scale(1)}to{transform:scale(1.06)}}
-/* 左图右文（够宽的档）。实拍反馈「图片没有显示全，建议左图右文，
-   文字可以稍微多一点」——上图下文在 1.63 宽高比的卡上把图压成一条。
-   分栏之后图整张放得下（contain 不裁），右栏又高又窄正好放两三句话。 */
-.sb.side{flex-direction:row;gap:calc(22px*var(--u));align-items:stretch}
-.sb.side .sbart{flex:0 0 60%;background:transparent}
-/* **contain 不是 cover**：整张放下才叫"显示全"。Ken Burns 在 contain 下
-   会把边缘推出画面，所以分栏档取消推拉——不裁图比动效重要 */
-.sb.side .sbart img{object-fit:contain;animation:none}
-.sb.side .sbcap{flex:1;min-width:0;padding:calc(6px*var(--u)) calc(4px*var(--u)) 0;
-  justify-content:flex-start;gap:calc(14px*var(--u))}
+/* 左图右文（够宽的档）。两轮实拍：先是「图片没有显示全」，改成分栏之后
+   又变成「一点都不像一个画册，图片的上下还有留白」。
+   两次都是同一个根因：**图的比例跟它要待的那个框对不上**。
+
+   左栏是满高的一竖条，在默认档上正好是方的 —— 所以画幅改成 1:1，
+   art 用 aspect-ratio:1 跟着卡高走，图**恰好填满**：不裁、不留白。
+   再把 art 的负边距顶到卡片的内边距之外，图就**出血到卡片边缘**，
+   由 .card 的 overflow:hidden + 圆角自己裁 —— 那才是画册，
+   而不是一张浮在白卡里、四周镶着白边的缩略图。 */
+.sb.side{flex-direction:row;gap:calc(26px*var(--u));align-items:stretch}
+/* .card 内边距 22u/26u，.sb 已经吃掉 14u/6u，所以还差 8u（上）/ 20u（左）/ 22u（下） */
+.sb.side .sbart{flex:0 0 auto;aspect-ratio:1;border-radius:0;background:transparent;
+  margin:calc(-8px*var(--u)) 0 calc(-22px*var(--u)) calc(-20px*var(--u))}
+/* 方图进方框，cover 等于原样铺满 —— 一个像素都不裁。Ken Burns 会把边缘推出
+   画面，出血版式下推拉反而显得图在"漂"，所以分栏档取消它 */
+.sb.side .sbart img{object-fit:cover;animation:none}
+.sb.side .sbcap{flex:1;min-width:0;padding:calc(2px*var(--u)) 0 0;
+  justify-content:flex-start;gap:calc(12px*var(--u))}
+/* 正文在图的高度里垂直居中：靠 auto 外边距，不用 flex 容器 ——
+   给 <p> 加 display:flex 会把里面的逐字点亮 <span> 拆成独立 flex item */
+.sb.side .sbline{margin-bottom:auto}
 .sbcap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:calc(10px*var(--u));
   padding:calc(20px*var(--u)) calc(8px*var(--u)) 0}
 .sbch{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);letter-spacing:.04em}

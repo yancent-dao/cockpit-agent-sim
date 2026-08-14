@@ -52,7 +52,6 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
   /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
   'canvas-app': [{ on: 'app', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
-  clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
   /**
    * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
    * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，

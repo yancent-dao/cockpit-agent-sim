@@ -731,20 +731,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
-    /**
-     * 时钟氛围卡（用户实拍反馈）：时间做背景层会从卡片缝里漏出来。
-     * 做成真卡走同一套仲裁：最低优先级填充，谁来都让位，空了自己回来。
-     * 时间由车机屏本地渲染——每秒变的东西不进 data（遥测边界的老规矩）。
-     */
-    // 三档踩着 clockForm 阈值：chip 只有时间、1/6（area8）加日期、1/3（area16）加天气行
-    {
-      id: "clock",
-      label: "时钟卡",
-      defaultSize: "1/3",
-      sizes: ["chip", "1/6", "1/3"],
-      systemOnly: true,
-      desc: "空桌面的氛围填充：时间/日期/天气。系统规则驱动，不要手动创建。"
-    },
     {
       id: "generic",
       label: "通用卡",
@@ -1576,13 +1562,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       overflow: mode === "count" ? "count" : "more"
     };
   };
-  var clockForm = (c, r) => {
-    const a = area(c, r);
-    const blocks = ["time"];
-    if (a >= 8) blocks.push("date");
-    if (a >= 16) blocks.push("wx");
-    return { blocks };
-  };
   var CARD_FORMS = {
     nav: navForm,
     control: controlForm,
@@ -1597,8 +1576,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     media: mediaForm,
     weather: weatherForm,
     capability: capForm,
-    generic: genericForm,
-    clock: clockForm
+    generic: genericForm
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
   function suggestSize(templateId, count) {
@@ -3317,7 +3295,6 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
     "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
-    clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /**
      * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
      * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，
@@ -5758,17 +5735,6 @@ ${text}` });
 
   // src/config/cardRules.ts
   var CARD_RULES = [
-    /**
-     * 时钟氛围卡：when 恒真的状态卡。最低优先级（rule+ambient），
-     * 谁来都让位，空间释放 reconcile 自动请回——"无常驻卡"的精神不破，
-     * 它是可挤的填充不是钉死的家具。时间由屏端本地渲染，data 里没有秒。
-     */
-    {
-      id: "ambient-clock",
-      when: [],
-      watch: [],
-      card: { key: "clock", template: "clock", urgency: "ambient", anchor: "right", data: "clockCard" }
-    },
     {
       id: "nav-active",
       when: [["navigation.active", "==", true]],
@@ -5890,8 +5856,6 @@ ${text}` });
   };
   var cn2 = (v) => typeof v === "string" && CN[v] || v;
   var DATA_BUILDERS = {
-    clockCard: () => ({ title: "" }),
-    // 内容全在屏端本地（时间是遥测不是状态）
     navCard: ({ store: store2, amap: amap2 }) => {
       const destination = store2.get("navigation.destination");
       const destLoc = store2.get("navigation.destinationLocation");

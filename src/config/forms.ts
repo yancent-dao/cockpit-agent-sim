@@ -146,15 +146,6 @@ export const capForm: FormFn = (c, r) => {
   }
 }
 
-/** 时钟氛围卡：时间永远在；日期要 card 档；天气行要 panel 档 */
-const clockForm: FormFn = (c, r) => {
-  const a = area(c, r)
-  const blocks = ['time']
-  if (a >= 8) blocks.push('date')
-  if (a >= 16) blocks.push('wx')
-  return { blocks }
-}
-
 /** 模板的形态函数。加模板 = 加一条，不改调用方 */
 export const CARD_FORMS: Record<string, FormFn> = {
   nav: navForm,
@@ -171,7 +162,6 @@ export const CARD_FORMS: Record<string, FormFn> = {
   weather: weatherForm,
   capability: capForm,
   generic: genericForm,
-  clock: clockForm,
 }
 
 /** 查不到就按 generic 走——白卡比不显示更糟 */

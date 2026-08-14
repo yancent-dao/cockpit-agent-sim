@@ -530,20 +530,6 @@ function renderDesk() {
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
-      else if (c.template === 'clock') {
-        if (!node.dataset.shell) {
-          node.innerHTML = `<div class="bd"><div class="ckwx"></div><div class="cktime">--:--</div><div class="ckdate"></div></div>`
-          node.dataset.shell = '1'
-          renderStatus()   // 立刻喂一次天气行，别等下一条 state
-          const now = new Date()
-          node.querySelector('.cktime')!.textContent = $('clock').textContent!
-          node.querySelector('.ckdate')!.textContent = `${now.getMonth() + 1}月${now.getDate()}日 星期${'日一二三四五六'[now.getDay()]}`
-        }
-        // 形态跟着尺寸走：被压小时先收天气行再收日期，时间永远在
-        const ckf = formOf('clock', ...dimsOf(c.size))
-        ;(node.querySelector('.ckwx') as HTMLElement).style.display = ckf.blocks.includes('wx') ? '' : 'none'
-        ;(node.querySelector('.ckdate') as HTMLElement).style.display = ckf.blocks.includes('date') ? '' : 'none'
-      }
       else if (c.template === 'canvas-app') {
         if (!node.dataset.shell) {
           node.innerHTML = `<h3><span class="ico">${TPL_ICONS['canvas-app']}</span><span class="cvtitle"></span>` +
@@ -712,8 +698,6 @@ function renderStatus() {
   $('soc').textContent = String(Math.round(meta.soc))
   const wl = WX_LABEL[meta.weather] ?? '多云'
   $('wx').textContent = `${WX_EMOJI[meta.weather] ?? '☁️'} ${wl}`
-  for (const el of Array.from(document.querySelectorAll('.ckwx')))
-    el.innerHTML = `${weatherIcon(wl)}<span>车外 ${Math.round(meta.outTemp)}°C</span>`
 }
 
 $('chipTask').onclick = () => bus.send({ type: 'taskChip' } as any)
@@ -819,10 +803,7 @@ hello(); setTimeout(hello, 500); setInterval(hello, 4000)
 
 setInterval(() => {
   const d = new Date()
+  // 状态栏时钟。时间是遥测不是状态，屏端本地每秒刷，不过 store 不过 bus
   $('clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  // 时钟氛围卡：时间是遥测不是状态，屏端本地每秒刷，不过 store 不过 bus
-  for (const el of Array.from(document.querySelectorAll('.cktime'))) el.textContent = $('clock').textContent!
-  for (const el of Array.from(document.querySelectorAll('.ckdate')))
-    el.textContent = `${new Date().getMonth() + 1}月${new Date().getDate()}日 星期${'日一二三四五六'[new Date().getDay()]}`
 }, 1000)
 renderStatus(); renderDesk()

@@ -100,12 +100,12 @@ describe('suggestSize：内容决定建议尺寸', () => {
   })
 })
 
-// 实拍：时钟卡 data.title 是空串，被挤时横幅写「」——?? 只认 null/undefined，
-// 空标题要跌落到模板名（"时钟卡"），空串跟没有对用户是一回事
+// 实拍：某些卡的 data.title 是空串，被挤时横幅写成「」——?? 只认 null/undefined，
+// 空标题要跌落到模板名，空串跟没有对用户是一回事
 describe('titleOf：空串标题跌落到模板 label', () => {
   it('data.title 为空串时用模板名，不产生「」', async () => {
     const { titleOf } = await import('../../src/cards/summary')
-    expect(titleOf({ template: 'clock', data: { title: '' } } as any)).toBe('时钟卡')
+    expect(titleOf({ template: 'feedback', data: { title: '' } } as any)).toBe('反馈卡')
     expect(titleOf({ template: 'weather', data: { title: '成都天气' } } as any)).toBe('成都天气')
   })
 })

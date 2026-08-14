@@ -321,6 +321,41 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxico svg{width:100%;height:100%;stroke-width:1.4}
 .t-chip .wxico,.t-strip .wxico{width:calc(52px*var(--u));height:calc(52px*var(--u))}
 
+/* ── 绘本卡「路上的故事」 ── */
+/* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
+.sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
+.sbart{flex:1.5;min-height:0;border-radius:calc(18px*var(--u));overflow:hidden;
+  background:linear-gradient(160deg,#FDE9C0,#C7E0FF)}
+/* Ken Burns：极缓慢的推拉，静态图立刻有动画感。纯 CSS，零成本 */
+.sbart img{width:100%;height:100%;object-fit:cover;display:block;
+  animation:sbkb 20s ease-in-out infinite alternate}
+@keyframes sbkb{from{transform:scale(1)}to{transform:scale(1.06)}}
+.sbcap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:calc(10px*var(--u));
+  padding:calc(20px*var(--u)) calc(8px*var(--u)) 0}
+.sbch{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);letter-spacing:.04em}
+.sbline{font-size:calc(var(--t-lead)*var(--u));line-height:1.7;font-weight:500}
+.sbline .lit{background:var(--pick-bg);border-radius:calc(6px*var(--u));padding:0 calc(4px*var(--u))}
+.sbidea{font-size:calc(var(--t-cap)*var(--u));color:var(--warm-fg,var(--tx-2))}
+/* 进度点：实心=已生成，加粗=当前，虚线=还在画。**不显示总数** */
+.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center;margin-top:auto;
+  padding-bottom:calc(4px*var(--u))}
+.sbdots i{width:calc(10px*var(--u));height:calc(10px*var(--u));border-radius:999px;
+  background:var(--n3,#E2E8F0);flex:none}
+.sbdots i.on{background:var(--ac);width:calc(28px*var(--u))}
+.sbdots i.pend{background:transparent;border:1px dashed var(--n4,#CBD5E1)}
+/* 定妆：并排对照——家长要判断的就是"像不像"，不并排没法判断 */
+.sbcast{display:flex;height:100%;gap:calc(16px*var(--u));margin-top:calc(-8px*var(--u))}
+.sbsrc{width:26%;display:flex;flex-direction:column;gap:calc(8px*var(--u))}
+.sbsrc span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.sbsrc img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:calc(14px*var(--u))}
+.sbout{flex:1;display:flex;flex-direction:column;gap:calc(10px*var(--u));min-height:0}
+.sbout img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:calc(18px*var(--u))}
+.sbout p{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
+/* 生成中：模糊到清晰，不用转圈——比 loading 圈高级得多 */
+.sbwait{flex:1;border-radius:calc(18px*var(--u));background:linear-gradient(160deg,#FEF3C7,#FED7AA);
+  filter:blur(14px);animation:sbpulse 1.6s ease-in-out infinite alternate}
+@keyframes sbpulse{from{opacity:.55}to{opacity:.85}}
+
 /* ── 能力目录 ── */
 /* 列数由形态函数给（c1/c2/c3），不在 CSS 里硬编码 ——
    写死 3 列的话 form.cols 说 2 列、渲染出 3 列，算出来的容量对不上，

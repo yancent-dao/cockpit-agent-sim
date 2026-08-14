@@ -126,6 +126,29 @@ input::placeholder{color:#4A5462}
          （实拍：开机第一句问车窗空调，Agent 接着上个会话问"你要去哪个充电站"） -->
     <div id="memNote" class="hint" style="display:none;margin-top:6px"></div>
   </section>
+
+  <!-- 路上的故事：AI 儿童有声绘本。
+       授权是**一次性的明确动作**不是设置里的默认开关 —— 照片不存我们这
+       （没有后端），但会发给第三方模型，儿童影像是最敏感的一类数据。 -->
+  <section>
+    <h2>路上的故事</h2>
+    <div class="hint">把孩子的照片放进 <code>public/hero/</code>，或在这里上传一张。</div>
+    <div class="row" style="margin-top:8px;align-items:center;gap:10px">
+      <img id="heroPic" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover;
+        background:#eee;display:none">
+      <input id="heroFile" type="file" accept="image/*" style="max-width:190px">
+    </div>
+    <label class="row" style="margin-top:9px;align-items:flex-start;gap:7px;cursor:pointer">
+      <input id="heroOk" type="checkbox" style="margin-top:3px">
+      <span class="hint">我同意把这张照片发给画图的模型，用来生成故事主角。
+        照片不会存到任何服务器，但生成过程需要把它发给第三方模型。</span>
+    </label>
+    <div class="row" style="margin-top:9px">
+      <button id="bookExport">导出上一本书</button>
+      <button id="heroForget">清掉照片</button>
+    </div>
+    <div id="storyNote" class="hint" style="margin-top:6px"></div>
+  </section>
  </div>
 
  <div>
@@ -772,6 +795,27 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       requireItems: true,
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
+    },
+    /**
+     * 绘本卡（2026-08-14「路上的故事」）—— 跟其它卡**不是一类东西**。
+     *
+     * 普通卡片是数据的一个投影，随时能被挤走、缩放、替换；绘本是一次
+     * **有开始有结束的会话**，中途被挤下桌就是故事断了。所以 evictable:false，
+     * 跟导航卡同级保护。
+     *
+     * 三档不是大小差异是**场景差异**：court 竖版、stage 行驶中给副驾看、
+     * full 停车时全屏沉浸。阶段（定妆/讲述/提问/成书）由 story.phase 信号驱动，
+     * 同一张卡换版式，不是四张卡。
+     */
+    {
+      id: "storybook",
+      label: "绘本卡",
+      defaultSize: "stage",
+      sizes: ["court", "stage", "full"],
+      systemOnly: true,
+      evictable: false,
+      desc: "正在讲的绘本，由 story.* 工具自动创建与刷新，不要手动建。data: {title, chapter, page, line, image, ideas?, lesson?}",
+      fields: { line: { type: "string", required: true } }
     },
     {
       id: "generic",
@@ -1535,6 +1579,94 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       permission: "彩",
       params: {},
       handler: "memoryList"
+    },
+    /* ══════════════ 路上的故事：AI 儿童有声绘本（2026-08-14） ══════════════
+     *
+     * 六个 Tool 只做**机制**：存档案、画定妆、生成一章、成书、导出。
+     * 每章几页、什么时候该问孩子、快到站怎么收尾 —— 全是**章法**，
+     * 归模型按技能包决定，所以页数是参数不是常量。
+     * 代码里出现 `if (chapter === 1) pages = 3` 就是把策略写进了机制。
+     */
+    {
+      name: "story.profile",
+      brief: "记下孩子的名字年龄和这次想讲明白的道理",
+      desc: "建立或更新孩子档案。家长不该每次填表——一次录入，之后每次只说一句「给妞妞讲个关于分享的故事」就够。lesson 是家长真正在意的字段：分享、勇敢、刷牙、不怕黑、交通安全（最后这个在车里讲场景绝配）。",
+      permission: "彩",
+      params: {
+        name: { type: "string", desc: "孩子怎么称呼" },
+        age: { type: "number", desc: "几岁——决定用词深浅和故事长度" },
+        interests: { type: "array", desc: '喜欢什么，如 ["小熊","下雨天"]，写进故事让它贴着孩子来' },
+        lesson: { type: "string", desc: "这次想讲明白的道理" }
+      },
+      handler: "storyProfile"
+    },
+    {
+      name: "story.cast",
+      brief: "把孩子的照片画成故事主角",
+      desc: "按家长给的照片生成一张动漫版**定妆照**，家长确认「像不像」。这是全书唯一需要家长把关的一步，也是角色一致性的锚：之后每一页都拿这张当参考图（**不是拿上一页**），所以误差不累积、某页画歪单页重画就行。style 默认扁平童书风——写实风细节多、跨页漂移大，这不只是审美选择。",
+      permission: "彩",
+      params: {
+        look: {
+          type: "string",
+          required: true,
+          desc: "锁死的形象不变量，如「短发、齐刘海、黄色连衣裙、5 岁女孩」。这几条会写进每一页的提示词，别每次换说法"
+        },
+        style: { type: "string", desc: "画风，默认「扁平矢量童书插画，柔和暖色」" }
+      },
+      handler: "storyCast"
+    },
+    {
+      name: "story.begin",
+      brief: "开一本新绘本，讲第一章",
+      desc: "按主题开篇。**第一章给 3 页**——刚好够「谁·在哪·出事了」一个完整的开头，把孩子拉进去。每页一句话配一张插图，文字先出立刻开讲、图片后台补齐。把车窗外的真实世界织进故事（正在过的桥、外面的天气、要去的地方）——孩子抬头看窗外故事和现实对上了，这是手机上的绘本做不到的事。讲完这一章系统会自动问孩子「你觉得后面会发生什么」。",
+      permission: "彩",
+      params: {
+        title: { type: "string", required: true, desc: "书名" },
+        pages: {
+          type: "array",
+          required: true,
+          desc: "这一章每页一条 {line, scene}：line 是念给孩子听的一句话（一屏一句，别写成一段），scene 是这一页画什么（一句画面描述，主角形象不用重复写，系统会带上定妆照）"
+        }
+      },
+      handler: "storyBegin"
+    },
+    {
+      name: "story.continue",
+      brief: "接着孩子说的往下写一章",
+      desc: "按孩子刚才说的续写。**每章给 2 页**——2 页约 40 秒，孩子的注意力刚好在这个尺度上，问得太晚他已经跑神了。先复述一遍孩子的想法再往下编（「哇，会飞的自行车！」——让他知道被听见了，这一秒比什么都重要），idea 会记进书里，导出的封底要单列出来。",
+      permission: "彩",
+      params: {
+        idea: { type: "string", required: true, desc: "孩子说了什么，原话记下来" },
+        pages: { type: "array", required: true, desc: "同 story.begin 的 pages" }
+      },
+      handler: "storyContinue"
+    },
+    {
+      name: "story.finish",
+      brief: "收尾成书",
+      desc: "孩子说「结束吧/不玩了/就到这儿」，或者快到站了，就收尾。ending 是最后一页，要给个像样的结局别硬停。收完会出成书页，家长可以导出。",
+      permission: "彩",
+      params: {
+        ending: { type: "string", required: true, desc: "结尾那一句" },
+        scene: { type: "string", desc: "结尾这一页画什么" }
+      },
+      handler: "storyFinish"
+    },
+    {
+      name: "story.export",
+      brief: "把这本书做成可以发给别人的网页",
+      desc: "导出成**自包含的 H5 单文件**：图片全部内嵌，双击就能打开，不用网。这是家长真正会转发给爷爷奶奶的东西——车上的体验是过程，它才是留下来的。",
+      permission: "彩",
+      params: {},
+      handler: "storyExport"
+    },
+    {
+      name: "story.page",
+      brief: "翻页/暂停（屏幕按钮直调，不叫醒模型）",
+      desc: "绘本卡上的翻页与暂停。用户点屏幕时手势层直调这个，不进对话。",
+      permission: "彩",
+      params: { dir: { type: "enum", values: ["prev", "next", "toggle"], required: true, desc: "往哪翻" } },
+      handler: "storyPage"
     }
   ];
   var CAPABILITY_DOMAINS = [
@@ -1635,6 +1767,12 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       overflow: mode === "count" ? "count" : "more"
     };
   };
+  var storybookForm = (c, _r) => {
+    const blocks = ["art", "line", "dots"];
+    if (c >= 8) blocks.push("chapter");
+    if (c >= 12) blocks.push("lesson", "ctl");
+    return { blocks };
+  };
   var CARD_FORMS = {
     nav: navForm,
     control: controlForm,
@@ -1649,6 +1787,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     media: mediaForm,
     weather: weatherForm,
     capability: capForm,
+    storybook: storybookForm,
     generic: genericForm
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
@@ -2745,6 +2884,166 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   }
 
+  // src/integrations/storyHandlers.ts
+  var CARD = "storybook";
+  var DEFAULT_STYLE = "扁平矢量童书插画，柔和暖色，干净背景";
+  function createStoryHandlers(store2, desk2, story2, image) {
+    let draft = null;
+    let look = "";
+    let style = DEFAULT_STYLE;
+    let spent = 0;
+    const reject = (code, message) => ({ status: "rejected", code, message });
+    const paint = (extra = {}) => {
+      const page = store2.get("story.page");
+      const p = draft?.pages[page - 1];
+      desk2()?.render({
+        key: CARD,
+        template: "storybook",
+        kind: "system",
+        urgency: "urgent",
+        ttl: "untilDismissed",
+        data: {
+          title: draft?.title ?? "",
+          chapter: store2.get("story.chapter"),
+          page,
+          total: draft?.pages.length ?? 0,
+          line: p?.text ?? "",
+          image: p?.image,
+          ideas: draft?.ideas ?? [],
+          ...extra
+        }
+      });
+    };
+    const draw = async (scene, aspect = "16:9") => {
+      const cast = story2().cast();
+      try {
+        const r = await image().generate({
+          prompt: `${style}。${scene}。主角形象保持一致：${look}`,
+          refs: cast ? [cast] : void 0,
+          aspect
+        });
+        spent += r.cost;
+        return r.dataUrl;
+      } catch {
+        return void 0;
+      }
+    };
+    const fillImages = async (from, specs) => {
+      store2.set("story.pending", specs.length);
+      for (let i = 0; i < specs.length; i++) {
+        const url = await draw(specs[i].scene);
+        if (draft?.pages[from + i]) draft.pages[from + i].image = url;
+        store2.set("story.pending", specs.length - i - 1);
+        paint();
+      }
+    };
+    const addChapter = async (specs) => {
+      const from = draft.pages.length;
+      draft.pages.push(...specs.map((s) => ({ text: s.line })));
+      draft.chapter += 1;
+      store2.set("story.chapter", draft.chapter);
+      store2.set("story.page", from + 1);
+      store2.set("story.phase", "telling");
+      paint();
+      await fillImages(from, specs);
+    };
+    return {
+      storyProfile: async (a) => {
+        story2().saveProfile({ name: a?.name, age: a?.age, interests: a?.interests, lesson: a?.lesson });
+        return { status: "ok", message: `记住了，${a?.name ?? "孩子"}的档案存好了` };
+      },
+      /**
+       * 定妆 —— 全书唯一需要家长把关的一步。
+       * 授权闸在这里而不是在 UI：儿童影像是最敏感的一类数据，
+       * 任何一条通往"把照片发出去"的路径都得过同一个闸。
+       */
+      storyCast: async (a) => {
+        const s = story2();
+        if (!s.consented())
+          return reject("NEED_CONSENT", "照片要发给画图的模型才能生成主角，得先请家长在控制面板上点头同意");
+        const photo = s.photo();
+        if (!photo)
+          return reject("NO_PHOTO", "还没有孩子的照片——把图放进 public/hero/，或者在控制面板上传一张");
+        look = String(a?.look ?? "");
+        style = String(a?.style || DEFAULT_STYLE);
+        let url;
+        try {
+          const r = await image().generate({
+            prompt: `${style}。为这个孩子画一张动漫版定妆立绘，正面、全身、表情友好。形象要点：${look}`,
+            refs: [photo],
+            aspect: "1:1"
+          });
+          spent += r.cost;
+          url = r.dataUrl;
+        } catch (e) {
+          return reject(e?.code ?? "DRAW_FAILED", e?.message ?? "这次没画出来，再试一次看看");
+        }
+        s.saveCast(url);
+        store2.set("story.phase", "cast");
+        desk2()?.render({
+          key: CARD,
+          template: "storybook",
+          kind: "system",
+          urgency: "urgent",
+          ttl: "untilDismissed",
+          data: { title: "这是故事里的主角", line: "像吗？不像的话我再画一张", photo, image: url, page: 0, total: 0 }
+        });
+        return { status: "ok", message: "主角画好了，给家长看看像不像", data: { cost: spent } };
+      },
+      storyBegin: async (a) => {
+        if (!story2().cast()) return reject("NO_CAST", "还没给主角定妆，先调 story.cast 画一张");
+        const specs = a?.pages ?? [];
+        draft = { title: String(a?.title ?? "我们的故事"), pages: [], ideas: [], chapter: 0 };
+        store2.set("story.active", true);
+        await addChapter(specs);
+        return { status: "ok", message: `《${draft.title}》开讲了`, data: { pages: specs.length, cost: spent } };
+      },
+      storyContinue: async (a) => {
+        if (!draft) return reject("NO_STORY", "还没有正在讲的故事，先调 story.begin 开一本");
+        if (a?.idea) draft.ideas.push(String(a.idea));
+        await addChapter(a?.pages ?? []);
+        return { status: "ok", message: "接着往下讲了", data: { cost: spent } };
+      },
+      storyFinish: async (a) => {
+        if (!draft) return reject("NO_STORY", "还没有正在讲的故事");
+        const end = String(a?.ending ?? "");
+        if (end) {
+          draft.pages.push({ text: end });
+          store2.set("story.page", draft.pages.length);
+          if (a?.scene) draft.pages[draft.pages.length - 1].image = await draw(String(a.scene));
+        }
+        const book = {
+          title: draft.title,
+          createdAt: Date.now(),
+          pages: draft.pages,
+          ideas: draft.ideas,
+          trip: String(store2.get("navigation.destination") || "")
+        };
+        story2().saveBook(book);
+        store2.set("story.phase", "done");
+        store2.set("story.active", false);
+        store2.set("story.pending", 0);
+        paint({ done: true });
+        return { status: "ok", message: `《${book.title}》讲完了，${book.pages.length} 页`, data: { cost: spent } };
+      },
+      /** 翻页：屏幕按钮直调，不叫醒模型。翻到头停住，不绕回也不报错 */
+      storyPage: async (a) => {
+        if (!draft) return reject("NO_STORY", "现在没有在讲的故事");
+        const cur = store2.get("story.page");
+        const dir = String(a?.dir ?? "next");
+        const next = dir === "prev" ? Math.max(1, cur - 1) : dir === "next" ? Math.min(draft.pages.length, cur + 1) : cur;
+        store2.set("story.page", next);
+        paint();
+        return { status: "ok", data: { page: next } };
+      },
+      storyExport: async () => {
+        const b = story2().books()[0];
+        if (!b) return reject("NO_BOOK", "还没有讲完的书可以导出");
+        return { status: "ok", message: `《${b.title}》可以导出了`, data: { book: b } };
+      }
+    };
+  }
+
   // src/integrations/memoryHandlers.ts
   function createMemoryHandlers(prefs2, desk2) {
     const need = () => {
@@ -2791,6 +3090,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     let currentRound = 0;
     let autoRound = 0;
     let seq = 0;
+    const needStory = () => {
+      if (!deps.story) throw new Error("绘本能力未装配：createRegistry 缺少 story");
+      return deps.story;
+    };
+    const needImage = () => {
+      if (!deps.image) throw new Error("绘本能力未装配：createRegistry 缺少 image");
+      return deps.image;
+    };
     const handlers = {
       getState: (args) => {
         const snap = store2.snapshot();
@@ -2897,6 +3204,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
       ...createNavHandlers(store2, () => needAmap(), () => sizedDesk(), () => currentRound),
       ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
+      /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
+      ...createStoryHandlers(store2, () => sizedDesk(), () => needStory(), () => needImage()),
       ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
     };
     const sizedDesk = () => {
@@ -3315,6 +3624,261 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   }
 
+  // src/state/story.ts
+  var K = {
+    profile: "cockpit-sim:story:profile",
+    photo: "cockpit-sim:story:photo",
+    cast: "cockpit-sim:story:cast",
+    consent: "cockpit-sim:story:consent",
+    books: "cockpit-sim:story:books"
+  };
+  var BOOK_CAP = 5;
+  function createStoryStore(storage) {
+    const read = (k, fallback) => {
+      try {
+        const raw = storage.get(k);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const write = (k, v) => {
+      try {
+        storage.set(k, JSON.stringify(v));
+      } catch {
+      }
+    };
+    return {
+      profile: () => read(K.profile, null),
+      /** 合并不覆盖 —— 只改教育目标不该把名字和兴趣一起丢了 */
+      saveProfile(p) {
+        write(K.profile, { ...read(K.profile, null) ?? {}, ...p });
+      },
+      /** 家长给的原始照片。跟定妆照分开存：要能对照"像不像"，也要能重新定妆 */
+      photo: () => read(K.photo, null),
+      savePhoto: (dataUrl) => write(K.photo, dataUrl),
+      /**
+       * 定妆照 —— **全书每一页的锚**。
+       *
+       * 角色一致性靠它：之后每页都拿这张当参考图，**不是拿上一页**。
+       * 每页独立锚在同一个点上，误差不累积；某页画歪了单页重画就行，
+       * 不用整本重来（调研里"累积漂移"的失败模式就是以上一页为参考）。
+       * 只存一张，家长说"换一个"就覆盖 —— 不做历史版本。
+       */
+      cast: () => read(K.cast, null),
+      saveCast: (dataUrl) => write(K.cast, dataUrl),
+      /**
+       * 儿童影像是最敏感的一类数据。照片不存我们这（没有后端），
+       * 但**会发给第三方模型**做生成 —— 这件事必须是家长点过头的一次性明确动作，
+       * 不是埋在设置里的默认开关。
+       */
+      consented: () => read(K.consent, false) === true,
+      consent: () => write(K.consent, true),
+      /** 撤回时连照片和定妆照一起清。只关开关等于没撤回 */
+      revoke() {
+        write(K.consent, false);
+        write(K.photo, null);
+        write(K.cast, null);
+      },
+      /** 最新的排最前 —— 孩子想接着讲的多半是刚才那本 */
+      books: () => read(K.books, []).slice().sort((a, b) => b.createdAt - a.createdAt),
+      saveBook(b) {
+        const all = [...read(K.books, []), b].sort((x, y) => y.createdAt - x.createdAt).slice(0, BOOK_CAP);
+        write(K.books, all);
+      }
+    };
+  }
+
+  // src/integrations/orimage.ts
+  var REF_CAP = 14;
+  var DEFAULT_MODEL = "google/gemini-3.1-flash-image";
+  var ENDPOINT = "https://openrouter.ai/api/v1/images";
+  var TIMEOUT_MS = 6e4;
+  var ImageError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  function createImageClient(fetcher, key, opts = {}) {
+    const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+    async function generate(o) {
+      const k = key();
+      if (!k) throw new ImageError("还没配 OpenRouter 的 Key，画不了图", "NO_KEY");
+      const body = { model: o.model ?? DEFAULT_MODEL, prompt: o.prompt };
+      if (o.refs?.length) body.input_references = o.refs.slice(0, REF_CAP);
+      if (o.aspect) body.aspect_ratio = o.aspect;
+      let timer;
+      const timeout = new Promise((_, rej) => {
+        timer = setTimeout(() => rej(new ImageError("画图超时了，等太久", "TIMEOUT")), timeoutMs);
+      });
+      const res = await Promise.race([
+        fetcher(ENDPOINT, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }),
+        timeout
+      ]).finally(() => clearTimeout(timer));
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const why = json?.error?.message || json?.message || "画图服务没接受这次请求";
+        throw new ImageError(why, json?.error?.code ?? "UPSTREAM");
+      }
+      const first = json?.data?.[0];
+      if (!first?.b64_json) throw new ImageError("画图服务没给出图片", "NO_IMAGE");
+      return {
+        dataUrl: `data:${first.media_type || "image/png"};base64,${first.b64_json}`,
+        cost: Number(json?.usage?.cost ?? 0)
+      };
+    }
+    return { generate };
+  }
+
+  // src/integrations/h5book.ts
+  var esc2 = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  var fmtDate = (t) => {
+    const d = new Date(t);
+    return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+  };
+  function dedupe(pages, cover) {
+    const ids = /* @__PURE__ */ new Map();
+    const put = (url) => {
+      if (!url) return void 0;
+      if (!ids.has(url)) ids.set(url, `i${ids.size}`);
+      return ids.get(url);
+    };
+    const coverId = put(cover);
+    const pageIds = pages.map((p) => put(p.image));
+    return { ids, coverId, pageIds };
+  }
+  function buildBookHtml(book, meta = {}) {
+    const { ids, coverId, pageIds } = dedupe(book.pages, meta.cast);
+    const imgVars = [...ids].map(([url, id]) => `--${id}:url("${url}")`).join(";");
+    const who = meta.name ? esc2(meta.name) : "小朋友";
+    const age = meta.age ? `${meta.age} 岁` : "";
+    const trip = book.trip ? `在去${esc2(book.trip)}的路上` : "在路上";
+    const pageHtml = book.pages.map((p, i) => `
+  <section class="pg">
+    ${pageIds[i] ? `<div class="art" style="background-image:var(--${pageIds[i]})"></div>` : '<div class="art noart"></div>'}
+    <div class="cap"><p>${esc2(p.text)}</p></div>
+  </section>`).join("");
+    const ideaHtml = book.ideas.length ? `<div class="ideas"><h3>${who}想出来的</h3><p>${book.ideas.map(esc2).join(" · ")}</p></div>` : "";
+    return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>${esc2(book.title)}</title>
+<style>
+:root{${imgVars};--ink:#2B2118;--paper:#FDFBF7;--warm:#B45309;--line:#E7E3DC}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
+  font-family:"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif}
+#deck{height:100%;position:relative}
+section{position:absolute;inset:0;display:flex;flex-direction:column;
+  opacity:0;pointer-events:none;transition:opacity .45s ease}
+section.on{opacity:1;pointer-events:auto}
+.art{flex:1.4;background-size:cover;background-position:center;min-height:0;
+  animation:kb 18s ease-in-out infinite alternate}
+/* Ken Burns：极缓慢的推拉，静态图立刻有动画感。纯 CSS，零成本 */
+@keyframes kb{from{transform:scale(1)}to{transform:scale(1.07)}}
+.noart{background:linear-gradient(160deg,#FDE9C0,#C7E0FF)}
+.cap{flex:1;display:flex;align-items:center;padding:7vw 8vw;background:var(--paper)}
+.cap p{font-size:clamp(19px,5.4vw,30px);line-height:1.85;font-weight:500}
+.cap p .lit{background:#FDE68A;border-radius:4px;padding:0 3px}
+/* 封面 */
+#cover{justify-content:flex-end;background:linear-gradient(165deg,#FEF3C7,#FDBA74 60%,#F97316)}
+#cover .face{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);
+  width:44vw;max-width:280px;aspect-ratio:1;border-radius:50%;background-size:cover;
+  background-position:center;border:5px solid rgba(255,255,255,.92);
+  box-shadow:0 10px 30px -10px rgba(0,0,0,.35)}
+#cover .t{padding:0 8vw 14vh;color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.3)}
+#cover h1{font-size:clamp(26px,8vw,44px);line-height:1.25;font-weight:600}
+#cover .by{margin-top:12px;font-size:clamp(13px,3.6vw,17px);opacity:.95;line-height:1.7}
+/* 封底 */
+#back{justify-content:center;padding:10vw 8vw;gap:22px;background:var(--paper)}
+#back h2{font-size:clamp(20px,5.6vw,28px);line-height:1.7;font-weight:600}
+.ideas{border-top:1px solid var(--line);padding-top:18px}
+.ideas h3{font-size:13px;letter-spacing:.1em;color:var(--warm);margin-bottom:6px}
+.ideas p{font-size:clamp(16px,4.4vw,20px);line-height:1.8}
+/* 控制条 */
+#bar{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;
+  justify-content:space-between;padding:14px 20px calc(14px + env(safe-area-inset-bottom));
+  font-size:13px;color:#8B8378;background:linear-gradient(transparent,rgba(253,251,247,.96) 40%)}
+#say{color:var(--warm);font-weight:600;padding:6px 12px;border:1px solid var(--line);
+  border-radius:99px;background:#fff;cursor:pointer}
+#nav{display:flex;gap:16px;font-size:18px;color:var(--warm);cursor:pointer;user-select:none}
+</style></head><body>
+<div id="deck">
+  <section id="cover" class="on">
+    ${coverId ? `<div class="face" style="background-image:var(--${coverId})"></div>` : ""}
+    <div class="t"><h1>${esc2(book.title)}</h1>
+      <div class="by">${who}${age ? " · " + age : ""}<br>${fmtDate(book.createdAt)}</div></div>
+  </section>${pageHtml}
+  <section id="back">
+    <h2>这个故事是<br>${who}和大人<br>${trip}<br>一起写的</h2>
+    ${ideaHtml}
+  </section>
+</div>
+<div id="bar"><span id="pn"></span><span id="say">🔊 念给我听</span>
+  <span id="nav"><b data-d="-1">‹</b><b data-d="1">›</b></span></div>
+<script>
+(function(){
+  var pages=[].slice.call(document.querySelectorAll('#deck section'));
+  var i=0, bar=document.getElementById('pn');
+  function show(n){
+    i=Math.max(0,Math.min(pages.length-1,n));
+    pages.forEach(function(p,k){p.classList.toggle('on',k===i)});
+    bar.textContent=(i+1)+' / '+pages.length;
+    stop();
+  }
+  function go(d){show(i+d)}
+  document.getElementById('nav').addEventListener('click',function(e){
+    var d=e.target.getAttribute('data-d'); if(d) go(+d);
+  });
+  // 左右滑翻页。竖向滑动不拦，免得挡住系统手势
+  var x0=null,y0=null;
+  document.addEventListener('touchstart',function(e){x0=e.touches[0].clientX;y0=e.touches[0].clientY},{passive:true});
+  document.addEventListener('touchend',function(e){
+    if(x0===null)return; var dx=e.changedTouches[0].clientX-x0, dy=e.changedTouches[0].clientY-y0;
+    if(Math.abs(dx)>48&&Math.abs(dx)>Math.abs(dy)) go(dx<0?1:-1);
+    x0=null;
+  },{passive:true});
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key===' ') go(1);
+    if(e.key==='ArrowLeft') go(-1);
+  });
+  // 朗读：浏览器原生。onboundary 给逐字点亮，第三方 TTS 多数不给这个时间戳
+  var cur=null;
+  function stop(){ try{speechSynthesis.cancel()}catch(_){} clearLit(); }
+  function clearLit(){
+    var m=document.querySelectorAll('.lit');
+    [].forEach.call(m,function(el){el.replaceWith(el.textContent)});
+  }
+  document.getElementById('say').addEventListener('click',function(){
+    if(!('speechSynthesis' in window))return;
+    var p=pages[i].querySelector('.cap p, h2, h1'); if(!p)return;
+    var text=p.textContent; clearLit();
+    var u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=.92;
+    u.onboundary=function(ev){
+      if(ev.name!=='word'&&ev.charIndex==null)return;
+      var s=ev.charIndex||0, e=s+(ev.charLength||2);
+      p.innerHTML=esc(text.slice(0,s))+'<span class="lit">'+esc(text.slice(s,e))+'</span>'+esc(text.slice(e));
+    };
+    u.onend=function(){p.textContent=text};
+    speechSynthesis.speak(u); cur=u;
+  });
+  function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+  show(0);
+})();
+<\/script></body></html>`;
+  }
+  function bookFileName(book) {
+    const safe = book.title.replace(/[/\\:*?"<>|]/g, "").trim() || "我们的故事";
+    const d = new Date(book.createdAt);
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+    return `${safe}-${stamp}.html`;
+  }
+
   // src/state/session.ts
   function recentSummary(d) {
     const lines = [];
@@ -3373,6 +3937,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
     "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    /**
+     * 绘本卡：翻页是**机械的桌面动作**，直调不叫醒模型 —— 点一下要等 LLM
+     * 转一圈是灾难（跟播放器的上一曲/下一曲同一条路由）。
+     * 跟导航卡一样刻意没有 swipe:away：讲到一半划走整张卡就是故事没了，
+     * 误触代价太大；右上角 ✕ 是一次明确点按，风险不一样，留着。
+     */
+    storybook: [
+      { on: "tap:prev", route: "tool", tool: "story.page", args: { dir: "prev" } },
+      { on: "tap:next", route: "tool", tool: "story.page", args: { dir: "next" } },
+      { on: "tap:toggle", route: "tool", tool: "story.page", args: { dir: "toggle" } },
+      ...RESIZE,
+      CLOSE
+    ],
     /**
      * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
      * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，
@@ -5671,6 +6248,64 @@ ${text}` });
       permission: "彩",
       initial: "none"
     },
+    /* ── 路上的故事（2026-08-14）：AI 儿童有声绘本 ──
+     * 跟导航卡、播放器卡同一个模式：信号驱动规则、规则驱动卡片，模型零参与布局。
+     * 播放进度不进 store 的那条界线在这里同样成立 —— 这几个都是**状态**不是遥测，
+     * 一章才变一次，不是每秒变好几次。 */
+    {
+      alias: "story.active",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryActive",
+      type: "boolean",
+      label: "正在讲故事",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "story.phase",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryPhase",
+      type: "enum",
+      values: ["idle", "cast", "telling", "asking", "done"],
+      label: "故事进行到哪一步",
+      valueLabels: { idle: "没在讲", cast: "给主角定妆", telling: "讲述中", asking: "问孩子接下来", done: "成书" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "idle"
+    },
+    {
+      alias: "story.page",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryPage",
+      type: "number",
+      label: "当前第几页",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    {
+      alias: "story.chapter",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryChapter",
+      type: "number",
+      label: "当前第几章",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    // 进度点里那几个虚线圈靠它。"故事一边讲一边长"这件事必须让人看见，
+    // 否则用户会以为卡住了
+    {
+      alias: "story.pending",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryPending",
+      type: "number",
+      label: "还有几页在画",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
     {
       alias: "media.playing",
       vssPath: "Vehicle.Cabin.Infotainment.Media.Action",
@@ -6233,8 +6868,48 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   交付物只留一张；语音只说三句以内结论，卡上的内容一个字不念`
   };
 
+  // agents/main-agent/skills/story.ts
+  var STORY_SKILL = {
+    name: "讲故事",
+    whenToUse: "给孩子讲绘本、续故事、成书导出之前必读",
+    tools: ["story.profile", "story.cast", "story.begin", "story.continue", "story.finish", "story.export"],
+    inject: `给孩子讲绘本的章法：
+
+【节奏】第一章 3 页，之后每章 2 页。第一章要把孩子拉进去——3 页刚好够
+「谁·在哪·出事了」一个完整的开头；之后每章 2 页约 40 秒，孩子的注意力
+刚好在这个尺度上，问得太晚他已经跑神了。
+
+【每章结束必须问】讲完一章就停下来问孩子：「你觉得后面会发生什么呢？
+我们一起来写这个故事吧！」——这是**开放问题不是选择题**。孩子随便说
+（会飞的自行车、变成小猫、天上掉下一个西瓜）都接得住。给两个选项让他挑
+是在玩别人写好的故事，开放续写才是"一起写"。
+
+【孩子说完先复述再往下编】「哇，会飞的自行车！好主意，我这就画出来」——
+让他知道被听见了，这一秒比什么都重要。然后把他的原话原样填进
+story.continue 的 idea（封底要单列出来，让他看见这本书里有他写的部分）。
+
+【一屏一句】每页的 line 是**念给孩子听的一句话**，不是一段。孩子在动的车里
+不该盯着屏幕读长文。scene 是这一页画什么，一句画面描述就够——主角形象
+不用重复写，系统会带上定妆照。
+
+【把车窗外写进故事】这是车里讲故事相对手机 App 唯一真正的优势：
+正在过的桥、外面的天气、要去的地方、几点钟——都织进去。孩子抬头看窗外，
+故事和现实对上了。先看一眼 navigation.* 和 weather 的信号再动笔。
+
+【收尾】孩子说不想听了、或者快到站了（导航剩余时间少于两分钟），
+就用 story.finish 给个像样的结局，别硬停。默认讲到第三章之后主动问一句
+「这个故事就到这里好不好？」——他说继续就接着写，没有上限。
+
+【安全】只讲温暖的、寓教于乐的内容。不碰暴力、恐怖、成人话题；
+主角遇到困难要能解决，不留悬着的恐惧。孩子提了不合适的方向就顺着
+拐回来（「小怪兽其实只是想找朋友」），不要生硬拒绝。
+
+【先定妆】没有主角形象就先 story.cast。look 里把不变量写死：
+发型、发色、上衣颜色、年龄段——这几条每页都会带上，别每次换说法。`
+  };
+
   // agents/main-agent/skills/index.ts
-  var SKILLS = [NAV_SKILL, MEDIA_SKILL, CARDCRAFT_SKILL];
+  var SKILLS = [NAV_SKILL, MEDIA_SKILL, CARDCRAFT_SKILL, STORY_SKILL];
 
   // src/director/main.ts
   var import_meta = {};
@@ -6251,6 +6926,71 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   var ME = { src: Math.random().toString(36).slice(2, 10), boot: Date.now() };
   var muted = false;
   var state = createDomainState();
+  var story = createStoryStore(defaultStorage());
+  var imageGen = createImageClient(fetch.bind(window), () => apiKey);
+  var $s = (id) => document.getElementById(id);
+  function renderStoryNote() {
+    const pic = $s("heroPic"), ok = $s("heroOk"), note = $s("storyNote");
+    const photo = story.photo();
+    if (pic) {
+      pic.src = photo || "";
+      pic.style.display = photo ? "" : "none";
+    }
+    if (ok) ok.checked = story.consented();
+    const b = story.books()[0];
+    if (note) note.textContent = b ? `上一本：《${b.title}》，${b.pages.length} 页` : photo ? "照片就位，说「给孩子讲个故事」就能开始" : "还没有照片";
+  }
+  async function loadHeroFromPublic() {
+    if (story.photo()) return;
+    for (const n of ["child.jpg", "child.png", "child.jpeg", "child.webp"]) {
+      try {
+        const r = await fetch("/hero/" + n);
+        if (!r.ok) continue;
+        const blob = await r.blob();
+        story.savePhoto(await new Promise((res) => {
+          const fr = new FileReader();
+          fr.onload = () => res(String(fr.result));
+          fr.readAsDataURL(blob);
+        }));
+        break;
+      } catch {
+      }
+    }
+    renderStoryNote();
+  }
+  $s("heroFile")?.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      story.savePhoto(String(fr.result));
+      renderStoryNote();
+    };
+    fr.readAsDataURL(f);
+  });
+  $s("heroOk")?.addEventListener("change", (e) => {
+    if (e.target.checked) story.consent();
+    else story.revoke();
+    renderStoryNote();
+  });
+  $s("heroForget")?.addEventListener("click", () => {
+    story.revoke();
+    renderStoryNote();
+  });
+  $s("bookExport")?.addEventListener("click", () => {
+    const b = story.books()[0];
+    if (!b) return;
+    const p = story.profile() ?? {};
+    const html = buildBookHtml(b, { name: p.name, age: p.age, cast: story.cast() ?? void 0 });
+    const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = bookFileName(b);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  });
+  loadHeroFromPublic();
+  renderStoryNote();
   var prefs = createPrefs();
   var autoplay = createAutoplay(store, state);
   var registry = createRegistry(store, TOOLS, Date.now, {
@@ -6262,7 +7002,9 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     radio: createRadioClient(fetch.bind(window)),
     news: createNewsClient(fetch.bind(window), () => newsKey),
     pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
-    websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId))
+    websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
+    story,
+    image: imageGen
   });
   createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start();
   var apiKey = "";

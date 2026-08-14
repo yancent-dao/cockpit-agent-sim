@@ -286,6 +286,34 @@ export const SIGNALS: Signal[] = [
     valueLabels: { none: '无', music: '音乐', radio: '电台', video: '视频' },
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'none' },
 
+  /* ── 路上的故事（2026-08-14）：AI 儿童有声绘本 ──
+   * 跟导航卡、播放器卡同一个模式：信号驱动规则、规则驱动卡片，模型零参与布局。
+   * 播放进度不进 store 的那条界线在这里同样成立 —— 这几个都是**状态**不是遥测，
+   * 一章才变一次，不是每秒变好几次。 */
+  { alias: 'story.active', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryActive',
+    type: 'boolean', label: '正在讲故事',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+
+  { alias: 'story.phase', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryPhase',
+    type: 'enum', values: ['idle', 'cast', 'telling', 'asking', 'done'],
+    label: '故事进行到哪一步',
+    valueLabels: { idle: '没在讲', cast: '给主角定妆', telling: '讲述中', asking: '问孩子接下来', done: '成书' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'idle' },
+
+  { alias: 'story.page', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryPage',
+    type: 'number', label: '当前第几页',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
+  { alias: 'story.chapter', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryChapter',
+    type: 'number', label: '当前第几章',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
+  // 进度点里那几个虚线圈靠它。"故事一边讲一边长"这件事必须让人看见，
+  // 否则用户会以为卡住了
+  { alias: 'story.pending', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryPending',
+    type: 'number', label: '还有几页在画',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
   { alias: 'media.playing', vssPath: 'Vehicle.Cabin.Infotainment.Media.Action',
     type: 'boolean', label: '正在播放',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },

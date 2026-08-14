@@ -2,8 +2,11 @@ import { injectTokens } from '../design/tokens'
 import { esc } from '../text'   // 卡片标题来自模型，转义走唯一实现
 import { createStore } from '../core/store'
 import { createRegistry } from '../tools/registry'
-import { createDomainState } from '../state/domain'
+import { createDomainState, defaultStorage } from '../state/domain'
 import { createPrefs } from '../state/prefs'
+import { createStoryStore } from '../state/story'
+import { createImageClient } from '../integrations/orimage'
+import { buildBookHtml, bookFileName } from '../integrations/h5book'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -53,13 +56,79 @@ let muted = false
 
 /** 领域状态仓：队列/历史/收藏（localStorage 持久化）。记忆系统的第三级 */
 const state = createDomainState()
+/**
+ * 绘本域仓 + 图像客户端。图像走的是**同一个 OpenRouter Key** ——
+ * 加一家图像服务商就要加一个 Key、一套鉴权、一份跨域风险，换不来任何东西。
+ */
+const story = createStoryStore(defaultStorage())
+const imageGen = createImageClient(fetch.bind(window), () => apiKey)
+
+/* ── 绘本的照片来源与导出（控制面板那一小块） ── */
+const $s = (id: string) => document.getElementById(id) as any
+function renderStoryNote() {
+  const pic = $s('heroPic'), ok = $s('heroOk'), note = $s('storyNote')
+  const photo = story.photo()
+  if (pic) { pic.src = photo || ''; pic.style.display = photo ? '' : 'none' }
+  if (ok) ok.checked = story.consented()
+  const b = story.books()[0]
+  if (note) note.textContent = b
+    ? `上一本：《${b.title}》，${b.pages.length} 页`
+    : (photo ? '照片就位，说「给孩子讲个故事」就能开始' : '还没有照片')
+}
+/**
+ * 项目目录里的照片。**只在没上传过时才读** —— 上传的优先级更高，
+ * 不然用户换了图刷新一下又被目录里那张顶回去。
+ */
+async function loadHeroFromPublic() {
+  if (story.photo()) return
+  for (const n of ['child.jpg', 'child.png', 'child.jpeg', 'child.webp']) {
+    try {
+      const r = await fetch('/hero/' + n)
+      if (!r.ok) continue
+      const blob = await r.blob()
+      story.savePhoto(await new Promise<string>(res => {
+        const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.readAsDataURL(blob)
+      }))
+      break
+    } catch { /* 没放图就算了 */ }
+  }
+  renderStoryNote()
+}
+$s('heroFile')?.addEventListener('change', (e: any) => {
+  const f = e.target.files?.[0]; if (!f) return
+  const fr = new FileReader()
+  fr.onload = () => { story.savePhoto(String(fr.result)); renderStoryNote() }
+  fr.readAsDataURL(f)
+})
+$s('heroOk')?.addEventListener('change', (e: any) => {
+  if (e.target.checked) story.consent(); else story.revoke()
+  renderStoryNote()
+})
+$s('heroForget')?.addEventListener('click', () => { story.revoke(); renderStoryNote() })
+/**
+ * 导出：Blob + `<a download>`。**零依赖**，也不需要后端 ——
+ * 自包含 H5 双击就能开，这是家长真正会转发的东西。
+ */
+$s('bookExport')?.addEventListener('click', () => {
+  const b = story.books()[0]
+  if (!b) return
+  const p = story.profile() ?? {}
+  const html = buildBookHtml(b, { name: p.name, age: p.age, cast: story.cast() ?? undefined })
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url; a.download = bookFileName(b); a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+})
+loadHeroFromPublic()
+renderStoryNote()
 const prefs = createPrefs()
 const autoplay = createAutoplay(store, state)
 const registry = createRegistry(store, TOOLS, Date.now, {
   state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   news: createNewsClient(fetch.bind(window), () => newsKey),
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
-  websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)) })
+  websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
+  story, image: imageGen })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
 createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start()

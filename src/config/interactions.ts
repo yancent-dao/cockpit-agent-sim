@@ -53,6 +53,18 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
   'canvas-app': [{ on: 'app', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
   /**
+   * 绘本卡：翻页是**机械的桌面动作**，直调不叫醒模型 —— 点一下要等 LLM
+   * 转一圈是灾难（跟播放器的上一曲/下一曲同一条路由）。
+   * 跟导航卡一样刻意没有 swipe:away：讲到一半划走整张卡就是故事没了，
+   * 误触代价太大；右上角 ✕ 是一次明确点按，风险不一样，留着。
+   */
+  storybook: [
+    { on: 'tap:prev', route: 'tool', tool: 'story.page', args: { dir: 'prev' } },
+    { on: 'tap:next', route: 'tool', tool: 'story.page', args: { dir: 'next' } },
+    { on: 'tap:toggle', route: 'tool', tool: 'story.page', args: { dir: 'toggle' } },
+    ...RESIZE, CLOSE,
+  ],
+  /**
    * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
    * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，
    * 补给它了（2026-08-13 实拍反馈）。缩放同理不是关闭：加了缩放按钮后

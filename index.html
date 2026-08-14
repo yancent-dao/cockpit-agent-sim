@@ -126,6 +126,29 @@ input::placeholder{color:#4A5462}
          （实拍：开机第一句问车窗空调，Agent 接着上个会话问"你要去哪个充电站"） -->
     <div id="memNote" class="hint" style="display:none;margin-top:6px"></div>
   </section>
+
+  <!-- 路上的故事：AI 儿童有声绘本。
+       授权是**一次性的明确动作**不是设置里的默认开关 —— 照片不存我们这
+       （没有后端），但会发给第三方模型，儿童影像是最敏感的一类数据。 -->
+  <section>
+    <h2>路上的故事</h2>
+    <div class="hint">把孩子的照片放进 <code>public/hero/</code>，或在这里上传一张。</div>
+    <div class="row" style="margin-top:8px;align-items:center;gap:10px">
+      <img id="heroPic" alt="" style="width:52px;height:52px;border-radius:10px;object-fit:cover;
+        background:#eee;display:none">
+      <input id="heroFile" type="file" accept="image/*" style="max-width:190px">
+    </div>
+    <label class="row" style="margin-top:9px;align-items:flex-start;gap:7px;cursor:pointer">
+      <input id="heroOk" type="checkbox" style="margin-top:3px">
+      <span class="hint">我同意把这张照片发给画图的模型，用来生成故事主角。
+        照片不会存到任何服务器，但生成过程需要把它发给第三方模型。</span>
+    </label>
+    <div class="row" style="margin-top:9px">
+      <button id="bookExport">导出上一本书</button>
+      <button id="heroForget">清掉照片</button>
+    </div>
+    <div id="storyNote" class="hint" style="margin-top:6px"></div>
+  </section>
  </div>
 
  <div>

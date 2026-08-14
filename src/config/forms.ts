@@ -242,6 +242,25 @@ export const capForm: FormFn = (c, r) => {
   }
 }
 
+/**
+ * 绘本卡。**画面和一句话是命根子**，任何档位都保 —— 少了画面不是绘本，
+ * 少了文字识字的孩子就没得看。
+ *
+ * 三档按**宽度**分，因为差别在"旁边还放不放得下东西"：
+ *   court(6 宽) 竖版，画面在上文字在下，只有进度点
+ *   stage(8 宽) 行驶中默认，多出章节标记（「妞妞和小熊的雨天 · 第一章」）
+ *   full(12 宽) 停车时沉浸，画面占左侧，右侧留出「这一页学到的词」和播控
+ *
+ * `dots` 是进度点。**不显示总数** —— 故事是开放的（孩子说结束才结束），
+ * 标了总数等于告诉孩子"还有三页就没了"，他会开始倒计时而不是听故事。
+ */
+export const storybookForm: FormFn = (c, _r) => {
+  const blocks = ['art', 'line', 'dots']
+  if (c >= 8) blocks.push('chapter')
+  if (c >= 12) blocks.push('lesson', 'ctl')
+  return { blocks }
+}
+
 /** 模板的形态函数。加模板 = 加一条，不改调用方 */
 export const CARD_FORMS: Record<string, FormFn> = {
   nav: navForm,
@@ -257,6 +276,7 @@ export const CARD_FORMS: Record<string, FormFn> = {
   media: mediaForm,
   weather: weatherForm,
   capability: capForm,
+  storybook: storybookForm,
   generic: genericForm,
 }
 

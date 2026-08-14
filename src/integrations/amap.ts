@@ -115,8 +115,18 @@ const STRATEGY: Record<string, number> = {
 const TRAFFIC_STATUS = ['unknown', 'clear', 'slow', 'congested'] as const
 
 /** init 是可选的：高德用不上，Pexels 要靠它传 Authorization 头 */
-export type Fetcher = (url: string, init?: { headers?: Record<string, string> })
-  => Promise<{ ok: boolean; json: () => Promise<any> }>
+/**
+ * 所有协议客户端共用的取数契约。窄到只剩 `ok` 和 `json()` 是刻意的 ——
+ * 测试传一个十行的假实现就够，不用 mock 整个 `fetch`。
+ *
+ * 2026-08-14 放宽了 init：图像 API 是 POST + JSON body（`orimage.ts`）。
+ * 这几个字段都是 `fetch` 本来就有的，浏览器那边传的就是 `fetch` 本身。
+ */
+export type Fetcher = (url: string, init?: {
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}) => Promise<{ ok: boolean; json: () => Promise<any> }>
 
 /**
  * 路线点抽稀。一条几十公里的路线有几百个坐标点，全塞进 URL 会超长被高德拒绝；

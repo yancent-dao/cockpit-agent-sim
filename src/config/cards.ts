@@ -63,6 +63,13 @@ export interface CardTemplate {
    */
   requireItems?: boolean
   /**
+   * 能不能被挤下桌。**模板特性归模板声明** —— 以前只能由调用方每次传，
+   * 漏一次这张卡就会在桌面挤的时候被静默收走。导航卡和绘本卡都是这类：
+   * 前者导航中被挤掉是事故，后者讲到一半被挤掉就是故事断了。
+   * 不写 = 可挤（绝大多数卡的正常行为）。调用方仍可显式覆盖。
+   */
+  evictable?: boolean
+  /**
    * data 的形状声明，供 registry 在 card.show/card.update 时做运行时校验——
    * 不声明（如 generic）就不校验。这不是通用 schema 引擎，只做一层平的
    * 必填 + 类型检查，跟 Tool 参数的 ParamDef 是同一个思路，绝不嵌套。
@@ -148,6 +155,22 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['court', 'full'], requireItems: true,
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
+  /**
+   * 绘本卡（2026-08-14「路上的故事」）—— 跟其它卡**不是一类东西**。
+   *
+   * 普通卡片是数据的一个投影，随时能被挤走、缩放、替换；绘本是一次
+   * **有开始有结束的会话**，中途被挤下桌就是故事断了。所以 evictable:false，
+   * 跟导航卡同级保护。
+   *
+   * 三档不是大小差异是**场景差异**：court 竖版、stage 行驶中给副驾看、
+   * full 停车时全屏沉浸。阶段（定妆/讲述/提问/成书）由 story.phase 信号驱动，
+   * 同一张卡换版式，不是四张卡。
+   */
+  { id: 'storybook', label: '绘本卡', defaultSize: 'stage', sizes: ['court', 'stage', 'full'],
+    systemOnly: true, evictable: false,
+    desc: '正在讲的绘本，由 story.* 工具自动创建与刷新，不要手动建。' +
+      'data: {title, chapter, page, line, image, ideas?, lesson?}',
+    fields: { line: { type: 'string', required: true } } },
   { id: 'generic', label: '通用卡', defaultSize: 'box', sizes: ['box', 'wide', 'panel'],
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },
   /**

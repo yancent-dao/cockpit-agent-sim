@@ -179,6 +179,35 @@ export function cardBody(c: CardView): string {
         `<div class="${i.off ? 'off' : ''}">${i.icon ? `<span class="cico">${esc(i.icon)}</span>` : ''}${esc(i.label)}<small>${esc(i.desc ?? '')}</small></div>`).join('')}</div>${
         rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ''}`
     }
+    /**
+     * 绘本卡（「路上的故事」）。同一张卡按 story.phase 换版式：
+     * 定妆时并排显示原照片与生成的主角（家长要判断"像不像"，不并排没法判断），
+     * 讲述时画面铺满、一句话压底。
+     *
+     * 进度点**不显示总数** —— 故事是开放的（孩子说结束才结束），
+     * 标了总数等于告诉孩子"还有三页就没了"，他会开始倒计时而不是听故事。
+     * 虚线圈是还在画的页：一边讲一边长这件事必须让人看见。
+     */
+    case 'storybook': {
+      const form = formOf('storybook', ...dimsOf(c.size))
+      const has = (b: string) => form.blocks.includes(b)
+      // 定妆阶段：左小图是家长给的照片，右大图是生成的主角
+      if (d.photo) return `<div class="sbcast">
+        <div class="sbsrc"><span>你给我的照片</span><img src="${esc(d.photo)}" alt=""></div>
+        <div class="sbout">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}
+          <p>${esc(d.line)}</p></div></div>`
+      const dots = Array.from({ length: Number(d.total) || 0 }, (_, i) =>
+        `<i class="${i + 1 === Number(d.page) ? 'on' : ''}"></i>`).join('')
+        + Array.from({ length: Number(d.pending) || 0 }, () => '<i class="pend"></i>').join('')
+      return `<div class="sb">
+        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : ''}</div>
+        <div class="sbcap">
+          ${has('chapter') && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ''}
+          <p class="sbline">${esc(d.line)}</p>
+          ${has('lesson') && d.ideas?.length ? `<div class="sbidea">${esc(d.ideas.join(' · '))}</div>` : ''}
+          <div class="sbdots">${dots}</div>
+        </div></div>`
+    }
     case 'weather': {
       const w = weatherForm(...dimsOf(c.size))
       // 风力和湿度任一缺失都不该留下孤零零一个分隔点

@@ -321,6 +321,41 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .wxico svg{width:100%;height:100%;stroke-width:1.4}
 .t-chip .wxico,.t-strip .wxico{width:calc(52px*var(--u));height:calc(52px*var(--u))}
 
+/* ── 绘本卡「路上的故事」 ── */
+/* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
+.sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
+.sbart{flex:1.5;min-height:0;border-radius:calc(18px*var(--u));overflow:hidden;
+  background:linear-gradient(160deg,#FDE9C0,#C7E0FF)}
+/* Ken Burns：极缓慢的推拉，静态图立刻有动画感。纯 CSS，零成本 */
+.sbart img{width:100%;height:100%;object-fit:cover;display:block;
+  animation:sbkb 20s ease-in-out infinite alternate}
+@keyframes sbkb{from{transform:scale(1)}to{transform:scale(1.06)}}
+.sbcap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:calc(10px*var(--u));
+  padding:calc(20px*var(--u)) calc(8px*var(--u)) 0}
+.sbch{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);letter-spacing:.04em}
+.sbline{font-size:calc(var(--t-lead)*var(--u));line-height:1.7;font-weight:500}
+.sbline .lit{background:var(--pick-bg);border-radius:calc(6px*var(--u));padding:0 calc(4px*var(--u))}
+.sbidea{font-size:calc(var(--t-cap)*var(--u));color:var(--warm-fg,var(--tx-2))}
+/* 进度点：实心=已生成，加粗=当前，虚线=还在画。**不显示总数** */
+.sbdots{display:flex;gap:calc(8px*var(--u));align-items:center;margin-top:auto;
+  padding-bottom:calc(4px*var(--u))}
+.sbdots i{width:calc(10px*var(--u));height:calc(10px*var(--u));border-radius:999px;
+  background:var(--n3,#E2E8F0);flex:none}
+.sbdots i.on{background:var(--ac);width:calc(28px*var(--u))}
+.sbdots i.pend{background:transparent;border:1px dashed var(--n4,#CBD5E1)}
+/* 定妆：并排对照——家长要判断的就是"像不像"，不并排没法判断 */
+.sbcast{display:flex;height:100%;gap:calc(16px*var(--u));margin-top:calc(-8px*var(--u))}
+.sbsrc{width:26%;display:flex;flex-direction:column;gap:calc(8px*var(--u))}
+.sbsrc span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.sbsrc img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:calc(14px*var(--u))}
+.sbout{flex:1;display:flex;flex-direction:column;gap:calc(10px*var(--u));min-height:0}
+.sbout img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:calc(18px*var(--u))}
+.sbout p{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
+/* 生成中：模糊到清晰，不用转圈——比 loading 圈高级得多 */
+.sbwait{flex:1;border-radius:calc(18px*var(--u));background:linear-gradient(160deg,#FEF3C7,#FED7AA);
+  filter:blur(14px);animation:sbpulse 1.6s ease-in-out infinite alternate}
+@keyframes sbpulse{from{opacity:.55}to{opacity:.85}}
+
 /* ── 能力目录 ── */
 /* 列数由形态函数给（c1/c2/c3），不在 CSS 里硬编码 ——
    写死 3 列的话 form.cols 说 2 列、渲染出 3 列，算出来的容量对不上，
@@ -1031,6 +1066,27 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
+    /**
+     * 绘本卡（2026-08-14「路上的故事」）—— 跟其它卡**不是一类东西**。
+     *
+     * 普通卡片是数据的一个投影，随时能被挤走、缩放、替换；绘本是一次
+     * **有开始有结束的会话**，中途被挤下桌就是故事断了。所以 evictable:false，
+     * 跟导航卡同级保护。
+     *
+     * 三档不是大小差异是**场景差异**：court 竖版、stage 行驶中给副驾看、
+     * full 停车时全屏沉浸。阶段（定妆/讲述/提问/成书）由 story.phase 信号驱动，
+     * 同一张卡换版式，不是四张卡。
+     */
+    {
+      id: "storybook",
+      label: "绘本卡",
+      defaultSize: "stage",
+      sizes: ["court", "stage", "full"],
+      systemOnly: true,
+      evictable: false,
+      desc: "正在讲的绘本，由 story.* 工具自动创建与刷新，不要手动建。data: {title, chapter, page, line, image, ideas?, lesson?}",
+      fields: { line: { type: "string", required: true } }
+    },
     {
       id: "generic",
       label: "通用卡",
@@ -1144,6 +1200,12 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       overflow: mode === "count" ? "count" : "more"
     };
   };
+  var storybookForm = (c, _r) => {
+    const blocks = ["art", "line", "dots"];
+    if (c >= 8) blocks.push("chapter");
+    if (c >= 12) blocks.push("lesson", "ctl");
+    return { blocks };
+  };
   var CARD_FORMS = {
     nav: navForm,
     control: controlForm,
@@ -1158,6 +1220,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     media: mediaForm,
     weather: weatherForm,
     capability: capForm,
+    storybook: storybookForm,
     generic: genericForm
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
@@ -1685,6 +1748,32 @@ ${BRIDGE}
         const { shown, rest } = truncate(items, form.maxItems);
         return `<div class="cap ${form.mode} c${form.cols ?? 1}">${shown.map((i) => `<div class="${i.off ? "off" : ""}">${i.icon ? `<span class="cico">${esc(i.icon)}</span>` : ""}${esc(i.label)}<small>${esc(i.desc ?? "")}</small></div>`).join("")}</div>${rest > 0 ? `<div class="more">还有 ${rest} 项，问我"你还会什么"就行</div>` : ""}`;
       }
+      /**
+       * 绘本卡（「路上的故事」）。同一张卡按 story.phase 换版式：
+       * 定妆时并排显示原照片与生成的主角（家长要判断"像不像"，不并排没法判断），
+       * 讲述时画面铺满、一句话压底。
+       *
+       * 进度点**不显示总数** —— 故事是开放的（孩子说结束才结束），
+       * 标了总数等于告诉孩子"还有三页就没了"，他会开始倒计时而不是听故事。
+       * 虚线圈是还在画的页：一边讲一边长这件事必须让人看见。
+       */
+      case "storybook": {
+        const form = formOf("storybook", ...dimsOf(c.size));
+        const has = (b) => form.blocks.includes(b);
+        if (d.photo) return `<div class="sbcast">
+        <div class="sbsrc"><span>你给我的照片</span><img src="${esc(d.photo)}" alt=""></div>
+        <div class="sbout">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}
+          <p>${esc(d.line)}</p></div></div>`;
+        const dots = Array.from({ length: Number(d.total) || 0 }, (_, i) => `<i class="${i + 1 === Number(d.page) ? "on" : ""}"></i>`).join("") + Array.from({ length: Number(d.pending) || 0 }, () => '<i class="pend"></i>').join("");
+        return `<div class="sb">
+        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : ""}</div>
+        <div class="sbcap">
+          ${has("chapter") && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ""}
+          <p class="sbline">${esc(d.line)}</p>
+          ${has("lesson") && d.ideas?.length ? `<div class="sbidea">${esc(d.ideas.join(" · "))}</div>` : ""}
+          <div class="sbdots">${dots}</div>
+        </div></div>`;
+      }
       case "weather": {
         const w = weatherForm(...dimsOf(c.size));
         const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
@@ -1929,6 +2018,19 @@ ${BRIDGE}
     canvas: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 沙箱组件：cockpit.action 上来的都是"用户在组件里的选择"——回答类 */
     "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    /**
+     * 绘本卡：翻页是**机械的桌面动作**，直调不叫醒模型 —— 点一下要等 LLM
+     * 转一圈是灾难（跟播放器的上一曲/下一曲同一条路由）。
+     * 跟导航卡一样刻意没有 swipe:away：讲到一半划走整张卡就是故事没了，
+     * 误触代价太大；右上角 ✕ 是一次明确点按，风险不一样，留着。
+     */
+    storybook: [
+      { on: "tap:prev", route: "tool", tool: "story.page", args: { dir: "prev" } },
+      { on: "tap:next", route: "tool", tool: "story.page", args: { dir: "next" } },
+      { on: "tap:toggle", route: "tool", tool: "story.page", args: { dir: "toggle" } },
+      ...RESIZE,
+      CLOSE
+    ],
     /**
      * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
      * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，

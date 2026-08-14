@@ -796,6 +796,103 @@ export const TOOLS: ToolDef[] = [
     params: {},
     handler: 'memoryList',
   },
+  /* ══════════════ 路上的故事：AI 儿童有声绘本（2026-08-14） ══════════════
+   *
+   * 六个 Tool 只做**机制**：存档案、画定妆、生成一章、成书、导出。
+   * 每章几页、什么时候该问孩子、快到站怎么收尾 —— 全是**章法**，
+   * 归模型按技能包决定，所以页数是参数不是常量。
+   * 代码里出现 `if (chapter === 1) pages = 3` 就是把策略写进了机制。
+   */
+  {
+    name: 'story.profile',
+    brief: '记下孩子的名字年龄和这次想讲明白的道理',
+    desc: '建立或更新孩子档案。家长不该每次填表——一次录入，之后每次只说一句' +
+      '「给妞妞讲个关于分享的故事」就够。lesson 是家长真正在意的字段：' +
+      '分享、勇敢、刷牙、不怕黑、交通安全（最后这个在车里讲场景绝配）。',
+    permission: '彩',
+    params: {
+      name: { type: 'string', desc: '孩子怎么称呼' },
+      age: { type: 'number', desc: '几岁——决定用词深浅和故事长度' },
+      interests: { type: 'array', desc: '喜欢什么，如 ["小熊","下雨天"]，写进故事让它贴着孩子来' },
+      lesson: { type: 'string', desc: '这次想讲明白的道理' },
+    },
+    handler: 'storyProfile',
+  },
+  {
+    name: 'story.cast',
+    brief: '把孩子的照片画成故事主角',
+    desc: '按家长给的照片生成一张动漫版**定妆照**，家长确认「像不像」。' +
+      '这是全书唯一需要家长把关的一步，也是角色一致性的锚：之后每一页都拿这张' +
+      '当参考图（**不是拿上一页**），所以误差不累积、某页画歪单页重画就行。' +
+      'style 默认扁平童书风——写实风细节多、跨页漂移大，这不只是审美选择。',
+    permission: '彩',
+    params: {
+      look: { type: 'string', required: true,
+        desc: '锁死的形象不变量，如「短发、齐刘海、黄色连衣裙、5 岁女孩」。' +
+          '这几条会写进每一页的提示词，别每次换说法' },
+      style: { type: 'string', desc: '画风，默认「扁平矢量童书插画，柔和暖色」' },
+    },
+    handler: 'storyCast',
+  },
+  {
+    name: 'story.begin',
+    brief: '开一本新绘本，讲第一章',
+    desc: '按主题开篇。**第一章给 3 页**——刚好够「谁·在哪·出事了」一个完整的开头，' +
+      '把孩子拉进去。每页一句话配一张插图，文字先出立刻开讲、图片后台补齐。' +
+      '把车窗外的真实世界织进故事（正在过的桥、外面的天气、要去的地方）——' +
+      '孩子抬头看窗外故事和现实对上了，这是手机上的绘本做不到的事。' +
+      '讲完这一章系统会自动问孩子「你觉得后面会发生什么」。',
+    permission: '彩',
+    params: {
+      title: { type: 'string', required: true, desc: '书名' },
+      pages: { type: 'array', required: true,
+        desc: '这一章每页一条 {line, scene}：line 是念给孩子听的一句话（一屏一句，别写成一段），' +
+          'scene 是这一页画什么（一句画面描述，主角形象不用重复写，系统会带上定妆照）' },
+    },
+    handler: 'storyBegin',
+  },
+  {
+    name: 'story.continue',
+    brief: '接着孩子说的往下写一章',
+    desc: '按孩子刚才说的续写。**每章给 2 页**——2 页约 40 秒，孩子的注意力刚好在这个尺度上，' +
+      '问得太晚他已经跑神了。先复述一遍孩子的想法再往下编（「哇，会飞的自行车！」——' +
+      '让他知道被听见了，这一秒比什么都重要），idea 会记进书里，导出的封底要单列出来。',
+    permission: '彩',
+    params: {
+      idea: { type: 'string', required: true, desc: '孩子说了什么，原话记下来' },
+      pages: { type: 'array', required: true, desc: '同 story.begin 的 pages' },
+    },
+    handler: 'storyContinue',
+  },
+  {
+    name: 'story.finish',
+    brief: '收尾成书',
+    desc: '孩子说「结束吧/不玩了/就到这儿」，或者快到站了，就收尾。' +
+      'ending 是最后一页，要给个像样的结局别硬停。收完会出成书页，家长可以导出。',
+    permission: '彩',
+    params: {
+      ending: { type: 'string', required: true, desc: '结尾那一句' },
+      scene: { type: 'string', desc: '结尾这一页画什么' },
+    },
+    handler: 'storyFinish',
+  },
+  {
+    name: 'story.export',
+    brief: '把这本书做成可以发给别人的网页',
+    desc: '导出成**自包含的 H5 单文件**：图片全部内嵌，双击就能打开，不用网。' +
+      '这是家长真正会转发给爷爷奶奶的东西——车上的体验是过程，它才是留下来的。',
+    permission: '彩',
+    params: {},
+    handler: 'storyExport',
+  },
+  {
+    name: 'story.page',
+    brief: '翻页/暂停（屏幕按钮直调，不叫醒模型）',
+    desc: '绘本卡上的翻页与暂停。用户点屏幕时手势层直调这个，不进对话。',
+    permission: '彩',
+    params: { dir: { type: 'enum', values: ['prev', 'next', 'toggle'], required: true, desc: '往哪翻' } },
+    handler: 'storyPage',
+  },
 ]
 /**
  * 能力目录的**给人看的那一面**。目录卡上的条目是能力域（车窗/空调/导航……），

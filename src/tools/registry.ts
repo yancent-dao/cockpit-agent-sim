@@ -16,6 +16,8 @@ import type { PexelsClient } from '../integrations/pexels'
 import type { WebSearchClient } from '../integrations/websearch'
 import { createNavHandlers } from '../integrations/navHandlers'
 import { createMediaHandlers, CANDIDATES } from '../integrations/mediaHandlers'
+import { createStoryHandlers, type ImageGen } from '../integrations/storyHandlers'
+import type { StoryStore } from '../state/story'
 import type { DomainState } from '../state/domain'
 import type { Prefs } from '../state/prefs'
 import { createMemoryHandlers } from '../integrations/memoryHandlers'
@@ -44,7 +46,7 @@ export interface InvokeCtx {
 
 const CONFIRM_TTL = 60_000
 
-export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs
+export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs; story?: StoryStore; image?: ImageGen
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -66,6 +68,15 @@ export function createRegistry(
    * 有真实逻辑的 Tool —— 具名 handler 白名单。
    * 允许返回 Promise：接三方真实 API（如高德）本质是网络请求，不能假装同步。
    */
+  const needStory = () => {
+    if (!deps.story) throw new Error('绘本能力未装配：createRegistry 缺少 story')
+    return deps.story
+  }
+  const needImage = () => {
+    if (!deps.image) throw new Error('绘本能力未装配：createRegistry 缺少 image')
+    return deps.image
+  }
+
   const handlers: Record<string, (args: any) => ToolResult | Promise<ToolResult>> = {
     getState: args => {
       const snap = store.snapshot()
@@ -167,6 +178,8 @@ export function createRegistry(
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
     ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound),
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
+    /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
+    ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }
 

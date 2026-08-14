@@ -8,6 +8,7 @@ import { createStoryStore } from '../state/story'
 import { createImageClient } from '../integrations/orimage'
 import { buildBookHtml, bookFileName } from '../integrations/h5book'
 import { planShrink, withShrink, WEBP_Q } from '../integrations/shrink'
+import { pickVoice, zhVoices } from '../screen/speech'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -131,6 +132,54 @@ $s('heroOk')?.addEventListener('change', (e: any) => {
   renderStoryNote()
 })
 $s('heroForget')?.addEventListener('click', () => { story.revoke(); renderStoryNote() })
+
+/**
+ * ── 朗读音色：家长自己挑，默认女声 ──
+ *
+ * 音色是**系统装的**，每台机器不一样（这台 mac 上有 18 个中文音色），
+ * 没得选就只能听默认那个。选择存 localStorage —— 车机屏同源读得到，
+ * `storage` 事件让它立刻生效，不用给 bus 加一类消息。
+ */
+const VOICE_KEY = 'cockpit-sim:tts:voice'
+function renderVoices() {
+  const sel = $s('ttsVoice'); if (!sel) return
+  const list = zhVoices((speechSynthesis?.getVoices?.() ?? []) as any)
+  if (!list.length) { sel.innerHTML = '<option value="">这台机器没装中文音色</option>'; return }
+  const saved = localStorage.getItem(VOICE_KEY) || pickVoice(list as any)?.name || ''
+  sel.innerHTML = list.map(v => {
+    const tag = v.female === true ? '女声' : v.female === false ? '男声' : '—'
+    return `<option value="${v.name.replace(/"/g, '&quot;')}"${v.name === saved ? ' selected' : ''}>` +
+      `${v.name}（${tag}·${v.lang}）</option>`
+  }).join('')
+}
+$s('ttsVoice')?.addEventListener('change', (e: any) => {
+  localStorage.setItem(VOICE_KEY, e.target.value)
+  // 同一个窗口内改 localStorage 不会给自己发 storage 事件，车机屏在另一个
+  // 窗口所以收得到；这里只管存
+})
+$s('ttsTry')?.addEventListener('click', () => {
+  const name = $s('ttsVoice')?.value
+  const v = pickVoice((speechSynthesis.getVoices() ?? []) as any, { name })
+  try { speechSynthesis.cancel() } catch { /* 没在说话时个别内核会抛 */ }
+  const u = new SpeechSynthesisUtterance('小雨点打在桥上，妞妞把伞举得高高的。')
+  u.lang = 'zh-CN'; u.rate = .92
+  if (v) u.voice = v as any
+  speechSynthesis.speak(u)
+})
+if ('speechSynthesis' in window) {
+  /**
+   * `getVoices()` 第一次调用**是空的**（音色异步加载），而 `voiceschanged`
+   * 实测并不可靠 —— 页面加载 800ms 后手动查已经有 180 个音色，事件却没来过。
+   * 事件 + 有界重试两条都挂上：谁先到算谁的，拿到就停。
+   */
+  speechSynthesis.addEventListener?.('voiceschanged', renderVoices)
+  let tries = 0
+  const poll = setInterval(() => {
+    renderVoices()
+    if (speechSynthesis.getVoices().length || ++tries > 12) clearInterval(poll)
+  }, 250)
+  renderVoices()
+}
 /**
  * 导出：Blob + `<a download>`。**零依赖**，也不需要后端 ——
  * 自包含 H5 双击就能开，这是家长真正会转发的东西。

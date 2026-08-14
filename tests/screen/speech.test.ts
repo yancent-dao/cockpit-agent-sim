@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pickVoice, estimateMs, litUpto, CPS } from '../../src/screen/speech'
+import { pickVoice, zhVoices, estimateMs, litUpto, CPS } from '../../src/screen/speech'
 
 /**
  * ══════════ 中文朗读：挑音色 + 逐字点亮的兜底 ══════════
@@ -113,5 +113,85 @@ describe('某一刻该亮到第几个字', () => {
   it('总时长为 0 或坏数据时全亮，不卡住', () => {
     expect(litUpto(10, 0, 0)).toBe(10)
     expect(litUpto(10, 0, NaN)).toBe(10)
+  })
+})
+
+/**
+ * ══════════ 音色由用户挑，默认女声 ══════════
+ *
+ * 实拍要求（2026-08-14）：「TTS 模型我想自己选一下，音色是女生」。
+ *
+ * 两件事：① 控制面板要能列出这台机器上的中文音色让人挑；
+ * ② 没挑之前的默认值要是**女声** —— 讲儿童绘本，这不是可选项。
+ * 性别名单是**数据**：音色 API 不暴露性别，只能按实测的名字表判断。
+ */
+const V = (name: string, lang = 'zh-CN') => ({ name, lang, localService: true })
+
+describe('列出可选的中文音色', () => {
+  it('只列中文的，英文音色不进下拉框', () => {
+    const l = zhVoices([V('Alex', 'en-US'), V('Tingting'), V('Meijia', 'zh-TW')])
+    expect(l.map(v => v.name)).toEqual(['Tingting', 'Meijia'])
+  })
+
+  it('每一项标出是不是女声 —— 家长挑的时候要看得见', () => {
+    const l = zhVoices([V('Tingting'), V('Eddy (Chinese (China mainland))')])
+    expect(l.find(v => v.name === 'Tingting')!.female).toBe(true)
+    expect(l.find(v => v.name.startsWith('Eddy'))!.female).toBe(false)
+  })
+
+  it('名单外的音色不瞎猜性别', () => {
+    expect(zhVoices([V('某某音色')])[0].female).toBeUndefined()
+  })
+})
+
+describe('默认挑女声', () => {
+  it('同为普通话时女声优先 —— 讲绘本这不是可选项', () => {
+    expect(pickVoice([V('Eddy (Chinese (China mainland))'), V('Tingting')])?.name).toBe('Tingting')
+  })
+
+  it('已知男声排在没标性别的后面', () => {
+    const got = pickVoice([V('Grandpa (Chinese (China mainland))'), V('某某音色')])
+    expect(got?.name).toBe('某某音色')
+  })
+
+  it('只有男声时还是给一个，不至于没声音', () => {
+    expect(pickVoice([V('Grandpa (Chinese (China mainland))')])?.name).toContain('Grandpa')
+  })
+})
+
+describe('用户挑过就听用户的', () => {
+  it('按名字选中，压过所有排序', () => {
+    const vs = [V('Tingting'), V('Grandma (Chinese (China mainland))')]
+    expect(pickVoice(vs, { name: 'Grandma (Chinese (China mainland))' })?.name).toContain('Grandma')
+  })
+
+  /** 换了台机器、系统升级删了音色 —— 别因为选过的那个没了就整个哑掉 */
+  it('选过的音色不在了就退回默认，不是返回 undefined', () => {
+    expect(pickVoice([V('Tingting')], { name: '已经卸载的音色' })?.name).toBe('Tingting')
+  })
+
+  it('用户能挑非中文音色（就是想听英文腔也随他）', () => {
+    const vs = [V('Tingting'), V('Alex', 'en-US')]
+    expect(pickVoice(vs, { name: 'Alex' })?.name).toBe('Alex')
+  })
+})
+
+/**
+ * **`SpeechSynthesisVoice` 的属性挂在原型上**（都是 getter），
+ * 所以 `{...voice}` 展开出来是个空对象 —— 浏览器实测：下拉框里 18 个选项
+ * 全都没有名字。假对象是普通字面量，展开正常，单测**永远抓不到这个**。
+ */
+describe('真实 voice 对象的属性在原型上', () => {
+  it('展开原型上的属性也拿得到 name/lang', () => {
+    class FakeVoice {                       // 模仿浏览器：属性全在原型
+      get name() { return 'Tingting' }
+      get lang() { return 'zh-CN' }
+      get localService() { return true }
+    }
+    const l = zhVoices([new FakeVoice() as any])
+    expect(l).toHaveLength(1)
+    expect(l[0].name, '名字不能丢').toBe('Tingting')
+    expect(l[0].lang).toBe('zh-CN')
+    expect(l[0].female).toBe(true)
   })
 })

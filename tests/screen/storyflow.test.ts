@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { afterRead, ASK_DELAY_MS } from '../../src/screen/storyflow'
+import { afterRead, ASK_DELAY_MS, WAIT_MAX_MS } from '../../src/screen/storyflow'
 
 /**
  * ══════════ 共创闭环：读完一章要把话头交回给孩子 ══════════
@@ -74,5 +74,43 @@ describe('边界', () => {
   it('缺 chapterEnd 时按整本的最后一页算', () => {
     expect(afterRead({ page: 4, total: 4, phase: 'telling', pending: 0 } as any).do).toBe('ask')
     expect(afterRead({ page: 2, total: 4, phase: 'telling', pending: 0 } as any).do).toBe('advance')
+  })
+})
+
+/**
+ * ══════════ `wait` 不能是死路 ══════════
+ *
+ * 实拍（2026-08-14）：讲完第一页就**停在那儿不动了**。
+ * 根因是 `wait` 只说"现在别翻"，却没有任何东西负责"等好了再翻" ——
+ * 图画完之后没人重新问一次，故事就永远停在第一页。
+ *
+ * 两半修法：车机屏那边在卡片刷新时重新问（图落地会刷新卡片），
+ * 这边给一个**等待上限** —— 断网、额度用完时图永远不来，
+ * 卡在半本书上比看一张没画完的图糟得多。
+ */
+describe('等图不能等到天荒地老', () => {
+  const waiting = (waited: number) =>
+    afterRead({ page: 1, chapterEnd: 3, total: 3, phase: 'telling', pending: 2, waited })
+
+  it('刚开始等：wait', () => {
+    expect(waiting(0).do).toBe('wait')
+  })
+
+  it('等过头了就往下走 —— 没图也比卡死强', () => {
+    expect(waiting(WAIT_MAX_MS + 1).do).toBe('advance')
+  })
+
+  it('不传 waited 时按刚开始等算，老调用点不受影响', () => {
+    expect(afterRead({ page: 1, chapterEnd: 3, total: 3, phase: 'telling', pending: 2 }).do).toBe('wait')
+  })
+
+  it('上限定在十几秒量级：一张图实测 9–10 秒，一章并发 ~25 秒', () => {
+    expect(WAIT_MAX_MS).toBeGreaterThanOrEqual(10_000)
+    expect(WAIT_MAX_MS).toBeLessThanOrEqual(60_000)
+  })
+
+  it('图画完了就立刻翻，不用等满', () => {
+    expect(afterRead({ page: 1, chapterEnd: 3, total: 3, phase: 'telling', pending: 0, waited: 100 }).do)
+      .toBe('advance')
   })
 })

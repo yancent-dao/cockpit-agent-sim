@@ -17,6 +17,19 @@
  */
 export const ASK_DELAY_MS = 1000
 
+/**
+ * 等图的上限。
+ *
+ * 实拍（2026-08-14）：讲完第一页就**停在那儿不动了**。`wait` 只说了
+ * "现在别翻"，没有任何东西负责"等好了再翻" —— 图落地会刷新卡片，
+ * 车机屏借那次刷新重新问一次；而这里管另一半：**断网、额度用完时图永远不来**，
+ * 卡在半本书上比看一张没画完的图糟得多。
+ *
+ * 15 秒的来历：实测单张 9–10 秒，一章并发约 25 秒出齐。等一张的时间，
+ * 再久就宁可先往下讲。
+ */
+export const WAIT_MAX_MS = 15_000
+
 export interface ReadState {
   /** 当前第几页（1 开始） */
   page: number
@@ -28,6 +41,8 @@ export interface ReadState {
   phase: string
   /** 还有几页在画 */
   pending: number
+  /** 已经为了等图等了多久（毫秒）。不传按刚开始等算 */
+  waited?: number
 }
 
 export type ReadNext =
@@ -52,7 +67,8 @@ export function afterRead(s: ReadState): ReadNext {
    * 文字先出、图片后到是设计里的正常状态，但**已经翻过去却没有画面**
    * 会让孩子对着一块空白听故事。
    */
-  if (s.pending > 0) return { do: 'wait' }
+  // 但不能等到天荒地老：等过上限就往下走，没图也比卡死在第一页强
+  if (s.pending > 0 && (s.waited ?? 0) <= WAIT_MAX_MS) return { do: 'wait' }
 
   return { do: 'advance' }
 }

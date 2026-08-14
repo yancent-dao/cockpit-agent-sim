@@ -13,7 +13,13 @@ export interface ParamDef {
   type: 'number' | 'string' | 'boolean' | 'enum' | 'array' | 'object'
   values?: string[]
   range?: [number, number]
-  items?: 'string'
+  /**
+   * 数组元素的形状。可以只写类型名（`'string'`），也可以直接写一段
+   * JSON Schema —— 后者是实拍逼出来的：`story.begin` 的 pages 只声明
+   * "是个数组"时模型**连着猜错两次**（`pageCount:"3"`、`{item:[...]}`）。
+   * 元素形状写在 desc 的散文里，模型读不到机器可读的约束。
+   */
+  items?: 'string' | Record<string, unknown>
   required?: boolean
   desc: string
 }
@@ -852,8 +858,20 @@ export const TOOLS: ToolDef[] = [
     params: {
       title: { type: 'string', required: true, desc: '书名' },
       pages: { type: 'array', required: true,
-        desc: '这一章每页一条 {line, scene}：line 是念给孩子听的一句话（一屏一句，别写成一段），' +
-          'scene 是这一页画什么（一句画面描述，主角形象不用重复写，系统会带上定妆照）' },
+        /**
+         * 元素形状必须是**机器可读**的。只声明"是个数组"时实拍看到模型
+         * 连着猜错两次（`pageCount:"3"`、`pages:{item:[...]}`），第三次才蒙对 ——
+         * 三次调用两次被拒，用户干等。
+         */
+        items: {
+          type: 'object',
+          properties: {
+            line: { type: 'string', description: '念给孩子听的一句话，一屏一句，别写成一段' },
+            scene: { type: 'string', description: '这一页画什么，一句画面描述即可；主角形象不用重复写，系统会带上定妆照' },
+          },
+          required: ['line', 'scene'],
+        },
+        desc: '这一章的页，**第一章必须给满 3 条**。每条 {line, scene}' },
     },
     handler: 'storyBegin',
   },
@@ -866,7 +884,16 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       idea: { type: 'string', required: true, desc: '孩子说了什么，原话记下来' },
-      pages: { type: 'array', required: true, desc: '同 story.begin 的 pages' },
+      pages: { type: 'array', required: true,
+        items: {
+          type: 'object',
+          properties: {
+            line: { type: 'string', description: '念给孩子听的一句话，一屏一句' },
+            scene: { type: 'string', description: '这一页画什么，一句画面描述即可' },
+          },
+          required: ['line', 'scene'],
+        },
+        desc: '这一章的页，**给满 2 条**。每条 {line, scene}' },
     },
     handler: 'storyContinue',
   },

@@ -29,18 +29,70 @@ export const PREFERRED_SRC = 'google|普通话|tingting|ting-ting|婷婷|siri|�
 const PREFERRED = new RegExp(PREFERRED_SRC, 'i')
 
 /**
+ * 性别名单。**音色 API 不暴露性别**，只能按实测的名字表判断 ——
+ * 所以这是数据不是逻辑，装不下的音色就"不知道"，别瞎猜。
+ *
+ * 讲儿童绘本默认要女声（产品要求，不是可选项）。macOS 那一串
+ * Eddy/Reed/Rocko/Grandpa 是男声，Flo/Sandy/Shelley/Grandma/Tingting/Meijia 是女声。
+ */
+const FEMALE = /tingting|ting-ting|婷婷|meijia|美嘉|sin-?ji|xiaoxiao|xiaoyi|yaoyao|huihui|flo|sandy|shelley|grandma|普通话|female|女/i
+const MALE = /eddy|reed|rocko|grandpa|yunxi|yunyang|kangkang|male|男/i
+
+/** 名字表判断性别。判不出来就是 undefined —— "不知道"是个合法答案 */
+const femaleOf = (name: string): boolean | undefined =>
+  MALE.test(name) ? false : FEMALE.test(name) ? true : undefined
+
+export interface VoiceChoice extends VoiceLike {
+  /** 是不是女声。判不出来时缺省 —— 下拉框里就不标 */
+  female?: boolean
+}
+
+/**
+ * 这台机器上能挑的中文音色，供控制面板列出来。
+ *
+ * **逐个字段抄，不用 `{...v}`** —— 浏览器的 `SpeechSynthesisVoice` 把属性
+ * 全放在原型上（都是 getter），展开出来是个空对象。实测下拉框里 18 个选项
+ * 一个名字都没有；而单测里的假对象是普通字面量，展开正常，**永远抓不到**。
+ */
+export function zhVoices(voices: VoiceLike[]): VoiceChoice[] {
+  return (voices ?? [])
+    .filter(v => String(v?.lang ?? '').toLowerCase().startsWith('zh'))
+    .map(v => ({
+      name: v.name, lang: v.lang, localService: v.localService, default: v.default,
+      female: femaleOf(v.name),
+    }))
+}
+
+export interface PickOpts {
+  /** 用户在控制面板里挑过的音色名。**压过所有排序** —— 挑过就听他的 */
+  name?: string
+}
+
+/**
  * 挑一个能好好念中文的音色。
  *
  * **没有中文音色就返回 undefined**，让引擎自己按 lang 决定 ——
  * 硬塞一个英文音色去念中文比什么都不做更糟。
+ *
+ * 用户挑过就用他挑的（哪怕是英文音色，就是想听也随他）；挑的那个
+ * 已经不在了（换机器、系统升级删了音色）就退回默认，不是整个哑掉。
  */
-export function pickVoice(voices: VoiceLike[], want = 'zh'): VoiceLike | undefined {
-  const zh = (voices ?? []).filter(v => String(v?.lang ?? '').toLowerCase().startsWith(want))
+export function pickVoice(voices: VoiceLike[], opts: PickOpts = {}): VoiceLike | undefined {
+  const all = voices ?? []
+  if (opts.name) {
+    const hit = all.find(v => v.name === opts.name)
+    if (hit) return hit
+  }
+  const zh = all.filter(v => String(v?.lang ?? '').toLowerCase().startsWith('zh'))
   if (!zh.length) return undefined
   const score = (v: VoiceLike) => {
     let s = 0
     // 讲给大陆小孩听的故事，普通话优先于粤语和台湾腔
     if (/^zh([-_]cn)?$/i.test(v.lang)) s += 40
+    // 女声优先。讲儿童绘本这不是可选项，所以权重压过"音质名单"
+    const f = femaleOf(v.name)
+    if (f === true) s += 30
+    else if (f === false) s -= 30      // 已知男声排到"不知道性别"的后面
     if (PREFERRED.test(v.name)) s += 20
     if (v.default) s += 2
     return s

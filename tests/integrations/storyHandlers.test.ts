@@ -376,3 +376,39 @@ describe('机制与策略的界线', () => {
       .not.toMatch(/(includes|indexOf|match|startsWith|===)\s*\(?\s*['"`][^'"`]*(结束|不玩|停下|讲完)/)
   })
 })
+
+/**
+ * ══════════ 定妆版式必须退场 ══════════
+ *
+ * 实拍（2026-08-14）：故事都讲到第二页了，卡片左边**还挂着孩子的原始照片**，
+ * 整张卡还是定妆时那个「照片 ↔ 主角」并排版式。
+ *
+ * 根因是 `desk.update()` 的语义是**合并**（`{...旧, ...新}`）——
+ * 这对 ETA 每秒刷一次那种局部更新是对的，但一次性字段（photo）
+ * 一旦写进去就再也去不掉。后面每次 paint 都不带 photo，于是它一直活着。
+ *
+ * 合并语义不该改（它是刷新卡片的地基），**一次性字段自己负责收尾**。
+ */
+describe('讲起来之后定妆照要退场', () => {
+  it('开讲之后卡上不再有家长给的照片', async () => {
+    boot()
+    story.savePhoto('PHOTO'); story.consent()
+    await h.storyCast({ look: 'x' })
+    const cast = desk.layout().cards.find(c => c.template === 'storybook')!
+    expect(cast.data.photo, '定妆那一刻当然要有').toBe('PHOTO')
+
+    await h.storyBegin({ title: 'T', pages: pages('第一句', '第二句') })
+    const telling = desk.layout().cards.find(c => c.template === 'storybook')!
+    expect(telling.data.photo, '开讲之后必须没有了').toBeFalsy()
+    expect(telling.data.line).toBe('第一句')
+  })
+
+  it('翻页之后也不会诈尸回来', async () => {
+    boot()
+    story.savePhoto('PHOTO'); story.consent()
+    await h.storyCast({ look: 'x' })
+    await h.storyBegin({ title: 'T', pages: pages('一', '二') })
+    await h.storyPage({ dir: 'next' })
+    expect(desk.layout().cards.find(c => c.template === 'storybook')!.data.photo).toBeFalsy()
+  })
+})

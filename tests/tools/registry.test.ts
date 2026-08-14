@@ -57,6 +57,31 @@ describe('注册表', () => {
     expect(s.function.parameters.required).toContain('window')
   })
 
+  /**
+   * ══════════ 数组参数必须说清楚里面装什么 ══════════
+   *
+   * 实拍（2026-08-14）：`story.begin` **连着被拒两次** —— 模型先传
+   * `pageCount:"3"`，再传 `pages:{item:[...]}`，第三次才蒙对。
+   * 不是模型笨：schema 里 `pages` 只声明了「是个数组」，
+   * 元素长什么样只写在 desc 的散文里，模型只能猜。
+   *
+   * 补 `items` 的完整形状是**加数据不加代码**：ParamDef 允许 items 直接写
+   * 一段 JSON Schema，registry 原样透传。
+   */
+  it('数组参数的元素形状原样进 schema —— 别让模型猜', async () => {
+    const s = reg.schemas('openai').find(x => x.function.name === 'story_begin')!
+    const pages = s.function.parameters.properties.pages
+    expect(pages.type).toBe('array')
+    expect(pages.items?.type, 'pages 装的是对象').toBe('object')
+    expect(Object.keys(pages.items.properties), '两个字段都得说明').toEqual(['line', 'scene'])
+    expect(pages.items.required).toEqual(['line', 'scene'])
+  })
+
+  it('老写法（items 直接写类型名）继续有效', async () => {
+    const s = reg.schemas('openai').find(x => x.function.name === 'vehicle_getState')!
+    expect(s.function.parameters.properties.paths.items).toEqual({ type: 'string' })
+  })
+
   it('能力授权：白名单外的 Tool 不暴露且不可调用', async () => {
     const names = reg.list(['window.*', 'vehicle.getState']).map(t => t.name)
     expect(names).toContain('window.set')

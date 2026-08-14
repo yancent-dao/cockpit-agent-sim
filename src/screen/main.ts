@@ -1,6 +1,6 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
-import { afterRead } from './storyflow'
+import { afterRead, WAIT_MAX_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto } from './speech'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
@@ -837,12 +837,22 @@ let sbSpoken = ''
  * 所以既要在 voiceschanged 时补挑一次，也要在每次开口前再试一次。
  */
 let sbVoice: SpeechSynthesisVoice | undefined
+/**
+ * 家长在控制面板里挑的音色。两个窗口同源，走 localStorage 传 ——
+ * 比给 bus 加一类消息省得多，而且 `storage` 事件天然跨窗口。
+ */
+const VOICE_KEY = 'cockpit-sim:tts:voice'
 const refreshVoice = () => {
-  try { sbVoice = pickVoice(speechSynthesis.getVoices() as any) as any } catch { /* 没有就算了 */ }
+  try {
+    sbVoice = pickVoice(speechSynthesis.getVoices() as any,
+      { name: localStorage.getItem(VOICE_KEY) || undefined }) as any
+  } catch { /* 没有就算了 */ }
 }
 if ('speechSynthesis' in window) {
   refreshVoice()
   speechSynthesis.addEventListener?.('voiceschanged', refreshVoice)
+  // 面板里换了音色立刻生效，不用刷新车机屏
+  addEventListener('storage', e => { if (e.key === VOICE_KEY) refreshVoice() })
 }
 
 const SB_RATE = .92
@@ -856,15 +866,51 @@ const SB_SLACK_MS = 2500
  * 作废的那一轮必须连副作用一起作废，不是只停止等待。
  */
 let sbGen = 0
+/**
+ * 正在等图。**`wait` 不能是死路** —— 实拍看到讲完第一页就停住了：
+ * afterRead 说"等图画完再翻"，然后没有任何东西负责"等好了再问一次"。
+ * 图落地会刷新卡片（handler 每补一张就 paint 一次），借那次刷新重新决策。
+ */
+let sbWaiting: { line: string; since: number; retry: ReturnType<typeof setTimeout> } | null = null
+const stopWaiting = () => { if (sbWaiting) clearTimeout(sbWaiting.retry); sbWaiting = null }
+
+/** 这一页读完了该干嘛 —— 决策在 storyflow 的纯函数里，这里只发结论 */
+function decideNext(c: any, line: string) {
+  const d = c?.data ?? {}
+  const next = afterRead({
+    page: Number(d.page) || 0, chapterEnd: Number(d.chapterEnd) || 0,
+    total: Number(d.total) || 0, phase: String(d.phase ?? 'telling'),
+    pending: Number(d.pending) || 0,
+    waited: sbWaiting?.line === line ? Date.now() - sbWaiting.since : 0,
+  })
+  if (next.do === 'wait') {
+    if (sbWaiting?.line === line) return       // 已经在等了，别把计时重置
+    // 图落地会刷新卡片、借那次刷新重新问；但图永远不来（断网、没额度）时
+    // 也得有人叫醒 —— 到上限自己再问一次，那时 afterRead 会放行
+    sbWaiting = { line, since: Date.now(), retry: setTimeout(() => decideNext(c, line), WAIT_MAX_MS + 200) }
+    return
+  }
+  stopWaiting()
+  if (next.do === 'advance')
+    bus.send({ type: 'userAction', cardId: c.id, act: 'tap:next' } as any)
+  else if (next.do === 'ask')
+    setTimeout(() => bus.send({ type: 'storyChapterDone', chapter: Number(d.chapter) || 0 } as any), next.delay)
+}
+
 function speakStory(node: HTMLElement, c: any) {
   const d = c?.data ?? {}
   const line = String(d.line ?? '')
-  if (!line || line === sbSpoken) return
+  if (!line) return
+  // 同一句话不重念，但**要借这次刷新把"等图"重新问一遍**（图刚落地就是这条路）
+  if (line === sbSpoken) {
+    if (sbWaiting?.line === line) decideNext(c, line)
+    return
+  }
   sbSpoken = line
+  stopWaiting()
   const gen = ++sbGen
   const el = () => node.querySelector('.sbline')
 
-  /** 这一页读完了 —— 决策在 storyflow 的纯函数里，这里只发结论 */
   let done = false
   const finish = () => {
     if (done) return
@@ -872,15 +918,7 @@ function speakStory(node: HTMLElement, c: any) {
     clearInterval(timer); clearTimeout(guard)
     if (gen !== sbGen) return          // 已经被下一页接管了，副作用一起作废
     const t = el(); if (t) t.textContent = line
-    const next = afterRead({
-      page: Number(d.page) || 0, chapterEnd: Number(d.chapterEnd) || 0,
-      total: Number(d.total) || 0, phase: String(d.phase ?? 'telling'),
-      pending: Number(d.pending) || 0,
-    })
-    if (next.do === 'advance')
-      bus.send({ type: 'userAction', cardId: c.id, act: 'tap:next' } as any)
-    else if (next.do === 'ask')
-      setTimeout(() => bus.send({ type: 'storyChapterDone', chapter: Number(d.chapter) || 0 } as any), next.delay)
+    decideNext(c, line)
   }
 
   /**

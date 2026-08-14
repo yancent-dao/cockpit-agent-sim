@@ -451,7 +451,8 @@ export function createRegistry(
       for (const [k, d] of Object.entries(t.params)) {
         properties[k] = { type: jsonType(d), description: d.desc }
         if (d.values) properties[k].enum = d.values
-        if (d.items) properties[k].items = { type: d.items }
+        // items 可以是类型名（老写法）也可以是一整段 JSON Schema（数组装对象时）
+        if (d.items) properties[k].items = typeof d.items === 'string' ? { type: d.items } : d.items
         if (d.required) required.push(k)
       }
       // 可能需要二次确认的 Tool，把 MRTR 令牌作为显式参数暴露给模型，

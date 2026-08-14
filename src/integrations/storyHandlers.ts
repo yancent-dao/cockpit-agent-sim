@@ -79,6 +79,13 @@ export function createStoryHandlers(
       key: CARD, template: 'storybook', kind: 'system', urgency: 'urgent',
       ttl: 'untilDismissed',
       data: {
+        /**
+         * **一次性字段自己负责收尾。** `desk.update()` 的语义是合并
+         * （`{...旧, ...新}`）—— 这对 ETA 每秒刷一次那种局部更新是对的，
+         * 但定妆时写进去的 `photo` 一旦不显式清掉就永远活着：实拍看到
+         * 故事讲到第二页，卡上还挂着孩子的原始照片、还是定妆那个并排版式。
+         */
+        photo: undefined,
         title: draft?.title ?? '',
         chapter: store.get('story.chapter'),
         page, total: draft?.pages.length ?? 0,

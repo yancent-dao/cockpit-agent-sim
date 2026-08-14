@@ -2,10 +2,20 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { createDesk } from '../../src/cards/desk'
 import { CARD_TEMPLATES } from '../../src/config/cards'
 import { dimsOf } from '../../src/config/grid'
+import { formOf } from '../../src/config/forms'
 
 let now = 1000
 let desk: ReturnType<typeof createDesk>
-const mk = (o: any = {}) => desk.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
+/**
+ * 几何测试的载体用 `canvas`：它的形状池最宽（9/14），本来就是"按内容形状挑"的模板。
+ * 别用 feedback —— 重设计后它只剩 chip/box 两档，一测宽卡就撞尺寸闸，
+ * 测出来的是模板契约不是布局仲裁。
+ */
+const mk = (o: any = {}) => desk.show({ template: 'canvas', size: 'box', ttl: 'untilDismissed', ...o })
+/** 要 12 列通栏的场合：canvas 最宽只到 stage(8)，通栏得借天气卡的 band */
+const mkWide = (o: any = {}) => mk({ template: 'weather', size: 'band', ...o })
+/** 要最小档 chip 的场合：canvas 池里没有一行高的形状，借反馈卡 */
+const mkChip = (o: any = {}) => mk({ template: 'feedback', size: 'chip', minSize: 'chip', ...o })
 /**
  * 造一张"怎么腾都放不下"的卡：最小档就要 1/2（banner 12 列宽），
  * 而导航 2/3 占着 8 列且不可挤——右边 4 列竖条它永远塞不进去，又不能再缩。
@@ -15,50 +25,57 @@ const mk = (o: any = {}) => desk.show({ template: 'feedback', size: '1/6', ttl: 
  * 第二张导航卡会老老实实降成 tower 待在右列（这正是想要的行为：
  * 少一张卡永远比小一张卡更伤），于是不再是"放不下"的样本了。
  */
-const unfittable = (o: any = {}) => mk({ template: 'list', size: '1/2', minSize: '1/2',
-  data: { title: '排队的', items: [{ label: 'x' }] }, ...o })
+/**
+ * 造一张"怎么腾都放不下"的卡：最小档就要通栏（band 12 列宽），
+ * 而导航 stage 占着左 8 列整个高度且不可挤——右边 4 列竖条它永远塞不进去，
+ * 又不能再缩。
+ *
+ * 别用 full 档：那是**覆盖层通道**，压根不进桌面仲裁，自然也不会排队。
+ */
+const unfittable = (o: any = {}) => mk({ template: 'weather', size: 'band', minSize: 'band',
+  data: { title: '排队的' }, ...o })
 
 beforeEach(() => { now = 1000; desk = createDesk(() => now) })
 
-/* ══════════════ 栅格：12×4 = 48 单元 ══════════════ */
-describe('栅格：12列×4行统一画布，档位形状可枚举', () => {
-  // 老尺寸名继续能用（'1/6' → card），单元数换算成新栅格
-  it('1/6 占 8 单元，1/3 占 16，1/2 占 24，2/3 占 32', () => {
-    expect(desk.cellsOf('1/6')).toBe(8)
-    expect(desk.cellsOf('1/3')).toBe(16)
-    expect(desk.cellsOf('1/2')).toBe(24)
-    expect(desk.cellsOf('2/3')).toBe(32)
+/* ══════════════ 栅格：12×8 = 96 单元 ══════════════ */
+describe('栅格：12列×8行统一画布，形状可枚举', () => {
+  // 老尺寸名继续能用（'box' → box），单元数换算成新栅格
+  it('box 占 16 单元，panel 32，band 48，stage 64', () => {
+    expect(desk.cellsOf('box')).toBe(16)
+    expect(desk.cellsOf('panel')).toBe(32)
+    expect(desk.cellsOf('band')).toBe(48)
+    expect(desk.cellsOf('stage')).toBe(64)
   })
 
   it('默认桌面为空——没有常驻卡，一切按需出现', () => {
     expect(desk.layout().cards).toHaveLength(0)
-    expect(desk.layout().free).toBe(48)
+    expect(desk.layout().free).toBe(96)
   })
 
-  it('六张 1/6 填满整个桌面', () => {
+  it('六张 box 填满整个桌面', () => {
     for (let i = 0; i < 6; i++) { mk(); now += 10 }
     expect(desk.layout().cards).toHaveLength(6)
     expect(desk.layout().free).toBe(0)
   })
 
   it('layout 给出每张卡的行列位置与跨度', () => {
-    mk({ size: '1/2', data: { title: 'A' } })
+    mkWide({ data: { title: 'A' } })
     const c = desk.layout().cards[0]
     expect(c.row).toBe(0)
     expect(c.col).toBe(0)
-    expect(c.rowSpan).toBe(2)
+    expect(c.rowSpan).toBe(4)
     expect(c.colSpan).toBe(12)
   })
 
-  it('1/2 整行卡占满 12 列，高优先级先占位，低优先级卡挪到下面', () => {
-    mk(); now += 10; mk({ size: '1/2', kind: 'system' }); now += 10
+  it('通栏卡占满 12 列，高优先级先占位，低优先级卡挪到下面', () => {
+    mk(); now += 10; mkWide({ kind: 'system' }); now += 10
     const cards = desk.layout().cards
-    const half = cards.find(c => c.size === '1/2')!
-    const small = cards.find(c => c.size === '1/6')!
-    expect(half.row).toBe(0)
-    expect(half.col).toBe(0)
-    expect(half.colSpan).toBe(12)
-    expect(small.row).toBe(2)
+    const band = cards.find(c => c.size === 'band')!
+    const small = cards.find(c => c.size === 'box')!
+    expect(band.row).toBe(0)
+    expect(band.col).toBe(0)
+    expect(band.colSpan).toBe(12)
+    expect(small.row).toBe(4)
   })
 
   /**
@@ -66,26 +83,30 @@ describe('栅格：12列×4行统一画布，档位形状可枚举', () => {
    * chip（宽 2）永远填得上。3×2 栅格下导航卡整个出不来的那个几何死局就是缺这条。
    */
   it('所有卡的列起点都是偶数', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule' }); now += 10
     for (let i = 0; i < 4; i++) { mk(); now += 10 }
     for (const c of desk.layout().cards) expect(c.col % 2, `${c.id} 在第 ${c.col} 列`).toBe(0)
   })
 
-  it('半高档的行起点只在 0 或 2，不会错位出一条高 1 的横缝', () => {
+  /**
+   * 2026-08-14 栅格改 12×8 之后，行的不变量跟列**统一**了：起点一律取偶数。
+   * 以前行是「按自身高度对齐」（半高档只落 0/2），两个轴两套规则。
+   */
+  it('所有卡的行起点都是偶数 —— 跟列同一条规则', () => {
     for (let i = 0; i < 6; i++) { mk(); now += 10 }
-    for (const c of desk.layout().cards) expect([0, 2], `row ${c.row}`).toContain(c.row)
+    for (const c of desk.layout().cards) expect(c.row % 2, `row ${c.row}`).toBe(0)
   })
 })
 
-/* ══════════════ 2/3 导航形状 ══════════════ */
-describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () => {
-  it('2/3 卡占据左八列整块', () => {
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { destination: 'x' } })
+/* ══════════════ stage 导航形状 ══════════════ */
+describe('stage：左锚定 8×8，唯一合法位置是左八列', () => {
+  it('stage 卡占据左八列整块', () => {
+    const r = mk({ size: 'stage', template: 'nav', kind: 'rule', data: { destination: 'x' } })
     expect(r.status).toBe('ok')
     const c = desk.layout().cards[0]
     expect(c.row).toBe(0)
     expect(c.col).toBe(0)
-    expect(c.rowSpan).toBe(4)
+    expect(c.rowSpan).toBe(8)
     expect(c.colSpan).toBe(8)
   })
 
@@ -93,38 +114,38 @@ describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () 
    * 12×4 相对 3×2 最实质的改善：stage 之后右边留的是 4×4 = 16 单元的**竖条**，
    * 上下两张 card（4×2）叠着放得进去 —— 老栅格下那里是一条宽 1 的死缝。
    */
-  it('有 2/3 卡时右边竖条还能叠两张 1/6', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
-    expect(desk.layout().free).toBe(16)
+  it('有 stage 卡时右边竖条还能叠两张 box', () => {
+    mk({ size: 'stage', template: 'nav', kind: 'rule' }); now += 10
+    expect(desk.layout().free).toBe(32)
     const a = mk(); now += 10
     const b = mk(); now += 10
     expect(a.status).toBe('ok')
     expect(b.status).toBe('ok')
-    const cells = desk.layout().cards.filter(c => c.size === '1/6').map(c => [c.row, c.col])
-    expect(cells).toEqual([[0, 8], [2, 8]])
+    const cells = desk.layout().cards.filter(c => c.size === 'box').map(c => [c.row, c.col])
+    expect(cells).toEqual([[0, 8], [4, 8]])
   })
 
-  it('2/3 在场时 1/2 横卡（宽 12）放不下右边的 4 列 → 自动降为 1/6', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
-    const r = mk({ size: '1/2', data: { title: '天气' } })
+  it('stage 在场时通栏卡（宽 12）放不下右边的 4 列 → 自动降档', () => {
+    mk({ size: 'stage', template: 'nav', kind: 'rule' }); now += 10
+    const r = mkWide({ data: { title: '天气' } })
     expect(r.status).toBe('ok')
     const placed = desk.layout().cards.find(c => c.data?.title === '天气')!
-    // 降档后 size 是新档位名。card 就是老的 1/6，行为没变、名字换了
-    expect(desk.cellsOf(placed.size)).toBeLessThanOrEqual(desk.cellsOf('1/6'))
+    // 天气卡的形状池是 tile/wide/band，右边只剩 4 列宽，只有 tile(2 宽) 塞得进
+    expect(desk.cellsOf(placed.size)).toBeLessThanOrEqual(desk.cellsOf('box'))
     expect(r.shrunk).toBeTruthy()
   })
 
   // 全桌面只有一个 8×4 的合法位置，所以 2/3 至多一张。第二张不是消失，
   // 而是降到自己尺寸表的下一档（tower）待在右列——少一张卡永远比小一张卡更伤
   it('同一时刻最多一张 2/3：第二张降档留在桌面，不占第二个 8×4', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '第二张' } })
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ size: 'stage', template: 'nav', kind: 'rule', data: { title: '第二张' } })
     expect(r.status).toBe('ok')
     const onstage = desk.layout().cards
-    expect(onstage.filter(c => c.size === '2/3'), '2/3 至多一张').toHaveLength(1)
+    expect(onstage.filter(c => c.size === 'stage'), '2/3 至多一张').toHaveLength(1)
     const second = onstage.find(c => c.data?.title === '第二张')!
     expect(second, '第二张没消失，只是变小了').toBeTruthy()
-    expect(desk.cellsOf(second.size)).toBeLessThan(desk.cellsOf('2/3'))
+    expect(desk.cellsOf(second.size)).toBeLessThan(desk.cellsOf('stage'))
   })
 })
 
@@ -148,11 +169,11 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
    * 少一张卡永远比小一张卡更伤。挤是最后手段。
    */
   it('缩得下就不挤人：新卡进来时大家一起变小，谁都不消失', () => {
-    mk({ kind: 'system', size: '1/2', data: { title: '告警' } }); now += 10
+    mk({ kind: 'system', size: 'panel', data: { title: '告警' } }); now += 10
     mk({ data: { title: '旧任务' } }); now += 10
     mk({ data: { title: '新任务' } }); now += 10
     mk(); now += 10
-    const r = mk({ kind: 'rule', size: '1/2', data: { title: '导航提示' } })
+    const r = mk({ kind: 'rule', size: 'panel', data: { title: '导航提示' } })
     expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
     for (const t of ['告警', '旧任务', '新任务', '导航提示']) expect(titles, t).toContain(t)
@@ -161,10 +182,10 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
 
   it('真的缩无可缩时才挤，挤的是低优先级里最旧的那张', () => {
     // 全部先压到最小档，缩这条路彻底走不通
-    for (let i = 0; i < 6; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '钉死' + i } }); now += 10 }
-    for (let i = 0; i < 18; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '填充' + i } }); now += 10 }
+    for (let i = 0; i < 6; i++) { mkChip({ data: { title: '钉死' + i } }); now += 10 }
+    for (let i = 0; i < 18; i++) { mkChip({ data: { title: '填充' + i } }); now += 10 }
     const before = desk.layout().cards.length
-    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
+    const r = mkChip({ kind: 'system', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('来电')
     // 挤了人就得告知，静默消失不可接受
@@ -172,15 +193,15 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
   })
 
   it('evictable:false 的卡任何情况不被挤——导航中来电，来电降级挤入右列，导航岿然不动', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
     mk(); now += 10; mk(); now += 10
-    const r = mk({ kind: 'system', size: '1/2', data: { title: '来电' } })
+    const r = mk({ kind: 'system', size: 'panel', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles).toContain('导航')
     const call = desk.layout().cards.find(c => c.data?.title === '来电')!
     // 1/2 放不下，自动降级。七档阶梯下它可能一路降到 chip，只断言"变小了"
-    expect(desk.cellsOf(call.size)).toBeLessThan(desk.cellsOf('1/2'))
+    expect(desk.cellsOf(call.size)).toBeLessThan(desk.cellsOf('panel'))
   })
 
   /**
@@ -190,38 +211,38 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
    */
   it('几何死局的最后手段：高优先级卡可被降尺寸（但绝不被挤出）', () => {
     // system 确认卡占满上两行（banner 12×2）
-    mk({ kind: 'system', size: '1/2', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
+    mk({ kind: 'system', size: 'wide', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
     // 候选是 4×4 竖块且钉死不能再缩：上两行被占满，非降它不可
-    const r = mk({ size: 'tower', minSize: 'tower', template: 'nav', kind: 'rule',
+    const r = mk({ size: 'hall', minSize: 'hall', template: 'nav', kind: 'rule',
       evictable: false, data: { title: '导航' } })
     expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles).toContain('导航')
     expect(titles).toContain('请选择')   // 没被挤出，只是变小了
     expect(desk.cellsOf(desk.layout().cards.find(c => c.data?.title === '请选择')!.size))
-      .toBeLessThan(desk.cellsOf('1/2'))
+      .toBeLessThan(desk.cellsOf('panel'))
   })
 
   // 候选自己缩得动时就别动别人——尤其别动比它优先级更高的卡
   it('候选能自己降档时，不去动更高优先级的卡', () => {
-    mk({ kind: 'system', size: '1/3', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
+    mk({ kind: 'system', size: 'wide', data: { title: '请选择', question: 'q' }, template: 'confirm' }); now += 10
+    const r = mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
     expect(r.status).toBe('ok')
-    expect(desk.layout().cards.find(c => c.data?.title === '请选择')!.size, '高优先级卡纹丝不动').toBe('1/3')
+    expect(desk.layout().cards.find(c => c.data?.title === '请选择')!.size, '高优先级卡纹丝不动').toBe('wide')
     expect(desk.cellsOf(desk.layout().cards.find(c => c.data?.title === '导航')!.size), '降的是候选自己')
-      .toBeLessThan(desk.cellsOf('2/3'))
+      .toBeLessThan(desk.cellsOf('stage'))
   })
 
   // 列表卡缩到 1/6 就只剩个标题，选项全没了，等于白占一格。
-  // 模板已经声明了 sizes: ['1/3','1/2']，仲裁必须认这个下限
+  // 模板已经声明了 sizes: ['panel','band']，仲裁必须认这个下限
   it('缩尺寸不能缩出模板允许的范围，宁可挤掉别人', () => {
-    mk({ template: 'list', size: '1/2', kind: 'task', minSize: '1/3',
+    mk({ template: 'list', size: 'tower', kind: 'task', minSize: 'tower',
       data: { title: '候选', items: [{ label: 'a' }] } }); now += 10
-    const r = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
+    const r = mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } })
     expect(r.status).toBe('ok')
     const list = desk.layout().cards.find(c => c.template === 'list')
     // 要么降到下限 1/3，要么被挤掉；绝不能出现 1/6 的列表卡
-    if (list) expect(list.size).not.toBe('1/6')
+    if (list) expect(list.size).not.toBe('box')
   })
 
   /**
@@ -229,16 +250,16 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
    * 所以这里得把桌面真正填死：全部钉在 chip 且铺满 48 单元。
    */
   it('挤出必须告知——note 带被挤卡片的标题', () => {
-    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: `卡${i}` } }); now += 10 }
-    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
+    for (let i = 0; i < 24; i++) { mkChip({ data: { title: `卡${i}` } }); now += 10 }
+    const r = mkChip({ kind: 'system', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     expect(r.note).toContain('卡0')   // LRU：同级里最旧的先走
   })
 
   it('没给 title 时兜底用模板的人话 label，不是裸模板 id', () => {
     // 无 title 的 feedback 卡钉在 chip 铺满，逼出真正的挤出
-    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip' }); now += 10 }
-    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip' })
+    for (let i = 0; i < 24; i++) { mkChip(); now += 10 }
+    const r = mkChip({ kind: 'system' })
     expect(r.status).toBe('ok')
     // 被挤的是低优先级 task 卡；note 里显示模板 label「反馈卡」而不是裸 id「feedback」
     const fbLabel = CARD_TEMPLATES.find(t => t.id === 'feedback')!.label
@@ -250,7 +271,7 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
 /* ══════════════ 生命周期 ══════════════ */
 describe('生命周期：ttl 必填，到期自动退场', () => {
   it('缺 ttl 拒绝——防卡片堆积', () => {
-    const r = desk.show({ template: 'feedback', size: '1/6' })
+    const r = desk.show({ template: 'feedback', size: 'box' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('TTL_REQUIRED')
   })
@@ -295,29 +316,29 @@ describe('full：整屏覆盖，退出自动还原', () => {
 /* ══════════════ 复用：L1/L2/L3 ══════════════ */
 describe('render：优先复用已有卡 → 放大 → 最后才新建', () => {
   it('无对应卡时新建（L3）', () => {
-    const r = desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗' } })
+    const r = desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30, data: { title: '车窗' } })
     expect(r.level).toBe('L3')
   })
 
   it('已有同 key 卡时更新内容不新建（L1）', () => {
-    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗', v: 1 } })
-    const r = desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, data: { title: '车窗', v: 2 } })
+    desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30, data: { title: '车窗', v: 1 } })
+    const r = desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30, data: { title: '车窗', v: 2 } })
     expect(r.level).toBe('L1')
     expect(desk.layout().cards).toHaveLength(1)
     expect(desk.layout().cards[0].data.v).toBe(2)
   })
 
   it('已有卡但要求更大尺寸时放大（L2）', () => {
-    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30 })
-    const r = desk.render({ key: 'w', template: 'control', size: '1/2', ttl: 30 })
+    desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30 })
+    const r = desk.render({ key: 'w', template: 'control', size: 'tower', ttl: 30 })
     expect(r.level).toBe('L2')
-    expect(desk.layout().cards[0].size).toBe('1/2')
+    expect(desk.layout().cards[0].size).toBe('tower')
   })
 
   it('refreshTtl 让事件卡在活动期间不过期', () => {
-    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30 })
+    desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30 })
     now += 25_000
-    desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30, refreshTtl: true })
+    desk.render({ key: 'w', template: 'control', size: 'box', ttl: 30, refreshTtl: true })
     now += 25_000; desk.tick()
     expect(desk.layout().cards).toHaveLength(1) // 第二次 render 重置了寿命
   })
@@ -330,10 +351,10 @@ describe('桌面摘要（注入 system prompt）', () => {
    * 「还能不能再上一张卡」，只会瞎猜。改成按基准卡数说人话。
    */
   it('列出卡片、尺寸，剩余空间换算成还能放几张小卡', () => {
-    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule', ttl: 'untilDismissed', data: { title: '导航' } })
+    desk.render({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule', ttl: 'untilDismissed', data: { title: '导航' } })
     const s = desk.summary()
     expect(s).toContain('导航')
-    expect(s).toContain('2/3')
+    expect(s).toContain('stage')
     expect(s).toMatch(/还(能|放得下).*2\s*张/)   // 16 单元 = 两张基准卡
     expect(s).not.toMatch(/\d+\s*格/)            // 不许再出现内部单元数
     expect(s).not.toContain('固定区')
@@ -350,8 +371,8 @@ describe('桌面摘要（注入 system prompt）', () => {
 
   // 等位区（2026-08-13）：模型必须知道台下还有什么，不然它会当成"没了"重复建卡
   it('台下有排队的卡时，摘要里说得出——不然模型会以为没了', () => {
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
-    mk({ template: 'weather', size: '1/6', data: { title: '成都天气' } })
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system', evictable: false }); now += 10 }
+    mk({ template: 'weather', size: 'wide', data: { title: '成都天气' } })
     expect(desk.summary()).toContain('成都天气')
     expect(desk.summary()).toMatch(/台下|排队|等/)
   })
@@ -373,21 +394,21 @@ describe('桌面摘要（注入 system prompt）', () => {
  */
 describe('导航 2/3 在场时，选择卡还进不进得来', () => {
   it('候选列表卡进得来', () => {
-    desk.show({ template: 'nav', size: '2/3', kind: 'rule', evictable: false,
+    desk.show({ template: 'nav', size: 'stage', kind: 'rule', evictable: false,
       ttl: 'untilDismissed', data: { title: '导航' } })
     now += 10
-    const r = desk.show({ template: 'list', size: '1/2', kind: 'task', minSize: '1/6',
+    const r = desk.show({ template: 'list', size: 'tower', kind: 'task', minSize: 'box',
       ttl: 120, data: { title: '你要去哪个？', items: [{ label: '太古里' }, { label: '美食街' }] } })
     expect(r.status).toBe('ok')
     expect(desk.layout().cards.some(c => c.template === 'list')).toBe(true)
   })
 
   it('进得来，且不会被拒', () => {
-    desk.show({ template: 'nav', size: '2/3', kind: 'rule', evictable: false,
+    desk.show({ template: 'nav', size: 'stage', kind: 'rule', evictable: false,
       ttl: 'untilDismissed', data: { title: '导航' } })
     now += 10
     // minSize 跟着 confirm 模板走（含 1/6），所以缩得下去、进得来
-    const r = desk.show({ template: 'confirm', size: '1/3', kind: 'system', minSize: '1/6',
+    const r = desk.show({ template: 'confirm', size: 'wide', kind: 'system', minSize: 'box',
       ttl: 'untilTaskEnd', data: { title: '请选择', question: '去哪个充电站？' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('请选择')
@@ -401,51 +422,51 @@ describe('导航 2/3 在场时，选择卡还进不进得来', () => {
  * 优先级：物理（仲裁）> 意愿（显式 resize）> 建议（defaultSize）
  */
 describe('尺寸粘性：显式改过就听用户的', () => {
-  const nav = () => desk.show({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+  const nav = () => desk.show({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule',
     evictable: false, ttl: 'untilDismissed', data: { title: '导航', eta: 20 } })
 
   it('resize 之后，规则重刷不把尺寸改回默认', () => {
     nav()
     const id = desk.findByKey('nav')!.id
-    desk.resize(id, 'tower')
+    desk.resize(id, 'hall')
     now += 10
     // orchestrator 每次状态变化都这么调
-    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航', eta: 19 } })
     const c = desk.findByKey('nav')!
-    expect(c.size).toBe('tower')    // 用户的选择还在
+    expect(c.size).toBe('hall')    // 用户的选择还在
     expect(c.data.eta).toBe(19)     // 数据照常更新
   })
 
   // render 的既有语义是只放大不缩小——规则重刷不该让卡片忽大忽小。
   // 没上锁的卡，空间腾出来时规则能把它带回默认尺寸
   it('没被 resize 过的卡，规则重刷能放大回默认尺寸', () => {
-    desk.render({ key: 'nav', template: 'nav', size: 'tower', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'hall', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
-    expect(desk.findByKey('nav')!.size).toBe('tower')
+    expect(desk.findByKey('nav')!.size).toBe('hall')
     now += 10
-    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
-    expect(desk.findByKey('nav')!.size).toBe('2/3')
+    expect(desk.findByKey('nav')!.size).toBe('stage')
   })
 
   it('卡片退场后锁也没了，下次出现回到默认尺寸', () => {
     nav()
     const id = desk.findByKey('nav')!.id
-    desk.resize(id, '1/3')
+    desk.resize(id, 'panel')
     desk.dismiss(id)
     now += 10
     nav()
-    expect(desk.findByKey('nav')!.size).toBe('2/3')
+    expect(desk.findByKey('nav')!.size).toBe('stage')
   })
 
   it('锁不住仲裁——空间不够时该缩还得缩，那是物理不是偏好', () => {
     nav()
-    desk.resize(desk.findByKey('nav')!.id, '1/2')
+    desk.resize(desk.findByKey('nav')!.id, 'band')
     now += 10
     // 塞满剩余空间，逼一张 system 卡进来
     for (let i = 0; i < 3; i++) { mk({ kind: 'system' }); now += 10 }
-    const r = mk({ kind: 'system', size: '1/2', data: { title: '告警' } })
+    const r = mk({ kind: 'system', size: 'panel', data: { title: '告警' } })
     expect(r.status).toBe('ok')
   })
 })
@@ -466,74 +487,81 @@ describe('尺寸粘性：显式改过就听用户的', () => {
 describe('导航卡尺寸表：避开会拉伸地图的扁条形状', () => {
   it('导航卡三档不含 wide/panel/banner 这类宽高比 ≥3:1 的扁条', () => {
     const nav = CARD_TEMPLATES.find(t => t.id === 'nav')!
-    for (const bad of ['wide', 'panel', 'banner', '1/3', '1/2'])
+    for (const bad of ['wide', 'panel', 'banner', 'panel', 'band'])
       expect(nav.sizes, `导航卡不该有 ${bad}`).not.toContain(bad)
   })
 
-  it('中间档 tower 是正方形（4×4），不是拉伸的扁条', () => {
-    const [w, h] = dimsOf('tower')
-    expect(w).toBe(h)
+  /**
+   * 2026-08-14 中间档从 tower(4×4) 换成 hall(6×6)：实拍反馈"中等尺寸没有地图
+   * 不合理，中间看着非常空"。tower 只有 4 列宽，形态函数判定地图会被压成竖缝
+   * 所以干脆不画 —— 换成 hall 之后地图有 500px 高，而且它跟最大档 stage
+   * 宽高比相同（1.63），两档共用一套骨架。
+   */
+  it('中间档 hall 放得下地图，且宽高比跟最大档一致', () => {
+    expect(formOf('nav', ...dimsOf('hall')).blocks).toContain('map')
+    const ratio = (t: string) => { const [w, h] = dimsOf(t); return w / h }
+    expect(ratio('hall')).toBe(ratio('stage'))
   })
 })
 
 describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
   it('grow/shrink 按模板允许的尺寸表走一档', () => {
-    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'tile', data: { now: {} } }).cardId!
     expect(desk.step(id, 'up').status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('1/3')
+    expect(desk.get(id)!.size).toBe('wide')
     expect(desk.step(id, 'up').status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('1/2')
+    expect(desk.get(id)!.size).toBe('band')
   })
 
   it('已经是最小尺寸时 shrink 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
-    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'tile', data: { now: {} } }).cardId!
     const r = desk.step(id, 'down')
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
-    expect(desk.get(id)!.size).toBe('1/6')
+    expect(desk.get(id)!.size).toBe('tile')
   })
 
   it('已经是最大尺寸时 grow 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
-    const id = mk({ template: 'weather', size: '1/2', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'band', data: { now: {} } }).cardId!
     const r = desk.step(id, 'up')
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
-    expect(desk.get(id)!.size).toBe('1/2')
+    expect(desk.get(id)!.size).toBe('band')
   })
 
-  it('导航卡的 2/3 是专用档不在 LADDER 里，仍能从 tower grow 上去——按单元格数量排序不看阶梯下标', () => {
-    const id = desk.show({ template: 'nav', size: 'tower', kind: 'rule',
+  it('导航卡的 stage 是专用档，仍能从 hall grow 上去——按单元格数量排序，不看阶梯下标', () => {
+    const id = desk.show({ template: 'nav', size: 'hall', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } }).cardId!
     const r = desk.step(id, 'up')
     expect(r.status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('2/3')
+    expect(desk.get(id)!.size).toBe('stage')
     // 已经是 2/3（导航卡的最大档），再 grow 就到头了
     expect(desk.step(id, 'up').status).toBe('rejected')
   })
 
   it('尊重模板收窄过的尺寸表（list 只有 1/6·1/3·1/2 三档）', () => {
-    const id = mk({ template: 'list', size: '1/6', data: { items: [{ label: 'a' }] } }).cardId!
+    const id = mk({ template: 'list', size: 'box', data: { items: [{ label: 'a' }] } }).cardId!
     const r = desk.step(id, 'down')   // list 没有比 1/6 更小的档
     expect(r.status).toBe('rejected')
   })
 
   it('尊重调用方声明的 minSize——按钮缩不破这条线', () => {
-    const id = mk({ template: 'weather', size: '1/3', minSize: '1/3', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'band', minSize: 'band', data: { now: {} } }).cardId!
     const r = desk.step(id, 'down')
     expect(r.status).toBe('rejected')
-    expect(desk.get(id)!.size).toBe('1/3')
+    expect(desk.get(id)!.size).toBe('band')
   })
 
   it('走一步即视为用户显式调整——之后规则重刷不会把尺寸弹回默认', () => {
-    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
     const id = desk.findByKey('nav')!.id
     desk.step(id, 'down')
-    expect(desk.get(id)!.size).toBe('tower')
+    expect(desk.get(id)!.size).toBe('hall')
     now += 10
-    desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'stage', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
-    expect(desk.findByKey('nav')!.size).toBe('tower')   // 没被规则弹回 2/3
+    expect(desk.findByKey('nav')!.size).toBe('hall')   // 没被规则弹回 stage
   })
 
   it('卡不存在时返回 NO_SUCH_CARD，不抛异常', () => {
@@ -546,18 +574,20 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
    * 就静默什么都不做（之前 grow 只是普通 resize，tryPlace 失败就原地卡住）。
    */
   it('放大挤占：桌面被同优先级卡占满时，grow 照样挤出地方（不看谁优先级更高）', () => {
-    for (let i = 0; i < 5; i++) { mk({ kind: 'system', size: '1/6', minSize: '1/6', data: { title: '占位' + i } }); now += 10 }
-    const id = mk({ template: 'weather', size: '1/6', kind: 'system', data: { now: {} } }).cardId!
+    // 4 张 box(16) 占 64，天气 wide(24) 正好填满 88…剩 8 单元；
+    // grow 到 band(48) 必须挤掉一张占位卡才腾得出
+    for (let i = 0; i < 4; i++) { mk({ kind: 'system', size: 'box', minSize: 'box', data: { title: '占位' + i } }); now += 10 }
+    const id = mk({ template: 'weather', size: 'wide', kind: 'system', data: { now: {} } }).cardId!
     now += 10
     const r = desk.step(id, 'up')
     expect(r.status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('1/3')   // 真长大了，不是原地不动
+    expect(desk.get(id)!.size).toBe('band')   // 真长大了，不是原地不动
     expect(r.evicted, '挤了人就该带 evicted').toBeTruthy()
   })
 
   it('放大挤占绝不破 evictable:false / urgent+ 的硬保护——挤不动就是挤不动', () => {
     // 钉死 6 张 1/6（48 单元正好占满），全部不可挤
-    for (let i = 0; i < 6; i++) { mk({ kind: 'system', size: '1/6', minSize: '1/6', evictable: false, urgency: 'urgent', data: { title: '钉' + i } }); now += 10 }
+    for (let i = 0; i < 6; i++) { mk({ kind: 'system', size: 'box', minSize: 'box', evictable: false, urgency: 'urgent', data: { title: '钉' + i } }); now += 10 }
     const beforeTitles = desk.layout().cards.map(c => c.data?.title)
     // 桌面已经满了，随手拿一张已上台的卡试着 grow——这里直接用第一张钉死的卡
     // 本身来验证：即便它是"候选自己"，也不能通过挤走别人（因为大家都不可挤）实现放大
@@ -569,10 +599,10 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
 
   // canStep 是给车机屏按钮"该不该置灰"用的只读查询——不许车机屏自己重算一遍
   it('canStep 只读查询按钮该不该置灰，不改变尺寸', () => {
-    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'tile', data: { now: {} } }).cardId!
     expect(desk.canStep(id, 'down')).toBe(false)   // 已经最小
     expect(desk.canStep(id, 'up')).toBe(true)
-    expect(desk.get(id)!.size).toBe('1/6')        // 只读，没被改动
+    expect(desk.get(id)!.size).toBe('tile')        // 只读，没被改动
   })
 
   it('canStep 对不存在的卡返回 false', () => {
@@ -587,15 +617,15 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
  */
 describe('urgency 参与仲裁', () => {
   it('critical 卡不会被挤出，哪怕它是最旧的 task', () => {
-    mk({ urgency: 'critical', size: '1/2', data: { title: '车门未关' } }); now += 10
+    mk({ urgency: 'critical', size: 'panel', data: { title: '车门未关' } }); now += 10
     for (let i = 0; i < 6; i++) { mk({ kind: 'system', data: { title: '卡' + i } }); now += 10 }
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('车门未关')
   })
 
   it('真挤不动时 ambient 先走 —— 天气让位给车控反馈', () => {
     mk({ urgency: 'ambient', size: 'chip', minSize: 'chip', data: { title: '天气' } }); now += 10
-    for (let i = 0; i < 23; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: '常规' + i } }); now += 10 }
-    mk({ size: 'chip', minSize: 'chip', data: { title: '新反馈' } }); now += 10
+    for (let i = 0; i < 23; i++) { mkChip({ data: { title: '常规' + i } }); now += 10 }
+    mkChip({ data: { title: '新反馈' } }); now += 10
     const titles = desk.layout().cards.map(c => c.data?.title)
     expect(titles, 'ambient 该第一个走').not.toContain('天气')
     expect(titles).toContain('新反馈')
@@ -603,11 +633,11 @@ describe('urgency 参与仲裁', () => {
 
   // 缩到 chip 只剩一个标题，安全告警缩成那样等于没显示
   it('critical 卡不会被缩到 panel 以下', () => {
-    const r = mk({ urgency: 'critical', size: '1/2', data: { title: '胎压过低' } }); now += 10
+    const r = mk({ urgency: 'critical', size: 'panel', data: { title: '胎压过低' } }); now += 10
     expect(r.status).toBe('ok')
-    for (let i = 0; i < 4; i++) { mk({ kind: 'system', size: '1/3' }); now += 10 }
+    for (let i = 0; i < 4; i++) { mk({ kind: 'system', size: 'panel' }); now += 10 }
     const c = desk.layout().cards.find(x => x.data?.title === '胎压过低')!
-    expect(desk.cellsOf(c.size)).toBeGreaterThanOrEqual(desk.cellsOf('1/3'))
+    expect(desk.cellsOf(c.size)).toBeGreaterThanOrEqual(desk.cellsOf('panel'))
   })
 
   /**
@@ -619,8 +649,8 @@ describe('urgency 参与仲裁', () => {
    * channelOf() 给 critical 的答案。
    */
   it('放不下的 critical 卡改走覆盖层，绝不拒绝', () => {
-    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
-    const r = mk({ template: 'notice', size: '1/2', kind: 'system', urgency: 'critical', ttl: 60, data: { title: '车门未关' } })
+    mk({ template: 'nav', size: 'stage', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    const r = mk({ template: 'notice', size: 'wide', kind: 'system', urgency: 'critical', ttl: 60, data: { title: '车门未关' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().overlay?.data?.title).toBe('车门未关')
     // 导航卡还在，没被挤掉
@@ -628,15 +658,15 @@ describe('urgency 参与仲裁', () => {
   })
 
   it('放得下的 critical 卡照常进桌面，不滥用覆盖层', () => {
-    const r = mk({ size: '1/2', urgency: 'critical', data: { title: '胎压过低' } })
+    const r = mk({ size: 'panel', urgency: 'critical', data: { title: '胎压过低' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().overlay).toBeUndefined()
     expect(desk.layout().cards.some(c => c.data?.title === '胎压过低')).toBe(true)
   })
 
   it('非 critical 卡放不下不再拒绝也不滥用覆盖层——进等位区（2026-08-13 改）', () => {
-    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ size: '1/2', kind: 'system', data: { title: '普通提示' } })
+    mk({ template: 'nav', size: 'stage', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ size: 'panel', kind: 'system', data: { title: '普通提示' } })
     expect(r.status).toBe('ok')       // 会被降档放进右边竖条
     const r2 = unfittable({ kind: 'system', data: { title: '第二张大卡', items: [{ label: 'x' }] } })
     expect(r2.status).toBe('ok')
@@ -676,7 +706,7 @@ describe('降级阶梯七档，缩得比 1/6 更小', () => {
   })
 
   it('缩到 chip 是允许的 —— 它就是为"还想留着但没地方"准备的', () => {
-    const r = mk({ size: '1/6', urgency: 'ambient', data: { title: '播放器' } })
+    const r = mk({ template: 'feedback', size: 'box', urgency: 'ambient', data: { title: '播放器' } })
     expect(r.status).toBe('ok')
     const id = r.cardId!
     expect(desk.resize(id, 'chip' as any, true).status).toBe('ok')
@@ -684,9 +714,10 @@ describe('降级阶梯七档，缩得比 1/6 更小', () => {
   })
 
   it('新档位名和老名字都认', () => {
-    expect(desk.cellsOf('chip' as any)).toBe(2)
-    expect(desk.cellsOf('bar' as any)).toBe(6)
-    expect(desk.cellsOf('1/6')).toBe(8)
+    expect(desk.cellsOf('chip' as any)).toBe(4)
+    expect(desk.cellsOf('bar' as any)).toBe(12)
+    expect(desk.cellsOf('box')).toBe(16)
+    expect(desk.cellsOf('1/6'), '老名字也认').toBe(16)
   })
 })
 
@@ -699,7 +730,7 @@ describe('降级阶梯七档，缩得比 1/6 更小', () => {
  */
 describe('等位区：放不下不再是失败，是一种状态', () => {
   it('放不下的新卡 status 仍是 ok，staged:true，不占桌面', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }); now += 10
     const r = unfittable({ data: { title: '第二张', items: [{ label: 'x' }] } })
     expect(r.status).toBe('ok')
     expect(r.staged).toBe(true)
@@ -708,8 +739,8 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('被挤出的卡进等位区，不是真的消失', () => {
-    for (let i = 0; i < 24; i++) { mk({ size: 'chip', minSize: 'chip', data: { title: `卡${i}` } }); now += 10 }
-    const r = mk({ kind: 'system', size: 'chip', minSize: 'chip', data: { title: '来电' } })
+    for (let i = 0; i < 24; i++) { mkChip({ data: { title: `卡${i}` } }); now += 10 }
+    const r = mkChip({ kind: 'system', data: { title: '来电' } })
     expect(r.status).toBe('ok')
     expect(r.evicted?.length).toBeGreaterThan(0)
     const evictedId = r.evicted![0]
@@ -718,7 +749,7 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('空间释放后，staged 卡自动上台（静默，reconcile）', () => {
-    const a = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: 'A' } }).cardId!
+    const a = mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: 'A' } }).cardId!
     now += 10
     const rb = unfittable({ data: { title: 'B', items: [{ label: 'x' }] } })
     expect(rb.staged).toBe(true)
@@ -729,10 +760,11 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('挤位时优先级决定谁走：来的是高优先级，走的是场上低优先级那张（不是它自己进等位区）', () => {
-    mk({ size: '1/2', kind: 'system', evictable: false, data: { title: '占位' } }); now += 10
-    mk({ size: '1/2', kind: 'task', minSize: '1/2', data: { title: '低优先级' } })
+    // court 是 48 单元，两张正好填满 96 —— 第三张非挤人不可
+    mk({ size: 'court', kind: 'system', evictable: false, data: { title: '占位' } }); now += 10
+    mk({ size: 'court', kind: 'task', minSize: 'court', data: { title: '低优先级' } })
     now += 10
-    const r = mk({ size: '1/2', kind: 'system', data: { title: '高优先级' } })
+    const r = mk({ size: 'court', kind: 'system', data: { title: '高优先级' } })
     expect(r.status).toBe('ok')
     expect(r.staged, '高优先级自己上台了，不是进队').toBeFalsy()
     const onstage = desk.layout().cards.map(c => c.data?.title)
@@ -742,27 +774,27 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('等位区里 untilDismissed 卡不因为久候而过期', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }); now += 10
     unfittable({ data: { title: '排队中', items: [{ label: 'x' }] }, ttl: 'untilDismissed' })
     now += 100_000; desk.tick(); now += 100_000; desk.tick()
     expect(desk.layout().staged.some(c => c.data?.title === '排队中')).toBe(true)
   })
 
   it('等位区里秒数 ttl 的卡照常过期——没人看到的问题卡更该散', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    mk({ size: '2/3', template: 'nav', kind: 'rule', data: { title: '问题卡' }, ttl: 5 })
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule', data: { title: '问题卡' }, ttl: 5 })
     now += 6000; desk.tick()
     expect(desk.layout().staged.some(c => c.data?.title === '问题卡')).toBe(false)
   })
 
   it('等位区上限 8：超限淘汰优先级最低+最老的一张，真消失并通知', () => {
     // 填满 48 单元且全用更高优先级、不可挤——后来的 task 卡一张都进不了台上
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system', evictable: false }); now += 10 }
     const notices: string[] = []
     desk.onNotice(n => notices.push(n.note))
-    for (let i = 0; i < 8; i++) { mk({ size: '1/6', data: { title: `排队${i}` } }); now += 10 }
+    for (let i = 0; i < 8; i++) { mk({ size: 'box', data: { title: `排队${i}` } }); now += 10 }
     expect(desk.layout().staged).toHaveLength(8)
-    const r = mk({ size: '1/6', data: { title: '第九个' } })
+    const r = mk({ size: 'box', data: { title: '第九个' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().staged).toHaveLength(8)   // 仍然是 8，淘汰了一个
     expect(desk.layout().staged.some(c => c.data?.title === '排队0'), '最旧的被淘汰').toBe(false)
@@ -771,31 +803,31 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('新一轮家族清扫也波及等位区——旧批不管在不在台上都退场', () => {
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system', evictable: false }); now += 10 }
     desk.render({ key: 'weather:a', family: 'weather', round: 1, template: 'weather',
-      size: '1/6', ttl: 'untilDismissed', data: { title: '成都天气' } })
+      size: 'wide', ttl: 'untilDismissed', data: { title: '成都天气' } })
     expect(desk.layout().staged.some(c => c.data?.title === '成都天气')).toBe(true)
     desk.render({ key: 'weather:b', family: 'weather', round: 2, template: 'weather',
-      size: '1/6', ttl: 'untilDismissed', data: { title: '北京天气' } })
+      size: 'wide', ttl: 'untilDismissed', data: { title: '北京天气' } })
     expect(desk.layout().staged.some(c => c.data?.title === '成都天气'), '旧批退场').toBe(false)
   })
 
   it('findByKey/get 认得等位区里的卡——render() 刷新它不会被当成新卡重建', () => {
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
-    const r = desk.render({ key: 'w1', template: 'weather', size: '1/6', ttl: 'untilDismissed',
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system', evictable: false }); now += 10 }
+    const r = desk.render({ key: 'w1', template: 'weather', size: 'wide', ttl: 'untilDismissed',
       data: { title: '天气V1' } })
     expect(r.staged).toBe(true)
     const id = r.cardId!
     expect(desk.get(id)?.data.title).toBe('天气V1')
     expect(desk.findByKey('w1')?.id).toBe(id)
-    desk.render({ key: 'w1', template: 'weather', size: '1/6', ttl: 'untilDismissed',
+    desk.render({ key: 'w1', template: 'weather', size: 'wide', ttl: 'untilDismissed',
       data: { title: '天气V2' } })
     expect(desk.layout().staged.filter(c => c.key === 'w1')).toHaveLength(1)   // 刷新不是新建
     expect(desk.get(id)?.data.title).toBe('天气V2')
   })
 
   it('focus() 召回等位区的卡：不必等 tick，立即重新尝试上台', () => {
-    const blockerId = mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }).cardId!
+    const blockerId = mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }).cardId!
     now += 10
     const r = unfittable({ data: { title: '待召回', items: [{ label: 'x' }] } })
     expect(r.staged).toBe(true)
@@ -810,8 +842,8 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   // focus 永远失败于同样的格局，"说'看天气'叫回"就成了摆设。
   // 用户点名 = 意愿层，压过优先级比较（物理 > 意愿 > 建议 里的中间层）
   it('focus() 召回压过优先级比较：能挤走台上更高优先级的可挤卡', () => {
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
-    const r = mk({ kind: 'task', template: 'weather', data: { title: '成都天气' } })
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system' }); now += 10 }
+    const r = mk({ kind: 'task', template: 'weather', size: 'wide', data: { title: '成都天气' } })
     expect(r.staged, 'task 挤不过 system，先排队').toBe(true)
     const f = desk.focus(r.cardId!)
     expect(f.status).toBe('ok')
@@ -819,8 +851,8 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('召回动不了 evictable:false 的卡——用户意愿不破硬约束，继续排队', () => {
-    for (let i = 0; i < 24; i++) { mk({ kind: 'system', size: 'chip', minSize: 'chip', evictable: false }); now += 10 }
-    const r = mk({ kind: 'task', template: 'weather', data: { title: 'W' } })
+    for (let i = 0; i < 24; i++) { mkChip({ kind: 'system', evictable: false }); now += 10 }
+    const r = mk({ kind: 'task', template: 'weather', size: 'wide', data: { title: 'W' } })
     const f = desk.focus(r.cardId!)
     expect(f.status, '排队不是失败').toBe('ok')
     expect((f as any).staged).toBe(true)
@@ -828,15 +860,15 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
   })
 
   it('用户划走等位区的卡：直接消失，不占位不诈尸', () => {
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ key: 'q1', size: '2/3', template: 'nav', kind: 'rule', data: { title: 'Q' } })
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ key: 'q1', size: 'stage', template: 'nav', kind: 'rule', data: { title: 'Q' } })
     desk.dismiss(r.cardId!, { byUser: true })
     expect(desk.layout().staged.some(c => c.id === r.cardId)).toBe(false)
   })
 
   it('critical 卡永不进等位区——放不下走覆盖层，行为不变', () => {
-    mk({ template: 'nav', size: '2/3', kind: 'rule', evictable: false }); now += 10
-    const r = mk({ template: 'notice', size: '1/2', kind: 'system', urgency: 'critical', ttl: 60,
+    mk({ template: 'nav', size: 'stage', kind: 'rule', evictable: false }); now += 10
+    const r = mk({ template: 'notice', size: 'wide', kind: 'system', urgency: 'critical', ttl: 60,
       data: { title: '车门未关' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().overlay?.data?.title).toBe('车门未关')
@@ -858,13 +890,12 @@ describe('等位区：放不下不再是失败，是一种状态', () => {
 describe('fit 事务化：试探失败不留下任何痕迹', () => {
   it('候选放不下进等位区时，为它让过路的卡恢复原尺寸（不留压缩残留）', () => {
     // 导航 8×4 不可挤，右列只剩 4 宽
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
-    const a = mk({ template: 'weather', size: '1/6', data: { title: '天气', now: {} } }).cardId!; now += 10
-    const b = mk({ template: 'feedback', size: '1/6', data: { title: '反馈' } }).cardId!; now += 10
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    const a = mk({ template: 'weather', size: 'wide', data: { title: '天气', now: {} } }).cardId!; now += 10
+    const b = mk({ template: 'feedback', size: 'box', data: { title: '反馈' } }).cardId!; now += 10
     const sizeA = desk.get(a)!.size, sizeB = desk.get(b)!.size
-    // 一张最小也要 1/2（banner 12×2）的卡：导航占着 8 列，怎么腾都放不下
-    const r = mk({ template: 'list', size: '1/2', minSize: '1/2', kind: 'system',
-      data: { title: '放不下的', items: [{ label: 'x' }] } })
+    // 一张最小也要通栏的卡：导航占着左 8 列整个高度，右边 4 列怎么腾都塞不进
+    const r = unfittable({ kind: 'system', data: { title: '放不下的' } })
     expect(r.staged, '它自己进等位区').toBe(true)
     expect(desk.get(a)!.size, '天气卡尺寸没被白白压小').toBe(sizeA)
     expect(desk.get(b)!.size, '反馈卡尺寸没被白白压小').toBe(sizeB)
@@ -886,10 +917,10 @@ describe('fit 事务化：试探失败不留下任何痕迹', () => {
 describe('放大按钮：放不下就如实拒绝，绝不静默变没反应', () => {
   it('放不下时返回 NO_ROOM，卡片留在台上且尺寸不变', () => {
     // 导航 8×4 不可挤 + 右列两张钉死的 urgent 卡，谁都挤不动
-    mk({ size: '2/3', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
-    mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉A' } }); now += 10
-    mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉B' } }); now += 10
-    const m = mk({ template: 'media', size: '1/6', kind: 'rule', data: { title: '播放器', track: 'x' } }).cardId
+    mk({ size: 'stage', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }); now += 10
+    mk({ size: 'box', minSize: 'box', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉A' } }); now += 10
+    mk({ size: 'box', minSize: 'box', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉B' } }); now += 10
+    const m = mk({ template: 'media', size: 'box', kind: 'rule', data: { title: '播放器', track: 'x' } }).cardId
     // 桌面已满，播放器可能进了等位区；只在它真上台时才测放大
     if (m && desk.layout().cards.some(c => c.id === m)) {
       const before = desk.get(m)!.size
@@ -902,11 +933,11 @@ describe('放大按钮：放不下就如实拒绝，绝不静默变没反应', (
   })
 
   it('导航卡放大够不到 2/3 时不会被送进等位区', () => {
-    const nav = mk({ size: 'tower', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }).cardId!
+    const nav = mk({ size: 'hall', template: 'nav', kind: 'rule', evictable: false, data: { title: '导航' } }).cardId!
     now += 10
     // 用钉死的 urgent 卡占住剩余空间，让 2/3(8×4) 无论如何放不下
     for (let i = 0; i < 4; i++) {
-      mk({ size: '1/6', minSize: '1/6', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉' + i } })
+      mk({ size: 'box', minSize: 'box', kind: 'system', urgency: 'urgent', evictable: false, data: { title: '钉' + i } })
       now += 10
     }
     desk.step(nav, 'up')
@@ -919,7 +950,7 @@ describe('放大按钮：放不下就如实拒绝，绝不静默变没反应', (
  * 仲裁降级只走模板自己声明的档位（2026-08-14 代码审查）。
  *
  * 老实现里仲裁有一套独立的七档 LADDER，与"每种卡最多三档"的模板契约并行存在：
- * 一张声明了 ['1/6','1/3','1/2'] 的天气卡，会被仲裁自动压成它从没声明过的
+ * 一张声明了 ['box','panel','band'] 的天气卡，会被仲裁自动压成它从没声明过的
  * 'strip' 或 'bar'。两套阶梯并存的直接后果是车机屏必须为全部 10 档都备一套
  * CSS，而模板契约形同虚设。
  */
@@ -927,7 +958,7 @@ describe('仲裁降级不越出模板契约', () => {
   it('被压缩的卡只会落在自己声明过的档位上', () => {
     const ids: string[] = []
     for (let i = 0; i < 6; i++) {
-      ids.push(mk({ template: 'weather', size: '1/2', data: { title: 'W' + i, now: {} } }).cardId!)
+      ids.push(mk({ template: 'weather', size: 'band', data: { title: 'W' + i, now: {} } }).cardId!)
       now += 10
     }
     const allowed = CARD_TEMPLATES.find(t => t.id === 'weather')!.sizes!
@@ -1006,9 +1037,9 @@ describe('layout() 缓存：状态没变就不重算', () => {
   })
 
   it('尺寸调整后缓存也失效', () => {
-    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: 'wide', data: { now: {} } }).cardId!
     const before = desk.layout()
-    desk.resize(id, '1/3')
+    desk.resize(id, 'band')
     expect(desk.layout()).not.toBe(before)
   })
 })

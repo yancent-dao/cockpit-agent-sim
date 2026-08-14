@@ -9,7 +9,7 @@
  * 两道闸：≤2 次防振荡（升上去又量出偏小又缩回来的循环）；
  * sizeLocked 例外——用户缩小过的卡宁可折角提示，意愿 > 建议。
  */
-import { pixelsOf, cellsOfTier, normalizeTier } from '../config/grid'
+import { pixelsOf, cellsOfTier, normalizeTier, dimsOf } from '../config/grid'
 import { CARD_TEMPLATES, COMMON_SIZES } from '../config/cards'
 
 /**
@@ -26,8 +26,15 @@ import { CARD_TEMPLATES, COMMON_SIZES } from '../config/cards'
 const ladderFor = (template?: string) => {
   const tmpl = template ? CARD_TEMPLATES.find(t => t.id === template) : undefined
   return [...(tmpl?.sizes ?? COMMON_SIZES)]
-    .filter(z => normalizeTier(z) !== 'tower')
-    .sort((a, b) => cellsOfTier(a) - cellsOfTier(b))
+    // 窄高的专用形状不进自愈阶梯：tower(4×8) 和 frame(4×6) 都比 box 更窄，
+    // 自动"升"到它们等于宽度砍半、文字更挤，内容只会更高。模型要竖条自己显式声明
+    .filter(z => !['tower', 'frame'].includes(normalizeTier(z)))
+    /**
+     * 同面积时按宽度排，让阶梯里**不出现两个面积相同的档** ——
+     * 有的话"升一档"和"降一档"会落到不同的那个（升取前者、降取后者），
+     * 来回一趟回不到原点，防振荡的次数闸就形同虚设。
+     */
+    .sort((a, b) => cellsOfTier(a) - cellsOfTier(b) || dimsOf(b)[0] - dimsOf(a)[0])
 }
 
 export interface HealOpts { bumps: number; sizeLocked?: boolean; template?: string }

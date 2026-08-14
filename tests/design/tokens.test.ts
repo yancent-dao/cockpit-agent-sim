@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { BASE_CSS, LIGHT_CSS, DARK_CSS, TIER_UNITS, tokensFor } from '../../src/design/tokens'
+import { tierNames } from '../../src/config/grid'
 
 /** 从 CSS 文本里抓某个自定义属性的值 */
 const varOf = (css: string, name: string) =>
@@ -52,21 +53,22 @@ describe('字阶：7 阶，一次性解决 23 个散装字号', () => {
   })
 })
 
-describe('档位单位 --u：10 档全覆盖', () => {
-  const TIERS = ['chip', 'strip', 'bar', 'card', 'wide', 'panel', 'banner', 'tower', 'stage', 'full']
+describe('形状单位 --u：14 个形状全覆盖', () => {
+  // 从 grid 派生，不手抄 —— 手抄的表在 12×8 迁移时整个失效而测试还"通过"
+  const TIERS = tierNames()
 
   it('每档都有 --u', () => {
     for (const t of TIERS) expect(TIER_UNITS[t], t).toBeGreaterThan(0)
   })
 
-  it('card 是基准档，--u 正好是 1', () => {
-    expect(TIER_UNITS.card).toBe(1)
+  it('box 是基准形状，--u 正好是 1', () => {
+    expect(TIER_UNITS.box).toBe(1)
   })
 
   // 字号 = 字阶 × --u。档位越大字越大，这是"自适应尺寸"不再靠 CSS 硬怼的根据
   it('越大的档位 --u 越大', () => {
-    expect(TIER_UNITS.chip).toBeLessThan(TIER_UNITS.card)
-    expect(TIER_UNITS.card).toBeLessThan(TIER_UNITS.panel)
+    expect(TIER_UNITS.chip).toBeLessThan(TIER_UNITS.box)
+    expect(TIER_UNITS.box).toBeLessThan(TIER_UNITS.panel)
     expect(TIER_UNITS.panel).toBeLessThan(TIER_UNITS.stage)
     expect(TIER_UNITS.stage).toBeLessThan(TIER_UNITS.full)
   })

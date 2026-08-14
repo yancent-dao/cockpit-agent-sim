@@ -30,7 +30,7 @@ export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card
   if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`)
   // 摘要是给**模型**看的。48 单元下说"剩余 16 格"它没法换算成
   // "还能不能再上一张卡"，只会瞎猜。按基准卡（1/6）张数说人话
-  const slots = Math.floor(l.free / cellsOfTier('1/6'))
+  const slots = Math.floor(l.free / cellsOfTier('box'))
   const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`
   lines.push(l.cards.length
     ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，${room}`

@@ -17,9 +17,9 @@ describe('真相统一：summary 的可见条数 === 屏幕实画条数', () => 
 
   it('能力目录 @1/2：33 项，summary 与 formOf 说同一个数', () => {
     const d = createDesk()
-    d.show({ template: 'capability', size: '1/2', ttl: 'untilDismissed',
+    d.show({ template: 'capability', size: 'court', ttl: 'untilDismissed',
       data: { title: '我能做的事', items: items(33) } })
-    const shown = formOf('capability', ...dimsOf('1/2')).maxItems!
+    const shown = formOf('capability', ...dimsOf('band')).maxItems!
     const line = d.summary().split('\n').find(l => l.includes('没显示'))!
     expect(line).toContain(`前 ${shown} 条`)
     expect(line).toContain(`还有 ${33 - shown} 条`)
@@ -27,7 +27,7 @@ describe('真相统一：summary 的可见条数 === 屏幕实画条数', () => 
 
   it('车控卡 @chip：4 扇窗，summary 按 formOf 的 2 条算，不按 listCapacity 的 0 条算', () => {
     const d = createDesk()
-    d.show({ template: 'control', size: 'chip', minSize: 'chip', ttl: 'untilDismissed',
+    d.show({ template: 'control', size: 'tile', minSize: 'tile', ttl: 'untilDismissed',
       data: { title: '车窗', items: items(4) } })
     const shown = formOf('control', ...dimsOf('chip')).maxItems!
     expect(shown).toBeGreaterThan(0)
@@ -37,7 +37,7 @@ describe('真相统一：summary 的可见条数 === 屏幕实画条数', () => 
   /** 穷举锁死：凡是带 items 的模板 × 每个档位，两边永远同数 */
   it('穷举：list/capability/control 全档位无分裂', () => {
     for (const tpl of ['list', 'capability', 'control']) {
-      const sizes = CARD_TEMPLATES.find(t => t.id === tpl)?.sizes ?? ['1/6', '1/3', '1/2']
+      const sizes = CARD_TEMPLATES.find(t => t.id === tpl)?.sizes ?? ['box', 'panel', 'band']
       for (const z of sizes) {
         const d = createDesk()
         const r = d.show({ template: tpl, size: z as any, ttl: 'untilDismissed',

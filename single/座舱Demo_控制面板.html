@@ -193,24 +193,34 @@ input::placeholder{color:#4A5462}
   var TIER_UNITS = {
     chip: 0.86,
     strip: 0.92,
+    tile: 0.92,
     bar: 0.96,
-    card: 1,
+    // 乘数跟的是**可用宽度**不是面积：tower/frame 只有 797px 宽，
+    // 字号照面积给会直接撑破换行
+    box: 1,
+    frame: 1.06,
     wide: 1.06,
-    panel: 1.12,
-    banner: 1.18,
     tower: 1.06,
+    panel: 1.12,
+    court: 1.12,
+    band: 1.18,
+    hall: 1.18,
     stage: 1.3,
     full: 1.45
   };
   var TIER_RADIUS = {
     chip: "var(--r-s)",
     strip: "var(--r-s)",
+    tile: "var(--r-s)",
     bar: "var(--r-s)",
-    card: "var(--r-m)",
+    box: "var(--r-m)",
+    frame: "var(--r-m)",
     wide: "var(--r-m)",
     panel: "var(--r-m)",
-    banner: "var(--r-m)",
+    band: "var(--r-m)",
     tower: "var(--r-l)",
+    hall: "var(--r-l)",
+    court: "var(--r-l)",
     stage: "var(--r-l)",
     full: "var(--r-l)"
   };
@@ -539,38 +549,54 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   }
 
   // src/config/grid.ts
-  var GRID = { cols: 12, rows: 4 };
+  var GRID = { cols: 12, rows: 8 };
   var TIERS = {
-    chip: { w: 2, h: 1 },
-    // 一个数字，比如车速、剩余电量
-    strip: { w: 4, h: 1 },
-    // 一行字
-    bar: { w: 6, h: 1 },
-    // 一行字 + 一条进度
-    card: { w: 4, h: 2 },
-    // 基准档：天气、单条反馈
-    wide: { w: 6, h: 2 },
-    panel: { w: 8, h: 2 },
-    // 导航小卡、候选列表
-    banner: { w: 12, h: 2 },
-    // 横跨整屏的提醒
-    tower: { w: 4, h: 4 },
-    // 竖着的：车身图、电台节目单
-    stage: { w: 8, h: 4 },
-    // 导航主卡
-    full: { w: 12, h: 4 }
-    // 铺满
+    // ── 高 2 · 231px —— 一行 ──
+    chip: { w: 2, h: 2 },
+    // 387×231  · 1.67 一个数字
+    strip: { w: 4, h: 2 },
+    // 797×231  · 3.45 一行字
+    // ── 高 4 · 486px —— 标准 ──
+    tile: { w: 2, h: 4 },
+    // 387×486  · 0.80 小竖块：通知、提示、单指标
+    bar: { w: 6, h: 2 },
+    // 1208×231 · 5.23 一行字 + 进度
+    box: { w: 4, h: 4 },
+    // 797×486  · 1.64 基准卡（旧名 card）
+    // ── 高 6 · 741px —— 中高，本轮新增的一整档 ──
+    frame: { w: 4, h: 6 },
+    // 797×741  · 1.08 全表最接近正方：方形图
+    wide: { w: 6, h: 4 },
+    // 1208×486 · 2.49 宽卡：左图右文
+    panel: { w: 8, h: 4 },
+    // 1619×486 · 3.33 长卡：横向对比、轮播
+    tower: { w: 4, h: 8 },
+    // 797×996  · 0.80 竖塔：单栏列表、车身图
+    hall: { w: 6, h: 6 },
+    // 1208×741 · 1.63 缺的那个中档
+    // ── 高 8 · 996px —— 通高 ──
+    band: { w: 12, h: 4 },
+    // 2440×486 · 5.02 通栏卡（旧名 banner）
+    court: { w: 6, h: 8 },
+    // 1208×996 · 1.21 竖版大块：双栏列表、竖版播放器
+    stage: { w: 8, h: 8 },
+    // 1619×996 · 1.63 大台：导航主卡、视频
+    full: { w: 12, h: 8 }
+    // 2440×996 · 2.45 铺满：能力目录、覆盖层
   };
   var ALIAS = {
-    "1/6": "card",
+    "1/6": "box",
     "1/3": "panel",
-    "1/2": "banner",
+    "1/2": "band",
     "2/3": "stage",
-    full: "full"
+    card: "box",
+    // 改名：卡片系统里一个档位叫 card 太泛
+    banner: "band"
+    // 改名：跟**横幅通道**（三条显示通道之一）撞名
   };
   function normalizeTier(size) {
     if (size in TIERS) return size;
-    return ALIAS[size] ?? "card";
+    return ALIAS[size] ?? "box";
   }
   function dimsOf(size) {
     const t = TIERS[normalizeTier(size)];
@@ -580,11 +606,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const t = TIERS[normalizeTier(size)];
     return t.w * t.h;
   }
-  var contentCols = (c) => c >= 12 ? 3 : c >= 8 ? 2 : 1;
-  function listCapacity(c, r) {
-    if (r < 2) return 0;
-    return contentCols(c) * r * 2;
-  }
+  var contentCols = (c) => c >= 12 ? 4 : c >= 8 ? 3 : c >= 6 ? 2 : 1;
+  var listCols = (c) => c >= 6 ? 2 : 1;
+  var capacityOf = (cols, r) => r < 4 ? 0 : cols * r;
+  var listCapacity = (c, r) => capacityOf(listCols(c), r);
   var SCREEN = {
     w: 2560,
     h: 1440,
@@ -600,22 +625,26 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     cardPadX: 26,
     cardPadY: 22
   };
-  function pixelsOf(size) {
+  function boxOf(size) {
     const [cw, ch] = dimsOf(size);
     const deskW = SCREEN.w - SCREEN.padX * 2;
     const deskH = SCREEN.h - SCREEN.statusH - SCREEN.voiceH - SCREEN.padY * 2;
     const colW = (deskW - SCREEN.gap * (GRID.cols - 1)) / GRID.cols;
     const rowH = (deskH - SCREEN.gap * (GRID.rows - 1)) / GRID.rows;
     return {
-      w: Math.round(cw * colW + (cw - 1) * SCREEN.gap - SCREEN.cardPadX * 2),
-      h: Math.round(ch * rowH + (ch - 1) * SCREEN.gap - SCREEN.cardPadY * 2)
+      w: Math.round(cw * colW + (cw - 1) * SCREEN.gap),
+      h: Math.round(ch * rowH + (ch - 1) * SCREEN.gap)
     };
+  }
+  function pixelsOf(size) {
+    const b = boxOf(size);
+    return { w: b.w - SCREEN.cardPadX * 2, h: b.h - SCREEN.cardPadY * 2 };
   }
 
   // src/config/cards.ts
-  var COMMON_SIZES = ["chip", "1/6", "1/2"];
-  var LIST_SIZES = ["1/6", "1/3", "1/2"];
-  var CANVAS_ALLOWED = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "tower", "2/3"];
+  var COMMON_SIZES = ["chip", "box", "wide"];
+  var LIST_SIZES = ["box", "tower", "court"];
+  var CANVAS_ALLOWED = ["tile", "box", "frame", "wide", "panel", "hall", "tower", "court", "stage"];
   var CANVAS_SIZES = CANVAS_ALLOWED.map((z) => {
     const p = pixelsOf(z);
     return `${z} ${p.w}×${p.h}`;
@@ -624,36 +653,39 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "control",
       label: "车控卡",
-      defaultSize: "1/6",
+      defaultSize: "box",
+      sizes: ["tile", "box", "tower"],
       desc: "通用车辆控制。data: {title, items:[{label, type:slider|switch|step, value, unit}]}。车窗、空调、座椅、氛围灯共用这一张。",
       fields: { items: { type: "array", required: true } }
     },
     {
       id: "confirm",
       label: "确认卡",
-      defaultSize: "1/3",
-      sizes: [...LIST_SIZES],
+      defaultSize: "wide",
+      sizes: ["box", "wide"],
       desc: "二次确认。data: {title, question, options:[string]}",
       fields: { question: { type: "string", required: true } }
     },
     {
       id: "feedback",
       label: "反馈卡",
-      defaultSize: "1/6",
+      defaultSize: "box",
+      sizes: ["chip", "box"],
       desc: '执行结果摘要。data: {title, text?}——只给 title 也可以，比如"已开窗"。',
       fields: { text: { type: "string" } }
     },
     {
       id: "notice",
       label: "提示/拒绝卡",
-      defaultSize: "1/6",
+      defaultSize: "wide",
+      sizes: ["tile", "wide"],
       desc: "拒绝原因与替代方案。data: {title, text, suggestion}",
       fields: { text: { type: "string", required: true } }
     },
     {
       id: "list",
       label: "列表卡",
-      defaultSize: "1/2",
+      defaultSize: "tower",
       sizes: [...LIST_SIZES],
       requireItems: true,
       desc: "搜索结果或候选项。data: {title, items:[{label, sub}]}",
@@ -667,7 +699,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "stagedlist",
       label: "台下清单",
-      defaultSize: "1/3",
+      defaultSize: "tower",
       sizes: [...LIST_SIZES],
       systemOnly: true,
       requireItems: true,
@@ -677,56 +709,66 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "info",
       label: "信息卡",
-      defaultSize: "1/6",
+      defaultSize: "box",
+      sizes: ["box", "wide", "panel"],
       desc: "只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。",
       fields: { text: { type: "string", required: true } }
     },
     // 播放器卡由系统按 media.playing 自动出，跟导航卡一样。
-    // 三档踩着 mediaForm 的真实内容阈值：1/6 封面+播控全在，1/3 多出"接下来"
-    // 预告（area>=16 才解锁），2/3 是唯一能放视频大画面的档——它跟导航天然
-    // 互斥（行驶中禁止看视频）
+    // 三档踩着 mediaForm 的真实内容阈值：box 封面+播控+进度全在，hall 多出全套
+    // 播控（随机/循环/收藏/音量）与"接下来"预告，court 竖版大封面 + 完整队列。
+    // 视频走 hall（1208×741，宽高比 1.63）——它跟 16:9 只差 8%，1208 宽的画面
+    // 680 高，底下正好留一条 61px 的标题栏，几乎没有黑边。
+    // 更大的 stage 同样是 1.63，但把它加进池子会让 court 和 stage 的形态完全相同
+    // （形态函数只看几何，看不出"这是视频"），多出来的那一档就是白给。
+    // 真要给视频大画面，正解是拆一个 video 模板而不是给 media 加档 —— 记在待办里
     {
       id: "media",
       label: "播放器卡",
-      defaultSize: "1/3",
-      sizes: ["1/6", "1/3", "2/3"],
+      defaultSize: "hall",
+      sizes: ["box", "hall", "court"],
       systemOnly: true,
       desc: "正在播放的内容，由系统按播放状态自动创建/刷新/撤销，不要手动建——调 music.play / radio.play / video.play 成功后它会自己出现。",
       fields: { track: { type: "string", required: true } }
     },
-    // 三档踩着 weatherForm 的真实阈值：1/6 只有温度、1/3（area16）解锁 3 天预报、
-    // 1/2（area24，横排 3 栏）同样 3 天但排成一行更好读
+    // 三档踩着 weatherForm 的真实阈值：tile 只有当前温度+今日高低、
+    // wide 解锁 6 小时逐时降水条、band 到 12 小时 + 5 天。
+    // **主角是逐时不是多日**（2026-08-14 调研）：车里最想知道的是
+    // "接下来一两小时会不会下雨"，5 天预报是手机首页的逻辑
     {
       id: "weather",
       label: "天气卡",
-      defaultSize: "1/6",
-      sizes: ["1/6", "1/3", "1/2"],
+      defaultSize: "wide",
+      sizes: ["tile", "wide", "band"],
       desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
       fields: { now: { type: "object", required: true }, forecast: { type: "array" } }
     },
     /**
-     * 导航卡三档（2026-08-13 实拍反馈：缩小不该以"拉长"为主）——
-     * strip（4×1，只留转向文字）→ tower（4×4，正方形，转向+距离，没有地图）
-     * → 2/3（stage，8×4，唯一放得下地图的档）。中间档故意不用 wide/panel/banner
-     * 这类宽 2 高的扁条：地图往扁条里塞只会横向拉伸变形，还不如干脆不画地图，
-     * retreat 成一张方方正正的信息卡。唯一能用 2/3 的：地图要大画布
+     * 导航卡三档 strip(4×2) → hall(6×6) → stage(8×8)。
+     *
+     * **中档必须有地图**（2026-08-14 实拍反馈："中等尺寸没有地图不合理，
+     * 中间看着非常空"）。上一版中档是 tower(4×4)，只有 4 列宽，形态函数
+     * 要求宽 ≥8 才画地图，于是条件永远不满足、干脆不画，留下一大片空白。
+     * 换成 hall（1208×741）之后地图有 500px 高，正好是"前方一段路"的形状，
+     * 而且它跟最大档 stage 宽高比相同（1.63），两档共用一套骨架。
+     * 中档仍然不用扁条形状：地图往扁条里塞只会横向拉伸变形。
      */
     {
       id: "nav",
       label: "导航卡",
-      defaultSize: "2/3",
-      sizes: ["strip", "tower", "2/3"],
+      defaultSize: "stage",
+      sizes: ["strip", "hall", "stage"],
       systemOnly: true,
       desc: "导航卡由系统按导航状态自动创建/刷新/撤销，不要手动创建——调 navigation.setDestination 成功后它会自己出现在桌面左侧。",
       fields: { destination: { type: "string", required: true } }
     },
-    // 三档踩着 capForm 的真实阈值：1/6 只报个数，1/2 到网格模式（可能截断），
-    // full 铺满显示完整清单——唯一能用 full 的：33 项能力要铺得开
+    // 两档：court 双栏网格、full 铺满四栏。砍掉了最小档——用户问"你能做什么"，
+    // 屏幕回答一个数字「33 项」不是答案。唯一能用 full 的：能力要铺得开
     {
       id: "capability",
       label: "能力目录卡",
       defaultSize: "full",
-      sizes: ["1/6", "1/2", "full"],
+      sizes: ["court", "full"],
       requireItems: true,
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
@@ -734,7 +776,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "generic",
       label: "通用卡",
-      defaultSize: "1/3",
+      defaultSize: "box",
+      sizes: ["box", "wide", "panel"],
       desc: "兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}"
     },
     /**
@@ -744,7 +787,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "canvas",
       label: "生成式卡",
-      defaultSize: "1/2",
+      defaultSize: "wide",
       sizes: [...CANVAS_ALLOWED],
       desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
@@ -757,16 +800,31 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       id: "canvas-app",
       label: "生成式小组件",
-      defaultSize: "1/2",
+      defaultSize: "hall",
       sizes: [...CANVAS_ALLOWED],
-      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 2/3（竖向大块，最大档）或 tower；横向信息流用 1/2；小部件 1/6。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
+      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
   var TEMPLATE_IDS = CARD_TEMPLATES.map((t) => t.id);
 
   // src/config/tools.ts
-  var ALL_SIZES = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "tower", "2/3", "full"];
+  var ALL_SIZES = [
+    "chip",
+    "strip",
+    "tile",
+    "bar",
+    "box",
+    "frame",
+    "wide",
+    "panel",
+    "tower",
+    "hall",
+    "band",
+    "court",
+    "stage",
+    "full"
+  ];
   var TOOLS = [
     /* ── 读取 ── */
     {
@@ -1503,62 +1561,77 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var area = (c, r) => c * r;
   var navForm = (c, r) => {
     const blocks = ["dest", "turn"];
-    if (area(c, r) >= 24 && c >= 8) blocks.splice(2, 0, "map");
-    if (area(c, r) >= 12) blocks.push("foot");
+    if (c >= 6 && r >= 6) blocks.push("map");
+    if (c >= 6 && r >= 6) blocks.push("lane");
+    if (c >= 8 && r >= 8) blocks.push("then");
+    blocks.push("eta");
     return { blocks };
   };
   var controlForm = (c, r) => {
     const blocks = [];
-    if (r >= 4 && c >= 4) blocks.push("vehicle");
+    if (r >= 8 && c >= 4) blocks.push("vehicle");
     blocks.push("items");
-    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+    const cols = listCols(c);
+    const maxItems = c >= 4 ? Math.max(2, capacityOf(cols, r)) : 1;
+    return { blocks, maxItems, overflow: "more", cols };
   };
-  var confirmForm = (c, r) => {
+  var confirmForm = (c, _r) => {
     const blocks = ["what"];
-    if (area(c, r) >= 16) blocks.push("why");
+    if (c >= 6) blocks.push("why");
     blocks.push("hint");
     return { blocks };
   };
-  var textDetail = (c, r) => {
+  var feedbackForm = (c, r) => {
     const blocks = ["text"];
-    if (area(c, r) >= 12) blocks.push("detail");
+    if (area(c, r) >= 16) blocks.push("detail");
+    return { blocks };
+  };
+  var noticeForm = (c, _r) => {
+    const blocks = ["text"];
+    if (c >= 6) blocks.push("why");
+    blocks.push("suggestion");
     return { blocks };
   };
   var listForm = (c, r) => {
     const n = listCapacity(c, r);
-    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: contentCols(c) };
+    return { blocks: ["items"], maxItems: n, overflow: n > 0 ? "more" : "count", cols: listCols(c) };
   };
   var genericForm = (c, r) => {
     const blocks = ["text"];
-    if (area(c, r) >= 8) blocks.push("items", "actions");
-    return { blocks, maxItems: Math.max(2, listCapacity(c, r)), overflow: "more", cols: contentCols(c) };
+    if (area(c, r) >= 16) blocks.push("items", "actions");
+    const cols = contentCols(c);
+    return { blocks, maxItems: Math.max(2, capacityOf(cols, r)), overflow: "more", cols };
   };
   var mediaForm = (c, r) => {
     const a = area(c, r);
     const blocks = ["art", "title"];
-    if (a >= 8) blocks.push("sub");
-    if (c >= 6 || a >= 8) blocks.push("bar");
+    if (a >= 16) blocks.push("sub");
+    if (c >= 6 || a >= 16) blocks.push("bar");
     blocks.push("toggle");
-    if (r >= 2 && a >= 12) blocks.push("hint");
-    if (a >= 16) blocks.push("next");
+    if (a >= 36) blocks.push("mix", "vol");
+    if (a >= 36) blocks.push("next");
+    if (r >= 8) blocks.push("queue");
     return { blocks };
   };
   var weatherForm = (c, r) => {
     const a = area(c, r);
-    const days = a >= 32 ? 5 : a >= 12 ? 3 : 0;
-    const blocks = ["temp"];
+    const blocks = ["temp", "range"];
+    const hours = c >= 12 ? 12 : c >= 6 ? 6 : 0;
+    if (hours > 0) blocks.push("hourly");
+    const days = c >= 12 ? 5 : 0;
     if (days > 0) blocks.push("forecast");
-    return { blocks, maxItems: days, cols: c >= 12 ? days : 1 };
+    if (a >= 24) blocks.push("detail");
+    return { blocks, days, cols: days || 1, hours };
   };
   var capForm = (c, r) => {
     const a = area(c, r);
-    const mode = a >= 24 && c >= 8 ? "grid" : a >= 12 ? "list" : "count";
+    const mode = a >= 48 && c >= 6 ? "grid" : a >= 24 ? "list" : "count";
     const cols = mode === "grid" ? contentCols(c) : 1;
     return {
       blocks: ["groups"],
       mode,
       cols,
-      maxItems: mode === "count" ? 0 : cols * r * 2,
+      maxItems: mode === "count" ? 0 : capacityOf(cols, r),
       overflow: mode === "count" ? "count" : "more"
     };
   };
@@ -1566,8 +1639,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     nav: navForm,
     control: controlForm,
     confirm: confirmForm,
-    feedback: textDetail,
-    notice: textDetail,
+    feedback: feedbackForm,
+    notice: noticeForm,
     list: listForm,
     // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
     // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
@@ -1582,10 +1655,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   function suggestSize(templateId, count) {
     const tmpl = CARD_TEMPLATES.find((t) => t.id === templateId);
     const allowed = [...tmpl?.sizes ?? COMMON_SIZES].sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+    let sawCapacity = false;
     for (const z of allowed) {
       const max = formOf(templateId, ...dimsOf(z)).maxItems;
-      if (max !== void 0 && max >= count) return z;
+      if (max === void 0) continue;
+      sawCapacity = true;
+      if (max >= count) return z;
     }
+    if (!sawCapacity) return tmpl?.defaultSize ?? allowed[allowed.length - 1];
     return allowed[allowed.length - 1];
   }
 
@@ -1595,7 +1672,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   function summarize(l) {
     const lines = [];
     if (l.overlay) lines.push(`全屏卡：${titleOf(l.overlay)}（占据整屏，关闭后自动还原）`);
-    const slots = Math.floor(l.free / cellsOfTier("1/6"));
+    const slots = Math.floor(l.free / cellsOfTier("box"));
     const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`;
     lines.push(l.cards.length ? `桌面卡片：${l.cards.map((c) => `${titleOf(c)}(${c.size})`).join("、")}，${room}` : `桌面为空，${room}`);
     for (const c of l.cards) {
@@ -2729,7 +2806,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         } else autoCard({
           key: "ask",
           template: "confirm",
-          size: "1/3",
+          size: "wide",
           kind: "system",
           ttl: "untilTaskEnd",
           data: { title: "请选择", question: args.question, options: args.options ?? [] }
@@ -2749,7 +2826,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         autoCard({
           key: "capabilities",
           template: "capability",
-          size: "1/2",
+          size: "court",
           kind: "task",
           ttl: "untilDismissed",
           data: { title: "我能做的事", items }
@@ -2812,7 +2889,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             staged: (l.staged ?? []).map(brief2),
             // 给模型的是"还放得下几张小卡"，不是内部单元数 ——
             // 48 单元下报 16 它没法换算成"能不能再上一张"，只会瞎猜
-            slots: Math.floor(l.free / 8)
+            // 跟 desk.summary() 用同一个换算 —— 写死数字的话换栅格就是两套账
+            slots: Math.floor(l.free / cellsOfTier("box"))
           }
         };
       },
@@ -2988,7 +3066,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           autoCard({
             key: "confirm",
             template: "confirm",
-            size: "1/3",
+            size: "wide",
             kind: "system",
             ttl: "untilTaskEnd",
             data: { title: "需要确认", question: message, options: ["确认", "取消"] }
@@ -3252,7 +3330,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   // src/cards/heal.ts
   var ladderFor = (template) => {
     const tmpl = template ? CARD_TEMPLATES.find((t) => t.id === template) : void 0;
-    return [...tmpl?.sizes ?? COMMON_SIZES].filter((z) => normalizeTier(z) !== "tower").sort((a, b) => cellsOfTier(a) - cellsOfTier(b));
+    return [...tmpl?.sizes ?? COMMON_SIZES].filter((z) => !["tower", "frame"].includes(normalizeTier(z))).sort((a, b) => cellsOfTier(a) - cellsOfTier(b) || dimsOf(b)[0] - dimsOf(a)[0]);
   };
   function healStep(size, contentPx, opts) {
     if (opts.sizeLocked) return null;
@@ -4405,7 +4483,7 @@ ${text}` });
         const cols = [];
         for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i);
         if (c.anchor === "right") cols.reverse();
-        const rowStep = shape.h >= 2 ? 2 : 1;
+        const rowStep = 2;
         if (!placed) outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
           for (const c0 of cols) {
             if (!fits(r, c0, shape)) continue;
@@ -4527,7 +4605,7 @@ ${text}` });
       if (input.ttl === void 0 || input.ttl === null)
         return { status: "rejected", code: "TTL_REQUIRED", message: "卡片必须声明 ttl，否则会在桌面堆积" };
       const tmplDefault = CARD_TEMPLATES.find((t) => t.id === input.template)?.defaultSize;
-      const size = input.size ?? (Array.isArray(input.data?.items) && input.data.items.length ? suggestSize(input.template, input.data.items.length) : void 0) ?? tmplDefault ?? "1/6";
+      const size = input.size ?? (Array.isArray(input.data?.items) && input.data.items.length ? suggestSize(input.template, input.data.items.length) : void 0) ?? tmplDefault ?? "box";
       const sizeErr = checkSize(input.template, size);
       if (sizeErr) return { status: "rejected", ...sizeErr };
       const id = input.id ?? `card_${++seq}`;
@@ -4668,7 +4746,7 @@ ${text}` });
         if (exist) dismiss(exist.id);
         return { status: "rejected", code: "EMPTY_CARD", message: "一条都没有，卡撤了" };
       }
-      const want = i.size ?? (Array.isArray(i.data?.items) && i.data.items.length ? suggestSize(i.template, i.data.items.length) : void 0) ?? exist?.size ?? "1/6";
+      const want = i.size ?? (Array.isArray(i.data?.items) && i.data.items.length ? suggestSize(i.template, i.data.items.length) : void 0) ?? exist?.size ?? "box";
       if (exist) {
         if (i.refreshTtl) exist.createdAt = clock();
         if (i.family) {
@@ -5769,7 +5847,7 @@ ${text}` });
       id: "media-playing-video",
       when: [["media.source", "==", "video"]],
       watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode", "media.playing"],
-      card: { key: "player-video", template: "media", size: "2/3", evictable: true, data: "playerCard" }
+      card: { key: "player-video", template: "media", size: "hall", evictable: true, data: "playerCard" }
     },
     /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
     {
@@ -6251,7 +6329,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     desk.render({
       key: "stagedlist",
       template: "stagedlist",
-      size: "1/3",
+      size: "tower",
       kind: "system",
       urgency: "urgent",
       ttl: "untilTaskEnd",

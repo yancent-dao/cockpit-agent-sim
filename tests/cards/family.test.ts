@@ -16,7 +16,7 @@ import { CONSTRAINTS } from '../../src/config/constraints'
 
 const wx = (city: string, round?: number) => ({
   key: `weather:${city}`, family: 'weather', round,
-  template: 'weather' as const, size: '1/6' as const, ttl: 'untilDismissed' as const,
+  template: 'weather' as const, size: 'wide' as const, ttl: 'untilDismissed' as const,
   data: { title: `${city}天气`, now: { temperature: 30, weather: '晴' } },
 })
 
@@ -37,7 +37,7 @@ describe('desk 层：同轮并存，新轮替换', () => {
 
   it('别的家族不受波及', () => {
     const d = createDesk()
-    d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: '车窗好了', text: 'x' } })
+    d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: '车窗好了', text: 'x' } })
     d.render(wx('成都', 1) as any)
     d.render(wx('北京', 2) as any)
     expect(d.layout().cards.map(c => c.data.title)).toContain('车窗好了')
@@ -62,16 +62,16 @@ describe('家族清扫也算空间释放', () => {
   it('五张换一张腾出的空间，2 秒后让被压的卡回落', () => {
     let now = 0
     const d = createDesk(() => now)
-    d.show({ template: 'list', size: '1/2', ttl: 'untilDismissed',
+    d.show({ template: 'list', size: 'court', ttl: 'untilDismissed',
       data: { title: '候选', items: Array.from({ length: 8 }, (_, i) => ({ label: 'x' + i })) } })
     // 同轮五张县城天气把候选压小
     for (const c of ['a', 'b', 'c', 'd', 'e']) { now += 10; d.render(wx(c, 1) as any) }
     const pressed = d.layout().cards.find(c => c.data.title === '候选')!.size
-    expect(d.cellsOf(pressed)).toBeLessThan(d.cellsOf('1/2'))
+    expect(d.cellsOf(pressed)).toBeLessThan(d.cellsOf('court'))
     // 新一轮只剩一张 → 清扫腾位 → 2 秒后回落
     now += 10; d.render(wx('北京', 2) as any)
     now += 2500; d.tick()
-    expect(d.layout().cards.find(c => c.data.title === '候选')!.size).toBe('1/2')
+    expect(d.layout().cards.find(c => c.data.title === '候选')!.size).toBe('court')
   })
 })
 
@@ -107,11 +107,11 @@ describe('handler 层：weatherQuery 带上家族与轮次，ttl 不再定时蒸
     expect(desk.layout().cards).toHaveLength(2)
   })
 
-  // 用户实拍：单城查询默认铺到 1/3 太占地方。默认跟模板走（1/6），想看大的说"放大"
-  it('天气卡默认尺寸走模板 defaultSize（1/6），不在 handler 里写死大尺寸', async () => {
+  // 用户实拍：单城查询默认铺满一行太占地方。默认跟模板走（wide），想看大的说"放大"
+  it('天气卡默认尺寸走模板 defaultSize（wide），不在 handler 里写死大尺寸', async () => {
     const { h, desk, setRound } = boot()
     setRound(1); await h.weatherQuery({ location: '成都' })
-    expect(desk.layout().cards[0].size).toBe('1/6')
+    expect(desk.layout().cards[0].size).toBe('wide')
   })
 
   it('天气卡是内容不是问题：放三小时也不自动消失（用户点名要求）', async () => {

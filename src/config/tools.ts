@@ -6,7 +6,8 @@ import { TEMPLATE_IDS, CARD_TEMPLATES } from './cards'
  * 之前这里只写了老的五档，chip/strip/bar/wide 这些小档虽然在栅格里存在，
  * Agent 却选不到 —— 桌面一满就只能挤卡，用户看到的就是"超过六个就把播放器关了"。
  */
-const ALL_SIZES = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2', 'tower', '2/3', 'full'] as const
+const ALL_SIZES = ['chip', 'strip', 'tile', 'bar', 'box', 'frame', 'wide',
+  'panel', 'tower', 'hall', 'band', 'court', 'stage', 'full'] as const
 
 export interface ParamDef {
   type: 'number' | 'string' | 'boolean' | 'enum' | 'array' | 'object'

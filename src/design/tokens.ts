@@ -15,16 +15,20 @@
 
 /** 档位 → 字号乘数。字号 = 字阶 × --u，"自适应尺寸"不再靠 CSS 逐档硬怼 */
 export const TIER_UNITS: Record<string, number> = {
-  chip: .86, strip: .92, bar: .96,
-  card: 1, wide: 1.06, panel: 1.12, banner: 1.18,
-  tower: 1.06, stage: 1.30, full: 1.45,
+  chip: .86, strip: .92, tile: .92, bar: .96,
+  // 乘数跟的是**可用宽度**不是面积：tower/frame 只有 797px 宽，
+  // 字号照面积给会直接撑破换行
+  box: 1, frame: 1.06, wide: 1.06, tower: 1.06,
+  panel: 1.12, court: 1.12, band: 1.18, hall: 1.18,
+  stage: 1.30, full: 1.45,
 }
 
-/** 档位 → 圆角。393×237 的 chip 配 32px 圆角会像药丸 */
+/** 形状 → 圆角。335×187 的 chip 配 32px 圆角会像药丸 */
 const TIER_RADIUS: Record<string, string> = {
-  chip: 'var(--r-s)', strip: 'var(--r-s)', bar: 'var(--r-s)',
-  card: 'var(--r-m)', wide: 'var(--r-m)', panel: 'var(--r-m)', banner: 'var(--r-m)',
-  tower: 'var(--r-l)', stage: 'var(--r-l)', full: 'var(--r-l)',
+  chip: 'var(--r-s)', strip: 'var(--r-s)', tile: 'var(--r-s)', bar: 'var(--r-s)',
+  box: 'var(--r-m)', frame: 'var(--r-m)', wide: 'var(--r-m)', panel: 'var(--r-m)', band: 'var(--r-m)',
+  tower: 'var(--r-l)', hall: 'var(--r-l)', court: 'var(--r-l)',
+  stage: 'var(--r-l)', full: 'var(--r-l)',
 }
 
 const tierRules = Object.keys(TIER_UNITS)

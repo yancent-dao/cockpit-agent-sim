@@ -561,7 +561,7 @@ describe('navigation.search', () => {
       ] } }),
     })
     await r.invoke('navigation.search', { query: 'x' })
-    expect(desk.findByKey('candidates')!.minSize).toBe('1/6') // list 模板最小的那档
+    expect(desk.findByKey('candidates')!.minSize).toBe('box') // list 模板最小的那档
   })
 
   // 候选卡不能像问题卡那样"用户一开口就撤"——实测用户的下一句往往就是冲着
@@ -587,9 +587,9 @@ describe('navigation.search', () => {
   it('候选卡进等位区时，Tool 结果里要带得出这件事', async () => {
     const desk = createDesk()
     // 先用一张挤不走的 2/3 导航卡 + 两张 1/6 把桌面占死
-    desk.show({ template: 'nav', size: '2/3', kind: 'system', evictable: false, ttl: 'untilDismissed' })
-    desk.show({ template: 'feedback', size: '1/6', kind: 'system', evictable: false, ttl: 'untilDismissed' })
-    desk.show({ template: 'feedback', size: '1/6', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    desk.show({ template: 'nav', size: 'stage', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    desk.show({ template: 'feedback', size: 'box', kind: 'system', evictable: false, ttl: 'untilDismissed' })
+    desk.show({ template: 'feedback', size: 'box', kind: 'system', evictable: false, ttl: 'untilDismissed' })
     const r = createRegistry(store, TOOLS, () => now, {
       desk,
       amap: fakeAmap({ '/v5/place/text': { status: '1', pois: [

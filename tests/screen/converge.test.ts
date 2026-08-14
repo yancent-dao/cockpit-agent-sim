@@ -28,7 +28,7 @@ describe('truncate：一个公式管所有截断', () => {
 describe('desk.onDataChange：真变了才通知', () => {
   it('数据变化触发，携带卡片 id', () => {
     const d = createDesk()
-    const id = d.show({ template: 'weather', size: '1/6', ttl: 'untilDismissed',
+    const id = d.show({ template: 'weather', size: 'wide', ttl: 'untilDismissed',
       data: { title: '天气', now: { temperature: 30, weather: '晴' } } }).cardId!
     const hits: string[] = []
     d.onDataChange(cid => hits.push(cid))
@@ -38,7 +38,7 @@ describe('desk.onDataChange：真变了才通知', () => {
 
   it('一模一样的数据重刷不触发——车窗过渡每帧 render 不能闪个不停', () => {
     const d = createDesk()
-    const id = d.show({ template: 'weather', size: '1/6', ttl: 'untilDismissed',
+    const id = d.show({ template: 'weather', size: 'wide', ttl: 'untilDismissed',
       data: { title: '天气', now: { temperature: 30, weather: '晴' } } }).cardId!
     const hits: string[] = []
     d.onDataChange(cid => hits.push(cid))

@@ -14,8 +14,8 @@ import { TOOLS } from '../../src/config/tools'
 describe('尺寸闸在 desk：三条路一个闸', () => {
   it('handler 直调 desk.show 传模板不支持的尺寸 → 拒绝', () => {
     const d = createDesk()
-    // list 的下限是 card：chip 放不下一条带副标题的候选
-    const r = d.show({ template: 'list', size: 'chip', ttl: 60,
+    // list 的下限是 box：chip 放不下一条带副标题的候选
+    const r = d.show({ template: 'list', size: 'chip' as any, ttl: 60,
       data: { title: '候选', items: [{ label: 'a' }] } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
@@ -24,7 +24,7 @@ describe('尺寸闸在 desk：三条路一个闸', () => {
 
   it('desk.render（规则/handler 的刷新路径）同样被拦', () => {
     const d = createDesk()
-    const r = d.render({ key: 'x', template: 'confirm', size: 'strip', ttl: 60,
+    const r = d.render({ key: 'x', template: 'confirm', size: 'chip' as any, ttl: 60,
       data: { title: 'q', question: '真的吗' } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
@@ -32,17 +32,17 @@ describe('尺寸闸在 desk：三条路一个闸', () => {
 
   it('desk.resize 也过同一个闸 —— reconcile 恢复时不会恢复出非法档', () => {
     const d = createDesk()
-    const id = d.show({ template: 'list', size: '1/3', ttl: 60,
+    const id = d.show({ template: 'list', size: 'tower', ttl: 60,
       data: { title: 'c', items: [{ label: 'a' }] } }).cardId!
     expect(d.resize(id, 'chip' as any, true).status).toBe('rejected')
   })
 
   /**
-   * 归一化：'card' 和 '1/6' 是同一档的两个名字。模板声明用老名、
+   * 归一化：'card' 和 'box' 是同一档的两个名字。模板声明用老名、
    * 调用方传新名（或反过来）必须互认 —— 裸字符串 includes 是踩过的坑
-   * （LADDER.indexOf('1/3') = -1 那次）。
+   * （LADDER.indexOf('panel') = -1 那次）。
    */
-  it("模板声明 '1/6'，传 'card' 也认", () => {
+  it("模板声明 'box'，传 'card' 也认", () => {
     const d = createDesk()
     const r = d.show({ template: 'list', size: 'card' as any, ttl: 60,
       data: { title: 'c', items: [{ label: 'a' }] } })
@@ -51,7 +51,7 @@ describe('尺寸闸在 desk：三条路一个闸', () => {
 
   it("模板声明 'tower'（新名），传 'tower' 认、传乱写的不认", () => {
     const d = createDesk()
-    expect(d.show({ template: 'nav', size: 'tower' as any, kind: 'rule', evictable: false, ttl: 60,
+    expect(d.show({ template: 'nav', size: 'hall' as any, kind: 'rule', evictable: false, ttl: 60,
       data: { destination: 'x' } }).status).toBe('ok')
     expect(d.show({ template: 'nav', size: '巨大' as any, kind: 'rule', evictable: false, ttl: 60,
       data: { destination: 'x' } }).status).toBe('rejected')
@@ -74,7 +74,7 @@ describe('canvas 尺寸白名单开全档', () => {
   it('canvas 可用 2/3 竖向大块；full 被拒（覆盖层资格已取消）', async () => {
     const reg = await mk()
     const big = await reg.invoke('card.show', {
-      template: 'canvas', size: '2/3', ttl: 'untilDismissed',
+      template: 'canvas', size: 'stage', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
     expect(big.status).toBe('ok')
@@ -90,7 +90,7 @@ describe('canvas 尺寸白名单开全档', () => {
     const canvas = CARD_TEMPLATES.find(t => t.id === 'canvas')!
     expect(canvas.sizes).toBeTruthy()
     // desc 的像素契约至少覆盖白名单里的大档
-    expect(canvas.desc).toContain('1/2')
+    expect(canvas.desc).toContain('stage')
   })
 
   // 产品裁定（2026-08-13 两轮定稿）：生成式卡**不进覆盖层**（full 禁）——
@@ -100,7 +100,7 @@ describe('canvas 尺寸白名单开全档', () => {
     for (const id of ['canvas', 'canvas-app']) {
       const t = CARD_TEMPLATES.find(x => x.id === id)!
       expect(t.sizes, `${id} 不许 full`).not.toContain('full')
-      expect(t.sizes, `${id} 上限 2/3`).toContain('2/3')
+      expect(t.sizes, `${id} 上限 2/3`).toContain('stage')
       expect(t.sizes, `${id} 竖块 tower 可用`).toContain('tower')
     }
     const store = createStore(SIGNALS, CONSTRAINTS)
@@ -113,7 +113,7 @@ describe('canvas 尺寸白名单开全档', () => {
   it('模板 desc 教"按内容形状选尺寸"——游戏竖向内容指向 2/3', async () => {
     const { CARD_TEMPLATES } = await import('../../src/config/cards')
     const app = CARD_TEMPLATES.find(x => x.id === 'canvas-app')!
-    expect(app.desc).toContain('2/3')
+    expect(app.desc).toContain('stage')
     expect(app.desc).toMatch(/竖/)
   })
 })
@@ -150,6 +150,47 @@ describe('空列表判据来自模板契约，不是引擎里点名', () => {
 
   it('不是列表类的模板不受影响：没有 items 也照常建卡', () => {
     const d = createDesk()
-    expect(d.show({ template: 'feedback', size: '1/6', ttl: 60, data: { title: '已开窗' } }).status).toBe('ok')
+    expect(d.show({ template: 'feedback', size: 'box', ttl: 60, data: { title: '已开窗' } }).status).toBe('ok')
+  })
+})
+
+/**
+ * 模板契约的自洽性 —— 12×8 迁移时靠手改配置，漏一处就是运行时才炸的
+ * SIZE_NOT_SUPPORTED。这几条是纯静态检查，跑一次就能挡住整类错误。
+ */
+describe('模板契约自洽', () => {
+  it('每个模板的 defaultSize 都在自己的形状池里', async () => {
+    const { CARD_TEMPLATES, COMMON_SIZES } = await import('../../src/config/cards')
+    const { normalizeTier } = await import('../../src/config/grid')
+    for (const t of CARD_TEMPLATES) {
+      const pool = (t.sizes ?? COMMON_SIZES).map(normalizeTier)
+      expect(pool, `${t.id} 的默认档 ${t.defaultSize} 不在自己的池子 ${pool.join('/')} 里`)
+        .toContain(normalizeTier(t.defaultSize))
+    }
+  })
+
+  it('规则里写死的尺寸也在对应模板的池子里', async () => {
+    const { CARD_RULES } = await import('../../src/config/cardRules')
+    const { CARD_TEMPLATES, COMMON_SIZES } = await import('../../src/config/cards')
+    const { normalizeTier } = await import('../../src/config/grid')
+    for (const r of CARD_RULES) {
+      const size = (r.card as any)?.size
+      if (!size) continue
+      const t = CARD_TEMPLATES.find(x => x.id === (r.card as any).template)!
+      const pool = (t.sizes ?? COMMON_SIZES).map(normalizeTier)
+      expect(pool, `规则 ${r.id} 要 ${t.id}@${size}，池子只有 ${pool.join('/')}`)
+        .toContain(normalizeTier(size))
+    }
+  })
+
+  /** 形状池按占用单元数升序 —— 降级阶梯和右上角按钮都按它走 */
+  it('形状池不含重复形状', async () => {
+    const { CARD_TEMPLATES } = await import('../../src/config/cards')
+    const { normalizeTier } = await import('../../src/config/grid')
+    for (const t of CARD_TEMPLATES) {
+      if (!t.sizes) continue
+      const norm = t.sizes.map(normalizeTier)
+      expect(new Set(norm).size, `${t.id} 的池子有重复：${t.sizes.join('/')}`).toBe(norm.length)
+    }
   })
 })

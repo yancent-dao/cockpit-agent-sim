@@ -115,7 +115,7 @@ function renderStagedList(openIt = false) {
   if (open && JSON.stringify(open.data?.items) === JSON.stringify(items)) return
   // urgent：用户点名要看的清单不能自己也进等位区（台下清单排队进台下是笑话），
   // urgent 档不可挤且压得过 normal 卡，一定进得来
-  desk.render({ key: 'stagedlist', template: 'stagedlist', size: '1/3', kind: 'system',
+  desk.render({ key: 'stagedlist', template: 'stagedlist', size: 'tower', kind: 'system',
     urgency: 'urgent', ttl: 'untilTaskEnd', data: { title: '还在后台的内容', items } })
 }
 desk.subscribe(() => renderStagedList())

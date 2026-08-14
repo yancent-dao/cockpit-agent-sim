@@ -24,7 +24,7 @@ describe('位置粘性：布局对时间序列稳定', () => {
     let now = 0
     const d = createDesk(() => now)
     const ids: string[] = []
-    for (let i = 0; i < 3; i++) { now += 10; ids.push(d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: '卡' + i, text: 'x' } }).cardId!) }
+    for (let i = 0; i < 3; i++) { now += 10; ids.push(d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: '卡' + i, text: 'x' } }).cardId!) }
     const before = Object.fromEntries(d.layout().cards.map(c => [c.data.title, `${c.row},${c.col}`]))
     d.dismiss(ids[1])
     const after = Object.fromEntries(d.layout().cards.map(c => [c.data.title, `${c.row},${c.col}`]))
@@ -35,12 +35,12 @@ describe('位置粘性：布局对时间序列稳定', () => {
   it('新卡来了填空位，不把老卡挪走', () => {
     let now = 0
     const d = createDesk(() => now)
-    now += 10; d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: 'A', text: 'x' } })
-    now += 10; const b = d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: 'B', text: 'x' } }).cardId!
-    now += 10; d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: 'C', text: 'x' } })
+    now += 10; d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: 'A', text: 'x' } })
+    now += 10; const b = d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: 'B', text: 'x' } }).cardId!
+    now += 10; d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: 'C', text: 'x' } })
     const posC = d.layout().cards.find(c => c.data.title === 'C')!
     d.dismiss(b)
-    now += 10; d.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: 'D', text: 'x' } })
+    now += 10; d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: 'D', text: 'x' } })
     const afterC = d.layout().cards.find(c => c.data.title === 'C')!
     expect(`${afterC.row},${afterC.col}`).toBe(`${posC.row},${posC.col}`)
   })
@@ -50,33 +50,33 @@ describe('尺寸回落：压力消失后回到该有的大小', () => {
   const squeeze = (d: ReturnType<typeof createDesk>, tick: () => void) => {
     // 用五张 1/3 的填充卡把天气压小
     const ids: string[] = []
-    for (let i = 0; i < 5; i++) { tick(); ids.push(d.show({ template: 'feedback', size: '1/2', ttl: 'untilDismissed', data: { title: '填' + i, text: 'x' } }).cardId!) }
+    for (let i = 0; i < 5; i++) { tick(); ids.push(d.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: '填' + i, text: 'x' } }).cardId!) }
     return ids
   }
 
   it('压缩 → 释放 → 2 秒后回到建议尺寸；2 秒内不动（防抖）', () => {
     let now = 0
     const d = createDesk(() => now)
-    d.show({ template: 'weather', size: '1/3', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
+    d.show({ template: 'weather', size: 'band', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
     const ids = squeeze(d, () => { now += 10 })
     const pressed = d.layout().cards.find(c => c.data.title === '天气')!.size
-    expect(d.cellsOf(pressed)).toBeLessThan(d.cellsOf('1/3'))
+    expect(d.cellsOf(pressed)).toBeLessThan(d.cellsOf('band'))
     for (const id of ids) d.dismiss(id)
     now += 500; d.tick()
     expect(d.layout().cards.find(c => c.data.title === '天气')!.size, '半秒内不该弹').toBe(pressed)
     now += 2000; d.tick()
-    expect(d.layout().cards.find(c => c.data.title === '天气')!.size, '2 秒后回落').toBe('1/3')
+    expect(d.layout().cards.find(c => c.data.title === '天气')!.size, '2 秒后回落').toBe('band')
   })
 
   it('用户显式调过的尺寸，回落目标是用户的选择', () => {
     let now = 0
     const d = createDesk(() => now)
-    const id = d.show({ template: 'list', size: '1/6', ttl: 'untilDismissed', data: { title: '候选', items: items(3) } }).cardId!
-    d.resize(id, '1/2', true)   // 用户说"放大点"
+    const id = d.show({ template: 'list', size: 'box', ttl: 'untilDismissed', data: { title: '候选', items: items(3) } }).cardId!
+    d.resize(id, 'court', true)   // 用户说"放大点"
     const ids = squeeze(d, () => { now += 10 })
     for (const x of ids) d.dismiss(x)
     now += 2500; d.tick()
-    expect(d.layout().cards.find(c => c.id === id)!.size, '回到用户要的 1/2').toBe('1/2')
+    expect(d.layout().cards.find(c => c.id === id)!.size, '回到用户要的 court').toBe('court')
   })
 
   it('恢复静默：回落不产生挤出告知', () => {
@@ -84,7 +84,7 @@ describe('尺寸回落：压力消失后回到该有的大小', () => {
     const notices: string[] = []
     const d = createDesk(() => now)
     d.onNotice(n => notices.push(n.note))
-    d.show({ template: 'weather', size: '1/3', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
+    d.show({ template: 'weather', size: 'band', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
     const ids = squeeze(d, () => { now += 10 })
     for (const x of ids) d.dismiss(x)
     const beforeCount = notices.length
@@ -135,7 +135,7 @@ describe('规则卡补回：桌面回到 f(车辆状态)', () => {
     desk.dismiss(id, { byUser: true })
     expect(desk.findByKey('player'), '用户关掉就是关掉').toBeUndefined()
     // 别的卡进出引起的 desk 变化也不触发诈尸
-    const x = desk.show({ template: 'feedback', size: '1/6', ttl: 'untilDismissed', data: { title: 'x', text: 'x' } }).cardId!
+    const x = desk.show({ template: 'feedback', size: 'box', ttl: 'untilDismissed', data: { title: 'x', text: 'x' } }).cardId!
     desk.dismiss(x)
     expect(desk.findByKey('player'), '仍然不回来').toBeUndefined()
     // 换了首歌（watch 信号变化）→ 规则重新断言 → 回来

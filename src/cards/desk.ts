@@ -28,7 +28,7 @@ import { type Urgency, priorityOf as prioOf, evictableAt, minTierFor, normalizeU
  * 尺寸。老名字（1/6…）和新档位名（chip / strip / bar / card / wide / panel / banner /
  * tower / stage / full）都认，内部一律归一到档位名 —— 见 src/config/grid.ts 的 ALIAS。
  */
-export type Size = '1/6' | '1/3' | '1/2' | '2/3' | 'full' | TierName
+export type Size = '1/6' | '1/3' | '1/2' | '2/3' | 'card' | 'banner' | TierName
 export type Kind = 'task' | 'rule' | 'system'
 export type Ttl = 'untilDismissed' | 'untilTaskEnd' | number
 
@@ -327,8 +327,10 @@ export function createDesk(clock: () => number = Date.now) {
       const cols: number[] = []
       for (let i = 0; i + shape.w <= COLS; i += 2) cols.push(i)
       if (c.anchor === 'right') cols.reverse()
-      // 行起点按自身高度对齐：半高档只落 0/2，不会错位出一条高 1 的横缝
-      const rowStep = shape.h >= 2 ? 2 : 1
+      // 行起点只取偶数 —— 跟列起点同一条规则（2026-08-14 栅格改 12×8 之后
+      // 两个轴的不变量统一了）。空隙的高度必为偶数，最小的 2 高卡永远填得上，
+      // 不会错位出一条高 1 的横缝
+      const rowStep = 2
       if (!placed) outer: for (let r = 0; r + shape.h <= ROWS; r += rowStep) {
         for (const c0 of cols) {
           if (!fits(r, c0, shape)) continue
@@ -502,7 +504,7 @@ export function createDesk(clock: () => number = Date.now) {
       ?? (Array.isArray(input.data?.items) && input.data.items.length
             ? suggestSize(input.template, input.data.items.length) as Size
             : undefined)
-      ?? tmplDefault ?? '1/6'
+      ?? tmplDefault ?? 'box'
     const sizeErr = checkSize(input.template, size)
     if (sizeErr) return { status: 'rejected', ...sizeErr }
     const id = input.id ?? `card_${++seq}`
@@ -704,7 +706,7 @@ export function createDesk(clock: () => number = Date.now) {
     const want = (i.size
       ?? (Array.isArray(i.data?.items) && i.data.items.length
             ? suggestSize(i.template, i.data.items.length) as Size : undefined)
-      ?? exist?.size ?? '1/6') as Size
+      ?? exist?.size ?? 'box') as Size
     if (exist) {
       if (i.refreshTtl) exist.createdAt = clock()
       if (i.family) {

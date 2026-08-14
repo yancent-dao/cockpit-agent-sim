@@ -5,6 +5,7 @@ import type { ToolDef, ParamDef } from '../config/tools'
 import { CAPABILITY_DOMAINS } from '../config/tools'
 import { globMatch } from '../core/glob'
 import type { Desk } from '../cards/desk'
+import { cellsOfTier } from '../config/grid'
 import { CARD_TEMPLATES, COMMON_SIZES, type CardTemplate } from '../config/cards'
 import { titleOf, recallHint } from '../cards/summary'
 import type { AmapClient } from '../integrations/amap'
@@ -82,7 +83,7 @@ export function createRegistry(
       if (candidates) { /* 屏幕已经在展示候选，不再开卡也不改标题 */ }
       // ttl 用 untilTaskEnd 而非秒数：用户下一句一开口，这问题要么被回答要么被跳过，
       // 卡片就该走。挂满 60 秒是白占位置。
-      else autoCard({ key: 'ask', template: 'confirm', size: '1/3', kind: 'system', ttl: 'untilTaskEnd',
+      else autoCard({ key: 'ask', template: 'confirm', size: 'wide', kind: 'system', ttl: 'untilTaskEnd',
         data: { title: '请选择', question: args.question, options: args.options ?? [] } })
       return { status: 'ok', data: { asked: args.question, options: args.options }, message: args.question }
     },
@@ -106,7 +107,7 @@ export function createRegistry(
       // 能力目录是**内容**不是问题，不该定时消失 —— 用户正对着屏念
       // "你还会什么"的时候它自己关掉最气人。挤掉它的应该是下一张卡，不是秒表。
       // 尺寸 1/2 走桌面："你会什么"是内容不是告警，不配盖住整个屏（覆盖层）
-      autoCard({ key: 'capabilities', template: 'capability', size: '1/2', kind: 'task',
+      autoCard({ key: 'capabilities', template: 'capability', size: 'court', kind: 'task',
         ttl: 'untilDismissed', data: { title: '我能做的事', items } })
       return { status: 'ok', data: { items } }
     },
@@ -157,7 +158,8 @@ export function createRegistry(
           staged: (l.staged ?? []).map(brief),
           // 给模型的是"还放得下几张小卡"，不是内部单元数 ——
           // 48 单元下报 16 它没法换算成"能不能再上一张"，只会瞎猜
-          slots: Math.floor(l.free / 8),
+          // 跟 desk.summary() 用同一个换算 —— 写死数字的话换栅格就是两套账
+          slots: Math.floor(l.free / cellsOfTier('box')),
         },
       }
     },
@@ -388,7 +390,7 @@ export function createRegistry(
         // 确认卡自动上屏（需求书 §4.5 P0 模板）——用户在屏上能看到自己在确认什么。
         // ttl 用 untilTaskEnd：Agent 可能看完 message 直接决定拒绝（行驶中开门就是），
         // 那这张卡就是孤儿，语音在说"不行"、屏幕在问"确认吗"。用户下一句一开口就该散
-        autoCard({ key: 'confirm', template: 'confirm', size: '1/3', kind: 'system',
+        autoCard({ key: 'confirm', template: 'confirm', size: 'wide', kind: 'system',
           ttl: 'untilTaskEnd',
           data: { title: '需要确认', question: message, options: ['确认', '取消'] } })
         return { status: 'inputRequired', code: 'CONFIRM_REQUIRED', message, token }

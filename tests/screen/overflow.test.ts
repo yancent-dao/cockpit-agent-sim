@@ -92,14 +92,14 @@ describe('溢出信息进 desk.summary()', () => {
 
   it('卡片带 moreCount 时，summary 说得出还有几条没显示', () => {
     desk.show({
-      template: 'list', size: '1/3', ttl: 120,
+      template: 'list', size: 'tower', ttl: 120,
       data: { title: '附近充电站', items: [{ label: 'a' }], moreCount: 8 },
     })
     expect(desk.summary()).toContain('8')
   })
 
   it('没有溢出就不提', () => {
-    desk.show({ template: 'list', size: '1/3', ttl: 120, data: { title: '候选', items: [{ label: 'a' }] } })
+    desk.show({ template: 'list', size: 'tower', ttl: 120, data: { title: '候选', items: [{ label: 'a' }] } })
     expect(desk.summary()).not.toMatch(/没显示/)
   })
 })

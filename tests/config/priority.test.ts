@@ -84,7 +84,7 @@ describe('三条通道：卡片 / 横幅 / 覆盖层', () => {
 
   it('full 档的内容卡走覆盖层，桌面装不下它', () => {
     expect(channelOf({ size: 'full' })).toBe('overlay')
-    expect(channelOf({ size: '2/3' })).toBe('card')
+    expect(channelOf({ size: 'stage' })).toBe('card')
   })
 
   it('没给任何线索就走卡片 —— 默认不该是抢屏的那个', () => {

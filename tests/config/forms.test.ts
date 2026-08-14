@@ -1,258 +1,313 @@
 import { describe, it, expect } from 'vitest'
-import { CARD_FORMS, navForm, capForm, weatherForm, listForm } from '../../src/config/forms'
-import { dimsOf } from '../../src/config/grid'
+import {
+  CARD_FORMS, navForm, capForm, weatherForm, listForm, mediaForm,
+  controlForm, confirmForm, noticeForm, feedbackForm, suggestSize,
+} from '../../src/config/forms'
+import { dimsOf, tierNames } from '../../src/config/grid'
+import { CARD_TEMPLATES } from '../../src/config/cards'
 
 /**
- * 形态函数 = 「这个模板在这个大小下显示哪些块」。
+ * 形态函数 = 「这个模板在这个形状下显示哪些块」。
  *
- * 签名从 `(size)` 换成 `(cols, rows)`：档位从 4 个涨到 10 个之后，
- * 按名字查表要写 11×10=110 组，不可能维护。改成按**几何阈值**判断——
- * 宽度只有 5 种取值（2/4/6/8/12）、高度 3 种（1/2/4），每个模板实际只关心 2–3 个阈值。
+ * 签名是 `(cols, rows)` 而不是 `(size)`：形状从 4 个涨到 14 个之后，
+ * 按名字查表要写 14×14=196 组，不可能维护。改成按**几何阈值**判断——
+ * 宽度只有 5 种取值（2/4/6/8/12）、高度 4 种（2/4/6/8），每个模板只关心 2–3 个阈值。
  *
- * 这也是「加能力 = 加数据不加代码」的落点：以后加档位只改 TIERS 表，形态函数一行不动。
+ * 这也是「加能力 = 加数据不加代码」的落点：加形状只改 TIERS 表，形态函数一行不动。
  */
 
-/** 十个档位的实际尺寸，测试里直接按名字用，读起来才有画面 */
-const D = {
-  chip: [2, 1], strip: [4, 1], bar: [6, 1],
-  card: [4, 2], wide: [6, 2], panel: [8, 2], banner: [12, 2],
-  tower: [4, 4], stage: [8, 4], full: [12, 4],
-} as const
-const f = (fn: any, t: keyof typeof D) => fn(D[t][0], D[t][1])
-const has = (fn: any, t: keyof typeof D, b: string) => f(fn, t).blocks.includes(b)
+/**
+ * 形状尺寸**从 grid 派生**，不再手抄一张表。
+ * 上一版这里硬编码了十个档位的 [w,h]，栅格一改就是两份真相打架 ——
+ * 12×8 迁移时这张表整个失效，而测试还在按旧数字断言"通过"。
+ */
+const f = (fn: any, t: string) => fn(...dimsOf(t))
+const has = (fn: any, t: string, b: string) => f(fn, t).blocks.includes(b)
+/** 某个模板实际声明的形状池 —— 断言只在模板真会用到的形状上做 */
+const poolOf = (id: string) => CARD_TEMPLATES.find(t => t.id === id)!.sizes!
 
-describe('导航卡：转向条是命根子，地图先被砍', () => {
-  it('stage / full / banner 是完整形态：转向条 + 地图 + 底部数据', () => {
-    for (const t of ['banner', 'stage', 'full'] as const)
-      for (const b of ['turn', 'map', 'foot'])
+/* ══════════════ 通用不变量 ══════════════ */
+describe('形态的通用不变量', () => {
+  /**
+   * **相邻两档的内容必须不同** —— 这一版最核心的判据。
+   *
+   * 上一轮只改了尺寸数组没同步改形态函数，于是确认卡/提示卡/反馈卡三档
+   * 在屏幕上长得一模一样：用户点放大，卡变大了，内容没变。靠人眼守不住，
+   * 必须有测试盯着。
+   */
+  it('每个模板相邻两档的内容都不一样', () => {
+    for (const t of CARD_TEMPLATES) {
+      const fn = CARD_FORMS[t.id]
+      if (!fn) continue                       // canvas 类没有形态函数，内容由模型生成
+      const sizes = t.sizes ?? []
+      for (let i = 1; i < sizes.length; i++) {
+        const a = f(fn, sizes[i - 1]), b = f(fn, sizes[i])
+        const same = JSON.stringify([a.blocks, a.maxItems, a.mode, a.cols, a.hours])
+          === JSON.stringify([b.blocks, b.maxItems, b.mode, b.cols, b.hours])
+        expect(same, `${t.id} 的 ${sizes[i - 1]} 和 ${sizes[i]} 内容完全相同 —— 这一档白给`).toBe(false)
+      }
+    }
+  })
+
+  /** 块只增不减：档位变大不该掉块，否则放大反而看得更少 */
+  it('形状变大不掉块', () => {
+    for (const t of CARD_TEMPLATES) {
+      const fn = CARD_FORMS[t.id]
+      if (!fn || !t.sizes) continue
+      for (let i = 1; i < t.sizes.length; i++) {
+        const prev = f(fn, t.sizes[i - 1]).blocks as string[]
+        const next = f(fn, t.sizes[i]).blocks as string[]
+        // mode 型模板（能力目录）走互斥渲染，不适用叠加单调性
+        if (f(fn, t.sizes[i]).mode) continue
+        for (const b of prev)
+          expect(next, `${t.id} 从 ${t.sizes[i - 1]} 放大到 ${t.sizes[i]} 反而掉了 ${b}`).toContain(b)
+      }
+    }
+  })
+
+  it('任何形状都算得出形态，不会抛', () => {
+    for (const id of Object.keys(CARD_FORMS))
+      for (const s of tierNames())
+        expect(() => f(CARD_FORMS[id], s), `${id}@${s}`).not.toThrow()
+  })
+})
+
+/* ══════════════ 导航 ══════════════ */
+describe('导航卡：转向条是命根子，中档必须有地图', () => {
+  /**
+   * 2026-08-14 实拍反馈："中等尺寸的情况下没有地图不合理，中间看着非常空"。
+   * 根因是上一版判据要求宽 ≥8，而中档 tower 只有 4 列宽 —— 条件永远不满足。
+   * 换成 hall(6×6) 之后地图有 500px 高，正好是"前方一段路"的形状。
+   */
+  it('中档 hall 和最大档 stage 都有地图', () => {
+    for (const t of ['hall', 'stage'])
+      for (const b of ['turn', 'map', 'eta'])
         expect(has(navForm, t, b), `${t}.${b}`).toBe(true)
   })
 
-  // 一格宽的地图看不出路，不如把空间让给转向指令——真车机的小卡模式
-  it('panel（原 1/3）退成小卡：没有地图，转向条和 ETA 都留着', () => {
-    // dest 是恒在的兜底块（没有转向指令时它是唯一能露面的），渲染端只在
-    // 别的块都出不来时才画它，所以这里只断言"没有 map、有 turn 和 foot"
-    expect(f(navForm, 'panel').blocks).toEqual(['dest', 'turn', 'foot'])
-  })
-
-  it('card（原 1/6）只剩转向指令，连 ETA 都放不下', () => {
-    expect(f(navForm, 'card').blocks).toEqual(['dest', 'turn'])
-  })
-
-  it('tower 高但窄，地图会变成一条竖缝 —— 不给地图', () => {
-    expect(has(navForm, 'tower', 'map')).toBe(false)
-    expect(has(navForm, 'tower', 'foot')).toBe(true)
-  })
-
-  it('单行档也保住转向条 —— 任何时候都不能不告诉用户下一步做什么', () => {
-    for (const t of ['chip', 'strip', 'bar'] as const)
-      expect(has(navForm, t, 'turn'), t).toBe(true)
-  })
-})
-
-describe('列表卡：能显示几条由几何算，不查表', () => {
-  it('越大的档位放得越多，严格单调', () => {
-    const seq = (['card', 'panel', 'banner', 'stage', 'full'] as const).map(t => f(listForm, t).maxItems)
-    for (let i = 1; i < seq.length; i++) expect(seq[i], `第 ${i} 档`).toBeGreaterThan(seq[i - 1])
-  })
-
-  it('card 放四条 —— 这是实测过的数字，别改', () => {
-    expect(f(listForm, 'card').maxItems).toBe(4)
-  })
-
-  it('宽到 8 列就分两栏，12 列分三栏', () => {
-    expect(f(listForm, 'panel').cols).toBe(2)
-    expect(f(listForm, 'banner').cols).toBe(3)
-    expect(f(listForm, 'card').cols).toBe(1)
-  })
-
-  // 单行档连一条带副标题的候选都放不下，硬塞等于骗用户「屏上有」
-  it('单行档只报数量，一条都不列', () => {
-    for (const t of ['chip', 'strip', 'bar'] as const) {
-      expect(f(listForm, t).overflow, t).toBe('count')
-      expect(f(listForm, t).maxItems, t).toBe(0)
-    }
-  })
-
-  it('放得下的档位用 more 策略 —— 截断并写明还剩几条', () => {
-    expect(f(listForm, 'card').overflow).toBe('more')
-  })
-})
-
-/**
- * grid / list / count 是三种**互斥的渲染方式**，不是块的超集 ——
- * 所以走 `mode` 而不是 `blocks`，下面那条「档位变大不掉块」的单调性才管得住 blocks。
- */
-describe('能力目录：33 项塞不进小卡就老实报个数', () => {
-  // banner（12×2）宽 12 列却单列排，一屏只见 4 项——目录卡默认 1/2 就落在这，
-  // 一半屏幕只列 4 个能力等于告诉用户"我就会这四样"。宽度够 8 列就该铺网格
-  it('stage / full / banner 铺成网格', () => {
-    for (const t of ['stage', 'full', 'banner'] as const) expect(f(capForm, t).mode, t).toBe('grid')
-  })
-
-  it('panel 列得下，一列排', () => {
-    expect(f(capForm, 'panel').mode).toBe('list')
+  it('最小档 strip 没有地图，但转向和到达时刻都留着', () => {
+    expect(f(navForm, 'strip').blocks).toEqual(['dest', 'turn', 'eta'])
   })
 
   /**
-   * 能显示几项要按**实际列数**算。list 模式只有一列，
-   * 按三列的容量给就会切掉半行 —— 用户看到一条被拦腰截断的能力，
-   * 比不显示更糟（他会以为那就是全部）。
+   * 到达时刻是 Android for Cars 的 TravelEstimate 里的**必填**字段 ——
+   * 人真正想知道的是"几点到"，不是"还要多久"。所以最小档也给。
    */
-  it('list 模式按一列算容量，不按三列', () => {
-    expect(f(capForm, 'panel').maxItems).toBe(4)
+  it('到达时刻任何档位都在', () => {
+    for (const t of poolOf('nav')) expect(has(navForm, t, 'eta'), t).toBe(true)
   })
 
-  it('banner 网格 3 栏，容量 12——够整个域目录一次摊开', () => {
-    expect(f(capForm, 'banner').cols).toBe(3)
-    expect(f(capForm, 'banner').maxItems).toBe(12)
+  /** 车道指引跟着地图走：没地图的扁条档放不下五个车道箭头 */
+  it('车道指引只在有地图的档出现', () => {
+    for (const t of poolOf('nav'))
+      expect(has(navForm, t, 'lane'), t).toBe(has(navForm, t, 'map'))
   })
 
-  it('grid 模式才按多列算', () => {
-    expect(f(capForm, 'full').maxItems).toBeGreaterThan(f(capForm, 'banner').maxItems!)
+  it('窄而高的形状不给地图 —— 一格宽的地图看不出路', () => {
+    expect(has(navForm, 'tower', 'map'), 'tower 4×8 只有 797px 宽').toBe(false)
   })
 
-  it('card 及以下只报数量', () => {
-    for (const t of ['card', 'chip'] as const) {
-      expect(f(capForm, t).mode, t).toBe('count')
-      expect(f(capForm, t).overflow, t).toBe('count')
+  /**
+   * dest 是恒在块：没有高德 Key 的降级演示里 turn 是空串，
+   * 只声明 turn 的话所有块 display:none，桌面上留一条只有边框的空玻璃条。
+   */
+  it('目的地名任何档位都在 —— 否则降级演示会留一条空玻璃条', () => {
+    for (const s of tierNames()) expect(f(navForm, s).blocks, s).toContain('dest')
+  })
+})
+
+/* ══════════════ 列表 ══════════════ */
+describe('列表卡：条数由几何算，且形状一律是竖的', () => {
+  /**
+   * 2026-08-14 实拍反馈："列表类的内容最好使用竖的卡片，不要使用很长的
+   * 横向卡，比例很不协调"。上一版最大档是 12×4 的通栏横条，16 条铺 4 栏，
+   * 每条 600px 宽却只有 100px 高，而且眼睛要在四列之间来回跳。
+   */
+  it('三档全是竖的或近方的 —— 没有宽高比超过 2 的', () => {
+    for (const s of poolOf('list')) {
+      const [c, r] = dimsOf(s)
+      expect(c / r, `${s} 的单元宽高比 ${c}:${r}`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('条数 4 → 8 → 16，栏数 1 → 1 → 2', () => {
+    expect(f(listForm, 'box')).toMatchObject({ maxItems: 4, cols: 1 })
+    expect(f(listForm, 'tower')).toMatchObject({ maxItems: 8, cols: 1 })
+    expect(f(listForm, 'court')).toMatchObject({ maxItems: 16, cols: 2 })
+  })
+
+  /** 两栏是上限：再多就回到"横向扫描"的老问题 */
+  it('列表最多两栏，宽度再大也不给三栏', () => {
+    for (const s of tierNames()) expect(f(listForm, s).cols, s).toBeLessThanOrEqual(2)
+  })
+
+  it('越大的形状放得越多，严格单调', () => {
+    const caps = poolOf('list').map(s => f(listForm, s).maxItems!)
+    for (let i = 1; i < caps.length; i++)
+      expect(caps[i], `第 ${i} 档`).toBeGreaterThan(caps[i - 1])
+  })
+
+  it('放得下就用 more 策略 —— 截断并写明还剩几条', () => {
+    for (const s of poolOf('list')) expect(f(listForm, s).overflow, s).toBe('more')
+  })
+
+  /** 单行档（231px 高）连一条带副标题的候选都放不下，老实报个数 */
+  it('单行形状容量为零，走 count', () => {
+    for (const s of ['chip', 'strip', 'bar'])
+      expect(f(listForm, s)).toMatchObject({ maxItems: 0, overflow: 'count' })
+  })
+})
+
+/* ══════════════ 能力目录 ══════════════ */
+describe('能力目录：两档，砍掉了"只报个数"的最小档', () => {
+  /** 用户问"你能做什么"，屏幕回答一个数字「33 项」不是答案 */
+  it('两档都是网格模式，不再有 count 档', () => {
+    for (const s of poolOf('capability'))
+      expect(f(capForm, s).mode, s).toBe('grid')
+  })
+
+  it('court 两栏 16 项，full 四栏 32 项', () => {
+    expect(f(capForm, 'court')).toMatchObject({ mode: 'grid', cols: 2, maxItems: 16 })
+    expect(f(capForm, 'full')).toMatchObject({ mode: 'grid', cols: 4, maxItems: 32 })
+  })
+
+  /**
+   * 容量按**实际列数**算。照多列的容量给而只排一列，会切掉半行 ——
+   * 用户看到一条被拦腰截断的能力比不显示更糟，他会以为那就是全部。
+   */
+  it('容量跟实际列数一致，不会算多', () => {
+    for (const s of tierNames()) {
+      const form = f(capForm, s)
+      if (form.mode === 'count') { expect(form.maxItems, s).toBe(0); continue }
+      expect(form.maxItems! % form.cols!, `${s} 容量 ${form.maxItems} 不是 ${form.cols} 的整数倍`).toBe(0)
     }
   })
 })
 
-describe('天气卡：温度当主角，预报按空间加', () => {
-  // card 是它的默认档，也是最常出现的形态。挤 6 行小字就主次不分了
-  it('card 只讲此刻：温度大字，不放预报', () => {
-    const r = f(weatherForm, 'card')
-    expect(r.blocks).toContain('temp')
-    expect(r.blocks).not.toContain('forecast')
+/* ══════════════ 天气 ══════════════ */
+describe('天气卡：主角是逐小时不是多日', () => {
+  /**
+   * 2026-08-14 调研结论：车里最想知道的是"接下来一两小时会不会下雨"，
+   * 5 天预报是手机首页的逻辑。通行判据是「一秒读懂：当前温度、
+   * 下一次降水、今日温差、预警状态」。
+   */
+  it('三档差异是 0 / 6 / 12 小时', () => {
+    expect(f(weatherForm, 'tile').hours).toBe(0)
+    expect(f(weatherForm, 'wide').hours).toBe(6)
+    expect(f(weatherForm, 'band').hours).toBe(12)
   })
 
-  it('panel 放得下三天，纵向排', () => {
-    const r = f(weatherForm, 'panel')
-    expect(r.maxItems).toBe(3)
-    expect(r.cols).toBe(1)
+  /** 今日最高/最低是最基本的一项，上一版连大档都没有 */
+  it('今日温差任何档位都在', () => {
+    for (const s of poolOf('weather')) expect(has(weatherForm, s, 'range'), s).toBe(true)
   })
 
-  it('banner 横着排预报，别让内容缩在左上角', () => {
-    expect(f(weatherForm, 'banner').cols).toBeGreaterThan(1)
-  })
-
-  it('stage / full 放得下五天', () => {
-    expect(f(weatherForm, 'full').maxItems).toBe(5)
-  })
-})
-
-describe('播放器卡：封面/歌名/播控任何档位都在，进度条和队列按空间加', () => {
-  const m = CARD_FORMS.media
-
-  // 用户实拍：最小档只剩一行歌名，"连图片都没有"，想停都没按钮。
-  // 封面是媒体卡的身份证，播控是它存在的意义——这三样不许砍
-  it('最小档也认得出在放什么、停得下来：封面+歌名+播控', () => {
-    for (const t of ['chip', 'strip', 'card', 'panel', 'stage'] as const) {
-      expect(has(m, t, 'art'), `${t} 封面`).toBe(true)
-      expect(has(m, t, 'title'), `${t} 歌名`).toBe(true)
-      expect(has(m, t, 'bar') || has(m, t, 'toggle'), `${t} 播控`).toBe(true)
-    }
-  })
-
-  // 用户实拍：1/6 卡（786×470px）只给单键，大片空白。这个面积放得下三键+进度
-  it('card 档（4×2）就放完整进度条三键，别只给单键', () => {
-    expect(has(m, 'card', 'bar')).toBe(true)
-    expect(has(m, 'bar', 'bar')).toBe(true)     // 6 列一行档也放
-  })
-
-  it('一行的小档（chip/strip）退到单键——三键挤不下', () => {
-    expect(has(m, 'chip', 'bar')).toBe(false)
-    expect(has(m, 'strip', 'bar')).toBe(false)
-    expect(has(m, 'chip', 'toggle')).toBe(true)
-    expect(has(m, 'strip', 'toggle')).toBe(true)
-  })
-
-  it('半高以上带一行「说换一台就行」的语音提示', () => {
-    expect(has(m, 'panel', 'hint')).toBe(true)
-    expect(has(m, 'strip', 'hint')).toBe(false)
-  })
-
-  it('panel 档起报"接下来"队列预告——大卡不许大片留白', () => {
-    expect(has(m, 'panel', 'next')).toBe(true)
-    expect(has(m, 'card', 'next')).toBe(false)
+  /**
+   * 5 天预报以前要求面积 ≥32，而天气卡最大档面积只有 24 —— **永远走不到**。
+   * 判据改成看宽度：只有通栏才排得下 5 天。
+   */
+  it('5 天预报只在通栏出现，而且真的到得了', () => {
+    expect(f(weatherForm, 'band').days).toBe(5)
+    expect(f(weatherForm, 'wide').days).toBe(0)
   })
 })
 
-describe('确认卡：要做什么永远在，为什么可以砍', () => {
-  const c = CARD_FORMS.confirm
-
-  it('任何档位都说得清「要做什么」和「怎么答」', () => {
-    for (const t of ['card', 'panel', 'stage'] as const) {
-      expect(has(c, t, 'what'), t).toBe(true)
-      expect(has(c, t, 'hint'), t).toBe(true)
-    }
+/* ══════════════ 播放器 ══════════════ */
+describe('播放器卡：封面/歌名/播控任何档位都在', () => {
+  it('封面和播控是命根子，三档都有', () => {
+    for (const s of poolOf('media'))
+      for (const b of ['art', 'title', 'toggle'])
+        expect(has(mediaForm, s, b), `${s}.${b}`).toBe(true)
   })
 
-  it('panel 及以上补上「为什么要确认」', () => {
-    expect(has(c, 'panel', 'why')).toBe(true)
-    expect(has(c, 'card', 'why')).toBe(false)
-  })
-})
-
-describe('11 个模板全覆盖，没有漏网的', () => {
-  const NAMES = ['nav', 'control', 'confirm', 'feedback', 'notice',
-    'list', 'info', 'media', 'weather', 'capability', 'generic']
-
-  it('每个模板都有形态函数', () => {
-    for (const n of NAMES) expect(typeof CARD_FORMS[n], n).toBe('function')
+  /** 4×4 的卡实际有 745×442px，三键+进度绰绰有余——只给单键就是大片空白 */
+  it('最小档就给完整进度条，不是单键', () => {
+    expect(has(mediaForm, 'box', 'bar')).toBe(true)
   })
 
-  /** 任何档位都不能返回空 blocks —— 那是一张白卡，比不显示更糟 */
-  it('10 档 × 11 模板，没有一组是空的', () => {
-    for (const n of NAMES)
-      for (const t of Object.keys(D) as (keyof typeof D)[])
-        expect(f(CARD_FORMS[n], t).blocks.length, `${n}@${t}`).toBeGreaterThan(0)
-  })
-
-  it('块名不重复 —— 重复意味着同一块画两遍', () => {
-    for (const n of NAMES)
-      for (const t of Object.keys(D) as (keyof typeof D)[]) {
-        const bs = f(CARD_FORMS[n], t).blocks
-        expect(new Set(bs).size, `${n}@${t}`).toBe(bs.length)
-      }
-  })
-
-  /** 单调性：大档位显示的块必须是小档位的超集，不能"变大了反而少一块" */
-  it('档位变大不会掉块', () => {
-    const chain = ['card', 'panel', 'banner', 'full'] as const
-    for (const n of NAMES)
-      for (let i = 1; i < chain.length; i++) {
-        const small = f(CARD_FORMS[n], chain[i - 1]).blocks
-        const big = f(CARD_FORMS[n], chain[i]).blocks
-        for (const b of small)
-          expect(big, `${n}: ${chain[i]} 掉了 ${chain[i - 1]} 有的 ${b}`).toContain(b)
-      }
+  /**
+   * 上一版最大档跟中档的 blocks **完全相同**而高度翻倍，一半是空的。
+   * 现在每档都有独占的块。
+   */
+  it('中档多出全套播控与队列预告，最大档再多出完整队列', () => {
+    expect(has(mediaForm, 'box', 'mix'), 'box 不该有随机/循环').toBe(false)
+    expect(has(mediaForm, 'hall', 'mix'), 'hall 该有全套播控').toBe(true)
+    expect(has(mediaForm, 'hall', 'next'), 'hall 该有队列预告').toBe(true)
+    expect(has(mediaForm, 'hall', 'queue'), 'hall 放不下完整队列').toBe(false)
+    expect(has(mediaForm, 'court', 'queue'), 'court 该有完整队列').toBe(true)
   })
 })
 
-/**
- * 导航卡最小档不许渲染成空白（2026-08-14 代码审查）。
- *
- * nav 的最小档 strip 是 4×1，navForm 只给 ['turn']；而 turn 块要有
- * navigation.nextInstruction 才画得出来（刚设完目的地还没取到指引、
- * 或没有高德 Key 的降级演示时它就是空串），三个块于是全部 display:none，
- * .tpl-nav>h3 又被 CSS 藏掉——桌面上留一条只有边框的空玻璃条，
- * 用户不知道这是导航卡还是渲染坏了。
- */
-describe('导航卡最小档：没有转向指引也不能是空白', () => {
-  it('strip 档声明了目的地兜底块', () => {
-    const f = navForm(...dimsOf('strip'))
-    expect(f.blocks, `strip 的块：${f.blocks.join(',')}`).toContain('dest')
+/* ══════════════ 车控 / 确认 / 提示 / 反馈 ══════════════ */
+describe('车控卡：车身图终于画得出来了', () => {
+  /**
+   * 这块图要求高度 ≥4 行，而上一版车控卡的档位只有 1/2/2 行 ——
+   * **条件不可能满足**，图画好了从没在屏幕上出现过（代码审查发现的死代码）。
+   */
+  it('只有通高的 tower 画车身图', () => {
+    expect(has(controlForm, 'tower', 'vehicle')).toBe(true)
+    expect(has(controlForm, 'box', 'vehicle')).toBe(false)
+    expect(has(controlForm, 'tile', 'vehicle')).toBe(false)
   })
 
-  it('每个允许的档位都至少有一个恒在的块', async () => {
-    const { CARD_TEMPLATES } = await import('../../src/config/cards')
-    for (const z of CARD_TEMPLATES.find(t => t.id === 'nav')!.sizes!) {
-      const f = navForm(...dimsOf(z))
-      expect(f.blocks.length, `${z} 档不能一个块都没有`).toBeGreaterThan(0)
-      expect(f.blocks.some(b => b === 'dest' || b === 'turn'), `${z} 档要么有转向要么有目的地`).toBe(true)
+  it('状态列表任何档位都在', () => {
+    for (const s of poolOf('control')) expect(has(controlForm, s, 'items'), s).toBe(true)
+  })
+})
+
+describe('确认卡与提示卡：两档，且真的不一样', () => {
+  it('确认卡大档多出「为什么要问你」', () => {
+    expect(has(confirmForm, 'box', 'why')).toBe(false)
+    expect(has(confirmForm, 'wide', 'why')).toBe(true)
+  })
+
+  it('确认卡两档都说清"做什么"和"怎么答"', () => {
+    for (const s of poolOf('confirm'))
+      for (const b of ['what', 'hint'])
+        expect(has(confirmForm, s, b), `${s}.${b}`).toBe(true)
+  })
+
+  /**
+   * 「拒绝必须携带机器可读原因」是项目核心原则之一 ——
+   * 只说"不行"不说"怎么办"等于原则没落地。所以 suggestion 是恒在块，
+   * 最小档也不能砍，这也是它的最小档从 chip 抬到 tile 的原因。
+   */
+  it('提示卡的「怎么办」任何档位都不砍', () => {
+    for (const s of poolOf('notice')) expect(has(noticeForm, s, 'suggestion'), s).toBe(true)
+  })
+
+  it('提示卡大档才多出「为什么」', () => {
+    expect(has(noticeForm, 'tile', 'why')).toBe(false)
+    expect(has(noticeForm, 'wide', 'why')).toBe(true)
+  })
+
+  it('反馈卡小档只有结论，大档多一句说明', () => {
+    expect(f(feedbackForm, 'chip').blocks).toEqual(['text'])
+    expect(has(feedbackForm, 'box', 'detail')).toBe(true)
+  })
+})
+
+/* ══════════════ 尺寸建议 ══════════════ */
+describe('suggestSize：内容 → 建议形状', () => {
+  it('按条数挑得下的最小档', () => {
+    expect(suggestSize('list', 3)).toBe('box')
+    expect(suggestSize('list', 6)).toBe('tower')
+    expect(suggestSize('list', 12)).toBe('court')
+  })
+
+  it('全装不下就取最大档，交给截断策略', () => {
+    expect(suggestSize('list', 999)).toBe('court')
+  })
+
+  /**
+   * 2026-08-14 代码审查修的：它靠 `maxItems` 挑档，而播放器、天气、导航、
+   * 信息卡都没有这个字段 —— 循环一次都不进，直接返回最大档，
+   * "按内容挑尺寸"这个机制对**一半模板**是失效的。
+   */
+  it('不按条数计量的模板走模板自己的默认档，不是一律最大', () => {
+    for (const id of ['media', 'weather', 'nav']) {
+      const t = CARD_TEMPLATES.find(x => x.id === id)!
+      expect(suggestSize(id, 0), id).toBe(t.defaultSize)
     }
   })
 })

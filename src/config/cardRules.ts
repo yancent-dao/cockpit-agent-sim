@@ -84,7 +84,7 @@ export const CARD_RULES: CardRule[] = [
     id: 'media-playing-video',
     when: [['media.source', '==', 'video']],
     watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode', 'media.playing'],
-    card: { key: 'player-video', template: 'media', size: '2/3', evictable: true, data: 'playerCard' },
+    card: { key: 'player-video', template: 'media', size: 'hall', evictable: true, data: 'playerCard' },
   },
   /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
   { id: 'window-feedback', watch: ['cabin.window.*.position'],

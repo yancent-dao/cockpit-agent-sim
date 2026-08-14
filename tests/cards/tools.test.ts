@@ -20,7 +20,7 @@ beforeEach(() => {
 })
 
 const show = async (o: any = {}) =>
-  await reg.invoke('card.show', { template: 'feedback', size: '1/6', ttl: 'untilDismissed', ...o })
+  await reg.invoke('card.show', { template: 'feedback', size: 'box', ttl: 'untilDismissed', ...o })
 
 describe('卡片调度 Tool', () => {
   it('card.show 创建卡片并返回 cardId', async () => {
@@ -31,7 +31,7 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.show 缺 ttl 被拒 —— 防卡片堆积', async () => {
-    const r = await reg.invoke('card.show', { template: 'feedback', size: '1/6' })
+    const r = await reg.invoke('card.show', { template: 'feedback', size: 'box' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('INVALID_PARAMS')
   })
@@ -41,8 +41,8 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.show 尺寸必须是该模板支持的形状之一', async () => {
-    // 天气卡在通用池里，拿不到 2/3（那档是导航卡专属）
-    const r = await show({ template: 'weather', size: '2/3', data: { now: { weather: '晴', temperature: 25 } } })
+    // 天气卡的形状池是 tile/wide/band，拿不到 stage（那档是导航卡专属）
+    const r = await show({ template: 'weather', size: 'stage', data: { now: { weather: '晴', temperature: 25 } } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
   })
@@ -51,7 +51,7 @@ describe('卡片调度 Tool', () => {
   // 而且数据是它编的不是来自信号。以前是靠"尺寸枚举里没有 2/3"这个副作用
   // 拦住的，现在尺寸放开了，得有显式机制
   it('Agent 手动建不了导航卡，任何尺寸都不行', async () => {
-    for (const size of ['1/6', '1/3', '1/2', '2/3']) {
+    for (const size of ['box', 'panel', 'band', 'stage']) {
       const r = await show({ template: 'nav', size, data: { destination: 'x' } })
       expect(r.status, `nav ${size}`).toBe('rejected')
       expect(r.code).toBe('SYSTEM_TEMPLATE')
@@ -67,23 +67,23 @@ describe('卡片调度 Tool', () => {
   })
 
   it('天气卡缺 now 字段时拒绝', async () => {
-    const r = await show({ template: 'weather', size: '1/3', data: { forecast: [] } })
+    const r = await show({ template: 'weather', size: 'band', data: { forecast: [] } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DATA_SHAPE_MISMATCH')
   })
 
   it('天气卡字段齐全时正常创建', async () => {
-    const r = await show({ template: 'weather', size: '1/3', data: { now: { weather: '晴', temperature: 25 } } })
+    const r = await show({ template: 'weather', size: 'band', data: { now: { weather: '晴', temperature: 25 } } })
     expect(r.status).toBe('ok')
   })
 
   it('通用兜底卡不做形状校验——它本来就是给"没有合适模板"用的逃生舱', async () => {
-    const r = await show({ template: 'generic', size: '1/6', data: { whatever: 123 } })
+    const r = await show({ template: 'generic', size: 'box', data: { whatever: 123 } })
     expect(r.status).toBe('ok')
   })
 
   it('card.update 只校验实际传入字段的类型（局部更新语义）', async () => {
-    const id = ((await show({ template: 'weather', size: '1/3', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
+    const id = ((await show({ template: 'weather', size: 'band', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
     const r = await reg.invoke('card.update', { cardId: id, data: { now: 'not-an-object' } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DATA_SHAPE_MISMATCH')
@@ -109,12 +109,12 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.update / card.resize / card.focus / card.dismiss', async () => {
-    // 用车控卡：control 只声明了 chip·1/6·1/2，resize 到 1/3 现在会被模板校验挡住
+    // 用车控卡：control 只声明了 tile·box·tower，resize 到别的形状会被模板校验挡住
     const id = ((await show({ template: 'control', data: { items: [{ label: '温度', value: 24 }] } })).data as any).cardId
     expect((await reg.invoke('card.update', { cardId: id, data: { title: '新标题' } })).status).toBe('ok')
     expect(desk.get(id)!.data.title).toBe('新标题')
-    expect((await reg.invoke('card.resize', { cardId: id, size: '1/2' })).status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('1/2')
+    expect((await reg.invoke('card.resize', { cardId: id, size: 'tower' })).status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('tower')
     expect((await reg.invoke('card.focus', { cardId: id })).status).toBe('ok')
     expect((await reg.invoke('card.dismiss', { cardId: id })).status).toBe('ok')
     expect(desk.layout().cards).toHaveLength(0)
@@ -123,29 +123,29 @@ describe('卡片调度 Tool', () => {
   // resize 一样要认模板：反馈卡只有 1/6 是它的默认，但它在通用池里，
   // 真正拿不到的是 2/3 那种专属档
   it('card.resize 也认模板的可用档位', async () => {
-    const id = ((await show({ template: 'weather', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
-    expect((await reg.invoke('card.resize', { cardId: id, size: '1/2' })).status).toBe('ok')
-    const r = await reg.invoke('card.resize', { cardId: id, size: '2/3' })
+    const id = ((await show({ template: 'weather', size: 'wide', data: { now: { weather: '晴', temperature: 25 } } })).data as any).cardId
+    expect((await reg.invoke('card.resize', { cardId: id, size: 'band' })).status).toBe('ok')
+    const r = await reg.invoke('card.resize', { cardId: id, size: 'stage' })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
   })
 
   it('card.resize 的参数枚举得含 2/3，否则连表达都表达不了', async () => {
     const size = TOOLS.find(t => t.name === 'card.resize')!.params!.size
-    expect(size.values).toContain('2/3')
+    expect(size.values).toContain('stage')
   })
 
-  /* ── 尺寸池：不声明 sizes 的模板通吃 1/6 · 1/3 · 1/2 ── */
-  it('通用池三档任何模板都能用——白名单越窄，桌面几何死角越多', async () => {
-    for (const size of ['1/6', '1/3', '1/2']) {
+  /* ── 形状池：模板自己声明的三档都要能用 ── */
+  it('模板声明的三档都能用——白名单越窄，桌面几何死角越多', async () => {
+    for (const size of ['tile', 'wide', 'band']) {
       const r = await show({ template: 'weather', size,
         data: { now: { weather: '晴', temperature: 25 } } })
       expect(r.status, `weather 应该支持 ${size}`).toBe('ok')
     }
   })
 
-  it('2/3 是稀缺档，只有导航卡能用——全桌面只有一个合法位置，两张必冲突', async () => {
-    const r = await show({ template: 'weather', size: '2/3',
+  it('stage 是稀缺档，只有导航卡能用——全桌面只有一个合法位置，两张必冲突', async () => {
+    const r = await show({ template: 'weather', size: 'stage',
       data: { now: { weather: '晴', temperature: 25 } } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
@@ -158,9 +158,9 @@ describe('卡片调度 Tool', () => {
   })
 
   it('导航卡可以被调小到自己的尺寸表档位', async () => {
-    const id = desk.show({ template: 'nav', size: '2/3', kind: 'rule',
+    const id = desk.show({ template: 'nav', size: 'stage', kind: 'rule',
       ttl: 'untilDismissed', data: { destination: '春熙路' } }).cardId!
-    for (const size of ['tower', 'strip', '2/3']) {
+    for (const size of ['hall', 'strip', 'stage']) {
       const r = await reg.invoke('card.resize', { cardId: id, size })
       expect(r.status, `nav 应该支持 ${size}`).toBe('ok')
       expect(desk.get(id)!.size).toBe(size)
@@ -178,13 +178,13 @@ describe('卡片调度 Tool', () => {
 
 describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => {
   it('返回卡片列表与剩余格数（统一画布，无分区）', async () => {
-    await show({ data: { title: 'A', items: [] }, size: '1/2', template: 'control' })
+    await show({ data: { title: 'A', items: [{ label: 'x' }] }, size: 'tower', template: 'control' })
     const r = await reg.invoke('desktop.getLayout', {})
     expect(r.status).toBe('ok')
     const d = r.data as any
     expect(d.cards[0].title).toBe('A')
-    expect(d.cards[0].size).toBe('1/2')
-    expect(d.slots).toBe(3)   // (48-24)/8，还放得下三张小卡
+    expect(d.cards[0].size).toBe('tower')
+    expect(d.slots).toBe(4)   // (96-32)/16，还放得下四张标准卡
   })
 
   it('空桌面也返回结构完整的结果', async () => {
@@ -197,7 +197,7 @@ describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => 
   it('台下排队的卡出现在 staged 段，带 cardId 供 card.focus 召回', async () => {
     // system chip 可挤但优先级压过 task——建卡时排队，focus 召回（意愿层）时才挤得动
     for (let i = 0; i < 24; i++) { await show({ kind: 'system', size: 'chip', minSize: 'chip' }); now += 10 }
-    const r = await show({ template: 'weather', data: { title: '成都天气', now: { temperature: 30, weather: '晴' } } })
+    const r = await show({ template: 'weather', size: 'wide', data: { title: '成都天气', now: { temperature: 30, weather: '晴' } } })
     const stagedId = (r.data as any).cardId
     const d = (await reg.invoke('desktop.getLayout', {})).data as any
     expect(d.staged).toHaveLength(1)

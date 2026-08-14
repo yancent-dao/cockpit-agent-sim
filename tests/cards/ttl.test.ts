@@ -21,7 +21,7 @@ describe('规则卡不再定时消失', () => {
 
   it('车控反馈卡活到被挤掉为止', () => {
     const d = createDesk()
-    const r = d.show({ template: 'control', size: '1/6', ttl: 'untilDismissed',
+    const r = d.show({ template: 'control', size: 'box', ttl: 'untilDismissed',
       data: { title: '车窗', items: [{ label: '主驾', value: 30 }] } })
     expect(r.status).toBe('ok')
     d.tick()   // 走一遍生命周期
@@ -53,7 +53,7 @@ describe('模型能自己定卡片寿命', () => {
   it('传数字就按秒数走，到点退场', () => {
     let now = 0
     const d = createDesk(() => now)
-    d.show({ template: 'feedback', size: '1/6', ttl: 5, data: { title: '好了', text: 'x' } })
+    d.show({ template: 'feedback', size: 'box', ttl: 5, data: { title: '好了', text: 'x' } })
     now += 4000; d.tick()
     expect(d.layout().cards, '4 秒还在').toHaveLength(1)
     now += 2000; d.tick()
@@ -63,7 +63,7 @@ describe('模型能自己定卡片寿命', () => {
   it('untilDismissed 的卡不会被 tick 撤掉', () => {
     let now = 0
     const d = createDesk(() => now)
-    d.show({ template: 'weather', size: '1/6', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
+    d.show({ template: 'weather', size: 'wide', ttl: 'untilDismissed', data: { title: '天气', now: { temperature: 25, weather: '晴' } } })
     now += 3600_000; d.tick()
     expect(d.layout().cards).toHaveLength(1)
   })

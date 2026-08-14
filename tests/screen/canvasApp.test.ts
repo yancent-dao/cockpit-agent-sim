@@ -80,32 +80,32 @@ describe('healStep：升降档决策（机制，零模型）', () => {
   const canvas = (bumps = 0, sizeLocked?: boolean) => ({ bumps, sizeLocked, template: 'canvas' })
 
   it('内容超出画布 → 升一档（第一步加宽，文字回流后高度自然缩）', () => {
-    expect(healStep('1/6', h('1/6') + 100, canvas())).toBe('wide')
+    expect(healStep('box', h('box') + 100, canvas())).toBe('wide')
   })
 
-  it('tower 不进自愈阶梯——1/2 的下一步不能是宽度砍半的竖条', () => {
-    expect(healStep('1/2', h('1/2') + 100, canvas())).toBe('2/3')
+  it('tower 不进自愈阶梯——下一步不能是宽度砍半的竖条', () => {
+    expect(healStep('hall', h('hall') + 100, canvas())).toBe('court')
   })
 
   it('升到白名单顶就不再升', () => {
     // canvas 的顶是 2/3（full 是禁档，2026-08-13 产品裁定）
-    expect(healStep('2/3', h('2/3') + 100, canvas())).toBeNull()
+    expect(healStep('stage', h('stage') + 100, canvas())).toBeNull()
   })
 
   it('两次之后不再折腾——防振荡', () => {
-    expect(healStep('1/6', h('1/6') + 100, canvas(2))).toBeNull()
+    expect(healStep('box', h('box') + 100, canvas(2))).toBeNull()
   })
 
   it('内容不足画布六成 → 缩一档还位给桌面', () => {
-    expect(healStep('1/2', h('1/2') * 0.3, canvas())).toBe('1/3')
+    expect(healStep('panel', h('panel') * 0.3, canvas())).toBe('wide')
   })
 
   it('内容量正常 → 不动', () => {
-    expect(healStep('1/3', h('1/3') * 0.8, canvas())).toBeNull()
+    expect(healStep('panel', h('panel') * 0.8, canvas())).toBeNull()
   })
 
   it('sizeLocked 的卡不自动动——意愿大于建议', () => {
-    expect(healStep('1/6', h('1/6') + 100, canvas(0, true))).toBeNull()
+    expect(healStep('box', h('box') + 100, canvas(0, true))).toBeNull()
   })
 })
 
@@ -120,7 +120,7 @@ describe('healStep：升降档决策（机制，零模型）', () => {
  */
 describe('尺寸自愈只在模板声明的档位里走', () => {
   it('canvas 卡在最大档溢出时不再指向 full（那是禁档）', () => {
-    const big = healStep('2/3', 99999, { bumps: 0, template: 'canvas' })
+    const big = healStep('stage', 99999, { bumps: 0, template: 'canvas' })
     expect(big, 'canvas 上限就是 2/3，没有下一档').toBeNull()
   })
 

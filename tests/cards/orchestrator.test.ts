@@ -40,7 +40,7 @@ describe('导航状态卡：navigation.active 驱动，模型零参与', () => {
     store.setDirect('navigation.active', true)
     const nav = desk.findByKey('nav')!
     expect(nav).toBeTruthy()
-    expect(nav.size).toBe('2/3')
+    expect(nav.size).toBe('stage')
     expect(nav.kind).toBe('rule')
     expect(nav.evictable).toBe(false)
     expect(nav.data.destination).toBe('春熙路')
@@ -74,8 +74,8 @@ describe('导航状态卡：navigation.active 驱动，模型零参与', () => {
       card: { key: 'w', template: 'confirm', ttl: 30, data: 'windowCard' } }]
     createOrchestrator({ store, desk, rules: rules as any, builders: DATA_BUILDERS, deps: { store } }).start()
     store.setDirect('cabin.window.driver.position', 50)
-    expect(desk.findByKey('w')!.size).toBe('1/3')
-    expect(CARD_TEMPLATES.find(t => t.id === 'confirm')!.defaultSize).toBe('1/3')
+    expect(desk.findByKey('w')!.size).toBe('wide')
+    expect(CARD_TEMPLATES.find(t => t.id === 'confirm')!.defaultSize).toBe('wide')
   })
 
   it('导航卡带上画活地图需要的坐标：起点/终点/路线', () => {
@@ -200,7 +200,7 @@ describe('车窗事件卡：位置一动就出现，之后一直留着', () => {
   it('机制还在：给了秒数的卡活动期间刷新寿命，停下才过期', () => {
     boot()
     const push = (v: number) => desk.render({
-      key: 'q', template: 'confirm', size: '1/3', ttl: 30, refreshTtl: true,
+      key: 'q', template: 'confirm', size: 'wide', ttl: 30, refreshTtl: true,
       data: { title: '要哪个', question: 'q' + v },
     })
     push(1)
@@ -256,11 +256,16 @@ describe('播放器卡：media.playing 驱动', () => {
     expect(desk.findByKey('player')!.data.track).toBe('稻香')
   })
 
-  it('播视频时用 2/3 大画面，播音乐用小卡', () => {
-    play()
-    expect(desk.findByKey('player')!.size).not.toBe('2/3')
+  /**
+   * hall 的宽高比是 1.63，跟 16:9 只差 8% —— 1208 宽的画面 680 高，
+   * 底下正好留一条 61px 的标题栏，几乎没有黑边。视频规则**显式钉住**它，
+   * 不跟着模板默认档漂：默认档将来若改成 court(1.21)，视频就会上下各空一块。
+   */
+  it('视频规则把尺寸显式钉在 16:9 友好的 hall 上，不跟默认档漂', () => {
+    const rule = CARD_RULES.find(r => r.id === 'media-playing-video')!
+    expect((rule.card as any).size, '视频尺寸必须写死在规则里').toBe('hall')
     play({ 'media.source': 'video' })
-    expect(desk.findByKey('player-video')!.size).toBe('2/3')
+    expect(desk.findByKey('player-video')!.size).toBe('hall')
   })
 
   // 两条规则 when 互斥，切来源时不能两张并存

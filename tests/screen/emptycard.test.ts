@@ -13,7 +13,7 @@ import { createDesk } from '../../src/cards/desk'
 describe('列表卡不能是空壳', () => {
   it('items 为空的列表卡进不了桌面', () => {
     const d = createDesk()
-    const r = d.show({ template: 'list', size: '1/3', ttl: 120, data: { title: '附近的服务区', items: [] } })
+    const r = d.show({ template: 'list', size: 'tower', ttl: 120, data: { title: '附近的服务区', items: [] } })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('EMPTY_CARD')
     expect(d.layout().cards).toHaveLength(0)
@@ -22,29 +22,29 @@ describe('列表卡不能是空壳', () => {
   /** 拒绝要带人话原因 —— 它会直接进模型上下文，得让它知道下一步该说什么 */
   it('拒绝理由写人话，模型看了知道该开口说"没找到"', () => {
     const d = createDesk()
-    const r = d.show({ template: 'list', size: '1/3', ttl: 120, data: { title: '候选', items: [] } })
+    const r = d.show({ template: 'list', size: 'tower', ttl: 120, data: { title: '候选', items: [] } })
     expect(r.message).toMatch(/没|空/)
   })
 
   it('有内容的照常进', () => {
     const d = createDesk()
-    expect(d.show({ template: 'list', size: '1/3', ttl: 120, data: { title: '候选', items: [{ label: 'a' }] } })
+    expect(d.show({ template: 'list', size: 'tower', ttl: 120, data: { title: '候选', items: [{ label: 'a' }] } })
       .status).toBe('ok')
   })
 
   // 只管列表类。车控卡的 items 空着是合法的（一扇窗都没开也要显示）
   it('非列表模板不受影响', () => {
     const d = createDesk()
-    expect(d.show({ template: 'feedback', size: '1/6', ttl: 60, data: { title: '好了', text: '关好了' } })
+    expect(d.show({ template: 'feedback', size: 'box', ttl: 60, data: { title: '好了', text: '关好了' } })
       .status).toBe('ok')
   })
 
   /** render() 走的是同一条路：规则驱动的刷新也不该刷出空壳 */
   it('render 刷新成空列表时把卡撤掉，不是留个空壳在那儿', () => {
     const d = createDesk()
-    d.render({ key: 'along', template: 'list', size: '1/3', ttl: 120, data: { title: '沿途', items: [{ label: 'a' }] } })
+    d.render({ key: 'along', template: 'list', size: 'tower', ttl: 120, data: { title: '沿途', items: [{ label: 'a' }] } })
     expect(d.layout().cards).toHaveLength(1)
-    d.render({ key: 'along', template: 'list', size: '1/3', ttl: 120, data: { title: '沿途', items: [] } })
+    d.render({ key: 'along', template: 'list', size: 'tower', ttl: 120, data: { title: '沿途', items: [] } })
     expect(d.layout().cards).toHaveLength(0)
   })
 })

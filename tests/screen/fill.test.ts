@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { cardBody, blocksBody, tierClass, accentClass, fmtTime, progressPct } from '../../src/screen/render'
 
-const V = (template: string, data: any, size = '1/6') =>
+const V = (template: string, data: any, size = 'box') =>
   ({ template, size, title: data.title ?? '', data } as any)
 
 /**
@@ -62,7 +62,7 @@ describe('车控卡接上块状均分', () => {
   it('每扇窗一个块', () => {
     const h = cardBody(V('control', {
       items: [{ label: '主驾', value: 30 }, { label: '副驾', value: 0 }],
-    }, '1/3'))
+    }, 'panel'))
     expect((h.match(/class="blk/g) ?? []).length).toBe(2)
   })
 })
@@ -73,8 +73,8 @@ describe('车控卡接上块状均分', () => {
  */
 describe('档位类与语义色类', () => {
   it('老尺寸名映射到档位类', () => {
-    expect(tierClass('1/6')).toBe('t-card')
-    expect(tierClass('2/3')).toBe('t-stage')
+    expect(tierClass('box')).toBe('t-box')
+    expect(tierClass('stage')).toBe('t-stage')
     expect(tierClass('full')).toBe('t-full')
   })
 
@@ -171,10 +171,10 @@ describe('块状渲染按值类型分级', () => {
       { label: '开关', value: true }, { label: '温度', value: 22, unit: '°C' },
       { label: '风量', value: 3, unit: '档' }, { label: '出风', value: '吹脚' },
     ]
-    const h = cardBody(V('control', { items: items4 }, '1/6'))
+    const h = cardBody(V('control', { items: items4 }, 'box'))
     expect(h).toContain('c2')
     // 3 块以内维持单栏——两块并排半空更难看
-    const h3 = cardBody(V('control', { items: items4.slice(0, 3) }, '1/6'))
+    const h3 = cardBody(V('control', { items: items4.slice(0, 3) }, 'box'))
     expect(h3).not.toMatch(/\bc2\b/)
   })
 })

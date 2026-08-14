@@ -69,7 +69,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .zoneTag{position:absolute;left:14px;top:50%;transform:translateY(-50%) rotate(180deg);
   writing-mode:vertical-rl;font-size:18px;color:#D7DCE3;letter-spacing:6px}
 /* ══════════ 卡片基座 ══════════
-   字号一律 = 字阶 × --u。--u 由档位类（.t-card / .t-stage …）给，
+   字号一律 = 字阶 × --u。--u 由档位类（.t-box / .t-stage …）给，
    一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
    加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
 .card{position:relative;border:1px solid rgba(255,255,255,.62);
@@ -404,12 +404,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .t-chip .plwrap,.t-strip .plwrap,.t-bar .plwrap{gap:calc(14px*var(--u))}
 .t-chip .plctl span,.t-strip .plctl span{min-width:calc(72px*var(--u));height:calc(56px*var(--u))}
 /* 两行以上的卡封面放大——132px 的小封面挂在 786×470 的卡里就是大片空白（实拍） */
-.t-card .plart,.t-wide .plart,.t-panel .plart,.t-banner .plart{
+.t-tile .plart,.t-box .plart,.t-wide .plart,.t-panel .plart,.t-band .plart{
   width:calc(220px*var(--u));height:calc(220px*var(--u));border-radius:calc(24px*var(--u))}
-.t-tower .plart,.t-stage .plart,.t-full .plart{
+.t-frame .plart,.t-hall .plart,.t-tower .plart,.t-court .plart,.t-stage .plart,.t-full .plart{
   width:calc(300px*var(--u));height:calc(300px*var(--u));border-radius:calc(28px*var(--u))}
 /* 大卡歌名升一阶，别让 38px 的字撑 470px 的卡 */
-.t-panel .plmeta b,.t-banner .plmeta b,.t-stage .plmeta b,.t-full .plmeta b{
+.t-panel .plmeta b,.t-band .plmeta b,.t-hall .plmeta b,.t-court .plmeta b,
+.t-stage .plmeta b,.t-full .plmeta b{
   font-size:calc(var(--t-num)*var(--u))}
 .plicon{width:46%;height:46%;color:rgba(255,255,255,.9)}
 .plicon svg{width:100%;height:100%;stroke-width:1.6}

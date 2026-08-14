@@ -155,6 +155,61 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['court', 'full'], requireItems: true,
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
+  /* ══════════ 2026-08-14 新增六张 ══════════
+   * 判据统一是**「有真实数据源在用，且现有模板会渲染错」** ——
+   * 不满足就不加，模板数量本身也是成本（时间线卡、评分卡、表单卡都想过，
+   * 但列表卡加生成式卡已经能表达，且没有现成数据源在等着它们）。
+   */
+  /**
+   * 轮播卡：带图的横向条目流。列表卡只有纯文字条目，POI 照片、专辑封面、
+   * 视频缩略图、带图新闻都拿不出来。**页码是屏内展示状态不进桌面仲裁** ——
+   * 每 5 秒推进一页要是走 desk，就是每 5 秒触发一次全屏重排。
+   * 少数该用横卡的模板：阅读方向是横向流。
+   */
+  { id: 'carousel', label: '轮播卡', defaultSize: 'panel', sizes: ['panel', 'hall', 'band'],
+    requireItems: true,
+    desc: '带图的横向条目流。data: {title, items:[{label, sub, image?, value?}]}——' +
+      '有图才用它，纯文字条目用列表卡（可预测）。',
+    fields: { items: { type: 'array', required: true } } },
+  /**
+   * 对比卡：多路线方案**已经有 Tool 在返回数据**，但没有对应模板，
+   * 现在只能塞进列表卡或者让模型现画一张生成卡 —— 后者每次长得不一样。
+   * 对比是横向并列，用横卡。
+   */
+  { id: 'compare', label: '对比卡', defaultSize: 'panel', sizes: ['wide', 'panel'],
+    desc: '几个方案并排比。data: {title, columns:[{label, badge?, rows:[{k,v,best?}]}]}',
+    fields: { columns: { type: 'array', required: true } } },
+  /**
+   * 进展卡：后台任务现在**借用列表卡**渲染 —— 一条「正在查行情」和一条
+   * 「已完成」长得完全一样，没有状态点、没有进度，用户看不出哪件事还在跑。
+   * 一条条往下看，用竖卡。
+   */
+  { id: 'progress', label: '进展卡', defaultSize: 'box', sizes: ['box', 'tower'],
+    requireItems: true,
+    desc: '多件事的进展。data: {title, items:[{label, state:running|done|failed, detail?, percent?}]}',
+    fields: { items: { type: 'array', required: true } } },
+  /**
+   * 指标卡：一个大数字 + 趋势。续航、电量、车速、今日里程 ——
+   * 现在走信息卡会被渲染成一段话，而这类内容恰恰是"余光扫一眼"的典型。
+   * 它是 chip / tile 两个小档真正的主人。
+   */
+  { id: 'metric', label: '指标卡', defaultSize: 'tile', sizes: ['chip', 'tile', 'box'],
+    desc: '一个关键数值。data: {title, value, unit?, sub?, trend?, percent?}',
+    fields: { value: { type: 'number', required: true } } },
+  /**
+   * 图表卡：声明式折线/柱状/环形，SVG 画，纯函数可测 ——
+   * 生成式卡的**可预测替代**（同一场景每次演示长得一样）。
+   */
+  { id: 'chart', label: '图表卡', defaultSize: 'wide', sizes: ['box', 'wide', 'panel'],
+    desc: '简单图表。data: {title, kind:bar|line, series:[{label,value}], unit?}',
+    fields: { series: { type: 'array', required: true } } },
+  /**
+   * 图片卡：新档 `frame`（1.08，全表最接近正方）的主要用户 ——
+   * 照片和地图缩略图本来就是方的。
+   */
+  { id: 'image', label: '图片卡', defaultSize: 'frame', sizes: ['box', 'frame', 'hall'],
+    desc: '单张大图。data: {title, url, caption?}',
+    fields: { url: { type: 'string' } } },
   /**
    * 绘本卡（2026-08-14「路上的故事」）—— 跟其它卡**不是一类东西**。
    *

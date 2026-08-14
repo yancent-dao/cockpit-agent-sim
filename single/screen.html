@@ -348,6 +348,52 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ── 新增六张（2026-08-14） ── */
+/* 轮播：横向图卡流。页码是屏内状态 */
+.cw{display:grid;gap:calc(14px*var(--u));flex:1;min-height:0}
+.ci{display:flex;flex-direction:column;gap:calc(6px*var(--u));cursor:pointer;min-height:0}
+.ci .cim{flex:1;min-height:calc(60px*var(--u));border-radius:calc(12px*var(--u));
+  background:linear-gradient(150deg,#DDD6FE,#A5B4FC);background-size:cover;background-position:center}
+.ci span{font-size:calc(var(--t-body)*var(--u));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.cpage{display:flex;justify-content:flex-end;align-items:center;gap:calc(14px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-top:calc(8px*var(--u))}
+.cpage b{color:var(--ac);cursor:pointer;font-size:calc(var(--t-lead)*var(--u))}
+/* 对比：横向并列。best 那项加重，一眼看出哪个更好 */
+.cmpw{display:grid;gap:calc(12px*var(--u));flex:1;min-height:0}
+.cmpc{background:var(--blk,rgba(255,255,255,.5));border-radius:calc(14px*var(--u));
+  padding:calc(12px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.cmph{display:flex;justify-content:space-between;align-items:center;margin-bottom:calc(4px*var(--u))}
+.gi b.best{color:var(--ac)}
+/* 进展：状态点是命根子——跑着的和完成的必须一眼分得出 */
+.pgw{display:flex;flex-direction:column;gap:calc(12px*var(--u));flex:1;min-height:0}
+.pgi{display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.pgh{display:flex;align-items:center;gap:calc(10px*var(--u));font-size:calc(var(--t-body)*var(--u))}
+.pgh i{width:calc(12px*var(--u));height:calc(12px*var(--u));border-radius:999px;flex:none}
+.pgh i.st-running{background:var(--brand-fg,#1D4ED8);animation:pgpulse 1.4s ease-in-out infinite}
+.pgh i.st-done{background:var(--ok-fg,#047857)}
+.pgh i.st-failed{background:var(--danger-fg,#B91C1C)}
+@keyframes pgpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pgi small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);padding-left:calc(22px*var(--u))}
+/* 指标：一个大数字 */
+.mtw{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:calc(8px*var(--u))}
+.mtv{display:flex;align-items:baseline;gap:calc(6px*var(--u))}
+.mtv b{font-size:calc(var(--t-hero)*var(--u));font-weight:500;line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mtv i{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);font-style:normal}
+.mttr{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--ok-fg,#047857);font-style:normal}
+.mtw small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+/* 图表：柱状。生成式卡的可预测替代 */
+.chw{display:flex;align-items:flex-end;gap:calc(8px*var(--u));flex:1;min-height:calc(60px*var(--u))}
+.chw i{flex:1;background:var(--acbg,#EFF6FF);border:1px solid var(--acbd,#BFDBFE);
+  border-radius:calc(5px*var(--u)) calc(5px*var(--u)) 0 0;font-style:normal}
+.chax{display:flex;justify-content:space-between;font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-2);margin-top:calc(8px*var(--u))}
+/* 图片：frame 档（最接近正方）的主要用户 */
+.imw{flex:1;min-height:0;border-radius:calc(16px*var(--u));background-size:cover;
+  background-position:center;background-color:var(--blk,rgba(255,255,255,.5))}
+.imeta{display:block;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-top:calc(4px*var(--u))}
+
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
@@ -837,6 +883,19 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     return { do: "advance" };
   }
 
+  // src/screen/overflowgate.ts
+  var MIN_SCALE = 0.65;
+  var ok = (n) => Number.isFinite(n) && n > 0;
+  function fitScale(i) {
+    if (![i.w, i.h, i.contentW, i.contentH].every(ok)) return { do: "none" };
+    const kx = i.w / i.contentW;
+    const ky = i.h / i.contentH;
+    const k = Math.min(kx, ky);
+    if (k >= 1) return { do: "none" };
+    if (k < MIN_SCALE) return { do: "text" };
+    return { do: "scale", scale: k };
+  }
+
   // src/screen/turn.ts
   var TURN_ICONS = [
     [/掉头/, "⤺"],
@@ -1106,6 +1165,90 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
+    /* ══════════ 2026-08-14 新增六张 ══════════
+     * 判据统一是**「有真实数据源在用，且现有模板会渲染错」** ——
+     * 不满足就不加，模板数量本身也是成本（时间线卡、评分卡、表单卡都想过，
+     * 但列表卡加生成式卡已经能表达，且没有现成数据源在等着它们）。
+     */
+    /**
+     * 轮播卡：带图的横向条目流。列表卡只有纯文字条目，POI 照片、专辑封面、
+     * 视频缩略图、带图新闻都拿不出来。**页码是屏内展示状态不进桌面仲裁** ——
+     * 每 5 秒推进一页要是走 desk，就是每 5 秒触发一次全屏重排。
+     * 少数该用横卡的模板：阅读方向是横向流。
+     */
+    {
+      id: "carousel",
+      label: "轮播卡",
+      defaultSize: "panel",
+      sizes: ["panel", "hall", "band"],
+      requireItems: true,
+      desc: "带图的横向条目流。data: {title, items:[{label, sub, image?, value?}]}——有图才用它，纯文字条目用列表卡（可预测）。",
+      fields: { items: { type: "array", required: true } }
+    },
+    /**
+     * 对比卡：多路线方案**已经有 Tool 在返回数据**，但没有对应模板，
+     * 现在只能塞进列表卡或者让模型现画一张生成卡 —— 后者每次长得不一样。
+     * 对比是横向并列，用横卡。
+     */
+    {
+      id: "compare",
+      label: "对比卡",
+      defaultSize: "panel",
+      sizes: ["wide", "panel"],
+      desc: "几个方案并排比。data: {title, columns:[{label, badge?, rows:[{k,v,best?}]}]}",
+      fields: { columns: { type: "array", required: true } }
+    },
+    /**
+     * 进展卡：后台任务现在**借用列表卡**渲染 —— 一条「正在查行情」和一条
+     * 「已完成」长得完全一样，没有状态点、没有进度，用户看不出哪件事还在跑。
+     * 一条条往下看，用竖卡。
+     */
+    {
+      id: "progress",
+      label: "进展卡",
+      defaultSize: "box",
+      sizes: ["box", "tower"],
+      requireItems: true,
+      desc: "多件事的进展。data: {title, items:[{label, state:running|done|failed, detail?, percent?}]}",
+      fields: { items: { type: "array", required: true } }
+    },
+    /**
+     * 指标卡：一个大数字 + 趋势。续航、电量、车速、今日里程 ——
+     * 现在走信息卡会被渲染成一段话，而这类内容恰恰是"余光扫一眼"的典型。
+     * 它是 chip / tile 两个小档真正的主人。
+     */
+    {
+      id: "metric",
+      label: "指标卡",
+      defaultSize: "tile",
+      sizes: ["chip", "tile", "box"],
+      desc: "一个关键数值。data: {title, value, unit?, sub?, trend?, percent?}",
+      fields: { value: { type: "number", required: true } }
+    },
+    /**
+     * 图表卡：声明式折线/柱状/环形，SVG 画，纯函数可测 ——
+     * 生成式卡的**可预测替代**（同一场景每次演示长得一样）。
+     */
+    {
+      id: "chart",
+      label: "图表卡",
+      defaultSize: "wide",
+      sizes: ["box", "wide", "panel"],
+      desc: "简单图表。data: {title, kind:bar|line, series:[{label,value}], unit?}",
+      fields: { series: { type: "array", required: true } }
+    },
+    /**
+     * 图片卡：新档 `frame`（1.08，全表最接近正方）的主要用户 ——
+     * 照片和地图缩略图本来就是方的。
+     */
+    {
+      id: "image",
+      label: "图片卡",
+      defaultSize: "frame",
+      sizes: ["box", "frame", "hall"],
+      desc: "单张大图。data: {title, url, caption?}",
+      fields: { url: { type: "string" } }
+    },
     /**
      * 绘本卡（2026-08-14「路上的故事」）—— 跟其它卡**不是一类东西**。
      *
@@ -1247,6 +1390,40 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     if (c >= 12) blocks.push("lesson", "ctl");
     return { blocks };
   };
+  var carouselForm = (c, r) => {
+    const cols = c >= 12 ? 5 : c >= 8 ? 3 : 2;
+    const rows = r >= 6 ? 2 : 1;
+    return { blocks: ["items"], maxItems: cols * rows, cols, overflow: "more" };
+  };
+  var compareForm = (c, _r) => {
+    const blocks = ["columns"];
+    if (c >= 8) blocks.push("badge");
+    return { blocks, maxItems: contentCols(c), cols: contentCols(c), overflow: "more" };
+  };
+  var progressForm = (c, r) => {
+    const blocks = ["items"];
+    if (r >= 8) blocks.push("detail", "bar");
+    return { blocks, maxItems: capacityOf(1, r), cols: 1, overflow: "more" };
+  };
+  var metricForm = (c, r) => {
+    const a = area(c, r);
+    const blocks = ["value"];
+    if (a >= 8) blocks.push("sub");
+    if (a >= 16) blocks.push("bar", "trend");
+    return { blocks };
+  };
+  var chartForm = (c, _r) => {
+    const blocks = ["plot"];
+    if (c >= 6) blocks.push("axis");
+    if (c >= 8) blocks.push("legend");
+    return { blocks, maxItems: c >= 8 ? 12 : c >= 6 ? 7 : 5, overflow: "more" };
+  };
+  var imageForm = (c, r) => {
+    const blocks = ["pic"];
+    if (area(c, r) >= 24) blocks.push("caption");
+    if (c >= 6) blocks.push("meta");
+    return { blocks };
+  };
   var CARD_FORMS = {
     nav: navForm,
     control: controlForm,
@@ -1262,6 +1439,12 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     weather: weatherForm,
     capability: capForm,
     storybook: storybookForm,
+    carousel: carouselForm,
+    compare: compareForm,
+    progress: progressForm,
+    metric: metricForm,
+    chart: chartForm,
+    image: imageForm,
     generic: genericForm
   };
   var formOf = (template, c, r) => (CARD_FORMS[template] ?? genericForm)(c, r);
@@ -1611,12 +1794,12 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           av = cleaned;
         }
         if (an === "src") {
-          const ok2 = cleanSrc(av);
-          if (!ok2) {
+          const ok3 = cleanSrc(av);
+          if (!ok3) {
             stripped.add("@src");
             continue;
           }
-          av = ok2;
+          av = ok3;
         }
         attrs.push(`${CASE[an] ?? an}="${esc(av).replace(/"/g, "&quot;")}"`);
       }
@@ -1870,6 +2053,71 @@ ${BRIDGE}
           </div>
         </div></div>`;
       }
+      /* ══════════ 2026-08-14 新增六张 ══════════ */
+      /** 轮播：带图的横向条目流。页码是屏内状态，这里只画当前这一页 */
+      case "carousel": {
+        const f = formOf("carousel", ...dimsOf(c.size));
+        const all = d.items ?? [];
+        const page = Number(d.page) || 0;
+        const per = f.maxItems ?? 3;
+        const shown = all.slice(page * per, page * per + per);
+        const pages = Math.max(1, Math.ceil(all.length / per));
+        return `<div class="cw" style="grid-template-columns:repeat(${per},1fr)">${shown.map((i) => `
+        <div class="ci" data-act="tap:item" data-value="${esc(i.label)}">
+          <div class="cim"${i.image ? ` style="background-image:url('${esc(i.image)}')"` : ""}></div>
+          <span>${esc(i.label)}</span>${f.blocks.includes("sub") && i.sub ? `<small>${esc(i.sub)}</small>` : ""}
+        </div>`).join("")}</div>${pages > 1 ? `<div class="cpage"><b data-act="tap:prev">‹</b>${page + 1} / ${pages}<b data-act="tap:next">›</b></div>` : ""}`;
+      }
+      /** 对比：横向并列。best 那一项加重，一眼看出哪个更好 */
+      case "compare": {
+        const f = formOf("compare", ...dimsOf(c.size));
+        const cols = (d.columns ?? []).slice(0, f.maxItems);
+        return `<div class="cmpw" style="grid-template-columns:repeat(${cols.length || 1},1fr)">${cols.map((col) => `<div class="cmpc">
+          <div class="cmph"><b>${esc(col.label)}</b>${f.blocks.includes("badge") && col.badge ? `<span class="opt">${esc(col.badge)}</span>` : ""}</div>
+          ${(col.rows ?? []).map((r) => `<div class="gi"><span>${esc(r.k)}</span><b${r.best ? ' class="best"' : ""}>${esc(r.v)}</b></div>`).join("")}
+        </div>`).join("")}</div>`;
+      }
+      /**
+       * 进展：**状态点是命根子** —— 后台任务以前借用列表卡，
+       * 一条「正在查」和一条「已完成」长得完全一样，用户看不出哪件事还在跑。
+       */
+      case "progress": {
+        const f = formOf("progress", ...dimsOf(c.size));
+        const { shown, rest } = truncate(d.items ?? [], f.maxItems);
+        return `<div class="pgw">${shown.map((i) => `
+        <div class="pgi">
+          <div class="pgh"><i class="st-${esc(i.state ?? "running")}"></i>
+            <span>${esc(i.label)}</span></div>
+          ${f.blocks.includes("detail") && i.detail ? `<small>${esc(i.detail)}</small>` : ""}
+          ${f.blocks.includes("bar") && i.percent !== void 0 ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(i.percent)))}%"></div></div>` : ""}
+        </div>`).join("")}${rest ? `<div class="more">还有 ${rest} 件</div>` : ""}</div>`;
+      }
+      /** 指标：一个大数字。它是 chip / tile 两个小档真正的主人 */
+      case "metric": {
+        const f = formOf("metric", ...dimsOf(c.size));
+        return `<div class="mtw">
+        <div class="mtv"><b>${esc(d.value)}</b>${d.unit ? `<i>${esc(d.unit)}</i>` : ""}${f.blocks.includes("trend") && d.trend ? `<em class="mttr">${esc(d.trend)}</em>` : ""}</div>
+        ${f.blocks.includes("sub") && d.sub ? `<small>${esc(d.sub)}</small>` : ""}
+        ${f.blocks.includes("bar") && d.percent !== void 0 ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(d.percent)))}%"></div></div>` : ""}
+      </div>`;
+      }
+      /** 图表：SVG 柱状，纯函数可测 —— 生成式卡的**可预测替代** */
+      case "chart": {
+        const f = formOf("chart", ...dimsOf(c.size));
+        const series = (d.series ?? []).slice(0, f.maxItems);
+        const max = Math.max(1, ...series.map((x) => Number(x.value) || 0));
+        return `<div class="chw">${series.map((x) => {
+          const h = Math.max(4, Math.round((Number(x.value) || 0) / max * 100));
+          return `<i style="height:${h}%" title="${esc(x.label)}"></i>`;
+        }).join("")}</div>${f.blocks.includes("axis") ? `<div class="chax">
+        <span>${esc(series[0]?.label ?? "")}</span>${f.blocks.includes("legend") && d.unit ? `<span>${esc(d.unit)}</span>` : ""}
+        <span>${esc(series[series.length - 1]?.label ?? "")}</span></div>` : ""}`;
+      }
+      /** 图片：新档 frame（最接近正方）的主要用户。缺图时不留白卡 */
+      case "image": {
+        const f = formOf("image", ...dimsOf(c.size));
+        return `<div class="imw"${d.url ? ` style="background-image:url('${esc(d.url)}')"` : ""}></div>${f.blocks.includes("caption") && d.caption ? `<div class="sub">${esc(d.caption)}</div>` : ""}${f.blocks.includes("meta") && d.meta ? `<small class="imeta">${esc(d.meta)}</small>` : ""}`;
+      }
       case "weather": {
         const w = weatherForm(...dimsOf(c.size));
         const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
@@ -1940,8 +2188,8 @@ ${BRIDGE}
   };
   var live = /* @__PURE__ */ new WeakMap();
   async function showRoute(box, v) {
-    const ok2 = await loadAMap();
-    if (!ok2) return false;
+    const ok3 = await loadAMap();
+    if (!ok3) return false;
     const AMap = window.AMap;
     const path = (v.polyline ?? "").split(";").map(parse).filter(Boolean);
     const origin = parse(v.originLoc);
@@ -2126,6 +2374,20 @@ ${BRIDGE}
      * 跟导航卡一样刻意没有 swipe:away：讲到一半划走整张卡就是故事没了，
      * 误触代价太大；右上角 ✕ 是一次明确点按，风险不一样，留着。
      */
+    /** 轮播翻页是屏内的展示状态，不叫醒模型也不进桌面仲裁 */
+    carousel: [
+      { on: "tap:prev", route: "desk", op: "page" },
+      { on: "tap:next", route: "desk", op: "page" },
+      { on: "tap:item", route: "answer" },
+      SWIPE_AWAY,
+      ...RESIZE,
+      CLOSE
+    ],
+    compare: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    progress: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    metric: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
+    image: [SWIPE_AWAY, ...RESIZE, CLOSE],
     storybook: [
       { on: "tap:prev", route: "tool", tool: "story.page", args: { dir: "prev" } },
       { on: "tap:next", route: "tool", tool: "story.page", args: { dir: "next" } },
@@ -2341,6 +2603,24 @@ ${BRIDGE}
     svg{max-height:100%}
   </style>${r.empty ? `<div style="font-size:var(--t-lead);line-height:1.3">${esc(d.text)}</div>` : r.html}`;
     requestAnimationFrame(() => {
+      host.style.transform = "";
+      host.style.width = "";
+      const fit2 = fitScale({
+        w: host.clientWidth,
+        h: host.clientHeight,
+        // +2 的余量留给亚像素舍入 —— 跟 heal.ts 用的是同一个数
+        contentW: host.scrollWidth - 2,
+        contentH: host.scrollHeight - 2
+      });
+      if (fit2.do === "scale") {
+        host.style.transformOrigin = "top left";
+        host.style.transform = `scale(${fit2.scale})`;
+        host.style.width = `${100 / fit2.scale}%`;
+      } else if (fit2.do === "text") {
+        root.querySelector(".gen")?.remove();
+        host.innerHTML = `<div style="font-size:var(--t-lead);line-height:1.4">${esc(d.text)}</div>
+        <div style="margin-top:12px;font-size:var(--t-cap);color:var(--tx-3)">内容过长，已简化</div>`;
+      }
       const over = host.scrollHeight > host.clientHeight + 2;
       bus.send({ type: "canvasNote", cardId: c.id, overflow: over, contentPx: host.scrollHeight });
     });
@@ -2428,8 +2708,8 @@ ${BRIDGE}
     }
     if (node.dataset.mapSize && node.dataset.mapSize !== c.size) resizeRoute(box);
     node.dataset.mapSize = c.size;
-    showRoute(box, { originLoc: d.originLoc, destLoc: d.destLoc, polyline: d.polyline, waypoints: d.waypoints }).then((ok2) => {
-      if (ok2 || !d.mapUrl) return;
+    showRoute(box, { originLoc: d.originLoc, destLoc: d.destLoc, polyline: d.polyline, waypoints: d.waypoints }).then((ok3) => {
+      if (ok3 || !d.mapUrl) return;
       const img = box.querySelector("img");
       if (img) {
         if (img.src !== d.mapUrl) img.src = d.mapUrl;
@@ -2742,10 +3022,10 @@ ${BRIDGE}
         break;
     }
   });
-  var ok = false;
+  var ok2 = false;
   var connected = () => {
-    if (!ok) {
-      ok = true;
+    if (!ok2) {
+      ok2 = true;
       $("conn").style.opacity = "0";
     }
   };

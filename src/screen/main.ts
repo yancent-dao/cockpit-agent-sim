@@ -1,6 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead } from './storyflow'
+import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
 import { createBannerQueue, toneOf, bannerHtml } from './banner'
@@ -315,10 +316,34 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
     // 退回纯文字。模型写了一整屏 <script> 时，用户该看到那句话，不是一张空卡
     ? `<div style="font-size:var(--t-lead);line-height:1.3">${esc(d.text)}</div>`
     : r.html}`
-  // 溢出检测：屏幕不可滚动，超出等于用户永远看不到
+  /**
+   * 溢出检测。屏幕不可滚动，超出等于用户永远看不到。
+   *
+   * 上报给尺寸自愈（升档）是**第三道闸**；升到最大档还溢出时，
+   * 第四、第五道闸在这里接手：整体缩放 → 缩不下去就剥到纯文字。
+   * 判据在 `overflowgate.ts` 的纯函数里（DOM 跑不了单测）。
+   */
   requestAnimationFrame(() => {
-    // 实测内容高度喂给 director 的尺寸自愈（机制升降档）。
-    // +2 是留给亚像素舍入的。屏幕不可滚动，溢出等于用户永远看不到那部分
+    // 先把量到的还原，不然上一轮的 scale 会把这一轮的测量一起缩掉
+    host.style.transform = ''
+    host.style.width = ''
+    const fit = fitScale({
+      w: host.clientWidth, h: host.clientHeight,
+      // +2 的余量留给亚像素舍入 —— 跟 heal.ts 用的是同一个数
+      contentW: host.scrollWidth - 2, contentH: host.scrollHeight - 2,
+    })
+    if (fit.do === 'scale') {
+      host.style.transformOrigin = 'top left'
+      host.style.transform = `scale(${fit.scale})`
+      // 缩了之后右边会空出来，把宽度按比例撑回去，别让内容缩成左边一条
+      host.style.width = `${100 / fit.scale}%`
+    } else if (fit.do === 'text') {
+      // 缩到读不了的份上 —— 宁可显示得少，不要显示得糊
+      root.querySelector('.gen')?.remove()
+      host.innerHTML = `<div style="font-size:var(--t-lead);line-height:1.4">${esc(d.text)}</div>
+        <div style="margin-top:12px;font-size:var(--t-cap);color:var(--tx-3)">内容过长，已简化</div>`
+    }
+    // 仍然上报给自愈：升档是更好的解（缩放是兜底不是首选）
     const over = host.scrollHeight > host.clientHeight + 2
     bus.send({ type: 'canvasNote', cardId: c.id, overflow: over, contentPx: host.scrollHeight } as any)
   })

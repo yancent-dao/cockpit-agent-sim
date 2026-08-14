@@ -263,6 +263,63 @@ export const storybookForm: FormFn = (c, _r) => {
   return { blocks }
 }
 
+/**
+ * 轮播卡。三档的差异是**每页几张**，不是有没有副标题 ——
+ * 副标题是条目自己的属性（有就显示），拿它当档位差异会出现
+ * "放大反而掉块"（hall 6×6 有、panel 8×4 没有，而 panel 更大）。
+ *
+ * hall(6×6) 竖版排 2×2 四张大图；panel(8×4) 一行三张；band(12×4) 一行五张。
+ * `page` 是**屏内展示状态**，不进桌面仲裁 —— 每 5 秒推进一页要是走 desk，
+ * 就是每 5 秒触发一次全屏重排。
+ */
+export const carouselForm: FormFn = (c, r) => {
+  const cols = c >= 12 ? 5 : c >= 8 ? 3 : 2
+  const rows = r >= 6 ? 2 : 1               // 竖版格子摞两行
+  return { blocks: ['items'], maxItems: cols * rows, cols, overflow: 'more' }
+}
+
+/** 对比卡：列数由宽度定。**横向并列比较**，栏数越多越好，走 contentCols */
+export const compareForm: FormFn = (c, _r) => {
+  const blocks = ['columns']
+  if (c >= 8) blocks.push('badge')        // 「最快」「＋4 分」这类角标
+  return { blocks, maxItems: contentCols(c), cols: contentCols(c), overflow: 'more' }
+}
+
+/** 进展卡：竖的。大档多出子进度条与说明 */
+export const progressForm: FormFn = (c, r) => {
+  const blocks = ['items']
+  if (r >= 8) blocks.push('detail', 'bar')
+  return { blocks, maxItems: capacityOf(1, r), cols: 1, overflow: 'more' }
+}
+
+/** 指标卡：一个数字。大档补趋势和进度条 */
+export const metricForm: FormFn = (c, r) => {
+  const a = area(c, r)
+  const blocks = ['value']
+  if (a >= 8) blocks.push('sub')
+  if (a >= 16) blocks.push('bar', 'trend')
+  return { blocks }
+}
+
+/** 图表卡：柱子数量按宽度给，大档补坐标说明 */
+export const chartForm: FormFn = (c, _r) => {
+  const blocks = ['plot']
+  if (c >= 6) blocks.push('axis')
+  if (c >= 8) blocks.push('legend')
+  return { blocks, maxItems: c >= 8 ? 12 : c >= 6 ? 7 : 5, overflow: 'more' }
+}
+
+/**
+ * 图片卡。三档 box(1.64 横) → frame(1.08 近正方) → hall(1.63 横，更大)。
+ * frame 才配得上照片本来的比例；hall 宽出来的地方放来源/坐标那行小字。
+ */
+export const imageForm: FormFn = (c, r) => {
+  const blocks = ['pic']
+  if (area(c, r) >= 24) blocks.push('caption')
+  if (c >= 6) blocks.push('meta')     // 来源 · 坐标 · 距离，宽了才放得下
+  return { blocks }
+}
+
 /** 模板的形态函数。加模板 = 加一条，不改调用方 */
 export const CARD_FORMS: Record<string, FormFn> = {
   nav: navForm,
@@ -279,6 +336,12 @@ export const CARD_FORMS: Record<string, FormFn> = {
   weather: weatherForm,
   capability: capForm,
   storybook: storybookForm,
+  carousel: carouselForm,
+  compare: compareForm,
+  progress: progressForm,
+  metric: metricForm,
+  chart: chartForm,
+  image: imageForm,
   generic: genericForm,
 }
 

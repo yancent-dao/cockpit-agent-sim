@@ -19,8 +19,17 @@ import { CARD_RULES, type CardRule } from '../../src/config/cardRules'
 
 const items = (n: number) => Array.from({ length: n }, (_, i) => ({ label: 'x' + i }))
 
-describe('位置粘性：布局对时间序列稳定', () => {
-  it('中间的卡撤走，其余卡留在原位不重新发牌', () => {
+/**
+ * 2026-08-14 **设计决策变更**：这一组原来断言的是"中间的卡撤走，其余卡
+ * 留在原位不重新发牌"。实拍反馈推翻了它 ——「整体的卡片布局看起来太散了，
+ * 没有一定的逻辑，缩小左边的卡片的时候应该向左上重新布局」。
+ *
+ * 位置粘性保留（第一趟），但**后面加了一趟紧凑化**：卡片只往更左上流，
+ * 空白聚到右下角。新的保证比"什么都不动"更强也更有用：
+ * 移动方向唯一、结果确定、只在真有洞时发生。
+ */
+describe('位置粘性 + 重力：布局对时间序列稳定，且不留中间的洞', () => {
+  it('中间的卡撤走，后面的往左上流来补', () => {
     let now = 0
     const d = createDesk(() => now)
     const ids: string[] = []
@@ -28,8 +37,8 @@ describe('位置粘性：布局对时间序列稳定', () => {
     const before = Object.fromEntries(d.layout().cards.map(c => [c.data.title, `${c.row},${c.col}`]))
     d.dismiss(ids[1])
     const after = Object.fromEntries(d.layout().cards.map(c => [c.data.title, `${c.row},${c.col}`]))
-    expect(after['卡0'], '卡0 不该动').toBe(before['卡0'])
-    expect(after['卡2'], '卡2 不该滑进卡1 的空位').toBe(before['卡2'])
+    expect(after['卡0'], '第一张本来就在最前，不动').toBe(before['卡0'])
+    expect(after['卡2'], '卡2 补进卡1 让出的位置').toBe(before['卡1'])
   })
 
   it('新卡来了填空位，不把老卡挪走', () => {

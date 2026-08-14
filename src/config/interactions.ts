@@ -58,6 +58,18 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
    * 跟导航卡一样刻意没有 swipe:away：讲到一半划走整张卡就是故事没了，
    * 误触代价太大；右上角 ✕ 是一次明确点按，风险不一样，留着。
    */
+  /** 轮播翻页是屏内的展示状态，不叫醒模型也不进桌面仲裁 */
+  carousel: [
+    { on: 'tap:prev', route: 'desk', op: 'page' } as any,
+    { on: 'tap:next', route: 'desk', op: 'page' } as any,
+    { on: 'tap:item', route: 'answer' },
+    SWIPE_AWAY, ...RESIZE, CLOSE,
+  ],
+  compare: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
+  progress: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
+  metric: [SWIPE_AWAY, ...RESIZE, CLOSE],
+  chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
+  image: [SWIPE_AWAY, ...RESIZE, CLOSE],
   storybook: [
     { on: 'tap:prev', route: 'tool', tool: 'story.page', args: { dir: 'prev' } },
     { on: 'tap:next', route: 'tool', tool: 'story.page', args: { dir: 'next' } },

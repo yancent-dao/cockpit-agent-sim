@@ -348,6 +348,52 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ── 新增六张（2026-08-14） ── */
+/* 轮播：横向图卡流。页码是屏内状态 */
+.cw{display:grid;gap:calc(14px*var(--u));flex:1;min-height:0}
+.ci{display:flex;flex-direction:column;gap:calc(6px*var(--u));cursor:pointer;min-height:0}
+.ci .cim{flex:1;min-height:calc(60px*var(--u));border-radius:calc(12px*var(--u));
+  background:linear-gradient(150deg,#DDD6FE,#A5B4FC);background-size:cover;background-position:center}
+.ci span{font-size:calc(var(--t-body)*var(--u));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ci small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.cpage{display:flex;justify-content:flex-end;align-items:center;gap:calc(14px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-top:calc(8px*var(--u))}
+.cpage b{color:var(--ac);cursor:pointer;font-size:calc(var(--t-lead)*var(--u))}
+/* 对比：横向并列。best 那项加重，一眼看出哪个更好 */
+.cmpw{display:grid;gap:calc(12px*var(--u));flex:1;min-height:0}
+.cmpc{background:var(--blk,rgba(255,255,255,.5));border-radius:calc(14px*var(--u));
+  padding:calc(12px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.cmph{display:flex;justify-content:space-between;align-items:center;margin-bottom:calc(4px*var(--u))}
+.gi b.best{color:var(--ac)}
+/* 进展：状态点是命根子——跑着的和完成的必须一眼分得出 */
+.pgw{display:flex;flex-direction:column;gap:calc(12px*var(--u));flex:1;min-height:0}
+.pgi{display:flex;flex-direction:column;gap:calc(4px*var(--u))}
+.pgh{display:flex;align-items:center;gap:calc(10px*var(--u));font-size:calc(var(--t-body)*var(--u))}
+.pgh i{width:calc(12px*var(--u));height:calc(12px*var(--u));border-radius:999px;flex:none}
+.pgh i.st-running{background:var(--brand-fg,#1D4ED8);animation:pgpulse 1.4s ease-in-out infinite}
+.pgh i.st-done{background:var(--ok-fg,#047857)}
+.pgh i.st-failed{background:var(--danger-fg,#B91C1C)}
+@keyframes pgpulse{0%,100%{opacity:1}50%{opacity:.35}}
+.pgi small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);padding-left:calc(22px*var(--u))}
+/* 指标：一个大数字 */
+.mtw{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:calc(8px*var(--u))}
+.mtv{display:flex;align-items:baseline;gap:calc(6px*var(--u))}
+.mtv b{font-size:calc(var(--t-hero)*var(--u));font-weight:500;line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mtv i{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);font-style:normal}
+.mttr{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--ok-fg,#047857);font-style:normal}
+.mtw small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+/* 图表：柱状。生成式卡的可预测替代 */
+.chw{display:flex;align-items:flex-end;gap:calc(8px*var(--u));flex:1;min-height:calc(60px*var(--u))}
+.chw i{flex:1;background:var(--acbg,#EFF6FF);border:1px solid var(--acbd,#BFDBFE);
+  border-radius:calc(5px*var(--u)) calc(5px*var(--u)) 0 0;font-style:normal}
+.chax{display:flex;justify-content:space-between;font-size:calc(var(--t-cap)*var(--u));
+  color:var(--tx-2);margin-top:calc(8px*var(--u))}
+/* 图片：frame 档（最接近正方）的主要用户 */
+.imw{flex:1;min-height:0;border-radius:calc(16px*var(--u));background-size:cover;
+  background-position:center;background-color:var(--blk,rgba(255,255,255,.5))}
+.imeta{display:block;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-top:calc(4px*var(--u))}
+
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}

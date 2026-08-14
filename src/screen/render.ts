@@ -278,6 +278,82 @@ export function cardBody(c: CardView): string {
           </div>
         </div></div>`
     }
+    /* ══════════ 2026-08-14 新增六张 ══════════ */
+    /** 轮播：带图的横向条目流。页码是屏内状态，这里只画当前这一页 */
+    case 'carousel': {
+      const f = formOf('carousel', ...dimsOf(c.size))
+      const all = d.items ?? []
+      const page = Number(d.page) || 0
+      const per = f.maxItems ?? 3
+      const shown = all.slice(page * per, page * per + per)
+      const pages = Math.max(1, Math.ceil(all.length / per))
+      return `<div class="cw" style="grid-template-columns:repeat(${per},1fr)">${shown.map((i: any) => `
+        <div class="ci" data-act="tap:item" data-value="${esc(i.label)}">
+          <div class="cim"${i.image ? ` style="background-image:url('${esc(i.image)}')"` : ''}></div>
+          <span>${esc(i.label)}</span>${
+            f.blocks.includes('sub') && i.sub ? `<small>${esc(i.sub)}</small>` : ''}
+        </div>`).join('')}</div>${pages > 1
+        ? `<div class="cpage"><b data-act="tap:prev">‹</b>${page + 1} / ${pages}<b data-act="tap:next">›</b></div>` : ''}`
+    }
+    /** 对比：横向并列。best 那一项加重，一眼看出哪个更好 */
+    case 'compare': {
+      const f = formOf('compare', ...dimsOf(c.size))
+      const cols = (d.columns ?? []).slice(0, f.maxItems)
+      return `<div class="cmpw" style="grid-template-columns:repeat(${cols.length || 1},1fr)">${
+        cols.map((col: any) => `<div class="cmpc">
+          <div class="cmph"><b>${esc(col.label)}</b>${
+            f.blocks.includes('badge') && col.badge ? `<span class="opt">${esc(col.badge)}</span>` : ''}</div>
+          ${(col.rows ?? []).map((r: any) =>
+            `<div class="gi"><span>${esc(r.k)}</span><b${r.best ? ' class="best"' : ''}>${esc(r.v)}</b></div>`).join('')}
+        </div>`).join('')}</div>`
+    }
+    /**
+     * 进展：**状态点是命根子** —— 后台任务以前借用列表卡，
+     * 一条「正在查」和一条「已完成」长得完全一样，用户看不出哪件事还在跑。
+     */
+    case 'progress': {
+      const f = formOf('progress', ...dimsOf(c.size))
+      const { shown, rest } = truncate(d.items ?? [], f.maxItems)
+      return `<div class="pgw">${shown.map((i: any) => `
+        <div class="pgi">
+          <div class="pgh"><i class="st-${esc(i.state ?? 'running')}"></i>
+            <span>${esc(i.label)}</span></div>
+          ${f.blocks.includes('detail') && i.detail ? `<small>${esc(i.detail)}</small>` : ''}
+          ${f.blocks.includes('bar') && i.percent !== undefined
+            ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(i.percent)))}%"></div></div>` : ''}
+        </div>`).join('')}${rest ? `<div class="more">还有 ${rest} 件</div>` : ''}</div>`
+    }
+    /** 指标：一个大数字。它是 chip / tile 两个小档真正的主人 */
+    case 'metric': {
+      const f = formOf('metric', ...dimsOf(c.size))
+      return `<div class="mtw">
+        <div class="mtv"><b>${esc(d.value)}</b>${d.unit ? `<i>${esc(d.unit)}</i>` : ''}${
+          f.blocks.includes('trend') && d.trend ? `<em class="mttr">${esc(d.trend)}</em>` : ''}</div>
+        ${f.blocks.includes('sub') && d.sub ? `<small>${esc(d.sub)}</small>` : ''}
+        ${f.blocks.includes('bar') && d.percent !== undefined
+          ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(d.percent)))}%"></div></div>` : ''}
+      </div>`
+    }
+    /** 图表：SVG 柱状，纯函数可测 —— 生成式卡的**可预测替代** */
+    case 'chart': {
+      const f = formOf('chart', ...dimsOf(c.size))
+      const series = (d.series ?? []).slice(0, f.maxItems)
+      const max = Math.max(1, ...series.map((x: any) => Number(x.value) || 0))
+      return `<div class="chw">${series.map((x: any) => {
+        const h = Math.max(4, Math.round((Number(x.value) || 0) / max * 100))
+        return `<i style="height:${h}%" title="${esc(x.label)}"></i>`
+      }).join('')}</div>${f.blocks.includes('axis') ? `<div class="chax">
+        <span>${esc(series[0]?.label ?? '')}</span>${
+          f.blocks.includes('legend') && d.unit ? `<span>${esc(d.unit)}</span>` : ''}
+        <span>${esc(series[series.length - 1]?.label ?? '')}</span></div>` : ''}`
+    }
+    /** 图片：新档 frame（最接近正方）的主要用户。缺图时不留白卡 */
+    case 'image': {
+      const f = formOf('image', ...dimsOf(c.size))
+      return `<div class="imw"${d.url ? ` style="background-image:url('${esc(d.url)}')"` : ''}></div>${
+        f.blocks.includes('caption') && d.caption ? `<div class="sub">${esc(d.caption)}</div>` : ''}${
+        f.blocks.includes('meta') && d.meta ? `<small class="imeta">${esc(d.meta)}</small>` : ''}`
+    }
     case 'weather': {
       const w = weatherForm(...dimsOf(c.size))
       // 风力和湿度任一缺失都不该留下孤零零一个分隔点

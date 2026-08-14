@@ -342,6 +342,59 @@ export function createDesk(clock: () => number = Date.now) {
       if (!placed) return null
       out.push(placed)
     }
+    return compact(out, grid)
+  }
+
+  /**
+   * 第二趟：**紧凑化**（2026-08-14 实拍反馈"整体的卡片布局看起来太散了"）。
+   *
+   * 第一趟保位置粘性 —— 每张卡优先回到上次的位置，卡片不乱跳。代价是
+   * 一张卡缩小或关闭之后让出的空间成了一个洞，右边和下面的卡都还粘在原位，
+   * 谁也不来补。洞越攒越多，看起来就是散的。
+   *
+   * 这一趟让每张卡往"更左上"流，反复到稳定。**只有真挪得动才动** ——
+   * 桌面本来密实的话一格都不变，不制造"卡片自己跑了"的困惑。
+   *
+   * 注意顺序：按 `out` 的原顺序扫（那已经是优先级序），所以高优先级的卡
+   * 先占到更靠前的位置，重力不会把优先级冲掉。
+   */
+  function compact(out: PlacedCard[], grid: boolean[][]): PlacedCard[] {
+    const free = (r: number, c0: number, w: number, h: number) => {
+      for (let dr = 0; dr < h; dr++) for (let dc = 0; dc < w; dc++) if (grid[r + dr][c0 + dc]) return false
+      return true
+    }
+    const mark = (c: PlacedCard, v: boolean) => {
+      for (let dr = 0; dr < c.rowSpan; dr++)
+        for (let dc = 0; dc < c.colSpan; dc++) grid[c.row + dr][c.col + dc] = v
+    }
+    // 反复到不动为止。上限只是防御——每轮至少有一张卡真往前挪，必然收敛
+    for (let pass = 0; pass < ROWS * COLS; pass++) {
+      let moved = false
+      for (const c of out) {
+        /**
+         * 靠边锚定的卡不参与重力：anchor:right 的语义就是"贴着右边"，
+         * 把它往左上拖等于把这条声明作废。
+         */
+        if (c.anchor === 'right') continue
+        const here = c.row * COLS + c.col
+        mark(c, false)
+        let best: { row: number; col: number } | undefined
+        outer2: for (let r = 0; r + c.rowSpan <= ROWS; r += 2) {
+          for (let c0 = 0; c0 + c.colSpan <= COLS; c0 += 2) {
+            if (r * COLS + c0 >= here) break outer2
+            if (free(r, c0, c.colSpan, c.rowSpan)) { best = { row: r, col: c0 }; break outer2 }
+          }
+        }
+        if (best) { c.row = best.row; c.col = best.col; moved = true }
+        mark(c, true)
+      }
+      if (!moved) break
+    }
+    // 落位记忆跟着走，否则下一趟粘性又把它拽回洞里
+    for (const c of out) {
+      const live = cards.get(c.id)
+      if (live) live.prevPos = { row: c.row, col: c.col }
+    }
     return out
   }
 

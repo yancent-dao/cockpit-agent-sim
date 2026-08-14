@@ -77,13 +77,11 @@ describe('交互声明：模板契约第三件套（数据，不是代码）', (
     }
   })
 
-  it('导航卡刻意没有关闭按钮——导航中把导航关掉是事故，缩放不受影响', () => {
-    expect(routeOf('nav', 'tap:close')).toBeUndefined()
-    expect(routeOf('nav', 'tap:shrink')!.op).toBe('shrink')
-  })
-
-  it('除导航卡外，每个模板都有右上角关闭按钮', () => {
-    for (const tmpl of CARD_TEMPLATES.map(t => t.id).filter(id => id !== 'nav'))
+  // 实拍反馈（2026-08-13）：导航卡也要有关闭按钮——右上角的 ✕ 是一次
+  // 明确的点按，跟"划一下整张大卡"（swipe，行驶中容易误触）不是一回事，
+  // 所以只加回 tap:close，swipe:away 仍然不给导航卡
+  it('每个模板（含导航卡）都有右上角关闭按钮', () => {
+    for (const tmpl of CARD_TEMPLATES.map(t => t.id))
       expect(routeOf(tmpl, 'tap:close'), `${tmpl} 缺 close`).toEqual({ on: 'tap:close', route: 'desk', op: 'dismiss' })
   })
 

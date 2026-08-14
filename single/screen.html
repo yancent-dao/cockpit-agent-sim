@@ -862,8 +862,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   }
 
   // src/config/cards.ts
-  var COMMON_SIZES = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2"];
-  var LIST_SIZES = ["1/6", "wide", "1/3", "1/2"];
+  var LIST_SIZES = ["1/6", "1/3", "1/2"];
   var CANVAS_ALLOWED = ["chip", "strip", "bar", "1/6", "wide", "1/3", "1/2", "tower", "2/3"];
   var CANVAS_SIZES = CANVAS_ALLOWED.map((z) => {
     const p = pixelsOf(z);
@@ -929,39 +928,51 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       fields: { text: { type: "string", required: true } }
     },
     // 播放器卡由系统按 media.playing 自动出，跟导航卡一样。
-    // 能用 2/3 是因为视频要大画面——它跟导航天然互斥（行驶中禁止看视频）
+    // 三档踩着 mediaForm 的真实内容阈值：1/6 封面+播控全在，1/3 多出"接下来"
+    // 预告（area>=16 才解锁），2/3 是唯一能放视频大画面的档——它跟导航天然
+    // 互斥（行驶中禁止看视频）
     {
       id: "media",
       label: "播放器卡",
       defaultSize: "1/3",
-      sizes: [...COMMON_SIZES, "2/3"],
+      sizes: ["1/6", "1/3", "2/3"],
       systemOnly: true,
       desc: "正在播放的内容，由系统按播放状态自动创建/刷新/撤销，不要手动建——调 music.play / radio.play / video.play 成功后它会自己出现。",
       fields: { track: { type: "string", required: true } }
     },
+    // 三档踩着 weatherForm 的真实阈值：1/6 只有温度、1/3（area16）解锁 3 天预报、
+    // 1/2（area24，横排 3 栏）同样 3 天但排成一行更好读
     {
       id: "weather",
       label: "天气卡",
       defaultSize: "1/6",
+      sizes: ["1/6", "1/3", "1/2"],
       desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
       fields: { now: { type: "object", required: true }, forecast: { type: "array" } }
     },
-    // 唯一能用 2/3 的：地图要大画布。可以被调小，1/3 时退成转向条小卡
+    /**
+     * 导航卡三档（2026-08-13 实拍反馈：缩小不该以"拉长"为主）——
+     * strip（4×1，只留转向文字）→ tower（4×4，正方形，转向+距离，没有地图）
+     * → 2/3（stage，8×4，唯一放得下地图的档）。中间档故意不用 wide/panel/banner
+     * 这类宽 2 高的扁条：地图往扁条里塞只会横向拉伸变形，还不如干脆不画地图，
+     * retreat 成一张方方正正的信息卡。唯一能用 2/3 的：地图要大画布
+     */
     {
       id: "nav",
       label: "导航卡",
       defaultSize: "2/3",
-      sizes: [...COMMON_SIZES, "2/3"],
+      sizes: ["strip", "tower", "2/3"],
       systemOnly: true,
       desc: "导航卡由系统按导航状态自动创建/刷新/撤销，不要手动创建——调 navigation.setDestination 成功后它会自己出现在桌面左侧。",
       fields: { destination: { type: "string", required: true } }
     },
-    // 唯一能用 full 的：33 项能力要铺得开
+    // 三档踩着 capForm 的真实阈值：1/6 只报个数，1/2 到网格模式（可能截断），
+    // full 铺满显示完整清单——唯一能用 full 的：33 项能力要铺得开
     {
       id: "capability",
       label: "能力目录卡",
       defaultSize: "full",
-      sizes: [...COMMON_SIZES, "full"],
+      sizes: ["1/6", "1/2", "full"],
       desc: "本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。",
       fields: { items: { type: "array", required: true } }
     },
@@ -970,10 +981,12 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
      * 做成真卡走同一套仲裁：最低优先级填充，谁来都让位，空了自己回来。
      * 时间由车机屏本地渲染——每秒变的东西不进 data（遥测边界的老规矩）。
      */
+    // 三档踩着 clockForm 阈值：chip 只有时间、1/6（area8）加日期、1/3（area16）加天气行
     {
       id: "clock",
       label: "时钟卡",
       defaultSize: "1/3",
+      sizes: ["chip", "1/6", "1/3"],
       systemOnly: true,
       desc: "空桌面的氛围填充：时间/日期/天气。系统规则驱动，不要手动创建。"
     },
@@ -1866,11 +1879,13 @@ ${BRIDGE}
     "canvas-app": [{ on: "app", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
     /**
-     * 导航卡刻意没有 swipe:away / tap:close——导航中把导航关掉是事故。
-     * 但缩放不是关闭：加了缩放按钮后不用再把导航卡强制钉成最大（2026-08-13 实拍反馈），
-     * 用户可以随时缩小看更多桌面，优先级（左锚定、不可被挤下桌）不受影响。
+     * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
+     * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，
+     * 补给它了（2026-08-13 实拍反馈）。缩放同理不是关闭：加了缩放按钮后
+     * 不用再把导航卡强制钉成最大，用户可以随时缩小看更多桌面，
+     * 优先级（左锚定、不可被挤下桌）不受影响。
      */
-    nav: [...RESIZE]
+    nav: [...RESIZE, CLOSE]
   };
   var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
 

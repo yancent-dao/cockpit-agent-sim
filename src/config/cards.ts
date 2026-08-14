@@ -11,22 +11,29 @@ export interface FieldSpec {
 }
 
 /**
- * 通用尺寸池。不声明 sizes 的模板这三档全支持。
+ * 通用尺寸池。不声明 sizes 的模板这三档全支持——**最小·中间·最大**，
+ * 不多不少（2026-08-13 实拍反馈：档位太多，用户只需要三档）。
+ *
+ * strip/bar/wide 这些更细的中间档从默认池里退场：天气/反馈类在这些档上
+ * 跟 1/6 内容完全一样，多出来的档位只是"看起来选项更多"，对用户没有
+ * 实际区别。chip 保留——它是"还想留着但没地方"的极限小档，桌面拥挤时
+ * 靠它才挤得下更多卡片。
  *
  * 不含 2/3 和 full，这两档不是"更大的尺寸"：
  * - 2/3 是 2×2 方块、左锚定，全桌面只有一个合法位置，两张必然冲突
  * - full 是整屏覆盖层，任意卡都能 full 意味着天气卡能盖住导航
  * 需要它们的模板自己在 sizes 里写出来。
  */
-export const COMMON_SIZES = ['chip', 'strip', 'bar', '1/6', 'wide', '1/3', '1/2'] as const
+export const COMMON_SIZES = ['chip', '1/6', '1/2'] as const
 
 /**
- * 放得下若干条目才有意义的模板，下限设在 `card`（老的 1/6）。
+ * 放得下若干条目才有意义的模板，下限设在 `1/6`（老名 card）。
  *
  * chip 是 393×237，实测放不下一条带副标题的候选；用户被"第 4 个"点到
- * 而屏上只有三条就是事故。这靠现有的 `sizes` 机制表达，不新增字段。
+ * 而屏上只有三条就是事故——所以不用 COMMON_SIZES，下限往上提一档。
+ * 三档踩着 contentCols 的分栏阈值（1→2→3 栏），不是随手挑的。
  */
-export const LIST_SIZES = ['1/6', 'wide', '1/3', '1/2'] as const
+export const LIST_SIZES = ['1/6', '1/3', '1/2'] as const
 
 
 
@@ -94,19 +101,30 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     desc: '只读信息，如车况、日程。data: {title, text}——text 必须是写好的一段话，不要传结构化对象进来，那样会渲染成空白。',
     fields: { text: { type: 'string', required: true } } },
   // 播放器卡由系统按 media.playing 自动出，跟导航卡一样。
-  // 能用 2/3 是因为视频要大画面——它跟导航天然互斥（行驶中禁止看视频）
-  { id: 'media', label: '播放器卡', defaultSize: '1/3', sizes: [...COMMON_SIZES, '2/3'], systemOnly: true,
+  // 三档踩着 mediaForm 的真实内容阈值：1/6 封面+播控全在，1/3 多出"接下来"
+  // 预告（area>=16 才解锁），2/3 是唯一能放视频大画面的档——它跟导航天然
+  // 互斥（行驶中禁止看视频）
+  { id: 'media', label: '播放器卡', defaultSize: '1/3', sizes: ['1/6', '1/3', '2/3'], systemOnly: true,
     desc: '正在播放的内容，由系统按播放状态自动创建/刷新/撤销，不要手动建——调 music.play / radio.play / video.play 成功后它会自己出现。',
     fields: { track: { type: 'string', required: true } } },
-  { id: 'weather', label: '天气卡', defaultSize: '1/6',
+  // 三档踩着 weatherForm 的真实阈值：1/6 只有温度、1/3（area16）解锁 3 天预报、
+  // 1/2（area24，横排 3 栏）同样 3 天但排成一行更好读
+  { id: 'weather', label: '天气卡', defaultSize: '1/6', sizes: ['1/6', '1/3', '1/2'],
     desc: '天气信息。data: {title, now:{weather,temperature,wind,humidity}, forecast?:[{date,dayWeather,nightWeather,dayTemp,nightTemp}]}——now/forecast 必须原样来自 weather.query 的返回，不要自己总结改写成一段话。title 记得写清楚查的是哪，比如"成都天气"。',
     fields: { now: { type: 'object', required: true }, forecast: { type: 'array' } } },
-    // 唯一能用 2/3 的：地图要大画布。可以被调小，1/3 时退成转向条小卡
-  { id: 'nav', label: '导航卡', defaultSize: '2/3', sizes: [...COMMON_SIZES, '2/3'], systemOnly: true,
+  /**
+   * 导航卡三档（2026-08-13 实拍反馈：缩小不该以"拉长"为主）——
+   * strip（4×1，只留转向文字）→ tower（4×4，正方形，转向+距离，没有地图）
+   * → 2/3（stage，8×4，唯一放得下地图的档）。中间档故意不用 wide/panel/banner
+   * 这类宽 2 高的扁条：地图往扁条里塞只会横向拉伸变形，还不如干脆不画地图，
+   * retreat 成一张方方正正的信息卡。唯一能用 2/3 的：地图要大画布
+   */
+  { id: 'nav', label: '导航卡', defaultSize: '2/3', sizes: ['strip', 'tower', '2/3'], systemOnly: true,
     desc: '导航卡由系统按导航状态自动创建/刷新/撤销，不要手动创建——调 navigation.setDestination 成功后它会自己出现在桌面左侧。',
     fields: { destination: { type: 'string', required: true } } },
-    // 唯一能用 full 的：33 项能力要铺得开
-  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: [...COMMON_SIZES, 'full'],
+  // 三档踩着 capForm 的真实阈值：1/6 只报个数，1/2 到网格模式（可能截断），
+  // full 铺满显示完整清单——唯一能用 full 的：33 项能力要铺得开
+  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['1/6', '1/2', 'full'],
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
   /**
@@ -114,7 +132,8 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 做成真卡走同一套仲裁：最低优先级填充，谁来都让位，空了自己回来。
    * 时间由车机屏本地渲染——每秒变的东西不进 data（遥测边界的老规矩）。
    */
-  { id: 'clock', label: '时钟卡', defaultSize: '1/3', systemOnly: true,
+  // 三档踩着 clockForm 阈值：chip 只有时间、1/6（area8）加日期、1/3（area16）加天气行
+  { id: 'clock', label: '时钟卡', defaultSize: '1/3', sizes: ['chip', '1/6', '1/3'], systemOnly: true,
     desc: '空桌面的氛围填充：时间/日期/天气。系统规则驱动，不要手动创建。' },
   { id: 'generic', label: '通用卡', defaultSize: '1/3',
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },

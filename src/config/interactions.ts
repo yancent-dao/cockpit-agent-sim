@@ -54,11 +54,13 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   'canvas-app': [{ on: 'app', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
   clock: [SWIPE_AWAY, ...RESIZE, CLOSE],
   /**
-   * 导航卡刻意没有 swipe:away / tap:close——导航中把导航关掉是事故。
-   * 但缩放不是关闭：加了缩放按钮后不用再把导航卡强制钉成最大（2026-08-13 实拍反馈），
-   * 用户可以随时缩小看更多桌面，优先级（左锚定、不可被挤下桌）不受影响。
+   * 导航卡刻意没有 swipe:away——划一下整张大卡在行驶中太容易误触，
+   * 导航中被误划掉是事故。但右上角 ✕ 是一次明确的点按，风险不一样，
+   * 补给它了（2026-08-13 实拍反馈）。缩放同理不是关闭：加了缩放按钮后
+   * 不用再把导航卡强制钉成最大，用户可以随时缩小看更多桌面，
+   * 优先级（左锚定、不可被挤下桌）不受影响。
    */
-  nav: [...RESIZE],
+  nav: [...RESIZE, CLOSE],
 }
 
 export const routeOf = (template: string, on: string): InteractionDecl | undefined =>

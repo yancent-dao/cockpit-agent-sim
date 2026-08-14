@@ -49,12 +49,12 @@ describe('尺寸闸在 desk：三条路一个闸', () => {
     expect(r.status).toBe('ok')
   })
 
-  it("模板声明 'wide'（新名），传 'wide' 认、传乱写的不认", () => {
+  it("模板声明 'tower'（新名），传 'tower' 认、传乱写的不认", () => {
     const d = createDesk()
-    expect(d.show({ template: 'list', size: 'wide' as any, ttl: 60,
-      data: { title: 'c', items: [{ label: 'a' }] } }).status).toBe('ok')
-    expect(d.show({ template: 'list', size: '巨大' as any, ttl: 60,
-      data: { title: 'c', items: [{ label: 'a' }] } }).status).toBe('rejected')
+    expect(d.show({ template: 'nav', size: 'tower' as any, kind: 'rule', evictable: false, ttl: 60,
+      data: { destination: 'x' } }).status).toBe('ok')
+    expect(d.show({ template: 'nav', size: '巨大' as any, kind: 'rule', evictable: false, ttl: 60,
+      data: { destination: 'x' } }).status).toBe('rejected')
   })
 })
 

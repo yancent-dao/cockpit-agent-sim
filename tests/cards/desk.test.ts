@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createDesk } from '../../src/cards/desk'
 import { CARD_TEMPLATES } from '../../src/config/cards'
+import { dimsOf } from '../../src/config/grid'
 
 let now = 1000
 let desk: ReturnType<typeof createDesk>
@@ -30,12 +31,12 @@ describe('栅格：12列×4行统一画布，档位形状可枚举', () => {
   })
 
   it('layout 给出每张卡的行列位置与跨度', () => {
-    mk({ size: '1/3', data: { title: 'A' } })
+    mk({ size: '1/2', data: { title: 'A' } })
     const c = desk.layout().cards[0]
     expect(c.row).toBe(0)
     expect(c.col).toBe(0)
     expect(c.rowSpan).toBe(2)
-    expect(c.colSpan).toBe(8)
+    expect(c.colSpan).toBe(12)
   })
 
   it('1/2 整行卡占满 12 列，高优先级先占位，低优先级卡挪到下面', () => {
@@ -92,9 +93,9 @@ describe('2/3（stage）：左锚定 8×4，唯一合法位置是左八列', () 
     expect(cells).toEqual([[0, 8], [2, 8]])
   })
 
-  it('2/3 在场时 1/3 横卡（宽 8）放不下右边的 4 列 → 自动降为 1/6', () => {
+  it('2/3 在场时 1/2 横卡（宽 12）放不下右边的 4 列 → 自动降为 1/6', () => {
     mk({ size: '2/3', template: 'nav', kind: 'rule' }); now += 10
-    const r = mk({ size: '1/3', data: { title: '天气' } })
+    const r = mk({ size: '1/2', data: { title: '天气' } })
     expect(r.status).toBe('ok')
     const placed = desk.layout().cards.find(c => c.data?.title === '天气')!
     // 降档后 size 是新档位名。card 就是老的 1/6，行为没变、名字换了
@@ -136,7 +137,7 @@ describe('优先级：system > rule > task，同级按创建时间', () => {
     mk({ data: { title: '旧任务' } }); now += 10
     mk({ data: { title: '新任务' } }); now += 10
     mk(); now += 10
-    const r = mk({ kind: 'rule', size: '1/3', data: { title: '导航提示' } })
+    const r = mk({ kind: 'rule', size: '1/2', data: { title: '导航提示' } })
     expect(r.status).toBe('ok')
     const titles = desk.layout().cards.map(c => c.data?.title)
     for (const t of ['告警', '旧任务', '新任务', '导航提示']) expect(titles, t).toContain(t)
@@ -276,9 +277,9 @@ describe('render：优先复用已有卡 → 放大 → 最后才新建', () => 
 
   it('已有卡但要求更大尺寸时放大（L2）', () => {
     desk.render({ key: 'w', template: 'control', size: '1/6', ttl: 30 })
-    const r = desk.render({ key: 'w', template: 'control', size: '1/3', ttl: 30 })
+    const r = desk.render({ key: 'w', template: 'control', size: '1/2', ttl: 30 })
     expect(r.level).toBe('L2')
-    expect(desk.layout().cards[0].size).toBe('1/3')
+    expect(desk.layout().cards[0].size).toBe('1/2')
   })
 
   it('refreshTtl 让事件卡在活动期间不过期', () => {
@@ -374,22 +375,22 @@ describe('尺寸粘性：显式改过就听用户的', () => {
   it('resize 之后，规则重刷不把尺寸改回默认', () => {
     nav()
     const id = desk.findByKey('nav')!.id
-    desk.resize(id, '1/3')
+    desk.resize(id, 'tower')
     now += 10
     // orchestrator 每次状态变化都这么调
     desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航', eta: 19 } })
     const c = desk.findByKey('nav')!
-    expect(c.size).toBe('1/3')      // 用户的选择还在
+    expect(c.size).toBe('tower')    // 用户的选择还在
     expect(c.data.eta).toBe(19)     // 数据照常更新
   })
 
   // render 的既有语义是只放大不缩小——规则重刷不该让卡片忽大忽小。
   // 没上锁的卡，空间腾出来时规则能把它带回默认尺寸
   it('没被 resize 过的卡，规则重刷能放大回默认尺寸', () => {
-    desk.render({ key: 'nav', template: 'nav', size: '1/3', kind: 'rule',
+    desk.render({ key: 'nav', template: 'nav', size: 'tower', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
-    expect(desk.findByKey('nav')!.size).toBe('1/3')
+    expect(desk.findByKey('nav')!.size).toBe('tower')
     now += 10
     desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
@@ -427,21 +428,37 @@ describe('尺寸粘性：显式改过就听用户的', () => {
  * 2/3（stage）这类专用档不在 LADDER 里，但在导航卡的 sizes 表里是合法的最大档，
  * 用单元格数量排序而不是 LADDER 下标，天然就把它接进阶梯两端。
  */
+// 实拍反馈（2026-08-13）：导航卡缩小不该以"拉长"为主——地图塞进宽 12/8、
+// 高只有 2 的扁条会横向拉伸变形。中间档改用正方形的 tower（4×4），
+// 不用 wide/panel/banner 这类宽 2 高的档
+describe('导航卡尺寸表：避开会拉伸地图的扁条形状', () => {
+  it('导航卡三档不含 wide/panel/banner 这类宽高比 ≥3:1 的扁条', () => {
+    const nav = CARD_TEMPLATES.find(t => t.id === 'nav')!
+    for (const bad of ['wide', 'panel', 'banner', '1/3', '1/2'])
+      expect(nav.sizes, `导航卡不该有 ${bad}`).not.toContain(bad)
+  })
+
+  it('中间档 tower 是正方形（4×4），不是拉伸的扁条', () => {
+    const [w, h] = dimsOf('tower')
+    expect(w).toBe(h)
+  })
+})
+
 describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
   it('grow/shrink 按模板允许的尺寸表走一档', () => {
     const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
     expect(desk.step(id, 'up').status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('wide')
-    expect(desk.step(id, 'up').status).toBe('ok')
     expect(desk.get(id)!.size).toBe('1/3')
+    expect(desk.step(id, 'up').status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('1/2')
   })
 
   it('已经是最小尺寸时 shrink 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
-    const id = mk({ template: 'weather', size: 'chip', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
     const r = desk.step(id, 'down')
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('SIZE_NOT_SUPPORTED')
-    expect(desk.get(id)!.size).toBe('chip')
+    expect(desk.get(id)!.size).toBe('1/6')
   })
 
   it('已经是最大尺寸时 grow 返回 SIZE_NOT_SUPPORTED，尺寸不变', () => {
@@ -452,8 +469,8 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
     expect(desk.get(id)!.size).toBe('1/2')
   })
 
-  it('导航卡的 2/3 是专用档不在 LADDER 里，仍能从 1/2 grow 上去——按单元格数量排序不看阶梯下标', () => {
-    const id = desk.show({ template: 'nav', size: '1/2', kind: 'rule',
+  it('导航卡的 2/3 是专用档不在 LADDER 里，仍能从 tower grow 上去——按单元格数量排序不看阶梯下标', () => {
+    const id = desk.show({ template: 'nav', size: 'tower', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } }).cardId!
     const r = desk.step(id, 'up')
     expect(r.status).toBe('ok')
@@ -462,7 +479,7 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
     expect(desk.step(id, 'up').status).toBe('rejected')
   })
 
-  it('尊重模板收窄过的尺寸表（list 只有 1/6·wide·1/3·1/2 四档）', () => {
+  it('尊重模板收窄过的尺寸表（list 只有 1/6·1/3·1/2 三档）', () => {
     const id = mk({ template: 'list', size: '1/6', data: { items: [{ label: 'a' }] } }).cardId!
     const r = desk.step(id, 'down')   // list 没有比 1/6 更小的档
     expect(r.status).toBe('rejected')
@@ -480,23 +497,50 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
     const id = desk.findByKey('nav')!.id
     desk.step(id, 'down')
-    expect(desk.get(id)!.size).toBe('1/2')
+    expect(desk.get(id)!.size).toBe('tower')
     now += 10
     desk.render({ key: 'nav', template: 'nav', size: '2/3', kind: 'rule',
       evictable: false, ttl: 'untilDismissed', data: { title: '导航' } })
-    expect(desk.findByKey('nav')!.size).toBe('1/2')   // 没被规则弹回 2/3
+    expect(desk.findByKey('nav')!.size).toBe('tower')   // 没被规则弹回 2/3
   })
 
   it('卡不存在时返回 NO_SUCH_CARD，不抛异常', () => {
     expect(desk.step('nope', 'up').code).toBe('NO_SUCH_CARD')
   })
 
+  /**
+   * 实拍反馈（2026-08-13）：放大操作优先级最高，能挤走其他卡片——
+   * 用户点了放大按钮就是明确表态"这张卡现在最重要"，不该因为桌面满了
+   * 就静默什么都不做（之前 grow 只是普通 resize，tryPlace 失败就原地卡住）。
+   */
+  it('放大挤占：桌面被同优先级卡占满时，grow 照样挤出地方（不看谁优先级更高）', () => {
+    for (let i = 0; i < 5; i++) { mk({ kind: 'system', size: '1/6', minSize: '1/6', data: { title: '占位' + i } }); now += 10 }
+    const id = mk({ template: 'weather', size: '1/6', kind: 'system', data: { now: {} } }).cardId!
+    now += 10
+    const r = desk.step(id, 'up')
+    expect(r.status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('1/3')   // 真长大了，不是原地不动
+    expect(r.evicted, '挤了人就该带 evicted').toBeTruthy()
+  })
+
+  it('放大挤占绝不破 evictable:false / urgent+ 的硬保护——挤不动就是挤不动', () => {
+    // 钉死 6 张 1/6（48 单元正好占满），全部不可挤
+    for (let i = 0; i < 6; i++) { mk({ kind: 'system', size: '1/6', minSize: '1/6', evictable: false, urgency: 'urgent', data: { title: '钉' + i } }); now += 10 }
+    const beforeTitles = desk.layout().cards.map(c => c.data?.title)
+    // 桌面已经满了，随手拿一张已上台的卡试着 grow——这里直接用第一张钉死的卡
+    // 本身来验证：即便它是"候选自己"，也不能通过挤走别人（因为大家都不可挤）实现放大
+    const target = desk.layout().cards[0]!
+    desk.step(target.id, 'up')
+    const afterTitles = desk.layout().cards.map(c => c.data?.title)
+    expect(afterTitles.sort()).toEqual(beforeTitles.sort())   // 没人被挤下桌
+  })
+
   // canStep 是给车机屏按钮"该不该置灰"用的只读查询——不许车机屏自己重算一遍
   it('canStep 只读查询按钮该不该置灰，不改变尺寸', () => {
-    const id = mk({ template: 'weather', size: 'chip', data: { now: {} } }).cardId!
+    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
     expect(desk.canStep(id, 'down')).toBe(false)   // 已经最小
     expect(desk.canStep(id, 'up')).toBe(true)
-    expect(desk.get(id)!.size).toBe('chip')        // 只读，没被改动
+    expect(desk.get(id)!.size).toBe('1/6')        // 只读，没被改动
   })
 
   it('canStep 对不存在的卡返回 false', () => {
@@ -511,7 +555,7 @@ describe('desk.step()：卡片右上角尺寸调节按钮的机制', () => {
  */
 describe('urgency 参与仲裁', () => {
   it('critical 卡不会被挤出，哪怕它是最旧的 task', () => {
-    mk({ urgency: 'critical', size: '1/3', data: { title: '车门未关' } }); now += 10
+    mk({ urgency: 'critical', size: '1/2', data: { title: '车门未关' } }); now += 10
     for (let i = 0; i < 6; i++) { mk({ kind: 'system', data: { title: '卡' + i } }); now += 10 }
     expect(desk.layout().cards.map(c => c.data?.title)).toContain('车门未关')
   })
@@ -552,7 +596,7 @@ describe('urgency 参与仲裁', () => {
   })
 
   it('放得下的 critical 卡照常进桌面，不滥用覆盖层', () => {
-    const r = mk({ size: '1/3', urgency: 'critical', data: { title: '胎压过低' } })
+    const r = mk({ size: '1/2', urgency: 'critical', data: { title: '胎压过低' } })
     expect(r.status).toBe('ok')
     expect(desk.layout().overlay).toBeUndefined()
     expect(desk.layout().cards.some(c => c.data?.title === '胎压过低')).toBe(true)

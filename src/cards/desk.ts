@@ -315,7 +315,7 @@ export function createDesk(clock: () => number = Date.now) {
    * （opts.onNoSpace='reject' 时仍返回 rejected，供 critical 走覆盖层用）。
    * 每步之后从头再试。
    */
-  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean; recall?: boolean } = {}): DeskResult {
+  function fit(candidate: Card, opts: { onNoSpace?: 'stage' | 'reject'; passive?: boolean; recall?: boolean; preferEvict?: boolean } = {}): DeskResult {
     const shrunk: string[] = []
     const evicted: string[] = []
     const titles: string[] = []
@@ -341,11 +341,14 @@ export function createDesk(clock: () => number = Date.now) {
         if (size !== candidate.size) shrunk.push(candidate.id)
         candidate.size = size
         // 被挤的卡进等位区，不是真的消失（2026-08-13）——数据全保留，
-        // 空间释放后自动请回来
+        // 空间释放后自动请回来。跟⑥自我进队一个纪律："排队按该有的大小
+        // 记账"：被挤时它可能已经被压缩过好几档，不重置的话被动上台
+        // （fit passive）会直接从压缩后的小尺寸原地落座，永远等不到
+        // 「回落」——那条通道只扫台上的卡，staged 里的东西它看不见
         for (const id of evicted) {
           const victim = cards.get(id)
           cards.delete(id)
-          if (victim) stage(victim)
+          if (victim) { victim.size = victim.desiredSize ?? victim.size; stage(victim) }
         }
         staged.delete(candidate.id)   // 若是从等位区召回（focus）成功上台，摘掉排队身份
         cards.set(candidate.id, candidate)
@@ -365,6 +368,19 @@ export function createDesk(clock: () => number = Date.now) {
         // ② 降一张已有低优先级卡
         const shrinkable = victims().find(canShrink)
         if (shrinkable) { shrinkable.size = LADDER[rung(shrinkable.size) - 1]; shrunk.push(shrinkable.id); continue }
+      }
+      // preferEvict（放大按钮）：候选要的是"更大"，不是"随便多大都行"——
+      // 挤别人比缩自己优先，否则③会在真正尝试挤人之前就把候选缩回原样，
+      // "放大"两个字变成静默的原地不动
+      if (opts.preferEvict) {
+        const victim = victims()[0]
+        if (victim) {
+          shrunkOut.add(victim.id)
+          evicted.push(victim.id)
+          titles.push(titleOf(victim))
+          size = candidate.size
+          continue
+        }
       }
       // ③ 降新卡自己
       const selfIdx = rung(size)
@@ -537,6 +553,23 @@ export function createDesk(clock: () => number = Date.now) {
     return { allowed, pos }
   }
 
+  /**
+   * 放大：用户点了放大按钮就是明确表态"这张卡现在最重要"——优先级最高，
+   * 需要地方就挤（recall 语义，跟台下卡被 focus 召回同一条道理）。
+   * 硬保护不因为这是"放大"就被打破：evictableAt 的 urgent+ 依旧摸不到，
+   * 挤不动就是挤不动，候选自己会退回原来能站住的尺寸，不会比之前更小。
+   */
+  function growTo(id: string, size: Size): DeskResult {
+    const c = getById(id)
+    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    cards.delete(id)
+    staged.delete(id)
+    c.size = size
+    c.desiredSize = size
+    c.sizeLocked = true
+    return fit(c, { onNoSpace: 'stage', recall: true, preferEvict: true })
+  }
+
   function step(id: string, dir: 'up' | 'down'): DeskResult {
     const c = getById(id)
     if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
@@ -544,7 +577,7 @@ export function createDesk(clock: () => number = Date.now) {
     const next = dir === 'down' ? pos - 1 : pos + 1
     if (next < 0 || next >= allowed.length)
       return { status: 'rejected', code: 'SIZE_NOT_SUPPORTED', message: dir === 'down' ? '已经是最小尺寸了' : '已经是最大尺寸了' }
-    return resize(id, allowed[next] as Size, true)
+    return dir === 'up' ? growTo(id, allowed[next] as Size) : resize(id, allowed[next] as Size, true)
   }
 
   /**

@@ -109,12 +109,12 @@ describe('卡片调度 Tool', () => {
   })
 
   it('card.update / card.resize / card.focus / card.dismiss', async () => {
-    // 用车控卡：feedback 只声明了 1/6，resize 到 1/3 现在会被模板校验挡住
+    // 用车控卡：control 只声明了 chip·1/6·1/2，resize 到 1/3 现在会被模板校验挡住
     const id = ((await show({ template: 'control', data: { items: [{ label: '温度', value: 24 }] } })).data as any).cardId
     expect((await reg.invoke('card.update', { cardId: id, data: { title: '新标题' } })).status).toBe('ok')
     expect(desk.get(id)!.data.title).toBe('新标题')
-    expect((await reg.invoke('card.resize', { cardId: id, size: '1/3' })).status).toBe('ok')
-    expect(desk.get(id)!.size).toBe('1/3')
+    expect((await reg.invoke('card.resize', { cardId: id, size: '1/2' })).status).toBe('ok')
+    expect(desk.get(id)!.size).toBe('1/2')
     expect((await reg.invoke('card.focus', { cardId: id })).status).toBe('ok')
     expect((await reg.invoke('card.dismiss', { cardId: id })).status).toBe('ok')
     expect(desk.layout().cards).toHaveLength(0)
@@ -157,10 +157,10 @@ describe('卡片调度 Tool', () => {
     expect(r.status).toBe('rejected')
   })
 
-  it('导航卡可以被调小到通用池的档位', async () => {
+  it('导航卡可以被调小到自己的尺寸表档位', async () => {
     const id = desk.show({ template: 'nav', size: '2/3', kind: 'rule',
       ttl: 'untilDismissed', data: { destination: '春熙路' } }).cardId!
-    for (const size of ['1/2', '1/3', '2/3']) {
+    for (const size of ['tower', 'strip', '2/3']) {
       const r = await reg.invoke('card.resize', { cardId: id, size })
       expect(r.status, `nav 应该支持 ${size}`).toBe('ok')
       expect(desk.get(id)!.size).toBe(size)
@@ -178,13 +178,13 @@ describe('卡片调度 Tool', () => {
 
 describe('desktop.getLayout —— Agent 必须能读桌面才能编排', () => {
   it('返回卡片列表与剩余格数（统一画布，无分区）', async () => {
-    await show({ data: { title: 'A', items: [] }, size: '1/3', template: 'control' })
+    await show({ data: { title: 'A', items: [] }, size: '1/2', template: 'control' })
     const r = await reg.invoke('desktop.getLayout', {})
     expect(r.status).toBe('ok')
     const d = r.data as any
     expect(d.cards[0].title).toBe('A')
-    expect(d.cards[0].size).toBe('1/3')
-    expect(d.slots).toBe(4)   // (48-16)/8，还放得下四张小卡
+    expect(d.cards[0].size).toBe('1/2')
+    expect(d.slots).toBe(3)   // (48-24)/8，还放得下三张小卡
   })
 
   it('空桌面也返回结构完整的结果', async () => {

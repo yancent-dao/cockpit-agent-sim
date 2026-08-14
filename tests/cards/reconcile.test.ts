@@ -50,7 +50,7 @@ describe('尺寸回落：压力消失后回到该有的大小', () => {
   const squeeze = (d: ReturnType<typeof createDesk>, tick: () => void) => {
     // 用五张 1/3 的填充卡把天气压小
     const ids: string[] = []
-    for (let i = 0; i < 5; i++) { tick(); ids.push(d.show({ template: 'feedback', size: '1/3', ttl: 'untilDismissed', data: { title: '填' + i, text: 'x' } }).cardId!) }
+    for (let i = 0; i < 5; i++) { tick(); ids.push(d.show({ template: 'feedback', size: '1/2', ttl: 'untilDismissed', data: { title: '填' + i, text: 'x' } }).cardId!) }
     return ids
   }
 

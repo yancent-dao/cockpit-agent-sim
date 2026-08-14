@@ -2907,6 +2907,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           chapter: store2.get("story.chapter"),
           page,
           total: draft?.pages.length ?? 0,
+          // 章末的位置。少了它车机屏分不清"翻下一页"和"该问孩子了"
+          chapterEnd: draft?.chapterEnd ?? 0,
+          pending: store2.get("story.pending"),
           line: p?.text ?? "",
           image: p?.image,
           ideas: draft?.ideas ?? [],
@@ -2940,6 +2943,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const addChapter = async (specs) => {
       const from = draft.pages.length;
       draft.pages.push(...specs.map((s) => ({ text: s.line })));
+      draft.chapterEnd = draft.pages.length;
       draft.chapter += 1;
       store2.set("story.chapter", draft.chapter);
       store2.set("story.page", from + 1);
@@ -2993,7 +2997,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       storyBegin: async (a) => {
         if (!story2().cast()) return reject("NO_CAST", "还没给主角定妆，先调 story.cast 画一张");
         const specs = a?.pages ?? [];
-        draft = { title: String(a?.title ?? "我们的故事"), pages: [], ideas: [], chapter: 0 };
+        draft = { title: String(a?.title ?? "我们的故事"), pages: [], ideas: [], chapter: 0, chapterEnd: 0 };
         store2.set("story.active", true);
         await addChapter(specs);
         return { status: "ok", message: `《${draft.title}》开讲了`, data: { pages: specs.length, cost: spent } };
@@ -7177,6 +7181,11 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
       }
       if (m.overflow) log("e", "生成式卡内容溢出，超出部分用户看不到");
       renderInspector();
+      return;
+    }
+    if (m.type === "storyChapterDone") {
+      store.set("story.phase", "asking");
+      pipeline.run("[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展");
       return;
     }
     if (m.type === "userAction") {

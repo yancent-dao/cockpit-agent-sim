@@ -1,5 +1,6 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
+import { afterRead } from './storyflow'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
 import { createBannerQueue, toneOf, bannerHtml } from './banner'
@@ -530,6 +531,7 @@ function renderDesk() {
     if (node.dataset.sig !== sig) {
       if (c.template === 'nav') renderNavCard(node, c)
       else if (c.template === 'media') renderPlayerCard(node, c)
+      else if (c.template === 'storybook') { node.innerHTML = cardBody(c); speakStory(node, c) }
       else if (c.template === 'canvas-app') {
         if (!node.dataset.shell) {
           node.innerHTML = `<h3><span class="ico">${TPL_ICONS['canvas-app']}</span><span class="cvtitle"></span>` +
@@ -774,6 +776,44 @@ function tickProgress() {
 requestAnimationFrame(tickProgress)
 
 /* ── 消息处理 ── */
+/* ══════════ 绘本朗读：读完一页决定下一步 ══════════
+ *
+ * 决策在 `storyflow.ts` 的纯函数里（车机屏跑不了单测，判断错一次就是
+ * "一章讲完卡在最后一页不动"或者"每页都问一遍"）。这里只做两件事：
+ * 念出来、把结论发上总线。**车机屏只报事实**（这一章读完了），
+ * 问什么话归模型 —— 跟 mediaEvent 只上报设备事实不上报决定是同一条边界。
+ */
+let sbSpoken = ''
+function speakStory(node: HTMLElement, c: any) {
+  const d = c?.data ?? {}
+  const line = String(d.line ?? '')
+  if (!line || line === sbSpoken || !('speechSynthesis' in window)) return
+  sbSpoken = line
+  try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
+  const u = new SpeechSynthesisUtterance(line)
+  u.lang = 'zh-CN'; u.rate = .92
+  const el = () => node.querySelector('.sbline')
+  // 逐字点亮：原生 TTS 的杀手锏，第三方 TTS 多数不给这个时间戳
+  u.onboundary = (ev: any) => {
+    const t = el(); if (!t) return
+    const i = ev.charIndex || 0, j = i + (ev.charLength || 2)
+    t.innerHTML = esc(line.slice(0, i)) + '<span class="lit">' + esc(line.slice(i, j)) + '</span>' + esc(line.slice(j))
+  }
+  u.onend = () => {
+    const t = el(); if (t) t.textContent = line
+    const next = afterRead({
+      page: Number(d.page) || 0, chapterEnd: Number(d.chapterEnd) || 0,
+      total: Number(d.total) || 0, phase: String(d.phase ?? 'telling'),
+      pending: Number(d.pending) || 0,
+    })
+    if (next.do === 'advance')
+      bus.send({ type: 'userAction', cardId: c.id, act: 'tap:next' } as any)
+    else if (next.do === 'ask')
+      setTimeout(() => bus.send({ type: 'storyChapterDone', chapter: Number(d.chapter) || 0 } as any), next.delay)
+  }
+  speechSynthesis.speak(u)
+}
+
 const bus = createBus((m: BusMsg | any) => {
   connected()
   switch (m.type) {

@@ -36,7 +36,9 @@ export function createStoryHandlers(
   image: () => ImageGen,
 ) {
   /** 当前这本书的草稿。没讲完之前不进域仓——半本书没有留存价值 */
-  let draft: { title: string; pages: BookPage[]; ideas: string[]; chapter: number } | null = null
+  let draft: { title: string; pages: BookPage[]; ideas: string[]; chapter: number
+    /** 本章最后一页是第几页。车机屏靠它判断"读完这页该问孩子了" */
+    chapterEnd: number } | null = null
   /** 定妆时锁死的形象不变量，每页提示词都带上它 */
   let look = ''
   let style = DEFAULT_STYLE
@@ -57,6 +59,9 @@ export function createStoryHandlers(
         title: draft?.title ?? '',
         chapter: store.get('story.chapter'),
         page, total: draft?.pages.length ?? 0,
+        // 章末的位置。少了它车机屏分不清"翻下一页"和"该问孩子了"
+        chapterEnd: draft?.chapterEnd ?? 0,
+        pending: store.get('story.pending'),
         line: p?.text ?? '', image: p?.image,
         ideas: draft?.ideas ?? [],
         ...extra,
@@ -99,6 +104,7 @@ export function createStoryHandlers(
   const addChapter = async (specs: PageSpec[]) => {
     const from = draft!.pages.length
     draft!.pages.push(...specs.map(s => ({ text: s.line })))
+    draft!.chapterEnd = draft!.pages.length
     draft!.chapter += 1
     store.set('story.chapter', draft!.chapter)
     store.set('story.page', from + 1)
@@ -151,7 +157,7 @@ export function createStoryHandlers(
     storyBegin: async (a: any): Promise<ToolResult> => {
       if (!story().cast()) return reject('NO_CAST', '还没给主角定妆，先调 story.cast 画一张')
       const specs: PageSpec[] = a?.pages ?? []
-      draft = { title: String(a?.title ?? '我们的故事'), pages: [], ideas: [], chapter: 0 }
+      draft = { title: String(a?.title ?? '我们的故事'), pages: [], ideas: [], chapter: 0, chapterEnd: 0 }
       store.set('story.active', true)
       await addChapter(specs)
       return { status: 'ok', message: `《${draft.title}》开讲了`, data: { pages: specs.length, cost: spent } }

@@ -23,6 +23,12 @@ export type BusMsg =
    * 跟 mediaEvent 同一条边界 —— **只上报设备事实，不上报决定**。
    * "溢出了"是事实，"该换个档位"是决定，后者归控制面板那边管。
    */
+  /**
+   * 一章读完了，把话头交回给模型（「你觉得后面会发生什么呢」）。
+   * 车机屏只报**事实**（读到章末了），问什么话归模型 —— 跟 mediaEvent
+   * 只上报设备事实、不上报决定是同一条边界。
+   */
+  | { type: 'storyChapterDone'; chapter: number }
   | { type: 'canvasNote'; cardId: string; stripped?: string[]; overflow?: boolean; contentPx?: number }
   /**
    * 用户在屏上的动作（触控/沙箱组件的 cockpit.action）。

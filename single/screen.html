@@ -797,6 +797,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   }
 
+  // src/screen/storyflow.ts
+  var ASK_DELAY_MS = 1e3;
+  function afterRead(s) {
+    if (s.phase !== "telling" || !s.page || !s.total) return { do: "none" };
+    const end = s.chapterEnd || s.total;
+    if (s.page >= end) return { do: "ask", delay: ASK_DELAY_MS };
+    if (s.pending > 0) return { do: "wait" };
+    return { do: "advance" };
+  }
+
   // src/screen/turn.ts
   var TURN_ICONS = [
     [/掉头/, "⤺"],
@@ -2389,7 +2399,10 @@ ${BRIDGE}
       if (node.dataset.sig !== sig) {
         if (c.template === "nav") renderNavCard(node, c);
         else if (c.template === "media") renderPlayerCard(node, c);
-        else if (c.template === "canvas-app") {
+        else if (c.template === "storybook") {
+          node.innerHTML = cardBody(c);
+          speakStory(node, c);
+        } else if (c.template === "canvas-app") {
           if (!node.dataset.shell) {
             node.innerHTML = `<h3><span class="ico">${TPL_ICONS["canvas-app"]}</span><span class="cvtitle"></span><span class="genmark">生成式</span></h3><div class="bd"></div>`;
             node.dataset.shell = "1";
@@ -2566,6 +2579,43 @@ ${BRIDGE}
     }
   }
   requestAnimationFrame(tickProgress);
+  var sbSpoken = "";
+  function speakStory(node, c) {
+    const d = c?.data ?? {};
+    const line = String(d.line ?? "");
+    if (!line || line === sbSpoken || !("speechSynthesis" in window)) return;
+    sbSpoken = line;
+    try {
+      speechSynthesis.cancel();
+    } catch {
+    }
+    const u = new SpeechSynthesisUtterance(line);
+    u.lang = "zh-CN";
+    u.rate = 0.92;
+    const el = () => node.querySelector(".sbline");
+    u.onboundary = (ev) => {
+      const t = el();
+      if (!t) return;
+      const i = ev.charIndex || 0, j = i + (ev.charLength || 2);
+      t.innerHTML = esc(line.slice(0, i)) + '<span class="lit">' + esc(line.slice(i, j)) + "</span>" + esc(line.slice(j));
+    };
+    u.onend = () => {
+      const t = el();
+      if (t) t.textContent = line;
+      const next = afterRead({
+        page: Number(d.page) || 0,
+        chapterEnd: Number(d.chapterEnd) || 0,
+        total: Number(d.total) || 0,
+        phase: String(d.phase ?? "telling"),
+        pending: Number(d.pending) || 0
+      });
+      if (next.do === "advance")
+        bus.send({ type: "userAction", cardId: c.id, act: "tap:next" });
+      else if (next.do === "ask")
+        setTimeout(() => bus.send({ type: "storyChapterDone", chapter: Number(d.chapter) || 0 }), next.delay);
+    };
+    speechSynthesis.speak(u);
+  }
   var bus = createBus((m) => {
     connected();
     switch (m.type) {

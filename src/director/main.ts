@@ -319,6 +319,19 @@ const bus = createBus(m => {
    *   desk   桌面管理，记入意愿层（滑掉的卡规则不许诈尸）
    * 声明查不到 → 丢弃，不瞎猜。
    */
+  /**
+   * 一章读完了 —— 把话头交回给模型。
+   *
+   * 车机屏报的是**事实**（读到章末），这里合成一句用户输入进对话，
+   * 让模型按技能包的章法开口问「你觉得后面会发生什么呢」。
+   * **问什么话不在这里写死** —— 写死就等于把策略搬进了机制，
+   * 而且孩子每次听到的都是同一句。
+   */
+  if (m.type === 'storyChapterDone') {
+    store.set('story.phase', 'asking')
+    pipeline.run('[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展')
+    return
+  }
   if (m.type === 'userAction') {
     const card = desk.get(m.cardId)
     if (!card) return

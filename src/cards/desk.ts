@@ -238,7 +238,18 @@ export function createDesk(clock: () => number = Date.now) {
   let overlay: string | undefined
   let seq = 0
   const listeners: Array<() => void> = []
-  const emit = () => listeners.forEach(l => l())
+  /**
+   * 桌面变更世代。每次真有净变化就 +1，layout() 拿它判缓存是否还新鲜。
+   *
+   * layout() 是 cards 的纯函数，但每次都跑完整的 tryPlace（排序 + 24 个列位
+   * × 4 个行位试放）。而 desk 有 4 个订阅者（车机屏推送、检查器、台下清单、
+   * 规则补回），每次 emit 它们各自独立调一次——一次用户操作的重排放大 3~4 倍；
+   * 车窗过渡期间 store 每 200ms 通知一轮，4 秒的过渡就是几百次全排列，
+   * 而桌面几何其实一格没动。
+   */
+  let deskGen = 0
+  let layoutCache: { gen: number; value: ReturnType<typeof computeLayout> } | undefined
+  const emit = () => { deskGen++; listeners.forEach(l => l()) }
   const getById = (id: string) => cards.get(id) ?? staged.get(id)
   /**
    * 挤出告知。desk 只发**事实**（这几张卡被收起来了、人话怎么说），
@@ -747,12 +758,21 @@ export function createDesk(clock: () => number = Date.now) {
   /** ttl 到期清理 + 尺寸回落 + 等位区上台巡查 */
   function tick() {
     const t = clock()
+    /**
+     * **只有真发生了事才通知。** 以前 tick 结尾无条件 emit：桌面完全静止时
+     * 每秒仍有 2 次全链路惊动——4 个订阅者各跑一次全排列布局、检查器整棵
+     * innerHTML 重建、整个桌面（导航卡带 polyline 可达几十 KB）跨窗口克隆一遍。
+     * dismiss/resize/fit 成功时各自会 emit，所以这里只需补上它们覆盖不到的那条
+     * （等位区里过期卡的清理），再按世代判断这一轮到底动没动。
+     */
+    const before = deskGen
+    let touched = false
     for (const c of [...cards.values()])
       if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) dismiss(c.id)
     // 等位区里秒数 ttl 照样算——没人看到的问题卡更不该继续排队等一个
     // 谁都看不见的超时（untilDismissed 的 ttl 不是 number，天然跳过这条）
     for (const c of [...staged.values()])
-      if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) staged.delete(c.id)
+      if (typeof c.ttl === 'number' && t - c.createdAt >= c.ttl * 1000) { staged.delete(c.id); touched = true }
     // 尺寸回落：空间释放满 2 秒才动手（防抖——候选卡进进出出时天气不能跟着抖），
     // 静默进行：挤出打扰了用户所以要告知，恢复不是打扰
     if (releasedAt !== undefined && t - releasedAt >= 2000) {
@@ -768,7 +788,7 @@ export function createDesk(clock: () => number = Date.now) {
     // "放不下"是状态不是失败，空间够了它自己会回来
     const queue = [...staged.values()].sort(byStageOrder)
     for (const c of queue) if (staged.has(c.id)) fit(c, 'reconcile')
-    emit()
+    if (touched && deskGen === before) emit()   // 只有等位区清理这条没人替我们 emit
   }
 
   function endTask() {
@@ -776,6 +796,13 @@ export function createDesk(clock: () => number = Date.now) {
   }
 
   function layout() {
+    if (layoutCache && layoutCache.gen === deskGen) return layoutCache.value
+    const value = computeLayout()
+    layoutCache = { gen: deskGen, value }
+    return value
+  }
+
+  function computeLayout() {
     const placed = tryPlace(others()) ?? []
     // 落位写回记忆——下次布局先试这里。只在真实布局（layout()）写，
     // 仲裁过程中的试算（fit 里的 tryPlace）不算数

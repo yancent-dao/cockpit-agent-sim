@@ -319,7 +319,19 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
  * 拿不到宿主 localStorage（Key 在里面）、碰不到 bus。
  * 桥消息全量过 validateBridgeMsg——沙箱能 post 任意东西，形状校验是宿主的责任。
  */
-const appFrames = new Map<Window, string>()   // iframe window → cardId
+/**
+ * iframe window → cardId。**必须是 WeakMap**：canvas-app 卡每次 srcdoc 重载
+ * 都会登记一个新的 contentWindow，用强引用的 Map 就只增不删——每个沙箱页面
+ * 连同它的脚本堆被永久钉住，长时间演示里内存以 MB 级无上限累积。
+ */
+/** 便宜的 32 位串哈希（FNV-1a）。只用来判"内容变没变"，不做安全用途 */
+function hash32(str: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) }
+  return (h >>> 0).toString(36)
+}
+
+const appFrames = new WeakMap<Window, string>()   // iframe window → cardId
 addEventListener('message', ev => {
   const cardId = ev.source ? appFrames.get(ev.source as Window) : undefined
   if (!cardId) return
@@ -346,8 +358,16 @@ function renderCanvasAppCard(node: HTMLDivElement, c: CardView) {
     return
   }
   const doc = buildSrcdoc(html)
-  if (frame.dataset.sig !== String(html.length)) {
-    frame.dataset.sig = String(html.length)
+  /**
+   * 指纹用**内容哈希**而不是 html.length。只比长度的话，模型对同一张卡
+   * 重新生成的代码只要字符数恰好相同（把"红色"改成"蓝色"、改一处数值）
+   * 就不重载 srcdoc——屏上继续跑旧版程序，而外层 cardSig 已经判定 data 变了、
+   * 标题也换成了新的，用户和模型都以为更新过了；appFrames 的桥映射还指向
+   * 旧的 contentWindow，旧应用的 action 继续以这张卡的名义上报。
+   */
+  const sig = `${html.length}:${hash32(html)}`
+  if (frame.dataset.sig !== sig) {
+    frame.dataset.sig = sig
     frame.srcdoc = doc
     // srcdoc 重载后 contentWindow 会换，load 后重新登记桥映射
     frame.addEventListener('load', () => { if (frame!.contentWindow) appFrames.set(frame!.contentWindow, c.id) }, { once: true })
@@ -418,7 +438,23 @@ const cardNodes = new Map<string, HTMLDivElement>()
 // hot 刻意不进指纹：高亮开/关只翻 class（className 守卫已处理），
 // 掺进 sig 会让每次 highlight 的 on/off 各触发一次整卡重填——起播连写
 // 六个信号引出一串 highlight 时，卡片就跟着连闪（用户实拍的"卡片闪烁"）
-const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${JSON.stringify(c.data)}`
+/**
+ * 卡片内容指纹。**data 先按引用比，引用变了才序列化。**
+ *
+ * renderDesk 被车窗过渡的 rAF 循环每帧调用（4 秒过渡 ≈ 240 帧），
+ * 每帧对每张卡 JSON.stringify 整个 data 只为得出"没变"——导航卡带着
+ * 完整 polyline + steps（跨城路线几十 KB），仅它一张就是每秒数 MB 的
+ * 字符串分配与 GC，而掉帧风险恰好落在动画进行时。
+ * desk 侧每次 update 都会换新的 data 对象，引用比对足够灵敏。
+ */
+const dataSigs = new WeakMap<object, string>()
+const dataSig = (d: any) => {
+  if (d === null || typeof d !== 'object') return String(d)
+  let sig = dataSigs.get(d)
+  if (sig === undefined) { sig = JSON.stringify(d); dataSigs.set(d, sig) }
+  return sig
+}
+const cardSig = (c: CardView) => `${c.template}|${c.size}|${c.title}|${dataSig(c.data)}`
 
 // 上一帧的台下名单：这一帧新出现的卡若上一帧在台下 = 上台（从右缘滑入）；
 // 这一帧消失的卡若进了台下 = 下台（滑向右缘）。方向让用户读出"收起来了"vs"没了"

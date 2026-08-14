@@ -465,11 +465,24 @@ export function createRegistry(
    * 工具目录：一行一工具的速览，常驻慢层 system 代替全量 schema（省 ~85% token）。
    * 目录 = 非黑、非 meta、有 brief 的工具——由数据自动生成，加工具目录自己长。
    */
-  const briefCatalog = (allow?: string[]) =>
-    list(allow)
-      .filter(t => !t.meta && t.brief)
-      .map(t => `- ${t.name}: ${t.brief}`)
-      .join('\n')
+  /**
+   * 工具目录（每个工具一行 brief）。注册表的纯投影，整个会话内不变，
+   * 却在每轮 LLM 调用前被重拼一次（~50 个工具的字符串拼接 × 每轮）。
+   * 按 allow 白名单缓存——白名单本身在一次会话里只有寥寥几种组合。
+   */
+  const catalogCache = new Map<string, string>()
+  const briefCatalog = (allow?: string[]) => {
+    const key = allow ? allow.join(',') : '*'
+    let v = catalogCache.get(key)
+    if (v === undefined) {
+      v = list(allow)
+        .filter(t => !t.meta && t.brief)
+        .map(t => `- ${t.name}: ${t.brief}`)
+        .join('\n')
+      catalogCache.set(key, v)
+    }
+    return v
+  }
 
   /**
    * 一组工具声明会读写哪些信号（writes 路径展开占位符 + requires）。

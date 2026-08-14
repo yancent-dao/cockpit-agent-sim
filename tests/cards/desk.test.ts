@@ -983,3 +983,57 @@ describe('覆盖层：同一时刻只有一张，进新的先退旧的', () => {
     expect(desk.layout().overlay).toBeUndefined()
   })
 })
+
+/**
+ * ══════════ 布局缓存与净变化通知（2026-08-14 代码审查·第 4 组） ══════════
+ *
+ * layout() 是 cards 状态的纯函数，但每次调用都跑一遍完整的 tryPlace
+ * （排序 + 24 个列位 × 4 行位试放）。而 desk 有 4 个订阅者（车机屏推送、
+ * 检查器、台下清单、规则补回），每次 emit 它们各自独立调一次 layout()——
+ * 一次用户操作的重排放大 3~4 倍。叠加 tick() 每 500ms 无条件 emit，
+ * 桌面完全静止时每秒仍有约 6 次全排列布局 + 2 次整桌跨窗口克隆。
+ */
+describe('layout() 缓存：状态没变就不重算', () => {
+  it('连续调用返回同一个结果对象（命中缓存）', () => {
+    mk({ data: { title: 'A' } })
+    expect(desk.layout()).toBe(desk.layout())
+  })
+
+  it('卡片变化后缓存失效，拿到的是新结果', () => {
+    mk({ data: { title: 'A' } })
+    const first = desk.layout()
+    now += 10
+    mk({ data: { title: 'B' } })
+    const second = desk.layout()
+    expect(second).not.toBe(first)
+    expect(second.cards).toHaveLength(2)
+  })
+
+  it('尺寸调整后缓存也失效', () => {
+    const id = mk({ template: 'weather', size: '1/6', data: { now: {} } }).cardId!
+    const before = desk.layout()
+    desk.resize(id, '1/3')
+    expect(desk.layout()).not.toBe(before)
+  })
+})
+
+describe('tick() 只在真有变化时通知', () => {
+  it('什么都没发生的一轮 tick 不触发订阅者', () => {
+    mk({ data: { title: 'A' } })
+    let calls = 0
+    desk.subscribe(() => calls++)
+    now += 600
+    desk.tick()
+    expect(calls, '静止的桌面不该每 500ms 惊动一次全链路').toBe(0)
+  })
+
+  it('真有卡到期时照常通知', () => {
+    mk({ ttl: 5, data: { title: '短命' } })
+    let calls = 0
+    desk.subscribe(() => calls++)
+    now += 6000
+    desk.tick()
+    expect(calls).toBeGreaterThan(0)
+    expect(desk.layout().cards).toHaveLength(0)
+  })
+})

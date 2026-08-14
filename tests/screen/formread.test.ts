@@ -156,6 +156,46 @@ describe('固定骨架的模板：声明过的块必须有槽位', () => {
   })
 })
 
+/**
+ * 把「声明过的块必须有地方画」从 nav/media 的槽位表**推广到全部模板**。
+ *
+ * 画廊页（gallery.html）当场抓到的：车控卡 tower 档声明了 `vehicle`（车身图），
+ * 而 cardBody 的 control 分支压根不画它 —— 跟车身图上一次死掉一模一样的缺口，
+ * 只是这次躲过了 nav/media 的槽位检查。
+ *
+ * 判法：把某个块**从形态里去掉**，渲染结果必须跟着变。没变说明它从来没画过。
+ */
+describe('每个块都真的落到了渲染上', () => {
+  const probe: Record<string, { data: any; blocks: Record<string, string> }> = {
+    // 块名 → 它出现时渲染结果里必然含有的标记
+    control: { data: { title: '车窗', items: [{ label: '主驾', value: 60 }] },
+      blocks: { vehicle: 'vehslot', items: 'blocks' } },
+    storybook: { data: { line: '一句话', page: 1, total: 3, chapter: 1, ideas: ['x'] },
+      blocks: { art: 'sbart', line: 'sbline', dots: 'sbdots', chapter: 'sbch', lesson: 'sbidea', ctl: 'sbctl' } },
+    weather: { data: { now: { temperature: 25, weather: '晴', wind: 'w', humidity: 1 }, range: { high: 31, low: 22 },
+      hourly: [{ temp: 20, pop: 10 }], forecast: [{ date: 'd', dayTemp: 1, nightTemp: 2 }] },
+      blocks: { temp: 'wxnow', range: 'wxrng', hourly: 'hourly', forecast: 'fc' } },
+    progress: { data: { items: [{ label: 'a', state: 'running', detail: 'd', percent: 50 }] },
+      blocks: { items: 'pgi', bar: 'plfl', detail: '<small>' } },
+    metric: { data: { value: 1, unit: 'u', sub: 's', percent: 50, trend: '↑' },
+      blocks: { value: 'mtv', sub: '<small>', bar: 'plfl', trend: 'mttr' } },
+  }
+
+  it('模板声明的每个块都能在某个档位上看到它的产出', () => {
+    for (const [id, p] of Object.entries(probe)) {
+      const t = CARD_TEMPLATES.find(x => x.id === id)!
+      for (const size of t.sizes!) {
+        const html = body(id, size, p.data)
+        for (const b of CARD_FORMS[id](...dimsOf(size)).blocks) {
+          const mark = p.blocks[b]
+          if (!mark) continue          // 探针没覆盖到的块，交给各自的 describe
+          expect(html, `${id}@${size} 声明了 ${b} 却没画出来`).toContain(mark)
+        }
+      }
+    }
+  })
+})
+
 describe('形态契约的通用不变量', () => {
   /**
    * 形态函数声明了一个块，渲染层就必须有地方画它。声明了却不画

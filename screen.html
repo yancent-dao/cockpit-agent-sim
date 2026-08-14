@@ -348,6 +348,18 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ── 最小档不要标题行（2026-08-14 设计纪律） ── */
+/* 一行灰色标题吃掉三分之一高度还说不出什么。chip 只有 335×187 的画布，
+   身份交给左上角的图标块承担，正文才是主角。
+   不这么做的话指标卡的大数字（--t-hero 76px）直接撑破卡片（实测溢出 13px）。 */
+.t-chip>h3 .ttl{display:none}
+.t-chip>h3{margin-bottom:calc(4px*var(--u))}
+.t-chip .mtv b{font-size:calc(var(--t-lead)*var(--u));line-height:1}
+/* chip 只有 335×187 的画布，一个数字居中就够。撑到 --t-num 时字体的
+   下伸部会把盒子顶出 6px（画廊页量到的），而卡片不可滚动 */
+.t-chip .mtw{justify-content:center;gap:0}
+.t-chip .mtv{align-items:center}
+
 /* ── 新增六张（2026-08-14） ── */
 /* 轮播：横向图卡流。页码是屏内状态 */
 .cw{display:grid;gap:calc(14px*var(--u));flex:1;min-height:0}

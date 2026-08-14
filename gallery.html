@@ -1,0 +1,14 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<title>卡片画廊（开发用）</title>
+<style>
+  body{margin:0;background:#14171C;color:#fff;font:14px/1.6 "PingFang SC",system-ui}
+  h2{font-size:13px;letter-spacing:.14em;color:#8B93A8;margin:34px 0 12px;text-transform:uppercase}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+  figure{margin:0}
+  figcaption{font:11px/1.5 ui-monospace,monospace;color:#8B93A8;margin-top:8px;white-space:pre-line}
+  #wrap{padding:32px 40px 80px;max-width:2600px}
+  /* 卡片按真实像素 ×0.34 缩放，比例是诚实的 */
+  .frame{transform-origin:top left}
+</style></head>
+<body><div id="wrap"></div>
+<script type="module" src="/gallery.ts"></script></body></html>

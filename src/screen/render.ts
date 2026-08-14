@@ -185,7 +185,13 @@ export function cardBody(c: CardView): string {
       // 1/6 卡是 4×2 的比例，4 块单列堆叠每块都被压扁——4 块起在单栏形态下升 2 栏。
       // 只动排布不动 maxItems，跟 summary 的可见条数不冲突
       const cols = shown.length >= 4 && (form.cols ?? 1) === 1 ? 2 : form.cols
-      return blocksBody(shown.map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols })
+      /**
+       * 车身俯视图。**声明了就必须有地方画** —— 这块图上一次死掉就是因为
+       * 形态函数声明了它而渲染层没有槽位（要求 4 行而档位最高 2 行）。
+       * 图形本身是资源，由 main.ts 填进这个槽（它是 SVG 不是逻辑）。
+       */
+      const veh = form.blocks.includes('vehicle') ? '<div class="vehslot"></div>' : ''
+      return veh + blocksBody(shown.map((it: any) => ({ ...it, hot: hot.includes(it.key) })), { cols })
     }
     case 'confirm': {
       /**
@@ -314,25 +320,31 @@ export function cardBody(c: CardView): string {
     case 'progress': {
       const f = formOf('progress', ...dimsOf(c.size))
       const { shown, rest } = truncate(d.items ?? [], f.maxItems)
-      return `<div class="pgw">${shown.map((i: any) => `
-        <div class="pgi">
-          <div class="pgh"><i class="st-${esc(i.state ?? 'running')}"></i>
-            <span>${esc(i.label)}</span></div>
-          ${f.blocks.includes('detail') && i.detail ? `<small>${esc(i.detail)}</small>` : ''}
-          ${f.blocks.includes('bar') && i.percent !== undefined
-            ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(i.percent)))}%"></div></div>` : ''}
-        </div>`).join('')}${rest ? `<div class="more">还有 ${rest} 件</div>` : ''}</div>`
+      // 同 metric：flex 容器里不留空白文本节点（它们会变成匿名 flex item）
+      return `<div class="pgw">${shown.map((i: any) => [
+        `<div class="pgh"><i class="st-${esc(i.state ?? 'running')}"></i><span>${esc(i.label)}</span></div>`,
+        f.blocks.includes('detail') && i.detail ? `<small>${esc(i.detail)}</small>` : '',
+        f.blocks.includes('bar') && i.percent !== undefined
+          ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(i.percent)))}%"></div></div>` : '',
+      ].filter(Boolean).join('')).map(h => `<div class="pgi">${h}</div>`).join('')}${
+        rest ? `<div class="more">还有 ${rest} 件</div>` : ''}</div>`
     }
     /** 指标：一个大数字。它是 chip / tile 两个小档真正的主人 */
     case 'metric': {
       const f = formOf('metric', ...dimsOf(c.size))
-      return `<div class="mtw">
-        <div class="mtv"><b>${esc(d.value)}</b>${d.unit ? `<i>${esc(d.unit)}</i>` : ''}${
-          f.blocks.includes('trend') && d.trend ? `<em class="mttr">${esc(d.trend)}</em>` : ''}</div>
-        ${f.blocks.includes('sub') && d.sub ? `<small>${esc(d.sub)}</small>` : ''}
-        ${f.blocks.includes('bar') && d.percent !== undefined
-          ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(d.percent)))}%"></div></div>` : ''}
-      </div>`
+      /**
+       * **拼数组再 join，不要留换行**。模板字面量里 `${cond ? x : ''}` 之间的
+       * 换行与缩进会留下空白文本节点，而它们在 **flex 容器里会变成匿名 flex item**
+       * ——每个占一行行高。指标卡 chip 档实测因此溢出 6px（画廊页抓到的）。
+       */
+      const parts = [
+        `<div class="mtv"><b>${esc(d.value)}</b>${d.unit ? `<i>${esc(d.unit)}</i>` : ''}${
+          f.blocks.includes('trend') && d.trend ? `<em class="mttr">${esc(d.trend)}</em>` : ''}</div>`,
+        f.blocks.includes('sub') && d.sub ? `<small>${esc(d.sub)}</small>` : '',
+        f.blocks.includes('bar') && d.percent !== undefined
+          ? `<div class="pltrk"><div class="plfl" style="width:${Math.max(0, Math.min(100, Number(d.percent)))}%"></div></div>` : '',
+      ].filter(Boolean)
+      return `<div class="mtw">${parts.join('')}</div>`
     }
     /** 图表：SVG 柱状，纯函数可测 —— 生成式卡的**可预测替代** */
     case 'chart': {

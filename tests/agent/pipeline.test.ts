@@ -456,3 +456,67 @@ describe('不撞死在同一堵墙上', () => {
     expect(r.reply, '一直在换招就不该被熔断').toContain('好了')
   })
 })
+
+/**
+ * ══════════ 快层越权 = 立刻转交，不必再跑一轮 ══════════
+ *
+ * 实拍算账（2026-08-14，设一次导航目的地）：
+ *   快层轮1 9.1s → 调 navigation.setDestination → 越权，**0ms** 被拒
+ *   快层轮2 3.9s → 只剩 handoff，转交
+ *   慢层     1.2s → 真把事办了
+ * 16.7 秒里 13 秒是快层烧的，而它一件事都没做成。
+ *
+ * 第一轮拿到 NOT_AUTHORIZED 的那一刻，**这活归慢层已经是确定的事实**，
+ * 而且越权的那几个工具名就是最好的 suggestedTools —— 第二轮纯属白等。
+ *
+ * 判据是**权限判定的结果**（系统状态），不是话的内容 ——
+ * 跟「pending 确认直达慢层」同一条：状态分支不是意图分支。
+ */
+describe('快层越权就直接转交', () => {
+  it('整轮都越权 → 不再开第二轮', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('navigation_setDestination', { location: '春熙路' })] }),
+      () => ({ text: '不该有这一轮' }),
+    )
+    const slow = fakeLLM(() => ({ text: '好嘞，出发' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    expect((fast as any).seen.length, '越权那一刻就该收手').toBe(1)
+  })
+
+  it('越权的工具名当作转交建议 —— 慢层第一轮就能直接调', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('navigation_setDestination', {})] }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    // 慢层拿到的工具表里要有它（预载），否则慢层还得先 tools.load 一轮
+    const names = ((slow as any).seen[0].tools ?? []).map((t: any) => t.function?.name ?? t.name)
+    expect(names, '越权的工具该被预载进慢层').toContain('navigation_setDestination')
+  })
+
+  /** 只有**整轮**都越权才算——一半成功一半越权说明快层还在干活，别打断它 */
+  it('有一个成功就照常走完 —— 那说明快层还在办事', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [
+        call('climate_set', { targetTemp: 26 }),                 // 有权限
+        call('navigation_setDestination', {}),                   // 越权
+      ] }),
+      () => ({ text: '好了' }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('开到26度顺便导航')
+    expect((fast as any).seen.length, '还有活在干，不该提前收手').toBe(2)
+  })
+
+  it('工具调成功时照常走完两轮', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('climate_set', { targetTemp: 26 })] }),
+      () => ({ text: '好了' }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('开到26度')
+    expect((fast as any).seen.length).toBe(2)
+  })
+})

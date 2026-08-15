@@ -253,6 +253,21 @@ export function createPipeline(deps: PipelineDeps) {
      * 什么错误 —— 机制不是意图分支。换了工具或换了错误码就重新计数：
      * 那是在往前走，不是在打转。
      */
+    /**
+     * 这一轮有哪些工具是**越权**被拒的。
+     *
+     * 实拍算账（一次导航 16.7 秒）：快层轮1 花 9.1 秒决定调
+     * navigation.setDestination，0ms 就被判越权；接着又花 3.9 秒跑第二轮
+     * 才转交 —— 而拿到 NOT_AUTHORIZED 的那一刻，"这活归慢层"已经是确定的事实，
+     * 越权的工具名本身就是最好的 suggestedTools。第二轮纯属白等。
+     *
+     * 记的是**权限判定的结果**（系统状态），不是话的内容 ——
+     * 跟「pending 确认直达慢层」同一条：状态分支不是意图分支。
+     */
+    denied = results
+      .filter(({ result }) => result.code === 'NOT_AUTHORIZED')
+      .map(({ c }) => registry.canonicalName(c.name))
+    allDenied = denied.length > 0 && denied.length === results.length
     // 快层的拒绝是常态（越权 → 转交），不算撞墙，别污染计数
     const bad = opts.quietRejects ? []
       : results.filter(({ result }) => result.status === 'rejected' || result.status === 'unavailable')
@@ -265,6 +280,9 @@ export function createPipeline(deps: PipelineDeps) {
       role: 'tool' as const, tool_call_id: c.id, content: JSON.stringify(result),
     }))
   }
+  /** 上一轮 execRound 里被判越权的工具名，以及"整轮都越权"这个事实 */
+  let denied: string[] = []
+  let allDenied = false
   /** 同一堵墙撞几次就收手。3 次足够模型试完"改参数名/改嵌套/改类型"三种自纠 */
   const WALL_LIMIT = 3
   let lastFailSig = ''
@@ -365,6 +383,15 @@ export function createPipeline(deps: PipelineDeps) {
       // 手头这批工具做完就收手：作废的那一轮不该再开新一轮 LLM，
       // 它的输出只会更没意义，还占着模型额度和时间
       if (stale(g)) return { suggested, said, rounds }
+      /**
+       * **整轮都越权 = 这活归慢层，立刻转交。** 再跑一轮只是等模型
+       * 把同一个结论说一遍（实拍那一轮 3.9 秒）。越权的工具名直接当
+       * 转交建议 —— 慢层第一轮就能调，省掉一次 tools.load。
+       */
+      if (allDenied) {
+        for (const n of denied) if (!suggested.includes(n)) suggested.push(n)
+        return { suggested, said, rounds }
+      }
     }
     return { suggested, said, rounds }
   }

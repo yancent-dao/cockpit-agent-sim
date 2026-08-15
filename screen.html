@@ -203,6 +203,23 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
   background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);letter-spacing:0}
 .cvhost{flex:1;min-height:0;overflow:hidden}
+/* 严重溢出时开滚动：**能滚就别丢**。以前这一档直接剥成纯文字，
+   实拍那份研究报告因此被砍成半份。滚动保住每一个字。
+   行驶中不给（判据在 overflowgate 的纯函数里），所以这个类不会被加上。 */
+.cvscroll .cvhost{overflow-y:auto;overscroll-behavior:contain;
+  /* 底部渐隐：**看不见的能力等于没有能力** —— 不给个信号用户不知道下面还有 */
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 42px),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 42px),transparent)}
+/* 滚到底就把渐隐和提示一起撤掉，不然最后一行永远是灰的、
+   提示也一直在催一个已经做完的动作（.cvend 由滚动事件挂） */
+.cvscroll.cvend .cvhost{-webkit-mask-image:none;mask-image:none}
+.cvscroll.cvend::after{opacity:0}
+.cvscroll::after{transition:opacity .2s var(--ez,var(--ease))}
+.cvscroll .cvhost::-webkit-scrollbar{width:calc(6px*var(--u,1))}
+.cvscroll .cvhost::-webkit-scrollbar-thumb{background:var(--n4,#CBD5E1);border-radius:999px}
+.cvscroll::after{content:'⌄ 可上下滑动';position:absolute;right:calc(18px*var(--u,1));
+  bottom:calc(10px*var(--u,1));font-size:calc(var(--t-cap)*var(--u,1)*.8);
+  color:var(--tx-3);pointer-events:none;letter-spacing:.04em}
 
 /* ── 语义身份：八类各四件套 ──
    诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。

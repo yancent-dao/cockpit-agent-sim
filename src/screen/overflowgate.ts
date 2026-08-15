@@ -28,11 +28,18 @@ export interface FitInput {
   /** 内容的实测宽高 */
   contentW: number
   contentH: number
+  /**
+   * 现在能不能让用户滚。**行驶中不给** —— 滚动要眼睛加手，那是 HMI 大忌。
+   * 不传按不能算：安全侧默认。
+   */
+  canScroll?: boolean
 }
 
 export type FitResult =
   | { do: 'none' }
   | { do: 'scale'; scale: number }
+  /** 让用户滚。**信息一个字不丢**，严重溢出时优于剥成纯文字 */
+  | { do: 'scroll' }
   | { do: 'text' }
 
 const ok = (n: number) => Number.isFinite(n) && n > 0
@@ -46,6 +53,16 @@ export function fitScale(i: FitInput): FitResult {
   // 两个方向都得装下，所以取更小的那个比例
   const k = Math.min(kx, ky)
   if (k >= 1) return { do: 'none' }
-  if (k < MIN_SCALE) return { do: 'text' }
-  return { do: 'scale', scale: k }
+  /**
+   * 轻微溢出仍然缩放：**一屏看全永远优于要动手**。
+   * 为 10% 的溢出让用户去滚是倒退。
+   */
+  if (k >= MIN_SCALE) return { do: 'scale', scale: k }
+  /**
+   * 严重溢出：**能滚就别丢**（2026-08-14 实拍：研究报告被砍成半份）。
+   * 但滚动只管纵向 —— 横向严重溢出时车机上横着滚读长表格是灾难，
+   * 一行读一半再横滚回来比看不全更糟，那种情况仍旧剥到纯文字。
+   */
+  if (i.canScroll && kx >= MIN_SCALE) return { do: 'scroll' }
+  return { do: 'text' }
 }

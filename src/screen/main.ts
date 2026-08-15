@@ -328,16 +328,34 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
     // 先把量到的还原，不然上一轮的 scale 会把这一轮的测量一起缩掉
     host.style.transform = ''
     host.style.width = ''
+    node.classList.remove('cvscroll')
     const fit = fitScale({
       w: host.clientWidth, h: host.clientHeight,
       // +2 的余量留给亚像素舍入 —— 跟 heal.ts 用的是同一个数
       contentW: host.scrollWidth - 2, contentH: host.scrollHeight - 2,
+      // 行驶中不给滚（滚动要眼睛加手）。5km/h 跟 window.set 的升级阈值同一个数
+      canScroll: !(Number(meta.speed) > 5),
     })
     if (fit.do === 'scale') {
       host.style.transformOrigin = 'top left'
       host.style.transform = `scale(${fit.scale})`
       // 缩了之后右边会空出来，把宽度按比例撑回去，别让内容缩成左边一条
       host.style.width = `${100 / fit.scale}%`
+    } else if (fit.do === 'scroll') {
+      /**
+       * **能滚就别丢**。缩到读不了的份上时，滚动保住每一个字 ——
+       * 实拍那份研究报告被一路砍成半份，就是因为这一档以前直接跳到剥文字。
+       *
+       * 「能不能滚」由 fitScale 判（行驶中不给），这里只负责让它真能滚
+       * **并且让人看得出来能滚** —— 看不见的能力等于没有能力。
+       */
+      node.classList.add('cvscroll')
+      // 滚到底就撤掉底部渐隐和提示 —— 不然最后一行永远是灰的，
+      // 而"可上下滑动"一直在催一个已经做完的动作
+      const atEnd = () => node.classList.toggle('cvend',
+        host.scrollTop + host.clientHeight >= host.scrollHeight - 2)
+      host.onscroll = atEnd
+      atEnd()
     } else if (fit.do === 'text') {
       // 缩到读不了的份上 —— 宁可显示得少，不要显示得糊
       root.querySelector('.gen')?.remove()

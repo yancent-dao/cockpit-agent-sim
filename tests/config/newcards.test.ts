@@ -97,3 +97,38 @@ describe('渲染出来有东西', () => {
     expect(body('image', 'box', { title: 'x', caption: 'y' }).length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * ══════════ 像素契约要换成模型数得出来的量 ══════════
+ *
+ * 实拍（2026-08-14）：研究报告在 canvas 卡里反复溢出，日志刷了几十条
+ * 「内容超出」，子 Agent 一轮轮砍内容 —— 它**知道**自己溢出了，
+ * 缺的不是"被告知要少写"，是**能对着算的容量**。
+ *
+ * 「box 745×442」对模型没有意义，它不做排版计算；
+ * 「约 12 行」它数得出来。像素留着（画 SVG 要用），行数是加的那一层。
+ */
+describe('生成式卡的容量契约', () => {
+  const desc = CARD_TEMPLATES.find(t => t.id === 'canvas')!.desc
+
+  it('每个档位都给出能放几行 —— 模型数得出来的量', () => {
+    expect(desc, '得有"行"这个可数单位').toMatch(/\d+\s*行/)
+  })
+
+  it('像素也留着 —— 画 SVG、定 viewBox 要用', () => {
+    expect(desc).toMatch(/\d+×\d+/)
+  })
+
+  it('行数随档位单调增 —— 大档能写得更多', () => {
+    const rows = [...desc.matchAll(/(\d+)×(\d+)\D*?约\s*(\d+)\s*行/g)]
+      .map(m => ({ h: Number(m[2]), lines: Number(m[3]) }))
+    expect(rows.length, '没解析到档位').toBeGreaterThan(3)
+    for (const r of rows) {
+      expect(r.lines, `${r.h}px 算出 ${r.lines} 行，不合理`).toBeGreaterThan(0)
+      expect(r.lines).toBeLessThan(r.h / 10)     // 一行怎么也不止 10px
+    }
+    const byH = rows.slice().sort((a, b) => a.h - b.h)
+    for (let i = 1; i < byH.length; i++)
+      expect(byH[i].lines, '更高的档不该更少行').toBeGreaterThanOrEqual(byH[i - 1].lines)
+  })
+})

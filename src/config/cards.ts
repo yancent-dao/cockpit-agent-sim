@@ -89,8 +89,24 @@ export interface CardTemplate {
 // 右边空一片"（实拍），所以池子里横竖各留几档让模型按内容形状挑。
 // 一行高的 chip/strip/bar 不进池：生成内容塞进 187px 高必然被裁
 const CANVAS_ALLOWED = ['tile', 'box', 'frame', 'wide', 'panel', 'hall', 'tower', 'court', 'stage']
+/**
+ * 一行正文的高度（px）。canvas 的 `:host` 用 `--t-cap`（22px）× 档位系数，
+ * 行高 1.4，取个偏保守的整数 —— 这是**粗估不是精算**，宁可让模型少写。
+ */
+const CANVAS_LINE_PX = 38
+/**
+ * 容量既给像素也给**行数**。
+ *
+ * 实拍（2026-08-14）：研究报告反复溢出，子 Agent 一轮轮砍内容 —— 它
+ * **知道**自己溢出了，缺的不是"被告知要少写"，是**能对着算的容量**。
+ * 「745×442」对模型没有意义（它不做排版计算），「约 11 行」它数得出来。
+ * 像素留着：画 SVG、定 viewBox 要用。
+ */
 const CANVAS_SIZES = CANVAS_ALLOWED
-  .map(z => { const p = pixelsOf(z); return `${z} ${p.w}×${p.h}` }).join('，')
+  .map(z => {
+    const p = pixelsOf(z)
+    return `${z} ${p.w}×${p.h}（约 ${Math.max(1, Math.floor(p.h / CANVAS_LINE_PX))} 行）`
+  }).join('，')
 
 export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'control', label: '车控卡', defaultSize: 'box', sizes: ['tile', 'box', 'tower'],
@@ -239,8 +255,8 @@ export const CARD_TEMPLATES: CardTemplate[] = [
       '**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。' +
       'data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。' +
       '只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。' +
-      '样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：' +
-      CANVAS_SIZES + '。按这个尺寸排版，别指望滚动。',
+      '样式只能写在 style 属性里。**按放得下写**——行数是硬预算，超了就得砍内容而不是缩字号。各档位容量：' +
+      CANVAS_SIZES + '。按这个容量排版：写不下就砍内容、拆成两张卡（用不同的 key），别指望缩字号或滚动。',
     fields: { html: { type: 'string', required: true }, text: { type: 'string', required: true } } },
   /**
    * 可执行的生成式卡 —— 全系统唯一的容器（iframe 沙箱）。
@@ -253,7 +269,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
       '沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。' +
       '可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。' +
       'data: {title, html, text}。text 是纯文字兜底必填。' +
-      '画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + '。',
+      '**按放得下写**，行数是硬预算。各档位容量：' + CANVAS_SIZES + '。',
     fields: { html: { type: 'string', required: true }, text: { type: 'string', required: true } } },
 ]
 

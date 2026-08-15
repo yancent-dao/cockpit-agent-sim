@@ -77,3 +77,57 @@ describe('坏输入不把卡片带崩', () => {
     expect(fitScale({ ...box, contentW: -5, contentH: -5 })).toEqual({ do: 'none' })
   })
 })
+
+/**
+ * ══════════ 闸的次序重排：滚动进来，剥文字退到最后 ══════════
+ *
+ * 实拍（2026-08-14）：研究报告在 canvas 卡里反复溢出，日志刷了几十条
+ * 「内容超出部分用户看不到」，子 Agent 一轮轮砍内容，最后用户看到的是
+ * 半份报告。产品决策：**能滚就别丢**。
+ *
+ * 但滚动不是万能钥匙，次序有讲究：
+ *   · 轻微溢出（缩一点还能读）→ **缩放**。为 10% 的溢出让用户去滚很烦，
+ *     一屏看全永远优于要动手。
+ *   · 严重溢出（缩下去就读不了了）→ **滚动**。信息一个字不丢。
+ *   · 行驶中不给滚 —— 滚动要眼睛加手，那是 HMI 大忌，退回剥文字。
+ *   · 横向严重溢出滚动也救不了（车机上横滚读长表格是灾难）→ 剥文字。
+ */
+describe('严重溢出：能滚就别丢', () => {
+  const tall = { ...box, contentW: 900, contentH: 3000 }   // 纵向三倍，横向没问题
+
+  it('停车时给滚动，不再剥成纯文字', () => {
+    expect(fitScale({ ...tall, canScroll: true })).toEqual({ do: 'scroll' })
+  })
+
+  it('行驶中不给滚 —— 滚动要眼睛加手', () => {
+    expect(fitScale({ ...tall, canScroll: false })).toEqual({ do: 'text' })
+  })
+
+  it('不说能不能滚时按不能算 —— 安全侧默认', () => {
+    expect(fitScale(tall)).toEqual({ do: 'text' })
+  })
+
+  /** 轻微溢出仍然缩放：为一点点溢出让用户去滚是倒退 */
+  it('缩一缩就能读的，还是缩，不劳烦用户滚', () => {
+    const r = fitScale({ ...box, contentW: 900, contentH: 750, canScroll: true })
+    expect(r.do).toBe('scale')
+  })
+
+  /**
+   * 横向严重溢出滚动救不了 —— 车机上横着滚读长表格是灾难，
+   * 而且一行读一半再横滚回来，比看不全更糟。
+   */
+  it('横向严重溢出照样剥文字，滚动只管纵向', () => {
+    expect(fitScale({ ...box, contentW: 4000, contentH: 500, canScroll: true }))
+      .toEqual({ do: 'text' })
+  })
+
+  it('横纵都严重溢出也剥文字', () => {
+    expect(fitScale({ ...box, contentW: 4000, contentH: 3000, canScroll: true }))
+      .toEqual({ do: 'text' })
+  })
+
+  it('装得下的时候 canScroll 不改变任何事', () => {
+    expect(fitScale({ ...box, contentW: 900, contentH: 500, canScroll: true })).toEqual({ do: 'none' })
+  })
+})

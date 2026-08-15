@@ -98,3 +98,42 @@ describe('kind 权重表还在，只是不再单独说了算', () => {
     expect(KIND_WEIGHT.rule).toBeGreaterThan(KIND_WEIGHT.task)
   })
 })
+
+/**
+ * ══════════ 回执走横幅，不占桌面 ══════════
+ *
+ * 产品判断（2026-08-14）：「开车窗、开空调这种显示状态的卡片应当是通知，
+ * 不是卡片吧」。对 —— 而且判据早就写在三通道那段里：
+ * 横幅装的是**对某个动作的解释**，卡片装内容。
+ * "已开窗"是回执不是内容：看一眼就完了，之后没有任何价值。
+ *
+ * 查下来还有两条加重的事实：
+ *   · 车控卡的交互声明**只有滑走/缩放/关闭** —— 滑块是画给人看的，点不了，
+ *     所以它连"可调面板"都不是，纯回执
+ *   · 它的 ttl 不填 = untilDismissed，**永不自动消失**，一直占着位置
+ *
+ * `ack` 跟 `reason` 是同一类字段：都是**对某个动作的元信息**
+ * （为什么没做成 / 做成了没有），不是内容本身。判据仍然只看卡片自己的字段。
+ */
+describe('回执通道', () => {
+  it('标了 ack 的走横幅', () => {
+    expect(channelOf({ ack: true } as any)).toBe('banner')
+  })
+
+  it('没标的照旧进桌面', () => {
+    expect(channelOf({})).toBe('card')
+  })
+
+  /**
+   * **安全压过一切。** 车门没关且已起步是 critical，就算某天有人给它标了 ack，
+   * 也必须上覆盖层 —— 回执可以错过，安全告警不能。
+   */
+  it('critical 压过 ack —— 安全告警不许降级成一条横幅', () => {
+    expect(channelOf({ ack: true, urgency: 'critical' } as any)).toBe('overlay')
+  })
+
+  /** urgent 是"等着用户回应/持续要盯着"，跟"一次性回执"本来就矛盾，但真撞上时以 ack 为准 */
+  it('urgent + ack 仍走横幅 —— 标了 ack 就是明说了它是回执', () => {
+    expect(channelOf({ ack: true, urgency: 'urgent' } as any)).toBe('banner')
+  })
+})

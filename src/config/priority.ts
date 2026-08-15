@@ -65,11 +65,24 @@ export type Channel = 'card' | 'banner' | 'overlay'
  *
  * 判据全部来自卡片自己的字段，不看内容、不匹配关键词。
  */
-export function channelOf(c: { urgency?: string; size?: string; reason?: string; kind?: string }): Channel {
+export function channelOf(
+  c: { urgency?: string; size?: string; reason?: string; kind?: string; ack?: boolean },
+): Channel {
   if (normalizeUrgency(c.urgency) === 'critical') return 'overlay'
   // reason 是「为什么会有这条消息」：被拒了、被挤了、约束不满足、能力没有。
   // 它们都是对某个动作的解释，不是内容本身
-  if (c.reason) return 'banner'
+  /**
+   * ack 是「这件事做完了」——**回执，不是内容**。
+   *
+   * 产品判断（2026-08-14）：「开车窗、开空调这种显示状态的卡片应当是通知，
+   * 不是卡片」。查下来两条事实加重了它：车控卡的交互声明只有滑走/缩放/关闭
+   * （滑块点不了，连"可调面板"都不是），而 ttl 不填 = 永不消失 ——
+   * 一句"开车窗"换来一张常驻卡。
+   *
+   * 它跟 reason 是同一类字段：对某个动作的**元信息**（为什么没做成 /
+   * 做成了没有），判据仍然只看卡片自己的字段。
+   */
+  if (c.reason || c.ack) return 'banner'
   if (c.size === 'full') return 'overlay'
   return 'card'
 }

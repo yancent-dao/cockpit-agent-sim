@@ -3,6 +3,8 @@ import type { Store } from '../core/store'
 import { compare } from '../core/types'
 import type { Desk } from './desk'
 import type { CardRule, BuilderDeps } from '../config/cardRules'
+import { channelOf } from '../config/priority'
+import { ackLine } from './summary'
 
 /**
  * 卡片编排器 —— 桌面 = f(车辆状态)
@@ -17,9 +19,14 @@ export interface OrchestratorOpts {
   rules: CardRule[]
   builders: Record<string, (d: BuilderDeps) => any>
   deps: BuilderDeps
+  /**
+   * 回执通道。标了 `ack` 的规则不建卡，走这里 —— 由装配方接到横幅上。
+   * **分派在 `channelOf`，落点在编排器**：desk 只管布局，不发消息。
+   */
+  onAck?: (a: { key: string; title: string; text: string }) => void
 }
 
-export function createOrchestrator({ store, desk, rules, builders, deps }: OrchestratorOpts) {
+export function createOrchestrator({ store, desk, rules, builders, deps, onAck }: OrchestratorOpts) {
   const unsubs: Array<() => void> = []
 
   const isActive = (r: CardRule) =>
@@ -28,6 +35,15 @@ export function createOrchestrator({ store, desk, rules, builders, deps }: Orche
   /** 确保卡片在场且数据最新。事件卡顺带刷新寿命 */
   const apply = (r: CardRule) => {
     const build = builders[r.card.data]
+    /**
+     * 回执走横幅，不进桌面（产品判断：开车窗开空调是通知不是卡片）。
+     * 分派仍然问 `channelOf` —— 判据只看卡片自己的字段，不看模板名。
+     */
+    if (channelOf({ ack: r.card.ack, urgency: r.card.urgency }) === 'banner') {
+      const d = build ? build(deps) : {}
+      onAck?.({ key: r.card.key, title: String(d?.title ?? ''), text: ackLine(d) })
+      return
+    }
     // 规则不写尺寸就用模板的默认值——改默认尺寸只改一处
     const size = r.card.size ?? CARD_TEMPLATES.find(t => t.id === r.card.template)?.defaultSize as any
     desk.render({

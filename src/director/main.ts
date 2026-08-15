@@ -239,7 +239,19 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   story, image: imageGen })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
-createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start()
+/**
+ * 车控回执走横幅不进桌面（产品判断：开车窗开空调是通知不是卡片）。
+ * 分派在 `channelOf`、落点在编排器，这里只负责把它接到车机屏的横幅上。
+ * tone 用 ok：这是"做成了"，跟拒绝/约束那几条 warn 的分开
+ */
+createOrchestrator({
+  store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state },
+  onAck: a => {
+    if (muted) return              // 让位给别的写者时不出声（单写者一致性）
+    bus.send({ type: 'banner', on: true, reason: 'done', title: a.title, desc: a.text, ttl: 4000 } as any)
+    log('a', `[回执] ${a.title}：${a.text}`)
+  },
+}).start()
 
 let apiKey: string = (import.meta as any).env?.VITE_OPENROUTER_KEY || ''
 let modelId = ''

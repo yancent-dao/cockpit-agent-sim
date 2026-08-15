@@ -51,3 +51,28 @@ export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card
     lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join('、')}（不是没了，有空位自动显示，或${recallHint()}）`)
   return lines.join('\n')
 }
+
+/**
+ * 把车控回执压成横幅能显示的一行。
+ *
+ * 车控卡从「桌面卡片」改走「横幅」之后（产品判断：开车窗开空调是通知不是卡片），
+ * `{title, items:[{label,value,unit}]}` 这个卡片形状要落到一行字上。
+ *
+ * **展示逻辑不是业务逻辑**：它不认识"车窗""空调"，只认 items 的形状 ——
+ * 加一类车控回执不用改这里一个字。
+ */
+/** 横幅是一行，超过这个数就收口。**不默默截断** —— 要说清还有几项 */
+const ACK_MAX = 4
+
+export function ackLine(data: any): string {
+  const items = Array.isArray(data?.items) ? data.items : []
+  const shown = items.slice(0, ACK_MAX)
+  const line = shown.map((i: any) => {
+    if (!i || i.label === undefined || i.value === undefined) return ''
+    // 布尔说人话：屏幕上出现 true/false 是把内部表示漏给用户
+    const v = typeof i.value === 'boolean' ? (i.value ? '开' : '关') : `${i.value}${i.unit ?? ''}`
+    return `${i.label} ${v} `
+  }).filter(Boolean).join('· ')
+  const rest = items.length - shown.length
+  return rest > 0 ? `${line}· 还有 ${rest} 项` : line
+}

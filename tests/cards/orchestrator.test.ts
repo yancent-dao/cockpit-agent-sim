@@ -14,13 +14,23 @@ let desk: ReturnType<typeof createDesk>
 
 const fakeAmap = () => createAmapClient((async () => ({ ok: true, json: async () => ({}) })) as Fetcher, { webKey: 'k' })
 
+/** 本轮收到的回执（车控从卡片改走横幅之后，断言落在这里） */
+let acks: Array<{ key: string; title: string; text: string }> = []
 const boot = () => {
+  acks = []
   const o = createOrchestrator({
     store, desk, rules: CARD_RULES, builders: DATA_BUILDERS,
     deps: { store, amap: fakeAmap() },
+    onAck: a => acks.push(a),
   })
   o.start()
+  acks.length = 0          // 启动即评估会先刷一轮，只看之后用户动作触发的
   return o
+}
+/** 取某个 key 的回执原始 data —— 内容契约仍然要验，只是不再从卡片上读 */
+const ackData = (key: string) => {
+  const r = CARD_RULES.find(x => x.card.key === key)!
+  return DATA_BUILDERS[r.card.data]({ store, amap: fakeAmap() } as any)
 }
 
 beforeEach(() => {
@@ -128,72 +138,93 @@ describe('导航状态卡：navigation.active 驱动，模型零参与', () => {
 })
 
 /* ══════════════ 事件卡规则：全量车控反馈 ══════════════ */
-describe('车控事件卡：调什么显示什么，全部规则驱动', () => {
-  it('空调调温 → 空调卡出现，含开关/温度/风量', () => {
+/**
+ * ══════════ 车控回执：走横幅不进桌面 ══════════
+ *
+ * 2026-08-14 产品判断推翻了旧行为：「开车窗、开空调这种显示状态的卡片
+ * 应当是通知，不是卡片吧」。
+ *
+ * 旧断言是"车控卡出现"，现在的保证更强也更具体：
+ * **不建卡 + 出一条带内容的回执**。builder 的内容契约（只显示非零项、
+ * 颜色显示中文…）一条没丢，只是不再从卡片上读 —— 那些契约跟通道无关。
+ *
+ * 车门/后备箱那条**不在此列**："门还开着"是持续的安全状态不是回执。
+ */
+describe('车控回执：调什么通知什么，不占桌面', () => {
+  it('空调调温 → 出回执不建卡，内容含温度', () => {
     boot()
     store.setDirect('cabin.climate.targetTemp', 26)
-    const c = desk.findByKey('climate')!
-    expect(c).toBeTruthy()
-    expect(c.data.items.find((i: any) => i.label === '温度').value).toBe(26)
+    expect(desk.findByKey('climate'), '不该建卡').toBeUndefined()
+    const a = acks.find(x => x.key === 'climate')!
+    expect(a, '该出回执').toBeTruthy()
+    expect(a.text).toContain('26')
+    expect(ackData('climate').items.find((i: any) => i.label === '温度').value).toBe(26)
   })
 
-  it('座椅加热 → 座椅卡出现，只显示非零项', () => {
+  it('座椅加热 → 只报非零项', () => {
     boot()
     store.setDirect('seat.driver.heating', 2)
-    const c = desk.findByKey('seats')!
-    expect(c).toBeTruthy()
-    const labels = c.data.items.map((i: any) => i.label)
+    expect(desk.findByKey('seats')).toBeUndefined()
+    const labels = ackData('seats').items.map((i: any) => i.label)
     expect(labels).toContain('主驾加热')
-    expect(labels).not.toContain('副驾加热') // 副驾是 0，不显示
+    expect(labels).not.toContain('副驾加热')   // 副驾是 0，不显示
+    expect(acks.some(x => x.key === 'seats')).toBe(true)
   })
 
-  it('氛围灯换色 → 氛围灯卡出现，颜色显示中文', () => {
+  it('氛围灯换色 → 颜色说中文，不是 blue', () => {
     boot()
     store.setDirect('cabin.ambientLight.color', 'blue')
-    const c = desk.findByKey('ambient')!
-    expect(c).toBeTruthy()
-    expect(c.data.items.find((i: any) => i.label === '颜色').value).toBe('蓝色')
+    expect(desk.findByKey('ambient')).toBeUndefined()
+    expect(ackData('ambient').items.find((i: any) => i.label === '颜色').value).toBe('蓝色')
+    expect(acks.find(x => x.key === 'ambient')?.text).toContain('蓝色')
   })
 
-  it('驾驶模式切换 → 驾驶设置卡出现', () => {
+  it('驾驶模式切换 → 出回执', () => {
     boot()
     store.setDirect('vehicle.driveMode', 'sport')
-    const c = desk.findByKey('drive')!
-    expect(c).toBeTruthy()
-    expect(c.data.items.find((i: any) => i.label === '驾驶模式').value).toBe('运动')
+    expect(desk.findByKey('drive')).toBeUndefined()
+    expect(ackData('drive').items.find((i: any) => i.label === '驾驶模式').value).toBe('运动')
+    expect(acks.some(x => x.key === 'drive')).toBe(true)
   })
 
-  it('开车门 → 门/舱盖卡出现，显示开着的那扇', () => {
+  /**
+   * **车门是例外，而且必须是例外。** "门还开着"在动作完成之后仍然要紧 ——
+   * 判据是"做完之后还有没有价值"，不是"这是不是车控"。
+   */
+  it('开车门 → 仍然是卡片，不是一闪而过的通知', () => {
     boot()
     store.setDirect('cabin.door.driver.isOpen', true)
     const c = desk.findByKey('openings')!
-    expect(c).toBeTruthy()
+    expect(c, '车门卡必须在').toBeTruthy()
     expect(c.data.items.map((i: any) => i.label)).toContain('主驾车门')
+    expect(acks.some(x => x.key === 'openings'), '它不是回执').toBe(false)
   })
 })
 
 /* ══════════════ 事件卡规则：车窗反馈 ══════════════ */
-describe('车窗事件卡：位置一动就出现，之后一直留着', () => {
-  it('车窗位置变化 → 车控卡出现', () => {
+describe('车窗回执：一动就通知，桌面不留痕', () => {
+  it('车窗位置变化 → 出回执，说清哪扇开到多少', () => {
     boot()
     store.setDirect('cabin.window.driver.position', 60)
-    const w = desk.findByKey('windows')!
-    expect(w).toBeTruthy()
-    expect(w.template).toBe('control')
-    expect(w.data.items.find((i: any) => i.key === 'driver').value).toBe(60)
+    expect(desk.findByKey('windows'), '不该建卡').toBeUndefined()
+    const a = acks.find(x => x.key === 'windows')!
+    expect(a?.title).toBe('车窗')
+    expect(a.text).toContain('主驾 60%')
+    expect(ackData('windows').items.find((i: any) => i.key === 'driver').value).toBe(60)
   })
 
   /**
-   * 2026-08-12 改：车控反馈卡不再 30 秒定时退场。
-   * 演示时最常见的抱怨是「我还没讲到它就没了」，而 30 这个数字本来就是拍的 ——
-   * 瞟一眼车窗开度要 3 秒，讲解一段要 2 分钟，同一个数字伺候不了两种场合。
-   * 桌面满了自然会挤（七档缩放 + LRU），让空间竞争决定谁退场。
+   * 2026-08-14 推翻了「放着不管也不会自己消失」那条。
+   *
+   * 它当年是对的（30 秒定时退场太短，"我还没讲到它就没了"），但方向错了：
+   * 真正的问题不是"活多久"，是**它根本不该占桌面**。
+   * 现在它是横幅，由横幅队列自己收场 —— 桌面上一秒都不占。
    */
-  it('放着不管也不会自己消失', () => {
+  it('桌面上一张都不留 —— 十分钟后也没有', () => {
     boot()
     store.setDirect('cabin.window.driver.position', 60)
     now += 10 * 60_000; desk.tick()
-    expect(desk.findByKey('windows'), '十分钟后还在').toBeTruthy()
+    expect(desk.layout().cards.filter(c => c.template === 'control')).toHaveLength(0)
   })
 
   /** refreshTtl 机制本身还在，只是暂时没有规则用它 —— 留着给真会过期的卡 */

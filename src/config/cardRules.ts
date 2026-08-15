@@ -47,6 +47,18 @@ export interface CardRule {
      * 显然不该有同样的命运。不写就是 normal。
      */
     urgency?: 'ambient' | 'normal' | 'urgent' | 'critical'
+    /**
+     * **这是一次回执，不是内容。** 标了它就走横幅不进桌面（`channelOf`）。
+     *
+     * 产品判断（2026-08-14）：「开车窗、开空调这种显示状态的卡片应当是通知，
+     * 不是卡片」。两条事实加重了它：车控卡的交互声明只有滑走/缩放/关闭
+     * （滑块画出来点不了），而 ttl 不填 = 永不消失 —— 一句"开车窗"
+     * 换来一张常驻卡，一直占着 1/6 桌面。
+     *
+     * **判据是"动作做完之后还有没有价值"**，不是"这是不是车控"：
+     * 车门/后备箱不标 —— "门还开着"是持续的安全状态。
+     */
+    ack?: boolean
     /** 靠边锚定：nav 靠左。（时钟卡撤掉后暂时只有它用，字段保留给将来的右锚定卡） */
     anchor?: 'left' | 'right'
     /** data builder 名，登记在 DATA_BUILDERS 白名单 */
@@ -88,21 +100,21 @@ export const CARD_RULES: CardRule[] = [
   },
   /* ── 车控事件卡：调什么显示什么，ttl 到期自动退场 ── */
   { id: 'window-feedback', watch: ['cabin.window.*.position'],
-    card: { key: 'windows', template: 'control', data: 'windowCard' } },
+    card: { key: 'windows', template: 'control', ack: true, data: 'windowCard' } },
   { id: 'climate-feedback', watch: ['cabin.climate.*'],
-    card: { key: 'climate', template: 'control', data: 'climateCard' } },
+    card: { key: 'climate', template: 'control', ack: true, data: 'climateCard' } },
   { id: 'seat-feedback', watch: ['seat.*.*'],
-    card: { key: 'seats', template: 'control', data: 'seatCard' } },
+    card: { key: 'seats', template: 'control', ack: true, data: 'seatCard' } },
   { id: 'steering-feedback', watch: ['cabin.steeringWheel.heating'],
-    card: { key: 'steering', template: 'control', data: 'steeringCard' } },
+    card: { key: 'steering', template: 'control', ack: true, data: 'steeringCard' } },
   { id: 'ambient-feedback', watch: ['cabin.ambientLight.*'],
-    card: { key: 'ambient', template: 'control', data: 'ambientCard' } },
+    card: { key: 'ambient', template: 'control', ack: true, data: 'ambientCard' } },
   { id: 'fragrance-feedback', watch: ['cabin.fragrance.*'],
-    card: { key: 'fragrance', template: 'control', data: 'fragranceCard' } },
+    card: { key: 'fragrance', template: 'control', ack: true, data: 'fragranceCard' } },
   { id: 'light-feedback', watch: ['cabin.light.*.state'],
-    card: { key: 'lights', template: 'control', data: 'lightCard' } },
+    card: { key: 'lights', template: 'control', ack: true, data: 'lightCard' } },
   { id: 'drive-feedback', watch: ['vehicle.driveMode', 'vehicle.regenLevel', 'vehicle.suspensionHeight'],
-    card: { key: 'drive', template: 'control', data: 'driveCard' } },
+    card: { key: 'drive', template: 'control', ack: true, data: 'driveCard' } },
   { id: 'opening-feedback', watch: ['cabin.door.*.isOpen', 'cabin.trunk.isOpen', 'cabin.chargePort.isOpen'],
     card: { key: 'openings', template: 'control', urgency: 'urgent', data: 'openingCard' } },
 ]

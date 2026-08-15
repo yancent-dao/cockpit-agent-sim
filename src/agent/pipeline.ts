@@ -244,10 +244,33 @@ export function createPipeline(deps: PipelineDeps) {
         emit({ type: 'rejected', text: result.message ?? '无法执行' })
       return { c, result }
     }))
+    /**
+     * **别撞死在同一堵墙上。** 实拍：模型连着 9 轮用同样的错误参数调
+     * card.show，每轮被同一个错误码拒，40 秒烧完轮次上限，最后一句话没说 ——
+     * 用户问「你有什么功能」，屏幕空白、Agent 沉默。
+     *
+     * 判据只看**同一个工具 + 同一个错误码连续几次**，不看是什么工具、
+     * 什么错误 —— 机制不是意图分支。换了工具或换了错误码就重新计数：
+     * 那是在往前走，不是在打转。
+     */
+    // 快层的拒绝是常态（越权 → 转交），不算撞墙，别污染计数
+    const bad = opts.quietRejects ? []
+      : results.filter(({ result }) => result.status === 'rejected' || result.status === 'unavailable')
+    const sig = bad.length === results.length && bad.length
+      ? bad.map(({ c, result }) => `${registry.canonicalName(c.name)}|${result.code ?? ''}`).sort().join(',')
+      : ''
+    if (sig && sig === lastFailSig) failStreak++
+    else { lastFailSig = sig; failStreak = sig ? 1 : 0 }
     return results.map(({ c, result }) => ({
       role: 'tool' as const, tool_call_id: c.id, content: JSON.stringify(result),
     }))
   }
+  /** 同一堵墙撞几次就收手。3 次足够模型试完"改参数名/改嵌套/改类型"三种自纠 */
+  const WALL_LIMIT = 3
+  let lastFailSig = ''
+  let failStreak = 0
+  const hitWall = () => failStreak >= WALL_LIMIT
+  const resetWall = () => { lastFailSig = ''; failStreak = 0 }
 
   const asstMsg = (reply: { text?: string; toolCalls?: any[] }): Msg => ({
     role: 'assistant', content: reply.text ?? '',
@@ -301,9 +324,20 @@ export function createPipeline(deps: PipelineDeps) {
       catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds } }
       ;(pEntry as any).llmMs = clock() - tChat
       ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
-      if (stale(g)) return { suggested, said, rounds }
+      /**
+       * **作废分两种，处置完全相反**（四条纪律第 3 条）：
+       *   · `discarded`（清空会话）→ 副作用一起作废，立刻收手
+       *   · `stale`（barge-in，用户**追加**了一句）→ **活照干完**，只是不抢麦
+       *
+       * 实拍（2026-08-14）：用户连说「关闭空调」「关闭车窗」，两条都没执行。
+       * 根因就是这一行原来写的是 `if (stale(g)) return` —— 模型已经决定要调
+       * climate.set 了，却因为用户又说了一句而整轮丢掉。设计写的是
+       * 「旧慢层活照干完、话术降级」，慢层做到了，快层没有；
+       * 而快层挂的恰恰是车控这类**用户明说要做的事**，丢掉最刺眼。
+       */
+      if (discarded(g)) return { suggested, said, rounds }
       // 话术立刻出——先斩后奏的"奏"不等工具返回（车控是本地毫秒级，查询类模型自会下一轮再说）
-      if (reply.text) {
+      if (reply.text && !stale(g)) {
         said = reply.text
         trace.push({ type: 'reply', at: clock(), text: reply.text, layer: 'fast' })
         emit({ type: 'speaking', text: reply.text, layer: 'fast' })
@@ -328,6 +362,9 @@ export function createPipeline(deps: PipelineDeps) {
         },
       }, { quietRejects: true })
       commit(g, ...toolMsgs)
+      // 手头这批工具做完就收手：作废的那一轮不该再开新一轮 LLM，
+      // 它的输出只会更没意义，还占着模型额度和时间
+      if (stale(g)) return { suggested, said, rounds }
     }
     return { suggested, said, rounds }
   }
@@ -530,9 +567,24 @@ export function createPipeline(deps: PipelineDeps) {
         },
       })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
+      // 撞墙了：直接跳到最后一轮 —— 那一轮撤工具，模型只能说话。
+      // 复用既有机制而不是新开一条"熔断"路径，收场仍然是一句人话
+      if (hitWall() && rounds < sm.maxRounds - 1) rounds = sm.maxRounds - 1
     }
-    if (!stale(g)) emit({ type: 'done' })
-    return { said: '', rounds, stop: 'maxRounds' }
+    /**
+     * 轮次耗尽而模型一句话没说 —— **沉默是最糟的收场**。
+     * 实拍：连着 9 轮同一个错误，最后「无话术」，屏幕空白、Agent 不吭声，
+     * 用户完全不知道发生了什么。
+     *
+     * 说什么归模型，但"这一轮没办成"是**系统事实**不是内容决策，
+     * 兜一句诚实的，跟拒绝必须携带人话原因是同一条。
+     */
+    const fallback = '这件事我没弄成，换个说法我再试试'
+    if (!stale(g)) {
+      emit({ type: 'speaking', text: fallback, layer: 'slow' })
+      emit({ type: 'done' })
+    }
+    return { said: fallback, rounds, stop: 'maxRounds' }
   }
 
   async function run(text: string): Promise<TurnResult> {
@@ -540,6 +592,7 @@ export function createPipeline(deps: PipelineDeps) {
     // 空输入直接返回：送进模型它会凭空发挥（实测会无端开窗）
     if (!text.trim()) return { reply: '', trace, rounds: 0, stopReason: 'empty' }
     const g = ++gen
+    resetWall()          // 新一轮从零开始数，别把上一轮的墙带过来
     deps.onTurnStart?.()
     trace.push({ type: 'userInput', at: clock(), text })
     boundary = thread.length

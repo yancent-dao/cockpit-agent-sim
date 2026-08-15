@@ -550,6 +550,19 @@ export function createDesk(clock: () => number = Date.now) {
     if (input.ttl === undefined || input.ttl === null)
       return { status: 'rejected', code: 'TTL_REQUIRED', message: '卡片必须声明 ttl，否则会在桌面堆积' }
 
+    /**
+     * **同 key 就是同一张卡。**
+     *
+     * key 的复用语义以前只有 `render()` 认，`show()` 只是把 key 记下来、
+     * 照样 `++seq` 建新卡 —— 而 `card.show` 的 Tool 描述明明写着
+     * 「同 key 的卡会被复用而不是重复新建」。描述与实现分裂，模型照着描述做也没用。
+     *
+     * 实拍后果：子 Agent 因为内容溢出反复重排报告，屏幕上堆了 6 张同一份
+     * 报告的不同版本（用户原话"满屏幕都是"）。key 的语义现在全局只有一条。
+     */
+    if (input.key && [...cards.values(), ...staged.values()].some(c => c.key === input.key))
+      return render(input as ShowInput & { key: string })
+
     // 尺寸三级：显式（调用方）> 建议（内容反查）> 模板默认。
     // 有 items 的卡按条数挑最小能装下的档——3 条候选不该占半屏空一半
     const tmplDefault = CARD_TEMPLATES.find(t => t.id === input.template)?.defaultSize as Size | undefined

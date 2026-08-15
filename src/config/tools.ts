@@ -707,7 +707,17 @@ export const TOOLS: ToolDef[] = [
           '另外还有 untilTaskEnd（本轮任务一结束就退，适合中间步骤的临时提示）' +
           '和 persistent（常驻，几乎用不到）。',
       },
-      key: { type: 'string', desc: '逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建' },
+      /**
+       * key 一直是声明着的，但原描述只说「逻辑标识，如 windows、nav。同 key 的卡
+       * 会被复用」—— 模型读不出"我重排报告时该复用它"。实拍后果：子 Agent
+       * 因为内容溢出反复重排，每次建新卡，屏幕上堆了 6 张同一份报告的不同版本
+       * （用户原话"满屏幕都是"）。**说清什么时候该用，比有这个参数更重要。**
+       */
+      key: { type: 'string',
+        desc: '这张卡的身份。**同一份内容改版、重排、换尺寸重发时必须用同一个 key**，' +
+          '屏幕上就是刷新那一张而不是再堆一张 —— 不给 key 每次都是新卡，' +
+          '试排几次桌面就满了。上下两篇、左右两栏这种真的是两张，才给不同的 key。' +
+          '常规用法同理：windows、nav 这类固定内容一直用同一个 key。' },
       data: { type: 'object', desc: '卡片内容，字段取决于模板' },
       kind: { type: 'enum', values: ['task', 'system'], desc: '卡片类别，默认 task' },
       urgency: {

@@ -231,6 +231,73 @@ describe('barge-in：turn 世代戳', () => {
     expect(late?.text).toContain('迟到补充')
   })
 
+  /**
+   * ══════════ 插话不该把上一句的活丢掉 ══════════
+   *
+   * 实拍（2026-08-14）：用户连说「关闭空调」「关闭车窗」，**两条都没执行**，
+   * 日志里连快层都没启动。根因在快层：`stale(g)` 的检查落在
+   * chat 返回之后、**执行工具之前**，于是模型已经决定要调 climate.set 了，
+   * 却因为用户又说了一句而整轮丢掉。
+   *
+   * 设计写的是「旧慢层活照干完、话术降级」—— 慢层做到了，快层没有。
+   * 而快层挂的正是车控这类**用户明说要做的事**，丢掉它最刺眼。
+   *
+   * 判据要分清两种作废（四条纪律第 3 条）：
+   *   · barge-in（用户**追加**一句）→ 活照干完，只是不抢麦
+   *   · reset（清空会话）→ 副作用一起作废
+   */
+  it('插话之后，上一句快层已经决定的工具照样执行', async () => {
+    let release!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { release = res })
+    const fast = fakeLLM(
+      () => gate,                                       // turn1 快层挂起
+      () => ({ text: '好' }),                            // turn2 快层
+    )
+    const slow = fakeLLM(() => ({ text: '' }), () => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    const t1 = p.run('关闭空调')
+    await new Promise(r => setTimeout(r, 0))
+    const t2 = p.run('关闭车窗')                          // barge-in
+    // turn1 的快层这时才返回：它要关空调
+    // 用温度不用 power：power 的初始值就是 false，断言会假绿
+    release({ text: '', toolCalls: [call('climate_set', { targetTemp: 26 })] })
+    await Promise.all([t1, t2])
+    expect(store.getTarget('cabin.climate.targetTemp'), '插话不该把空调这件事丢掉').toBe(26)
+  })
+
+  it('但迟到的那一轮不再开新一轮 —— 干完手头的就收手', async () => {
+    let release!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { release = res })
+    const fast = fakeLLM(
+      () => gate,
+      () => ({ text: '好' }),
+      () => ({ text: '不该有这一轮' }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }), () => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    const t1 = p.run('关闭空调')
+    await new Promise(r => setTimeout(r, 0))
+    const t2 = p.run('关闭车窗')
+    release({ text: '', toolCalls: [call('climate_set', { targetTemp: 26 })] })
+    await Promise.all([t1, t2])
+    // turn1 快层：一轮（挂起那次）。turn2 快层：一轮。总共 2 次 chat
+    expect((fast as any).seen.length, '作废的那轮不该再开新一轮 LLM').toBe(2)
+  })
+
+  it('清空会话是另一回事：副作用一起作废', async () => {
+    let release!: (r: LLMReply) => void
+    const gate = new Promise<LLMReply>(res => { release = res })
+    const fast = fakeLLM(() => gate)
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    const t1 = p.run('关闭空调')
+    await new Promise(r => setTimeout(r, 0))
+    p.reset()
+    release({ text: '', toolCalls: [call('climate_set', { targetTemp: 26 })] })
+    await t1
+    expect(store.getTarget('cabin.climate.targetTemp'), '重置之后不该有幽灵副作用').toBe(22)
+  })
+
   it('旧慢层的消息插在新用户输入之前——时间线不交错', async () => {
     let release!: (r: LLMReply) => void
     const gate = new Promise<LLMReply>(res => { release = res })
@@ -333,5 +400,59 @@ describe('快层上下文', () => {
     await p.run('   ')
     expect(fast.seen).toHaveLength(0)
     expect(slow.seen).toHaveLength(0)
+  })
+})
+
+/**
+ * ══════════ 同一个调用连着失败，要停下来说人话 ══════════
+ *
+ * 实拍（2026-08-14）：用户问「你有什么功能」，模型连着 **9 轮**用同样的错误
+ * 参数调 card.show，每轮都被同一个 DATA_SHAPE_MISMATCH 拒，**40 秒**烧完
+ * 轮次上限，最后「无话术」—— 屏幕空白，Agent 一声不吭。
+ *
+ * 参数形状那半边已经在 registry 收了（`{item:[…]}` 展平），但**不撞死在
+ * 同一堵墙上**是独立的一条：下次换个 Tool、换个错误码，同样会烧满轮次。
+ *
+ * 判据只看**同一个工具 + 同一个错误码连续几次**，不看是什么工具、
+ * 什么错误 —— 机制不是意图分支。
+ */
+describe('不撞死在同一堵墙上', () => {
+  const badCall = () => ({
+    text: '', toolCalls: [call('card_show', { template: 'list' })],   // 缺 data，必被拒
+  })
+
+  it('同一个调用连着失败就收手，不烧满轮次', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    // 给足够多的相同失败回合；真收手的话后面这些根本用不到
+    const slow = fakeLLM(...Array.from({ length: 9 }, () => badCall))
+    const { p } = mk(fast, slow)
+    await p.run('你有什么功能')
+    expect((slow as any).seen.length, '撞三次墙就该停，不该跑满 9 轮').toBeLessThanOrEqual(5)
+  })
+
+  it('收手时必须说人话 —— 沉默是最糟的收场', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      badCall, badCall, badCall, badCall,
+      () => ({ text: '这张卡我排不出来，换个说法试试' }),
+    )
+    const { p, events } = mk(fast, slow)
+    const r = await p.run('你有什么功能')
+    const spoke = events.some(e => e.type === 'speaking')
+    expect(spoke || !!r.reply, '不能一句话都不说').toBe(true)
+  })
+
+  /** 换了工具或换了错误码就不算"撞同一堵墙"，正常重试 */
+  it('错误码变了就重新计数 —— 那是在往前走不是在打转', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('card_show', { template: 'list' })] }),          // 缺 data
+      () => ({ text: '', toolCalls: [call('window_set', { window: 'driver' })] }),         // 缺 position
+      () => ({ text: '', toolCalls: [call('climate_set', { targetTemp: 99 })] }),          // 超范围
+      () => ({ text: '好了' }),
+    )
+    const { p } = mk(fast, slow)
+    const r = await p.run('随便干点什么')
+    expect(r.reply, '一直在换招就不该被熔断').toContain('好了')
   })
 })

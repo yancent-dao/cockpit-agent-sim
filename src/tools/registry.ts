@@ -360,8 +360,31 @@ export function createRegistry(
     return { status: 'ok', changed, ...(code && { code, message }) }
   }
 
+  /**
+   * `{item:[…]}` → `[…]`，递归。
+   *
+   * 模型把数组序列化成 XML 式的 `<items><item>…</item></items>` 是常见退化，
+   * 实拍撞了两次：`story.begin` 的 pages、`card.show` 的 data.items ——
+   * 后者**连着重试 9 轮、40 秒、一句话没说**。`card.show` 的 data 是自由对象，
+   * schema 管不到里面，只能在这一层收。
+   *
+   * 跟宽容 `"24"` → 24 是同一类：**协议适配，不是意图分支** ——
+   * 判据只看数据形状（对象**只有** item 一个键），不看是哪个工具、什么语义。
+   * 多一个键就说明那是真数据，一个字节都不动。
+   */
+  const unwrapItem = (v: any): any => {
+    if (Array.isArray(v)) return v.map(unwrapItem)
+    if (!v || typeof v !== 'object') return v
+    const keys = Object.keys(v)
+    if (keys.length === 1 && keys[0] === 'item') return unwrapItem(v.item)
+    const out: Record<string, any> = {}
+    for (const k of keys) out[k] = unwrapItem(v[k])
+    return out
+  }
+
   async function invoke(name: string, args: Record<string, any> = {}, ctx: InvokeCtx = {}): Promise<ToolResult> {
     currentRound = ctx.round ?? ++autoRound
+    args = unwrapItem(args)
     const t = resolve(name)
     if (!t) return { status: 'unavailable', code: 'UNKNOWN_TOOL', message: `没有名为 ${name} 的能力` }
     name = t.name // 归一化成内部点号形式：鉴权白名单、token 绑定都按这个来

@@ -33,6 +33,110 @@ beforeEach(() => {
   reg = createRegistry(store, TOOLS, () => now)
 })
 
+
+/**
+ * ══════════ `{item:[…]}` 是模型对数组的常见退化，展平它 ══════════
+ *
+ * 实拍两次同一个病：`story.begin` 的 pages 传成 `{item:[…]}`（补了 items
+ * schema 之后好了），`card.show` 的 data.items 又是 `{item:[…]}`，而且
+ * **连着重试 9 轮**、40 秒、最后一句话没说 —— 用户问"你有什么功能"，
+ * 屏幕空白，Agent 沉默。
+ *
+ * `card.show` 的 data 是自由对象，schema 管不到里面，只能在这一层收。
+ * 展平它跟宽容 `"24"` → 24 是同一类：**协议适配，不是意图分支** ——
+ * 判据只看数据形状（只有一个 item 键、值是数组或同形对象），
+ * 不看它是哪个工具、什么语义。
+ */
+describe('数组的退化写法', () => {
+  let desk: ReturnType<typeof createDeskForTest>
+  let r2: ReturnType<typeof createRegistry>
+  beforeEach(() => {
+    desk = createDeskForTest()
+    r2 = createRegistry(store, TOOLS, () => now, { desk })
+  })
+
+  it('数组参数写成 {item:[…]} 时展平，不是硬拒', async () => {
+    const r = await r2.invoke('vehicle.getState', { paths: { item: ['vehicle.speed'] } } as any)
+    expect(r.status, '展平之后应该能过').toBe('ok')
+  })
+
+  it('嵌套在自由对象里的也展平 —— card.show 的 data 就是自由对象', async () => {
+    const r = await r2.invoke('card.show', {
+      template: 'list', size: 'box', ttl: 'untilDismissed',
+      data: { title: 'x', items: { item: [{ label: 'a' }, { label: 'b' }] } },
+    } as any)
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.find(c => c.template === 'list')!.data.items).toHaveLength(2)
+  })
+
+  it('套了两层也展平 —— 实拍模型急了会 {item:{item:[…]}}', async () => {
+    const r = await r2.invoke('vehicle.getState',
+      { paths: { item: { item: ['vehicle.speed'] } } } as any)
+    expect(r.status).toBe('ok')
+  })
+
+  /** 只认"只有 item 一个键"这一种形状，别把真数据改坏 */
+  it('还有别的键就不动 —— 那是真数据不是退化', async () => {
+    const r = await r2.invoke('card.show', {
+      template: 'list', size: 'box', ttl: 'untilDismissed',
+      data: { title: 'x', items: [{ label: 'a', item: ['真数据'], note: 'n' }] },
+    } as any)
+    expect(r.status).toBe('ok')
+    const card = desk.layout().cards.find(c => c.template === 'list')!
+    expect(card.data.items[0].item).toEqual(['真数据'])
+    expect(card.data.items[0].note).toBe('n')
+  })
+})
+
+
+/**
+ * ══════════ 改版同一张卡要能表达"还是那张" ══════════
+ *
+ * 实拍（2026-08-14）：让 Agent 做一份研究报告，后台子 Agent 因为内容溢出
+ * **反复重排**，每次重排都建一张新卡 —— 屏幕上最后堆了 6 张同一份报告的
+ * 不同版本（上/下/①/②…），用户的原话是"满屏幕都是"。
+ *
+ * `desk.render` 的 key 机制本来就在，handler 也一直在透传 `args.key`，
+ * **但 card.show 的参数表里没有声明它** —— 模型看不见的参数等于不存在。
+ * 加一条声明就是"加数据不加代码"。
+ */
+describe('card.show 的 key：同一张卡的新版本', () => {
+  let desk: ReturnType<typeof createDeskForTest>
+  let r2: ReturnType<typeof createRegistry>
+  beforeEach(() => {
+    desk = createDeskForTest()
+    r2 = createRegistry(store, TOOLS, () => now, { desk })
+  })
+
+  it('schema 里要有 key，而且说清它是干嘛的', () => {
+    const s = r2.schemas('openai').find(x => x.function.name === 'card_show')!
+    const key = s.function.parameters.properties.key
+    expect(key, 'key 没声明，模型永远用不到').toBeTruthy()
+    expect(key.description, '得说清是"同一张卡的新版本"').toMatch(/同一张|改版|重排|替换/)
+  })
+
+  it('同 key 两次 show = 刷新那一张，不是堆两张', async () => {
+    const one = (title: string) => r2.invoke('card.show', {
+      template: 'generic', size: 'box', ttl: 'untilDismissed',
+      key: 'report', data: { title, text: title },
+    } as any)
+    await one('报告 v1')
+    await one('报告 v2')
+    const cards = desk.layout().cards.filter(c => c.template === 'generic')
+    expect(cards, '同一个 key 只该有一张').toHaveLength(1)
+    expect(cards[0].data.title).toBe('报告 v2')
+  })
+
+  it('不同 key 各是各的 —— 报告的上下两篇仍然并存', async () => {
+    for (const k of ['up', 'down'])
+      await r2.invoke('card.show', {
+        template: 'generic', size: 'box', ttl: 'untilDismissed',
+        key: k, data: { title: k, text: k },
+      } as any)
+    expect(desk.layout().cards.filter(c => c.template === 'generic')).toHaveLength(2)
+  })
+})
+
 /* ────────────────────────── 注册表与 Schema ────────────────────────── */
 describe('注册表', () => {
   it('「黑」级 Tool 永不暴露给 Agent —— 永久禁区', async () => {

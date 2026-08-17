@@ -5,6 +5,7 @@ import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
 import { createAmapClient, type Fetcher } from '../../src/integrations/amap'
+import { createOpenMeteoClient } from '../../src/integrations/openmeteo'
 import { createDesk } from '../../src/cards/desk'
 import { CARD_TEMPLATES } from '../../src/config/cards'
 
@@ -1560,6 +1561,66 @@ describe('weather.query', () => {
     expect(res.status).toBe('ok')
     expect((res.data as any).now.weather).toBe('晴')
     expect((res.data as any).forecast[0].dayWeather).toBe('多云')
+  })
+
+  /**
+   * ══════════ 2026-08-15 换源：Open-Meteo 优先，高德兜底 ══════════
+   *
+   * 换源的唯一原因是**逐小时**（高德不给，hourly 块干等了一个月）。
+   * 地名解析仍归高德 geocode（它最擅长中文地名），坐标喂给 Open-Meteo ——
+   * 注意高德是 lng,lat 序、Open-Meteo 要 lat,lon，接反了查出来是海里。
+   */
+  const OM_BODY = {
+    current: { time: '2026-08-17T11:15', temperature_2m: 22.5, relative_humidity_2m: 93,
+      weather_code: 63, wind_speed_10m: 7.1, wind_direction_10m: 353, apparent_temperature: 26 },
+    hourly: {
+      time: Array.from({ length: 24 }, (_, i) => `2026-08-17T${String(i).padStart(2, '0')}:00`),
+      temperature_2m: Array.from({ length: 24 }, () => 22),
+      weather_code: Array.from({ length: 24 }, () => 63),
+      precipitation_probability: Array.from({ length: 24 }, () => 60),
+    },
+    daily: { time: ['2026-08-17'], weather_code: [63], temperature_2m_max: [25.4], temperature_2m_min: [21.8] },
+  }
+  const geoOnly = () => fakeAmap({
+    '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.06,30.65', formatted_address: '成都市', adcode: '510100' }] },
+  })
+
+  it('装配了 Open-Meteo 就走它：坐标序转对，卡上带 hourly 和 range', async () => {
+    const desk = createDeskForTest()
+    const omSeen: string[] = []
+    const om = createOpenMeteoClient((async (url: string) => {
+      omSeen.push(url); return { ok: true, json: async () => OM_BODY }
+    }) as Fetcher)
+    const r = createRegistry(store, TOOLS, () => now, { desk, amap: geoOnly(), openmeteo: om })
+    const res = await r.invoke('weather.query', { location: '成都' })
+    expect(res.status).toBe('ok')
+    // 高德给 '104.06,30.65'（lng,lat）→ Open-Meteo 要 latitude=30.65
+    expect(omSeen[0]).toContain('latitude=30.65')
+    expect(omSeen[0]).toContain('longitude=104.06')
+    expect((res.data as any).now.weather).toBe('中雨')
+    const card = desk.layout().cards.find(c => c.template === 'weather')!
+    expect(card.data.hourly.length, 'hourly 块终于有数据了').toBeGreaterThanOrEqual(12)
+    expect(card.data.range).toEqual({ high: 25.4, low: 21.8 })
+    expect(card.data.title).toContain('成都')
+  })
+
+  /** 换源不能变成单点：Open-Meteo 挂了退回高德，跟"地图挂了退静态图"同一条 */
+  it('Open-Meteo 挂了 → 高德兜底，照样出结果', async () => {
+    const om = createOpenMeteoClient((async () => { throw new Error('断网') }) as Fetcher)
+    const r = createRegistry(store, TOOLS, () => now, {
+      openmeteo: om,
+      amap: fakeAmap({
+        '/v3/geocode/geo': { status: '1', geocodes: [{ location: '104.06,30.65', formatted_address: '成都市', adcode: '510100' }] },
+        '/v3/weather/weatherInfo': {
+          status: '1',
+          lives: [{ city: '成都市', weather: '晴', temperature: '30', winddirection: '东', windpower: '3', humidity: '50', reporttime: 't' }],
+          forecasts: [{ casts: [{ date: '2026-08-11', dayweather: '晴', nightweather: '晴', daytemp: '33', nighttemp: '24' }] }],
+        },
+      }),
+    })
+    const res = await r.invoke('weather.query', { location: '成都' })
+    expect(res.status).toBe('ok')
+    expect((res.data as any).now.weather).toBe('晴')
   })
 
   it('查不到这个地方：unavailable', async () => {

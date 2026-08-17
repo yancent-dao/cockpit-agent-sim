@@ -4,6 +4,7 @@
  * 单独一个文件才不会把通用机制（registry.ts）冲垮。
  */
 import type { Store } from '../core/store'
+import type { OpenMeteoClient } from './openmeteo'
 import { shortPlace } from '../text'
 import type { Desk } from '../cards/desk'
 import { AmapError, thinPolyline, type AmapClient, type CarType } from './amap'
@@ -81,7 +82,8 @@ const vehicleProfile = (store: Store) => ({
 })
 
 export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk?: () => Desk | undefined,
-                                  round?: () => number, storage?: { get(k: string): string | null; set(k: string, v: string): void }) {
+                                  round?: () => number, storage?: { get(k: string): string | null; set(k: string, v: string): void },
+                                  openmeteo?: OpenMeteoClient) {
   /**
    * 常用地址。**持久化的**（2026-08-15 改）——原来是内存数组，
    * "记住了，家"刷新页面就忘，而 places.save 的描述一直承诺
@@ -407,13 +409,34 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 去搜会命中内蒙古一个叫"一零四"的地方——实测撞到过，卡片标题成了
         // "阿拉善左旗一零四天气"
         const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location))
+        // geocode 只打一次，adcode 和坐标都从同一份结果取 ——
+        // 打两次既多一个网络往返，也会把函数式假响应（并行查多地）吃错位
+        const geo = isCoord ? null : await amap.geocode(args.location)
         const area = isCoord
           ? await amap.areaOf(String(args.location).trim())
-          : await amap.geocode(args.location).then(x => x && { adcode: x.adcode, name: x.formattedAddress })
+          : geo && { adcode: geo.adcode, name: geo.formattedAddress }
         const g = area?.adcode ? { adcode: area.adcode, formattedAddress: area.name } : null
         if (!g?.adcode)
           return { status: 'unavailable', code: 'PLACE_NOT_FOUND', message: '找不到这个地方的天气', suggestion: '换个更常见的地名试试' }
-        const [now, forecast] = await Promise.all([amap.weatherNow(g.adcode), amap.weatherForecast(g.adcode)])
+        /**
+         * 2026-08-15 换源：**Open-Meteo 优先，高德兜底**。
+         * 换的唯一原因是逐小时（高德不给，hourly 块干等了一个月）；
+         * 地名解析仍归高德 geocode —— 它最擅长中文地名，各家干最擅长的。
+         * 兜底跟"活地图挂了退静态图"同一条：换源不能把天气变成单点。
+         */
+        let hourly, range
+        let now: any, forecast: any
+        const loc = isCoord ? String(args.location).trim() : geo?.location
+        if (openmeteo && loc) {
+          try {
+            // 高德坐标是 lng,lat 序，Open-Meteo 要 lat,lon —— 接反了查出来是海里
+            const [lng, lat] = String(loc).split(',').map(Number)
+            const w = await openmeteo.forecast(lat, lng)
+            now = w.now; forecast = w.forecast; hourly = w.hourly; range = w.range
+          } catch { /* 挂了走下面的高德兜底 */ }
+        }
+        if (!now)
+          [now, forecast] = await Promise.all([amap.weatherNow(g.adcode), amap.weatherForecast(g.adcode)])
         // 查询结果自动上屏——模型只负责播报，不用（也不该）自己搬数据建卡。
         // key 带 adcode：问"周边哪个县最凉快"会并行查一串地方，写死 key 会让它们
         // 互相覆盖，屏幕上只剩最后一个，跟播报的对比结论对不上。
@@ -425,9 +448,11 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         desk?.()?.render({
           key: `weather:${g.adcode}`, family: 'weather', round: round?.(),
           template: 'weather', kind: 'task', ttl: 'untilDismissed',
-          data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast },
+          data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast,
+                  ...(hourly && { hourly }), ...(range && { range }) },
         })
-        return { status: 'ok', data: { city: g.formattedAddress, now, forecast } }
+        return { status: 'ok', data: { city: g.formattedAddress, now, forecast,
+          ...(hourly && { hourly: hourly.slice(0, 6) }) } }
       } catch (e) {
         return amapFail(e, '天气查询')
       }

@@ -18,6 +18,7 @@ import { createNavHandlers } from '../integrations/navHandlers'
 import { createMediaHandlers, CANDIDATES } from '../integrations/mediaHandlers'
 import { createStoryHandlers, type ImageGen } from '../integrations/storyHandlers'
 import type { StoryStore } from '../state/story'
+import type { OpenMeteoClient } from '../integrations/openmeteo'
 import type { DomainState } from '../state/domain'
 import type { Prefs } from '../state/prefs'
 import { createMemoryHandlers } from '../integrations/memoryHandlers'
@@ -54,6 +55,8 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
    * registry 在 node 测试里没有它 —— 按 Fetcher 的老办法注入。
    */
   voices?: () => Array<{ name: string; female?: boolean }>
+  /** Open-Meteo 天气（2026-08-15 换源）。缺省时 weather.query 走高德老路 */
+  openmeteo?: OpenMeteoClient
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -212,7 +215,7 @@ export function createRegistry(
     },
 
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
-    ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound, deps.storage),
+    ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound, deps.storage, deps.openmeteo),
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),

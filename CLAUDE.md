@@ -54,7 +54,8 @@ src/tools/     注册表 · 能力授权 · 返回契约 · MRTR 确认流      
 src/integrations/  三方适配。分两层，预算口径不同：
                ① 协议客户端 —— **每个 < 200 行**，超了通常是业务逻辑漏进来了
                   radio 100 · news 93 · itunes 71 · pexels 66 · websearch 62
-                  orimage 112（OpenRouter 图像）· h5book 186（绘本导出打包）
+                  orimage 112（OpenRouter 图像）· h5book 213（绘本导出打包，超 13 行——
+                    它其实不是协议客户端是导出打包器，迟早单独开档）· openmeteo 140
                   ⚠ amap 373 **超标**：高德一家提供搜索/路径/天气/行政区/静态图/公交
                     十几个接口，接口数量本身就比别家高一个量级。要拆的话按接口族
                     分文件（amap/place.ts、amap/route.ts…），暂时记在这里不装看不见
@@ -557,12 +558,15 @@ Radio Browser 的**主域名 404**、只有具体节点能用而且会挂；News
 
 ## 已知待办
 
-- **天气逐时条设计了但没有数据源**（2026-08-14）：高德 `weatherInfo?extensions=all`
-  只返回 4 天的日/夜温度，**不给逐小时**。渲染层的 `hourly` 块已经就位（有数据就画），
-  形态函数也声明了它，但目前 wide 档跟 tile 档的实际差别只落在 `detail`
-  （体感/风力/湿度）上。**绝不从多日数据插值造假** —— 那是编数据。
-  要真做得换数据源，而那要新 Key，跟「运行时依赖为零」的例外口径冲突，
-  等有明确产品决策再说
+- ~~天气逐时条没有数据源~~（2026-08-15 已解决）：产品拍板换 **Open-Meteo**
+  （`src/integrations/openmeteo.ts`）。选它不是数据最好（和风才是），是它踩中
+  本项目第一性约束：**零 Key 零注册**（单文件版 import.meta.env 的坑直接绕开）、
+  官方 CORS、168 小时逐时。链路：高德 geocode（中文地名它最擅长）→ 坐标喂
+  Open-Meteo（注意高德 lng,lat 序 vs Open-Meteo lat,lon）→ hourly/range 上卡；
+  **高德天气留兜底**（跟"活地图挂了退静态图"同一条）。已知短板产品已接受：
+  无政府恶劣天气预警、无生活指数。数据许可 **CC BY 4.0**，署名义务记在这里
+  （对外演示材料提 data by Open-Meteo）。实测坑：hourly 从当天 00:00 给起，
+  必须按响应自带的 current.time 对齐切片，与本机时钟无关
 
 - **工具超时的残留窗口**（2026-08-14 审查）：`registry.invoke` 的 60 秒总超时仍是
   `Promise.race`，落败的 handler 收不到取消信号。本轮把 CP 客户端的 per-request

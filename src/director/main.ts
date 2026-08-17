@@ -21,6 +21,7 @@ import { createRadioClient } from '../integrations/radio'
 import { createNewsClient } from '../integrations/news'
 import { createPexelsClient } from '../integrations/pexels'
 import { createWebSearch } from '../integrations/websearch'
+import { createOpenMeteoClient } from '../integrations/openmeteo'
 import { createPipeline } from '../agent/pipeline'
 import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
@@ -240,7 +241,9 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
   // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
   storage: defaultStorage(),
-  voices: () => zhVoices((speechSynthesis?.getVoices?.() ?? []) as any) })
+  voices: () => zhVoices((speechSynthesis?.getVoices?.() ?? []) as any),
+  // 天气换源（2026-08-15）：零 Key 零注册，官方 CORS，高德留兜底
+  openmeteo: createOpenMeteoClient(fetch.bind(window)) })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
 /**

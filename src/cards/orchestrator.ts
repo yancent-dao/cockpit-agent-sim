@@ -28,6 +28,13 @@ export interface OrchestratorOpts {
 
 export function createOrchestrator({ store, desk, rules, builders, deps, onAck }: OrchestratorOpts) {
   const unsubs: Array<() => void> = []
+  /**
+   * 回执去重（2026-08-17 实拍：「打开车窗」刷出 21 条一模一样的回执）。
+   * 车窗有过渡仿真，current 每 tick 渐变一步、watch 订阅每步都触发；而回执
+   * 文本按**目标值**拼，21 条一字不差。有净变化才通知（四条纪律第 2 条）——
+   * 同 key 的回执内容没变就不再发，变了（用户又动了一次）照发。
+   */
+  const lastAck = new Map<string, string>()
 
   const isActive = (r: CardRule) =>
     (r.when ?? []).every(([path, op, value]) => compare(store.get(path), op, value))
@@ -41,7 +48,10 @@ export function createOrchestrator({ store, desk, rules, builders, deps, onAck }
      */
     if (channelOf({ ack: r.card.ack, urgency: r.card.urgency }) === 'banner') {
       const d = build ? build({ ...deps, changed }) : {}
-      onAck?.({ key: r.card.key, title: String(d?.title ?? ''), text: ackLine(d) })
+      const text = ackLine(d)
+      if (lastAck.get(r.card.key) === text) return
+      lastAck.set(r.card.key, text)
+      onAck?.({ key: r.card.key, title: String(d?.title ?? ''), text })
       return
     }
     // 规则不写尺寸就用模板的默认值——改默认尺寸只改一处

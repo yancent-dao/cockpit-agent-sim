@@ -101,3 +101,31 @@ describe('回执只报刚变的那件事', () => {
     expect(acks.find(x => x.key === 'lights')!.text.length).toBeGreaterThan(0)
   })
 })
+
+  /**
+   * ══════════ 回执要有净变化才发（2026-08-17 实拍） ══════════
+   *
+   * 「打开车窗」刷出 21 条一模一样的回执 —— 车窗有过渡仿真，current
+   * 每 tick 渐变一步，watch 的订阅每步都触发一次 apply。而回执文本是按
+   * **目标值**拼的，21 条一字不差。四条纪律第 2 条（有净变化才通知）
+   * 在 ack 通道上漏了：同 key 的回执内容没变就不该再发。
+   */
+  it('过渡仿真的每个 tick 不再各刷一条回执 —— 同内容只发一次', () => {
+    const { store, acks } = boot()
+    store.set('cabin.window.driver.position', 100)
+    for (let i = 0; i < 20; i++) store.tick(50)   // 模拟过渡的 20 帧
+    const same = acks.filter(a => a.title === '车窗')
+    expect(same.length, '21 条一模一样的回执是刷屏不是通知').toBe(1)
+  })
+
+  it('内容真变了照样发 —— 去重的是重复，不是后续动作', () => {
+    const { store, acks } = boot()
+    store.set('cabin.window.driver.position', 100)
+    for (let i = 0; i < 20; i++) store.tick(50)
+    store.set('cabin.window.driver.position', 0)
+    for (let i = 0; i < 20; i++) store.tick(50)
+    const texts = acks.filter(a => a.title === '车窗').map(a => a.text)
+    expect(texts.length).toBe(2)
+    expect(texts[0]).toContain('主驾 100%')
+    expect(texts[1]).toContain('主驾 0%')
+  })

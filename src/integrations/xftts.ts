@@ -12,16 +12,19 @@
 export const XF_ENDPOINT = 'wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6'
 
 /**
- * 免费档超拟人音色。value 带 xf: 前缀——跟系统音色同住一个下拉框，靠它分流。
- * 实测（2026-08-16 错误码 10163 附带的账号音色清单）：文档写的 x6_*_flow
- * 在实际账号里是 **x5_*_flow**；x6 系是 _pro 后缀、要在控制台单独开权限。
+ * 音色清单对齐账号控制台的「已开通」页（2026-08-16 逐个真调验证，7/7 通）。
+ * 讯飞的音色授权是**按账号**的：schema 里合法 ≠ 你能用，没开通的报 11200
+ * licc limit —— 车机屏的回退横幅会把这个说出来。换账号如果清单不同，
+ * 改这里就行（数据不是代码）。x6 _pro 系音质高于 x5 _flow 系。
  */
 export const XF_VOICES = [
-  { value: 'xf:x5_lingxiaoxuan_flow', label: '聆小璇（讯飞云·女）' },
-  { value: 'xf:x5_lingxiaoyue_flow', label: '聆小玥（讯飞云·女）' },
-  { value: 'xf:x5_lingfeiyi_flow', label: '聆飞逸（讯飞云·男）' },
+  { value: 'xf:x6_lingxiaoxuan_pro', label: '聆小璇（讯飞云·女）' },
+  { value: 'xf:x6_lingxiaoyue_pro', label: '聆小玥（讯飞云·女）' },
+  { value: 'xf:x6_lingyuyan_pro', label: '聆玉言（讯飞云·女）' },
+  { value: 'xf:x5_lingxiaotang_flow', label: '聆小糖（讯飞云·女）' },
+  { value: 'xf:x5_lingyuzhao_flow', label: '聆玉昭（讯飞云·女）' },
+  { value: 'xf:x6_lingfeiyi_pro', label: '聆飞逸（讯飞云·男）' },
 ]
-
 export const isCloudVoice = (name: string) => name.startsWith('xf:')
 export const xfVcn = (name: string) => name.replace(/^xf:/, '')
 

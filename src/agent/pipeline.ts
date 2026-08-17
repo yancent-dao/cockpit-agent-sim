@@ -139,6 +139,7 @@ const isMeta = (name: string, meta: string) => name === meta || name === meta.re
 const SELF_FIX_CODES = new Set([
   'INVALID_PARAMS', 'DATA_SHAPE_MISMATCH', 'TTL_REQUIRED', 'SIZE_NOT_SUPPORTED',
   'UNKNOWN_TOOL', 'UNKNOWN_SKILL', 'EMPTY_CARD', 'TASK_NOT_FOUND', 'SYSTEM_TEMPLATE',
+  'LAST_STOP',
 ])
 
 /** epoch 摘要消息的识别标 */
@@ -369,7 +370,12 @@ export function createPipeline(deps: PipelineDeps) {
       commit(g, asstMsg(reply))
       const toolMsgs = await execRound(g, reply.toolCalls, fm.tools, trace, {
         'agent.handoff': args => {
-          suggested = (args?.suggestedTools ?? []).filter((n: string) => registry.list().some(t => t.name === registry.canonicalName(n)))
+          // {item:…} 是模型对数组的常见退化（三条模型接口纪律第 1 条），这里也要收
+          const st = args?.suggestedTools
+          const arr: string[] = Array.isArray(st) ? st
+            : st && typeof st === 'object' && Object.keys(st).length === 1 && 'item' in st ? [st.item].flat()
+            : []
+          suggested = arr.filter((n: string) => registry.list().some(t => t.name === registry.canonicalName(n)))
           // say = 勾选顺带的话术。实拍：话术轮模型只调 handoff 不给 text，轮次用尽
           // 一声没吭——说话不能依赖模型"调完还记得说"，并进同一个调用
           const say = String(args?.say ?? '').trim()
@@ -553,11 +559,14 @@ export function createPipeline(deps: PipelineDeps) {
      *
      * 注入只进**本轮视图**不落 thread —— 它是运行时状态注释，不是对话事实。
      */
+    // 措辞刻意不点名 agent.handoff —— 否定句里的工具名对小模型是正向引力：
+    // 实拍（打开后备箱）提示里写着"别调它"，慢层第一轮偏偏就调了它。
+    // 它真调了由下面的拦截器扶正（LAST_STOP），这里只说正道
     if (handover.length)
       view.push({ role: 'system', content:
         `刚才的 NOT_AUTHORIZED 是权限受限的快层同事被拒，不是你——` +
-        `**你有权限**，工具已装进你手边：${handover.join('、')}。直接调它把事办完；` +
-        `agent.handoff 不是你的工具（你是最后一站），别调它。` })
+        `**你有权限**，工具已装进你手边：${handover.join('、')}。` +
+        `直接调它把事办完，转交到你为止，不用再转给任何人。` })
     let rounds = 0
     while (rounds < sm.maxRounds) {
       rounds++
@@ -600,6 +609,17 @@ export function createPipeline(deps: PipelineDeps) {
       const am = asstMsg(reply)
       commit(g, am); view.push(am)
       const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
+        /**
+         * 慢层迷路时扶正（2026-08-16 实拍「打开后备箱」）：它会模仿共享 thread
+         * 里快层的调用记录来调 agent.handoff，以前吃 UNKNOWN_TOOL 就放弃，
+         * 嘴上让用户"在屏幕上点确认"——那个确认弹窗根本不存在。
+         * 回执指路（SELF_FIX 不上横幅），下一轮把工具真调起来。
+         */
+        'agent.handoff': (): ToolResult => ({
+          status: 'rejected', code: 'LAST_STOP',
+          message: '转交到你为止，没有下一棒。要用的工具就在手边，直接调它把事办完',
+          suggestion: '需要用户确认的工具，调了系统会自动在屏幕上弹确认',
+        }),
         'tools.load': mkLoader(loaded),
         'skill.use': mkSkillUse(loaded),
         'task.delegate': delegateInterceptor,

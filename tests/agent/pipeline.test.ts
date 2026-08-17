@@ -546,7 +546,10 @@ describe('越权转交的接力棒', () => {
     expect(hint.role).toBe('system')
     expect(hint.content).toContain('navigation.setDestination')
     expect(hint.content).toMatch(/你有权限|你可以直接调/)
-    expect(hint.content).toContain('agent.handoff')   // 明说别学快层调它
+    // 别点名 agent.handoff —— 小模型对否定句里的名字有正向引力，
+    // 实拍（打开后备箱）：提示里写着"别调它"，慢层第一轮偏偏就调了它
+    expect(hint.content).not.toContain('agent.handoff')
+    expect(hint.content).not.toContain('agent_handoff')
   })
 
   it('接力说明不落 thread —— 下一轮不该还带着', async () => {
@@ -585,5 +588,49 @@ describe('handoff 即收尾', () => {
     const { p } = mk(fast, slow)
     await p.run('做个计算器')
     expect((fast as any).seen.length).toBe(1)
+  })
+})
+
+
+/**
+ * ══════════ 慢层迷路时要被扶正，不是撞 UNKNOWN_TOOL（2026-08-16 实拍） ══════════
+ *
+ * 「打开后备箱」：慢层模仿共享 thread 里快层的调用记录去调 agent_handoff，
+ * 吃了个 UNKNOWN_TOOL 之后直接放弃，嘴上让用户"在屏幕上点确认"——
+ * 那个确认弹窗根本不存在（trunk.set 从没被调，确认流从没被触发）。
+ * 给它一个能自纠的回执（SELF_FIX，不上横幅），下一轮把灰工具真调起来。
+ */
+describe('慢层的 handoff 扶正', () => {
+  it('慢层调 agent_handoff 拿到纠偏回执而非 UNKNOWN_TOOL，且还有下一轮', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('trunk.set', { state: 'open' })] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('agent_handoff', { say: '无权调用', suggestedTools: { item: 'trunk.set' } })] }),
+      () => ({ text: '', toolCalls: [call('trunk.set', { target: 'trunk', action: 'open' })] }),
+      () => ({ text: '要打开后备箱吗' }),
+    )
+    const { p } = mk(fast, slow)
+    await p.run('打开后备箱')
+    const toolMsgs = p.thread.filter(m => m.role === 'tool').map(m => String(m.content))
+    expect(toolMsgs.some(t => t.includes('UNKNOWN_TOOL') && t.includes('agent_handoff'))).toBe(false)
+    const fix = toolMsgs.find(t => t.includes('LAST_STOP'))
+    expect(fix, '纠偏回执要指路：直接调工具').toContain('直接调')
+    expect((slow as any).seen.length, '纠偏后还有下一轮去真办事').toBeGreaterThanOrEqual(2)
+  })
+
+  it('灰工具由慢层调起时确认流照常走 —— 屏幕上有确认可点', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('trunk.set', { state: 'open' })] }))
+    const slow = fakeLLM(() => ({ text: '', toolCalls: [call('trunk.set', { target: 'trunk', action: 'open' })] }))
+    const { p, events } = mk(fast, slow)
+    await p.run('打开后备箱')
+    expect(events.some(e => e.type === 'confirming'), '灰工具要弹确认，不是让用户找不存在的按钮').toBe(true)
+  })
+
+  it('快层 handoff 的 suggestedTools 收 {item:…} 退化 —— 照样预载给慢层', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent_handoff', { say: '转交', suggestedTools: { item: 'navigation.setDestination' } })] }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    const names = ((slow as any).seen[0].tools ?? []).map((t: any) => t.function.name)
+    expect(names).toContain('navigation_setDestination')
   })
 })

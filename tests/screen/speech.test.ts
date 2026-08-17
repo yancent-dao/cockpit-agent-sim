@@ -234,3 +234,31 @@ describe('voiceAct：主对话话术该不该念', () => {
     expect(voiceAct({ s: 'listening', text: '停一下', who: 'user' }, true)).toBe('ignore')
   })
 })
+
+/**
+ * ══════════ 快慢两层的话术会撞车（2026-08-17 实拍） ══════════
+ *
+ * 快层先说、慢层跟着说，旧行为是后到的直接掐断前一句 —— 快层话音未落
+ * 被拦腰切断，而慢层说的常常还是同一句话（校验通过时原文接力），
+ * 等于剪断一句去重复一遍。
+ *
+ * 三条规则：说话中 → 排队（一句话说完整）；同轮同文 → 不重念；
+ * 用户插话 → 立刻闭嘴清队（hush 语义不变）。
+ */
+import { queueAct } from '../../src/screen/speech'
+
+describe('queueAct：两层话术的排队与去重', () => {
+  it('没在说话 → 直接说', () => {
+    expect(queueAct('空调开好了', false, '')).toBe('speak')
+  })
+  it('正在说话 → 排队，不掐断', () => {
+    expect(queueAct('外面在下雨，慢点开', true, '空调开好了')).toBe('queue')
+  })
+  it('同一句话不念两遍 —— 慢层原文接力是最常见的撞车形态', () => {
+    expect(queueAct('主驾车窗已关。', true, '主驾车窗已关。')).toBe('skip')
+    expect(queueAct('主驾车窗已关。', false, '主驾车窗已关。')).toBe('skip')
+  })
+  it('空文本不说也不排队', () => {
+    expect(queueAct('  ', false, '')).toBe('skip')
+  })
+})

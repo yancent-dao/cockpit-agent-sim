@@ -1,7 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
-import { pickVoice, estimateMs, litUpto, voiceAct } from './speech'
+import { pickVoice, estimateMs, litUpto, voiceAct, queueAct } from './speech'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
@@ -1118,7 +1118,7 @@ function playStream(gen: number, onFail: (e: unknown) => void): { push(c: Uint8A
     sb.addEventListener('updateend', pump)
     pump()
   })
-  a.onended = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
+  a.onended = () => { if (gen === agGen) agDone(); URL.revokeObjectURL(a.src) }
   return {
     push: c => { q.push(c); pump() },
     end: () => { ended = true; pump() },
@@ -1126,7 +1126,23 @@ function playStream(gen: number, onFail: (e: unknown) => void): { push(c: Uint8A
   }
 }
 
+/** 同轮的待播队列与已播文本。撞车的两层话术在这排队，用户插话整队清空 */
+const agQueue: string[] = []
+let agLastText = ''
 function speakAgent(text: string) {
+  const act = queueAct(text, agSpeaking, agLastText)
+  if (act === 'skip') return
+  if (act === 'queue') { if (agQueue.length >= 3) agQueue.shift(); agQueue.push(text.trim()); return }
+  agLastText = text.trim()
+  speakNow(agLastText)
+}
+/** 这一句念完了：队里还有就接着念 —— 一句话说完整，不掐断 */
+function agDone() {
+  agSpeaking = false
+  const next = agQueue.shift()
+  if (next) { agLastText = next; speakNow(next) }
+}
+function speakNow(text: string) {
   const gen = ++agGen
   agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
@@ -1147,7 +1163,7 @@ function speakAgent(text: string) {
         if (gen !== agGen) return   // 已被 hush/下一句接管，作废
         const a = new Audio(URL.createObjectURL(blob))
         agAudio = a
-        const done = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
+        const done = () => { if (gen === agGen) agDone(); URL.revokeObjectURL(a.src) }
         a.onended = done
         a.onerror = () => fail('音频播放失败')
         a.play().catch(fail)
@@ -1164,7 +1180,7 @@ function speakAgentLocal(text: string, gen: number) {
   u.lang = 'zh-CN'; u.rate = sbRate()
   if (!sbVoice) refreshVoice()
   if (sbVoice) u.voice = sbVoice as any
-  const done = () => { if (gen === agGen) agSpeaking = false }
+  const done = () => { if (gen === agGen) agDone() }
   u.onend = done; u.onerror = done
   agSpeaking = true
   speechSynthesis.speak(u)
@@ -1172,6 +1188,7 @@ function speakAgentLocal(text: string, gen: number) {
 let agSpeaking = false
 /** 用户开口 → Agent 闭嘴。只在确实是 Agent 在说时才 cancel，别误伤绘本正文 */
 function hushAgent() {
+  agQueue.length = 0; agLastText = ''   // 新 turn 开始：队清空，去重窗口也翻篇
   if (!agSpeaking) return
   agGen++; agSpeaking = false
   agCancel?.(); agCancel = null

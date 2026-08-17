@@ -147,3 +147,15 @@ export function voiceAct(m: VoiceMsg, storyReading: boolean): VoiceAct {
   if (m.who !== 'agent' || !m.text) return 'ignore'
   return (m.s === 'speaking' || m.s === 'confirming' || m.s === 'rejected') ? 'speak' : 'ignore'
 }
+
+/**
+ * 两层话术的排队与去重（2026-08-17 实拍：快层话音未落被慢层拦腰切断，
+ * 而慢层说的常常还是同一句 —— 校验通过时原文接力）。
+ * 说话中 → 排队说完整；同轮同文 → 不重念；空文本 → 不动。
+ * 用户插话的打断不走这里 —— hush 是 voiceAct 的事，语义不变。
+ */
+export function queueAct(text: string, speaking: boolean, lastText: string): 'speak' | 'queue' | 'skip' {
+  const t = text.trim()
+  if (!t || t === lastText) return 'skip'
+  return speaking ? 'queue' : 'speak'
+}

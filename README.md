@@ -100,6 +100,133 @@ flowchart TB
 
 完整需求见 [docs/需求规格说明书_v1.0.md](docs/需求规格说明书_v1.0.md),工程约束见 [docs/工程约束_v1.1.md](docs/工程约束_v1.1.md),各轮设计文档见 [docs/superpowers/specs/](docs/superpowers/specs/)。
 
+## 能力清单（67 Tools）
+
+权限三级:**彩** 直接执行 · **灰** 二次确认(MRTR 流) · **黑** 永不注册给 Agent。⚡ = 标了 `fast: true`,快层小模型可先斩后奏。清单由 `src/config/tools.ts` 声明——**加能力 = 加数据,不加代码**。
+
+<details>
+<summary><b>车控与车辆状态</b>（18 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `vehicle.getState` | 读车辆当前状态 | 彩 | ⚡ |
+| `capability.list` | 屏上显示能力目录 | 彩 |  |
+| `window.set` | 控制车窗开度 | 彩 | ⚡ |
+| `climate.set` | 空调温度风量出风 | 彩 | ⚡ |
+| `seat.set` | 座椅加热通风调节 | 彩 | ⚡ |
+| `steeringWheel.set` | 方向盘加热 | 彩 | ⚡ |
+| `sunroof.set` | 天窗开合 | 彩 | ⚡ |
+| `mirror.set` | 后视镜折叠与加热 | 彩 | ⚡ |
+| `airPurifier.set` | 空气净化器开关档位 | 彩 | ⚡ |
+| `wiper.set` | 雨刷挡位 | 彩 | ⚡ |
+| `door.set` | 开关车门，需确认 | 灰 |  |
+| `trunk.set` | 开关后备箱，需确认 | 灰 |  |
+| `chargePort.set` | 开关充电口，需确认 | 彩 |  |
+| `childLock.set` | 儿童锁开关 | 彩 | ⚡ |
+| `ambientLight.set` | 氛围灯开关颜色亮度 | 彩 | ⚡ |
+| `fragrance.set` | 香氛开关香型浓度 | 彩 | ⚡ |
+| `light.set` | 大灯与后备箱灯 | 彩 | ⚡ |
+| `driveSetting.set` | 驾驶模式回收悬架 | 彩 | ⚡ |
+
+</details>
+
+<details>
+<summary><b>导航 · 地图 · 天气（高德 + Open-Meteo）</b>（12 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `navigation.search` | 搜地点出候选列表 | 彩 |  |
+| `navigation.setDestination` | 设目的地开始导航 | 彩 |  |
+| `navigation.searchAlong` | 沿途周边搜服务点 | 彩 |  |
+| `navigation.compareRoutes` | 多路线方案对比 | 彩 |  |
+| `navigation.control` | 暂停恢复结束导航 | 彩 |  |
+| `navigation.getStatus` | 读导航当前状态 | 彩 |  |
+| `map.control` | 地图缩放/全览/2D3D/朝向 | 彩 |  |
+| `region.districts` | 查周边区县列表 | 彩 |  |
+| `places.save` | 存常用地址 | 彩 |  |
+| `places.list` | 列常用地址 | 彩 |  |
+| `places.remove` | 删一条常用地址 | 彩 |  |
+| `weather.query` | 查城市天气预报 | 彩 | ⚡ |
+
+</details>
+
+<details>
+<summary><b>媒体（传输控制共用，内容源各自）</b>（17 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `media.control` | 播放暂停上下曲 | 彩 | ⚡ |
+| `media.volume` | 调音量 | 彩 | ⚡ |
+| `media.seek` | 跳播放进度 | 彩 |  |
+| `media.mode` | 循环随机播放模式 | 彩 | ⚡ |
+| `media.queue` | 看播放队列 | 彩 |  |
+| `media.favorite` | 收藏当前曲目 | 彩 |  |
+| `media.favorites` | 列收藏列表 | 彩 |  |
+| `music.search` | 搜歌不播 | 彩 |  |
+| `music.play` | 搜歌并播放入队 | 彩 | ⚡ |
+| `radio.search` | 搜网络电台 | 彩 |  |
+| `radio.play` | 搜台并播放 | 彩 | ⚡ |
+| `news.headlines` | 今日头条新闻 | 彩 | ⚡ |
+| `news.search` | 按话题搜新闻 | 彩 | ⚡ |
+| `news.read` | 念一条新闻正文 | 彩 |  |
+| `video.search` | 搜短视频 | 彩 |  |
+| `video.play` | 搜视频并播放 | 彩 | ⚡ |
+| `web.search` | 联网搜索现查 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>语音与屏幕</b>（9 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `voice.speak` | 主动播报一句话 | 彩 |  |
+| `voice.ask` | 向用户提问出选择卡 | 彩 |  |
+| `voice.config` | 换朗读音色、调语速 | 彩 |  |
+| `card.show` | 建卡片上屏 | 彩 |  |
+| `card.update` | 更新卡片数据 | 彩 |  |
+| `card.resize` | 调卡片大小 | 彩 |  |
+| `card.dismiss` | 撤掉卡片 | 彩 |  |
+| `card.focus` | 高亮提示一张卡 | 彩 |  |
+| `desktop.getLayout` | 读桌面布局 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>记忆</b>（3 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `memory.remember` | 记住用户偏好 | 彩 |  |
+| `memory.forget` | 删掉记住的偏好 | 彩 |  |
+| `memory.list` | 列出记住的事 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>AI 儿童绘本「路上的故事」</b>（7 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `story.profile` | 记下孩子的名字年龄和这次想讲明白的道理 | 彩 |  |
+| `story.cast` | 把孩子的照片画成故事主角 | 彩 |  |
+| `story.begin` | 开一本新绘本，讲第一章 | 彩 |  |
+| `story.continue` | 接着孩子说的往下写一章 | 彩 |  |
+| `story.finish` | 收尾成书 | 彩 |  |
+| `story.export` | 把这本书做成可以发给别人的网页 | 彩 |  |
+| `story.page` | 翻页/暂停（屏幕按钮直调，不叫醒模型） | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>安全边界</b>（1 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `brake.apply` | 黑名单占位：刹车这类工具**永不注册给 Agent**，留在配置里只为标出禁区 | 黑 |  |
+
+</details>
+
 ## Key 与第三方服务
 
 | 服务 | 用途 | Key | 条款须知 |

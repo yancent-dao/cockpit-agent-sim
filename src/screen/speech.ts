@@ -123,3 +123,27 @@ export function litUpto(len: number, elapsed: number, totalMs: number): number {
   if (!Number.isFinite(totalMs) || totalMs <= 0) return len
   return Math.max(0, Math.min(len, Math.floor(len * (elapsed / totalMs))))
 }
+
+/* ══════════ 主对话话术的开口决策（2026-08-16 实拍补） ══════════
+ *
+ * speechSynthesis 以前只给绘本接了，主对话的 voice 消息一直只写屏不出声。
+ * 念不念是决策，放这配测试；张嘴（speechSynthesis 调用）留在车机屏。
+ */
+export interface VoiceMsg { s?: string; text?: string | null; who?: string }
+export type VoiceAct = 'speak' | 'hush' | 'ignore'
+
+/**
+ * 一条 voice 总线消息 → 念 / 闭嘴让位 / 不动。
+ *
+ * - Agent 的播报、确认问句、报错都念 —— 确认问句尤其不能哑：
+ *   灰权限的问题不出声，用户根本不知道要答
+ * - 用户开口（listening）→ hush：barge-in 的屏端半边，Agent 立刻闭嘴
+ * - 绘本正在朗读时一律不动：cancel 是单通道全局的，会误伤正文
+ *   并触发"读完翻页"的副作用；Agent 的衔接话术上屏就够了，不抢麦
+ */
+export function voiceAct(m: VoiceMsg, storyReading: boolean): VoiceAct {
+  if (storyReading) return 'ignore'
+  if (m.who === 'user') return m.text ? 'hush' : 'ignore'
+  if (m.who !== 'agent' || !m.text) return 'ignore'
+  return (m.s === 'speaking' || m.s === 'confirming' || m.s === 'rejected') ? 'speak' : 'ignore'
+}

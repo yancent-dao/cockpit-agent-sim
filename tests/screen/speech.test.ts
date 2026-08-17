@@ -195,3 +195,42 @@ describe('真实 voice 对象的属性在原型上', () => {
     expect(l[0].female).toBe(true)
   })
 })
+
+/**
+ * ══════════ 主对话话术要念出来（2026-08-16 实拍） ══════════
+ *
+ * 「车机上没有 TTS，avatar 后面展示的文字没有播报」—— speechSynthesis
+ * 整条链路只给绘本接了，主对话的 voice 消息一直只写屏不开口。
+ *
+ * 决策抽成纯函数：一条 voice 总线消息进来，念（speak）、闭嘴让位（hush）、
+ * 还是不动（ignore）。绘本正在朗读时 Agent 的衔接话术不抢麦 ——
+ * 画外音把正文顶掉，孩子听到的故事就断了。
+ */
+import { voiceAct } from '../../src/screen/speech'
+
+describe('voiceAct：主对话话术该不该念', () => {
+  it('Agent 播报有文字 → 念', () => {
+    expect(voiceAct({ s: 'speaking', text: '空调调到24度了', who: 'agent' }, false)).toBe('speak')
+  })
+  it('确认问句也要念 —— 灰权限的问题不出声，用户根本不知道要答', () => {
+    expect(voiceAct({ s: 'confirming', text: '确定要打开车门吗', who: 'agent' }, false)).toBe('speak')
+  })
+  it('拒绝带文字 → 念；不带文字 → 不动', () => {
+    expect(voiceAct({ s: 'rejected', text: '出错了：额度不足', who: 'agent' }, false)).toBe('speak')
+    expect(voiceAct({ s: 'rejected' }, false)).toBe('ignore')
+  })
+  it('用户开口（listening）→ 闭嘴让位，这是 barge-in 的屏端半边', () => {
+    expect(voiceAct({ s: 'listening', text: '等一下', who: 'user' }, false)).toBe('hush')
+  })
+  it('thinking 的 null 光标、idle 的清空 → 不动', () => {
+    expect(voiceAct({ s: 'thinking', text: null }, false)).toBe('ignore')
+    expect(voiceAct({ s: 'idle', text: '' }, false)).toBe('ignore')
+    expect(voiceAct({ s: 'executing' }, false)).toBe('ignore')
+  })
+  it('绘本正在朗读 → Agent 话术不抢麦（只上屏不出声）', () => {
+    expect(voiceAct({ s: 'speaking', text: '好，接着讲', who: 'agent' }, true)).toBe('ignore')
+  })
+  it('绘本正在朗读，用户开口也不 hush —— cancel 会误伤正文并触发翻页副作用', () => {
+    expect(voiceAct({ s: 'listening', text: '停一下', who: 'user' }, true)).toBe('ignore')
+  })
+})

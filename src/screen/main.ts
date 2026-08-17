@@ -1,7 +1,7 @@
 import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
-import { pickVoice, estimateMs, litUpto } from './speech'
+import { pickVoice, estimateMs, litUpto, voiceAct } from './speech'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
@@ -970,6 +970,7 @@ function speakStory(node: HTMLElement, c: any) {
     done = true
     clearInterval(timer); clearTimeout(guard)
     if (gen !== sbGen) return          // 已经被下一页接管了，副作用一起作废
+    storyReading = false               // 麦克风还给主对话
     const t = el(); if (t) t.textContent = line
     decideNext(c, line)
   }
@@ -1012,7 +1013,37 @@ function speakStory(node: HTMLElement, c: any) {
   }
   u.onend = finish
   u.onerror = finish              // 念不出来也要往下走，不是卡住
+  storyReading = true             // 正文占麦：Agent 的衔接话术这段时间只上屏不出声
   speechSynthesis.speak(u)
+}
+
+/* ══════════ 主对话话术的 TTS（2026-08-16 实拍：「文字没有播报」） ══════════
+ *
+ * speechSynthesis 以前只给绘本接了。念不念的决策在 voiceAct（纯函数配测试），
+ * 这里只张嘴。音色/语速与绘本共用同一份选择（面板下拉框那份）。
+ * 取消要连副作用一起作废（世代戳）——跟绘本那次踩坑同一条纪律。
+ */
+let storyReading = false
+let agGen = 0
+function speakAgent(text: string) {
+  if (!('speechSynthesis' in window)) return
+  const gen = ++agGen
+  try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'zh-CN'; u.rate = sbRate()
+  if (!sbVoice) refreshVoice()
+  if (sbVoice) u.voice = sbVoice as any
+  const done = () => { if (gen === agGen) agSpeaking = false }
+  u.onend = done; u.onerror = done
+  agSpeaking = true
+  speechSynthesis.speak(u)
+}
+let agSpeaking = false
+/** 用户开口 → Agent 闭嘴。只在确实是 Agent 在说时才 cancel，别误伤绘本正文 */
+function hushAgent() {
+  if (!agSpeaking) return
+  agGen++; agSpeaking = false
+  try { speechSynthesis.cancel() } catch { /* 同上 */ }
 }
 
 const bus = createBus((m: BusMsg | any) => {
@@ -1022,8 +1053,13 @@ const bus = createBus((m: BusMsg | any) => {
       Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); break
     case 'cards':
       deskState = m.desk; renderDesk(); break
-    case 'voice':
-      if (m.s) setVoice(m.s); if ('text' in m) setSub(m.text, m.who); break
+    case 'voice': {
+      if (m.s) setVoice(m.s); if ('text' in m) setSub(m.text, m.who)
+      const act = voiceAct(m, storyReading)
+      if (act === 'speak') speakAgent(m.text)
+      else if (act === 'hush') hushAgent()
+      break
+    }
     case 'highlight':
       hotWindows = m.ids ?? []
       hotCards = new Set(m.cards ?? [])

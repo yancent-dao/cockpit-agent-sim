@@ -76,7 +76,7 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
   if (existing?.sig === sig) {
     // 路线没变不重建 overlay，但**视图状态每次都应用** —— zoom/视角/朝向
     // 是 map.control 改的，跟路线无关；这些操作幂等且便宜
-    applyView(existing.map, v, path)
+    applyView(existing.map, v, path, existing.overlays)
     return true
   }
 
@@ -122,7 +122,7 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
 
   overlays.forEach(o => map.add(o))
   live.set(box, { map, overlays, sig })
-  applyView(map, v, path)
+  applyView(map, v, path, overlays)
   return true
 }
 
@@ -133,11 +133,12 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
  * 车头朝上没有真实航向可用（模拟环境），拿路线首段的方位角近似 ——
  * 演示里车总朝着路线方向走，误差可接受。
  */
-function applyView(map: any, v: RouteView, path: [number, number][]) {
+function applyView(map: any, v: RouteView, path: [number, number][], overlays?: any[]) {
   try {
-    if (v.mapView === 'overview') {
-      // 全览：让整条路线都在视野内，留点边距别贴边
-      map.setFitView(null, false, [40, 40, 40, 40])
+    if (v.mapView !== 'follow') {
+      // 全览（也是缺省）：让整条路线都在视野内，留点边距别贴边。
+      // **显式传 overlays** —— null 在个别版本会被当成空数组，什么都不缩放
+      map.setFitView(overlays?.length ? overlays : undefined, false, [40, 40, 40, 40])
     } else {
       const center = parse(v.originLoc) ?? parse(v.destLoc)
       if (center) map.setCenter(center)

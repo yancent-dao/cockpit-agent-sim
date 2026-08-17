@@ -406,13 +406,19 @@ export const SIGNALS: Signal[] = [
    * zoom 每变一档要是触发全屏重排就本末倒置了。全部状态化而不发命令：
    * zoomIn 是"档位 +1"，全览/跟随是视图状态，完全落在「桌面 = f(状态)」里。
    */
+  /**
+   * 默认**全览** + follow 用近档（2026-08-15 实拍回归修正）：
+   * 第一版初始值是 follow@13，把改造前"路线永远撑满视野"的行为破坏了 ——
+   * 一条 1.8 公里的路线在全城视野里只剩一个小点。模拟环境里车不动，
+   * 整条路线可见才是有用的默认；follow 的语义是"贴近自车"，档位就该近。
+   */
   { alias: 'navigation.mapZoom', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapZoom',
     type: 'number', range: [8, 18], label: '地图缩放档位',
-    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 13 },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 16 },
   { alias: 'navigation.mapView', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapView',
     type: 'enum', values: ['follow', 'overview'], label: '地图视野',
     valueLabels: { follow: '跟随自车', overview: '全览' },
-    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'follow' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'overview' },
   { alias: 'navigation.mapStyle', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapStyle',
     type: 'enum', values: ['2d', '3d'], label: '地图视角',
     valueLabels: { '2d': '2D', '3d': '3D' },

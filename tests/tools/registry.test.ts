@@ -244,6 +244,26 @@ describe('map.control', () => {
     expect(store.get('navigation.mapHeading')).toBe('vehicle')
   })
 
+  /**
+   * ══════════ 默认值是行为，不是摆设（2026-08-15 实拍回归） ══════════
+   *
+   * map.control 上线时把信号初始值定成 follow + 13 档，结果**破坏了旧行为**：
+   * 改造前 showRoute 结尾永远 setFitView（路线撑满视野），改造后默认走
+   * "跟随自车@13 档" —— 一条 1.8 公里的路线在全城视野里只剩一个小点
+   * （用户实拍："路线只有这么一小点，也不放大"）。
+   *
+   * 模拟环境里车不动，**整条路线可见才是有用的默认**；follow 留给用户
+   * 明说"回到当前位置"，而它的语义是"贴近自车"，缩放档就该是近的。
+   */
+  it('默认全览 —— 跟改造前的行为一致', () => {
+    expect(SIGNALS.find(s => s.alias === 'navigation.mapView')!.initial).toBe('overview')
+  })
+
+  it('follow 的默认缩放是"贴近自车"的档位，不是全城', () => {
+    const z = SIGNALS.find(s => s.alias === 'navigation.mapZoom')!
+    expect(z.initial as number).toBeGreaterThanOrEqual(15)
+  })
+
   it('什么都不传 → 拒绝并说清能干什么', async () => {
     const r = createRegistry(store, TOOLS, () => now)
     const res = await r.invoke('map.control', {})

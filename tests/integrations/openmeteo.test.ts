@@ -5,7 +5,7 @@ import { createOpenMeteoClient, wmoLabel, windLabel } from '../../src/integratio
  * ══════════ Open-Meteo：换掉高德天气的原因就一个 —— 逐小时 ══════════
  *
  * 高德 weatherInfo 只给 4 天日/夜温度，渲染层的 hourly 块干等了一个月
- * （CLAUDE.md 已知待办）。Open-Meteo：零 Key 零注册（单文件版那个
+ * （工程手册 已知待办）。Open-Meteo：零 Key 零注册（单文件版那个
  * "import.meta.env 读不到"的坑直接绕开）、官方 CORS、168 小时逐时。
  *
  * 真实响应形状 2026-08-17 实测过：hourly 从**今天 00:00** 开始给而不是

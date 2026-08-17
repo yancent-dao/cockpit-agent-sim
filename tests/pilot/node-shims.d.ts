@@ -1,6 +1,6 @@
 /**
  * pilot 跑批器跑在 Node 里，需要 fs / process 的类型。
- * 按 CLAUDE.md 的规矩：不为这点类型引入 @types/node（会破坏"只有 3 个 devDependency"），
+ * 按 工程手册 的规矩：不为这点类型引入 @types/node（会破坏"只有 3 个 devDependency"），
  * 自己声明用到的那几个就够了。
  */
 declare module 'node:fs' {

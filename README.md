@@ -98,7 +98,7 @@ flowchart TB
 - **不发明命名**:信号对齐 COVESA VSS v6.0,元数据对齐 AAOS 三元组,确认流对齐 MCP MRTR
 - **pilot 自动化体验闭环**:独立 LLM 扮"坐在车里的真人"跟真实 Agent 跑多轮对话,落盘快照,按四维清单人工评审
 
-架构细节、预算纪律、实拍踩坑记录见 [CLAUDE.md](CLAUDE.md)(它同时是 AI 协作的工作手册),设计文档见 [docs/](docs/)。
+完整需求见 [docs/需求规格说明书_v1.0.md](docs/需求规格说明书_v1.0.md),工程约束见 [docs/工程约束_v1.1.md](docs/工程约束_v1.1.md),各轮设计文档见 [docs/superpowers/specs/](docs/superpowers/specs/)。
 
 ## Key 与第三方服务
 
@@ -120,7 +120,7 @@ flowchart TB
 
 ## 明确不做
 
-后端 · 数据库 · 多屏 · 日夜切换 · CAN 报文级仿真 · 偏好自动学习(显式记忆是数据,自动学习是策略)。完整清单见 CLAUDE.md。
+后端 · 数据库 · 多屏 · 日夜切换 · CAN 报文级仿真 · 偏好自动学习(显式记忆是数据,自动学习是策略)。完整清单见 [docs/工程约束_v1.1.md](docs/工程约束_v1.1.md)。
 
 ## License
 

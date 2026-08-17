@@ -599,7 +599,7 @@ pushDesk()
 ;(window as any).__sim = { desk, registry, store }
 
 /**
- * 任务进展卡（§6.2）：Claude 式步骤流——✓ 已完成（带耗时）/ ⟳ 进行中。
+ * 任务进展卡（§6.2）：步骤流——✓ 已完成（带耗时）/ ⟳ 进行中。
  * 点任务芯片打开；开着时 taskUpdate 事件 live 刷新；全部翻篇自动撤。
  * 复用 list 模板，零新模板。
  */

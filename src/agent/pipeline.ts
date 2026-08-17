@@ -320,6 +320,8 @@ export function createPipeline(deps: PipelineDeps) {
     let suggested: string[] = []
     let said = ''
     let rounds = 0
+    /** handoff 是快层的**终止符**：调完就收尾，再开一轮只会再调一遍（实拍） */
+    let handedOff = false
     while (rounds < fm.maxRounds) {
       rounds++
       // 最后一轮撤业务工具逼话术（实测 GLM-flash 会两轮全用来重复调用），
@@ -376,6 +378,7 @@ export function createPipeline(deps: PipelineDeps) {
             trace.push({ type: 'reply', at: clock(), text: say, layer: 'fast' })
             emit({ type: 'speaking', text: say, layer: 'fast' })
           }
+          handedOff = true
           return { status: 'ok', message: '已转交' }
         },
       }, { quietRejects: true })
@@ -383,6 +386,7 @@ export function createPipeline(deps: PipelineDeps) {
       // 手头这批工具做完就收手：作废的那一轮不该再开新一轮 LLM，
       // 它的输出只会更没意义，还占着模型额度和时间
       if (stale(g)) return { suggested, said, rounds }
+      if (handedOff) return { suggested, said, rounds }
       /**
        * **整轮都越权 = 这活归慢层，立刻转交。** 再跑一轮只是等模型
        * 把同一个结论说一遍（实拍那一轮 3.9 秒）。越权的工具名直接当
@@ -536,10 +540,24 @@ export function createPipeline(deps: PipelineDeps) {
   }
 
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
-  async function runSlow(g: number, suggested: string[], trace: TraceStep[]): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
+  async function runSlow(g: number, suggested: string[], trace: TraceStep[],
+                         handover: string[] = []): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
     const sm = deps.slowManifest
     const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n))])
     const view = thread.slice()   // 冻结视图：旧代慢层不许看见新 turn 的内容
+    /**
+     * **接力棒必须看得见**（2026-08-17 实拍回归）。「整轮越权立刻转交」把
+     * 快层第二轮省掉之后，thread 的最后一幕是「调工具 → NOT_AUTHORIZED」——
+     * 慢层看到的是"这工具刚被拒"，不知道被拒的是**权限受限的快层**、
+     * 自己有权限：实拍它先模仿快层去调 agent_handoff，再认输"我没权限"。
+     *
+     * 注入只进**本轮视图**不落 thread —— 它是运行时状态注释，不是对话事实。
+     */
+    if (handover.length)
+      view.push({ role: 'system', content:
+        `刚才的 NOT_AUTHORIZED 是权限受限的快层同事被拒，不是你——` +
+        `**你有权限**，工具已装进你手边：${handover.join('、')}。直接调它把事办完；` +
+        `agent.handoff 不是你的工具（你是最后一站），别调它。` })
     let rounds = 0
     while (rounds < sm.maxRounds) {
       rounds++
@@ -644,10 +662,14 @@ export function createPipeline(deps: PipelineDeps) {
      * 一轮无论怎么结束，UI 都必须收到收尾事件。
      */
     try {
-      if (!pending) fast = await runFast(g, trace)
-      else fast.suggested = [pending.tool]
+      let handover: string[] = []
+      if (!pending) {
+        fast = await runFast(g, trace)
+        // denied 是 execRound 写的共享变量，慢层自己跑起来会覆盖 —— 先拷贝
+        handover = allDenied ? [...denied] : []
+      } else fast.suggested = [pending.tool]
 
-      const slow = await runSlow(g, fast.suggested, trace)
+      const slow = await runSlow(g, fast.suggested, trace, handover)
       // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
       if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
       return {

@@ -520,3 +520,70 @@ describe('快层越权就直接转交', () => {
     expect((fast as any).seen.length).toBe(2)
   })
 })
+
+
+/**
+ * ══════════ 接力棒必须看得见（2026-08-17 实拍回归） ══════════
+ *
+ * 「整轮越权就立刻转交」省掉了快层第二轮，但把接力语境一起省掉了：
+ * thread 的最后一幕变成「调 setDestination → NOT_AUTHORIZED」，慢层看到的
+ * 是"这工具刚被拒"，不知道被拒的是**快层**、自己有权限 —— 实拍它先模仿
+ * 快层去调 agent_handoff（UNKNOWN_TOOL），再嘴上认输"我这边没权限做不了"，
+ * 用户明说要的导航就这么黄了。
+ *
+ * 修法：转交时给慢层的**本轮视图**注入一条接力说明（是谁被拒的、你有权限、
+ * 直接调、别学快层调 handoff）。只进视图不落 thread —— 它是运行时状态注释，
+ * 不是对话事实。
+ */
+describe('越权转交的接力棒', () => {
+  it('慢层视图末尾有接力说明：点名工具 + 说清你有权限', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('navigation_setDestination', { address: '春熙路' })] }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    const view = (slow as any).seen[0].messages
+    const hint = view[view.length - 1]
+    expect(hint.role).toBe('system')
+    expect(hint.content).toContain('navigation.setDestination')
+    expect(hint.content).toMatch(/你有权限|你可以直接调/)
+    expect(hint.content).toContain('agent.handoff')   // 明说别学快层调它
+  })
+
+  it('接力说明不落 thread —— 下一轮不该还带着', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('navigation_setDestination', {})] }),
+      () => ({ text: '好' }),
+    )
+    const slow = fakeLLM(() => ({ text: '好' }), () => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    expect(p.thread.some(m => m.role === 'system' && (m.content ?? '').includes('你有权限')),
+      '视图注释不是对话事实').toBe(false)
+  })
+
+  it('没有越权时不注入 —— 别给每一轮都塞一条没用的说明', async () => {
+    const fast = fakeLLM(() => ({ text: '好' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('你好')
+    const view = (slow as any).seen[0].messages
+    expect(view.some((m: any) => (m.content ?? '').includes('你有权限'))).toBe(false)
+  })
+})
+
+/**
+ * handoff 是快层的**终止符** —— 实拍它调完 handoff 还开了一轮，
+ * 又调一遍 handoff（0.9s 纯浪费）。收尾调完就该收手。
+ */
+describe('handoff 即收尾', () => {
+  it('快层调过 handoff 就不再开下一轮', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('agent_handoff', { say: '转同事', suggestedTools: [] })] }),
+      () => ({ text: '不该有这一轮' }),
+    )
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('做个计算器')
+    expect((fast as any).seen.length).toBe(1)
+  })
+})

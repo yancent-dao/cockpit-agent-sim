@@ -634,3 +634,53 @@ describe('慢层的 handoff 扶正', () => {
     expect(names).toContain('navigation_setDestination')
   })
 })
+
+/**
+ * ══════════ 慢层复述静音（2026-08-17 实拍） ══════════
+ *
+ * 屏端的同文去重逮不住换说法的复述：「空调已打开」→「空调已经开了。
+ * 需要调温度或者风量吗？」、「车窗已打开」→「窗户也打开了」。
+ * persona 写了"说过的一个点都不许再说"，小模型照样违反。
+ *
+ * 立成机制，判据是系统状态不是语义：快层已报过结果（≥1 个业务工具成功
+ * 且说了话）、慢层全程零业务调用 → 它的最终话术必是复述，不出声。
+ * 文本仍落 thread（上下文要），trace 仍记（排查要）。
+ * 慢层真干了活（补活/纠错/被拒后解释）照说不误。
+ */
+describe('慢层复述静音', () => {
+  it('快层办成并播报后，慢层没干活的话术不再出声', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '空调已打开', toolCalls: [call('climate.set', { power: true })] }),
+      () => ({ text: '', toolCalls: [call('agent_handoff', { say: '', suggestedTools: [] })] }),
+    )
+    const slow = fakeLLM(() => ({ text: '空调已经开了。需要调温度或者风量吗？' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('打开空调')
+    const speaks = events.filter(e => e.type === 'speaking')
+    expect(speaks, '只有快层那一声').toHaveLength(1)
+    expect((speaks[0] as any).layer).toBe('fast')
+    expect(p.thread.some(m => m.role === 'assistant' && (m.content ?? '').includes('需要调温度')),
+      '话术仍进 thread 供上下文').toBe(true)
+  })
+
+  it('慢层干了新活（补开车窗）→ 照说不误', async () => {
+    const fast = fakeLLM(() => ({ text: '空调开了', toolCalls: [call('climate.set', { power: true })] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('window.set', { window: 'driver', position: 50 })] }),
+      () => ({ text: '车窗也开了一半' }),
+    )
+    const { p, events } = mk(fast, slow)
+    await p.run('开空调和车窗')
+    const texts = events.filter(e => e.type === 'speaking').map((e: any) => e.text)
+    expect(texts).toContain('车窗也开了一半')
+  })
+
+  it('快层没办成任何事（纯聊天）→ 慢层是唯一的应答者，必须出声', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent_handoff', { say: '', suggestedTools: [] })] }))
+    const slow = fakeLLM(() => ({ text: '我是车载助手，能开窗调温放歌' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('你能干什么')
+    const texts = events.filter(e => e.type === 'speaking').map((e: any) => e.text)
+    expect(texts).toContain('我是车载助手，能开窗调温放歌')
+  })
+})

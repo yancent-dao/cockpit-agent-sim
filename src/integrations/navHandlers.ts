@@ -451,8 +451,15 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
           data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast,
                   ...(hourly && { hourly }), ...(range && { range }) },
         })
-        return { status: 'ok', data: { city: g.formattedAddress, now, forecast,
-          ...(hourly && { hourly: hourly.slice(0, 6) }) } }
+        /**
+         * message 要说清**卡上已经是全量**（实拍：用户"要最详细的"，模型
+         * getLayout → 两次空 card.update 被拒 → 又把 forecast 抄回卡上，
+         * 反而把 hourly 抄丢 —— 白烧 11 秒。它不知道屏上已经有了）。
+         */
+        return { status: 'ok',
+          message: `${shortPlace(g.formattedAddress)}天气已上屏${hourly ? '（含逐小时降水与多日预报，已是最全）' : ''}，不用再建卡或搬数据，口头讲重点就行`,
+          data: { city: g.formattedAddress, now, forecast,
+            ...(hourly && { hourly: hourly.slice(0, 6) }) } }
       } catch (e) {
         return amapFail(e, '天气查询')
       }

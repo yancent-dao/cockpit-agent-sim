@@ -349,10 +349,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* ── 天气：今日温差 + 逐时降水条 ── */
 .wxrng{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-left:calc(10px*var(--u))}
 /* 柱高=气温，蓝柱=这个钟点会下雨。"接下来会不会下雨"是车里最想知道的 */
-.hourly{display:flex;align-items:flex-end;gap:calc(6px*var(--u));flex:1;min-height:calc(48px*var(--u));
+.hourly{display:flex;align-items:stretch;gap:calc(6px*var(--u));flex:1;min-height:calc(64px*var(--u));
   margin-top:calc(10px*var(--u))}
-.hourly i{flex:1;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
-.hourly i.wet{background:var(--brand-fg,#1D4ED8)}
+/* 一根柱 = 度数 + 柱体 + 钟点。柱高按当日温差归一化（hourlyView），
+   绝对温度映射那版三根柱差 0.5% 肉眼看不出 —— 柱子必须携带信息 */
+.hcol{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  gap:calc(3px*var(--u));min-width:0}
+.hcol b{font-size:calc(var(--t-cap)*var(--u)*.86);font-weight:600;color:var(--tx-2)}
+.hcol i{width:62%;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
+.hcol span{font-size:calc(var(--t-cap)*var(--u)*.78);color:var(--tx-3);white-space:nowrap}
+.hcol.wet i{background:var(--brand-fg,#1D4ED8)}
+.hcol.wet b{color:var(--brand-fg,#1D4ED8)}
 .fc{margin-top:calc(10px*var(--u))}
 
 /* ── 播放器：全套播控 + 音量 + 完整队列 ── */

@@ -64,6 +64,45 @@ export function listBody(items: any[], opts: ListOpts = {}): string {
  * 档位类。字号 = 字阶 × `--u`，一个类管住一整张卡的排版比例。
  * 之前是 22 条 `.sz-*` 硬怼 60 处 font-size —— 加一个档位要补 6 条规则。
  */
+/**
+ * 逐时柱的视图数据 —— 纯函数，实拍教训（2026-08-17）：
+ *
+ * 第一版柱高用**绝对温度**线性映射（temp×2.6%），成都那天 22.4/22.5/22.6°，
+ * 三根柱子差 0.5%，肉眼看不出；又全在下雨全蓝 —— 用户「要最详细的」，
+ * 看到的是六个一样的哑蓝块。
+ *
+ * 天气 App 的通行做法：**按当日温差归一化**（最冷→矮、最热→高），
+ * 每根标时间和度数 —— 柱子才从装饰变成信息。
+ */
+/** 柱高的可视区间（%）。顶部留给温度数字，底部别贴地 */
+const BAR_MIN = 24, BAR_MAX = 92
+/**
+ * 温差小于这个数（°C）时，可视范围按比例收窄而不是拉满 ——
+ * 0.2° 的波动被拉成 24%→92%，视觉上是在骗人说"今天温差巨大"。
+ * 微小温差就该看起来几乎持平，这才诚实。
+ */
+const FULL_SPAN = 3
+export function hourlyView(hrs: Array<{ time?: string; temp?: number; pop?: number }>) {
+  const ok = (hrs ?? []).filter(h => h && Number.isFinite(Number(h.temp)))
+  if (!ok.length) return []
+  const temps = ok.map(h => Number(h.temp))
+  const lo = Math.min(...temps), hi = Math.max(...temps)
+  const span = hi - lo
+  const mid = (BAR_MIN + BAR_MAX) / 2
+  // 温差 ≥3° 用满可视区间；更小就等比例围绕中线收窄（恒温 = 全部齐平在中线）
+  const vis = (BAR_MAX - BAR_MIN) * Math.min(1, span / FULL_SPAN)
+  return ok.map((h, i) => {
+    const t = Number(h.temp)
+    const pct = span === 0 ? mid : mid - vis / 2 + (t - lo) / span * vis
+    return {
+      pct: Math.round(pct * 10) / 10,
+      temp: `${Math.round(t)}°`,
+      label: i === 0 ? '现在' : `${Number(String(h.time ?? '').slice(11, 13))}时`,
+      wet: Number(h.pop ?? 0) >= 40,
+    }
+  })
+}
+
 export const tierClass = (size: string) => `t-${normalizeTier(size)}`
 
 /**
@@ -397,12 +436,11 @@ export function cardBody(c: CardView): string {
        * 下一次降水、今日温差、预警状态」；5 天预报是手机首页的逻辑。
        * 柱高表示气温，蓝色表示这个钟点会下雨。
        */
-      const hrs = (d.hourly ?? []).slice(0, w.hours ?? 0)
-      const hourly = hrs.length ? `<div class="hourly">${hrs.map((h: any) => {
-        const wet = Number(h.pop) >= 40
-        return `<i style="height:${Math.max(18, Math.min(100, Number(h.temp) * 2.6))}%"${
-          wet ? ' class="wet"' : ''}></i>`
-      }).join('')}</div>` : ''
+      const hrs = hourlyView((d.hourly ?? []).slice(0, w.hours ?? 0))
+      // 单行拼接不换行 —— flex 容器里的空白文本节点会变成匿名 flex item（老坑）
+      const hourly = hrs.length ? `<div class="hourly">${hrs.map(h =>
+        `<div class="hcol${h.wet ? ' wet' : ''}"><b>${h.temp}</b><i style="height:${h.pct}%"></i><span>${esc(h.label)}</span></div>`,
+      ).join('')}</div>` : ''
       return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
           <div class="wxmeta"><span>${esc(d.now.weather)}</span>${rng}<small>${esc(sub)}</small></div>

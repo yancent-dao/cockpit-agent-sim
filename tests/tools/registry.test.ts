@@ -137,6 +137,74 @@ describe('card.show 的 key：同一张卡的新版本', () => {
   })
 })
 
+/**
+ * ══════════ 语音配置：音色与语速 ══════════
+ *
+ * 2026-08-15 对照真实整车清单补的。一半的料早就在项目里：控制面板的音色
+ * 选择器（绘本朗读用）走 localStorage + storage 事件跨窗口生效 ——
+ * voice.config 写**同一个 key**，跟下拉框是同一个事实，不另开一套。
+ *
+ * 音色清单在浏览器手里（speechSynthesis），registry 在 node 测试里没有它，
+ * 所以按 Fetcher 的老办法**注入**：浏览器传真的，测试传假的。
+ * 语音配置不进信号 store —— 它不是车辆状态，VSS 里塞 TTS 音色是硬凑。
+ */
+describe('voice.config', () => {
+  const mkDeps = () => {
+    const m = new Map<string, string>()
+    return {
+      storage: { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => { m.set(k, v) } },
+      voices: () => [
+        { name: 'Tingting', female: true },
+        { name: 'Grandma (Chinese (China mainland))', female: true },
+        { name: 'Eddy (Chinese (China mainland))', female: false },
+      ],
+      m,
+    }
+  }
+
+  it('不传参数 = 查询：返回当前配置和可选音色清单', async () => {
+    const d = mkDeps()
+    const r = createRegistry(store, TOOLS, () => now, d)
+    const res = await r.invoke('voice.config', {})
+    expect(res.status).toBe('ok')
+    const data = res.data as any
+    expect(data.voices.map((v: any) => v.name)).toContain('Tingting')
+    expect(data.voices.find((v: any) => v.name === 'Tingting').female).toBe(true)
+  })
+
+  it('设音色：写进跟控制面板下拉框同一个 key', async () => {
+    const d = mkDeps()
+    const r = createRegistry(store, TOOLS, () => now, d)
+    const res = await r.invoke('voice.config', { voice: 'Grandma (Chinese (China mainland))' })
+    expect(res.status).toBe('ok')
+    expect(d.m.get('cockpit-sim:tts:voice')).toBe('Grandma (Chinese (China mainland))')
+  })
+
+  /** 清单外的名字明确拒绝并附上可选项 —— 写进去一个不存在的音色等于把朗读弄哑 */
+  it('音色不在清单里 → 拒绝并带可选清单', async () => {
+    const d = mkDeps()
+    const r = createRegistry(store, TOOLS, () => now, d)
+    const res = await r.invoke('voice.config', { voice: '不存在的音色' })
+    expect(res.status).toBe('rejected')
+    expect(res.code).toBe('NOT_FOUND')
+    expect((res.data as any).voices.length).toBeGreaterThan(0)
+  })
+
+  it('设语速：范围内写入，范围外被拒', async () => {
+    const d = mkDeps()
+    const r = createRegistry(store, TOOLS, () => now, d)
+    expect((await r.invoke('voice.config', { rate: 1.2 })).status).toBe('ok')
+    expect(d.m.get('cockpit-sim:tts:rate')).toBe('1.2')
+    expect((await r.invoke('voice.config', { rate: 3 })).status).toBe('rejected')
+  })
+
+  it('浏览器环境没装配 voices 时不炸，说清楚设不了', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    const res = await r.invoke('voice.config', { voice: 'Tingting' })
+    expect(res.status).toBe('unavailable')
+  })
+})
+
 /* ────────────────────────── 注册表与 Schema ────────────────────────── */
 describe('注册表', () => {
   it('「黑」级 Tool 永不暴露给 Agent —— 永久禁区', async () => {
@@ -1259,6 +1327,43 @@ describe('多出行方式与常用地址', () => {
     expect(store.get('navigation.destination')).toBe('家')
     // 用存下来的坐标直接算路，不再走一次地理编码
     expect(decodeURIComponent(drivingUrl)).toContain('destination=104.06,30.57')
+  })
+
+  /**
+   * ══════════ 常用地址：删得掉，而且记得住 ══════════
+   *
+   * 2026-08-15 对照真实整车清单补的。做 remove 时查出一个更根本的缺口：
+   * places 原来是**内存数组** —— "记住了，家"刷新页面就忘了，「记住」名不副实，
+   * 而 places.save 的描述一直承诺"之后用户说回家就能直接导航"。
+   * 删除一个刷新就消失的东西没有意义，所以持久化是 remove 的必要配套。
+   */
+  it('places.remove 删掉一条，删不存在的明确说', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    await r.invoke('places.save', { alias: '家', address: 'a', location: '1,1' })
+    await r.invoke('places.save', { alias: '公司', address: 'b', location: '2,2' })
+    const del = await r.invoke('places.remove', { alias: '家' })
+    expect(del.status).toBe('ok')
+    expect(((await r.invoke('places.list', {})).data as any).places.map((p: any) => p.alias))
+      .toEqual(['公司'])
+    const miss = await r.invoke('places.remove', { alias: '健身房' })
+    expect(miss.status).toBe('rejected')
+    expect(miss.code).toBe('NOT_FOUND')
+  })
+
+  it('常用地址跨会话还在 —— 换一个 registry 实例读同一份存储', async () => {
+    const m = new Map<string, string>()
+    const storage = { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => { m.set(k, v) } }
+    await createRegistry(store, TOOLS, () => now, { storage })
+      .invoke('places.save', { alias: '家', address: 'a', location: '1,1' })
+    const again = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, () => now, { storage })
+    expect(((await again.invoke('places.list', {})).data as any).places.map((p: any) => p.alias))
+      .toEqual(['家'])
+  })
+
+  it('存储里是坏数据时当没有，不把导航带崩', async () => {
+    const storage = { get: () => '{坏的', set: () => {} }
+    const r = createRegistry(store, TOOLS, () => now, { storage })
+    expect(((await r.invoke('places.list', {})).data as any).places).toEqual([])
   })
 
   it('别名不存在时明确告知，不瞎猜', async () => {

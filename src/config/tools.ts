@@ -461,6 +461,14 @@ export const TOOLS: ToolDef[] = [
     handler: 'placesList',
   },
   {
+    name: 'places.remove',
+    brief: '删一条常用地址',
+    desc: '删掉一条存过的常用地址。改名 = 先 remove 再 save。',
+    permission: '彩',
+    params: { alias: { type: 'string', required: true, desc: '要删的别名，如"家"' } },
+    handler: 'placesRemove',
+  },
+  {
     name: 'navigation.searchAlong',
     brief: '沿途周边搜服务点',
     desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
@@ -546,6 +554,19 @@ export const TOOLS: ToolDef[] = [
       options: { type: 'array', items: 'string', desc: '候选项，供确认卡展示' },
     },
     handler: 'ask',
+  },
+  {
+    name: 'voice.config',
+    brief: '换朗读音色、调语速',
+    desc: '设置语音播报的音色与语速。**先不带参数调一次拿可选音色清单**（含名字和' +
+      '男女声标注），再按用户的意思挑一个把 name 一字不差传回来。用户说"换个声音"' +
+      '"声音温柔一点""说慢一点"时用它。改完立即生效，不用重启。',
+    permission: '彩',
+    params: {
+      voice: { type: 'string', desc: '音色名，必须来自查询返回的 voices 清单' },
+      rate: { type: 'number', range: [0.5, 1.5], desc: '语速倍率，1 是正常，默认 0.92' },
+    },
+    handler: 'voiceConfig',
   },
 
   /* ── 卡片调度（无APP化核心） ── */
@@ -1022,6 +1043,7 @@ export const CAPABILITY_DOMAINS: Array<{ match: string[]; icon: string; label: s
   { match: ['seat', 'steeringWheel'], icon: '💺', label: '座椅方向盘', blurb: '加热、通风、按摩、前后与靠背，方向盘也能热' },
   { match: ['sunroof'], icon: '🌅', label: '天窗', blurb: '玻璃开合，遮阳帘也能单独拉' },
   { match: ['mirror'], icon: '🪞', label: '后视镜', blurb: '折叠收起、镜面加热除雾' },
+  { match: ['voice'], icon: '🗣️', label: '语音', blurb: '换播报音色（有男女声可挑）、调语速' },
   { match: ['airPurifier'], icon: '🌀', label: '空气净化', blurb: '外面味儿大时开一下' },
   { match: ['door', 'trunk', 'chargePort', 'childLock'], icon: '🚪', label: '门与舱口', blurb: '车门、后备箱、充电口、儿童锁' },
   { match: ['ambientLight', 'fragrance', 'light'], icon: '💡', label: '灯光香氛', blurb: '氛围灯、香氛、近光远光雾灯示宽灯、前后排阅读灯' },

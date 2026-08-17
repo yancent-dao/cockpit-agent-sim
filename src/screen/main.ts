@@ -873,7 +873,15 @@ if ('speechSynthesis' in window) {
   addEventListener('storage', e => { if (e.key === VOICE_KEY) refreshVoice() })
 }
 
-const SB_RATE = .92
+/**
+ * 语速。voice.config 和控制面板写 localStorage，这里读 ——
+ * 坏值/没设过退回 0.92（跟原常量一致）。
+ */
+const RATE_KEY = 'cockpit-sim:tts:rate'
+const sbRate = () => {
+  const r = Number(localStorage.getItem(RATE_KEY))
+  return Number.isFinite(r) && r >= 0.5 && r <= 1.5 ? r : .92
+}
 /** 念完之后的兜底余量。语速估不准是常态，宁可多等一会儿也别提前翻页 */
 const SB_SLACK_MS = 2500
 
@@ -971,7 +979,8 @@ function speakStory(node: HTMLElement, c: any) {
    * 而这是整个产品最讨喜的一秒（孩子跟着字读）。边界事件来了就用它（更准），
    * 不来就按估算的时长匀速推进。
    */
-  const totalMs = estimateMs(line, SB_RATE)
+  const rate = sbRate()
+  const totalMs = estimateMs(line, rate)
   const t0 = Date.now()
   let byBoundary = false
   const paintLit = (n: number) => {
@@ -993,7 +1002,7 @@ function speakStory(node: HTMLElement, c: any) {
   if (!('speechSynthesis' in window)) return
   try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
   const u = new SpeechSynthesisUtterance(line)
-  u.lang = 'zh-CN'; u.rate = SB_RATE
+  u.lang = 'zh-CN'; u.rate = rate
   if (!sbVoice) refreshVoice()
   // 挑不到中文音色时不硬塞：留空让引擎按 lang 自己决定，比拿英文音色念中文强
   if (sbVoice) u.voice = sbVoice

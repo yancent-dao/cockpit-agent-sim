@@ -47,6 +47,13 @@ export interface InvokeCtx {
 const CONFIRM_TTL = 60_000
 
 export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs; story?: StoryStore; image?: ImageGen
+  /** 常用地址等小件的持久化口。浏览器传 localStorage，测试传假的 */
+  storage?: { get(k: string): string | null; set(k: string, v: string): void }
+  /**
+   * 这台机器上可选的朗读音色。清单在浏览器手里（speechSynthesis），
+   * registry 在 node 测试里没有它 —— 按 Fetcher 的老办法注入。
+   */
+  voices?: () => Array<{ name: string; female?: boolean }>
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -175,8 +182,37 @@ export function createRegistry(
       }
     },
 
+    /**
+     * ── 语音配置：音色与语速 ──
+     * 写的是跟控制面板音色下拉框**同一个 localStorage key** —— 单一事实，
+     * 车机屏靠 storage 事件跨窗口即时生效（先例就是那个下拉框）。
+     * 不进信号 store：语音配置不是车辆状态，VSS 里塞 TTS 音色是硬凑。
+     */
+    voiceConfig: (args: any): ToolResult => {
+      if (!deps.voices)
+        return { status: 'unavailable', code: 'NOT_WIRED', message: '这个环境里拿不到音色清单，设不了' }
+      const voices = deps.voices()
+      // 不传任何参数 = 查询。模型先看有什么可选，再替用户挑
+      if (args?.voice === undefined && args?.rate === undefined)
+        return { status: 'ok', data: {
+          current: { voice: deps.storage?.get('cockpit-sim:tts:voice') ?? null,
+                     rate: Number(deps.storage?.get('cockpit-sim:tts:rate') ?? 0.92) },
+          voices,
+        } }
+      if (args.voice !== undefined) {
+        // 清单外的名字明确拒 —— 写进去一个不存在的音色等于把朗读弄哑
+        if (!voices.some(v => v.name === args.voice))
+          return { status: 'rejected', code: 'NOT_FOUND',
+            message: `没有叫「${args.voice}」的音色`, data: { voices },
+            suggestion: '从返回的 voices 里挑一个，名字要一字不差' }
+        deps.storage?.set('cockpit-sim:tts:voice', args.voice)
+      }
+      if (args.rate !== undefined) deps.storage?.set('cockpit-sim:tts:rate', String(args.rate))
+      return { status: 'ok', message: '换好了，下一句就用新的' }
+    },
+
     /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
-    ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound),
+    ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound, deps.storage),
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),

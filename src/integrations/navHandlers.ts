@@ -81,9 +81,18 @@ const vehicleProfile = (store: Store) => ({
 })
 
 export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk?: () => Desk | undefined,
-                                  round?: () => number) {
-  /** 常用地址。放内存即可——模拟环境不做持久化，刷新页面重来是可接受的 */
-  const places: SavedPlace[] = []
+                                  round?: () => number, storage?: { get(k: string): string | null; set(k: string, v: string): void }) {
+  /**
+   * 常用地址。**持久化的**（2026-08-15 改）——原来是内存数组，
+   * "记住了，家"刷新页面就忘，而 places.save 的描述一直承诺
+   * "之后用户说回家就能直接导航"，那是跨会话的承诺。
+   * 内存副本照旧当工作集，写的时候透写进存储；坏数据当没有，别把导航带崩。
+   */
+  const PLACES_KEY = 'cockpit-sim:places'
+  const places: SavedPlace[] = (() => {
+    try { return JSON.parse(storage?.get(PLACES_KEY) ?? '[]') } catch { return [] }
+  })()
+  const persistPlaces = () => { try { storage?.set(PLACES_KEY, JSON.stringify(places)) } catch { /* 配额满了就算了 */ } }
   /**
    * 候选列表卡：多个候选自动上屏，事情一办完就撤——显示是机制，不指望模型自觉。
    * 注意不能用 untilTaskEnd（用户下一句就撤）：实测用户的下一句常常正是冲着这张卡问的
@@ -163,11 +172,23 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
       const place: SavedPlace = { alias: args.alias, address: args.address, location: args.location }
       if (i >= 0) places[i] = place
       else places.push(place)
+      persistPlaces()
       dismissCandidates() // 存好了，那张"你要存哪个"的候选卡完成使命
       return { status: 'ok', data: { saved: place }, message: `记住了，${args.alias}` }
     },
 
     placesList: (): ToolResult => ({ status: 'ok', data: { places } }),
+
+    /** 改名 = 删了重存，不单开 Tool —— 两个动作模型都会做，别为组合发明新协议 */
+    placesRemove: (args: any): ToolResult => {
+      const i = places.findIndex(p => p.alias === args.alias)
+      if (i < 0)
+        return { status: 'rejected', code: 'NOT_FOUND',
+          message: `没有存过「${args.alias}」`, suggestion: '用 places.list 看看现在都存了哪些' }
+      const [gone] = places.splice(i, 1)
+      persistPlaces()
+      return { status: 'ok', data: { removed: gone }, message: `删掉了，${gone.alias}` }
+    },
 
     /**
      * 沿途/周边搜索。导航中沿路线前方找，没导航就绕当前位置找。

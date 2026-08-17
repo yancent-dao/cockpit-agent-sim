@@ -236,7 +236,11 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   news: createNewsClient(fetch.bind(window), () => newsKey),
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
-  story, image: imageGen })
+  story, image: imageGen,
+  // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
+  // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
+  storage: defaultStorage(),
+  voices: () => zhVoices((speechSynthesis?.getVoices?.() ?? []) as any) })
 
 // 卡片编排器：桌面 = f(状态)。基础卡片（导航/车窗反馈）由规则驱动，模型零参与
 /**

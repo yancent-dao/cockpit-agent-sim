@@ -1,5 +1,5 @@
 {
-  "name": "cockpit-sim",
+  "name": "cockpit-agent-sim",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,5 +15,11 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vitest": "^2.1.8"
+  },
+  "description": "Agent-centric smart-cockpit simulation sandbox — 给座舱产品经理的 AI Demo 公共底座（零后端、零运行时依赖）",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yancent/cockpit-agent-sim"
   }
 }

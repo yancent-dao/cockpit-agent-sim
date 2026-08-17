@@ -76,36 +76,82 @@ export function parseFrame(raw: string): { chunk?: Uint8Array; done: boolean; er
 
 export interface XfCreds { appId: string; apiKey: string; apiSecret: string }
 
-/**
- * 整句合成 → mp3 Blob。分帧收齐再交付（一句话术 <1s 就齐，不值得流式播）。
- * 8 秒总超时——云端挂了要快点让调用方回退本地音色，不是干等。
- */
-export async function synthesize(creds: XfCreds, vcn: string, text: string, rate: number,
-                                 timeoutMs = 8000): Promise<Blob> {
+async function signedUrl(creds: XfCreds): Promise<string> {
   const u = new URL(XF_ENDPOINT.replace(/^wss:/, 'https:'))
   const date = new Date().toUTCString()
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(creds.apiSecret),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const sig = await crypto.subtle.sign('HMAC', key,
     new TextEncoder().encode(signOrigin(u.host, date, u.pathname)))
-  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+  return authUrl(XF_ENDPOINT, creds.apiKey, btoa(String.fromCharCode(...new Uint8Array(sig))), date)
+}
 
-  return new Promise<Blob>((resolve, reject) => {
-    const ws = new WebSocket(authUrl(XF_ENDPOINT, creds.apiKey, sigB64, date))
-    const chunks: Uint8Array[] = []
-    const timer = setTimeout(() => { ws.close(); reject(new Error('讯飞合成超时')) }, timeoutMs)
-    const fail = (e: unknown) => { clearTimeout(timer); ws.close(); reject(e instanceof Error ? e : new Error(String(e))) }
-    ws.onopen = () => ws.send(JSON.stringify(ttsFrame(creds.appId, vcn, text, rate)))
-    ws.onerror = () => fail(new Error('讯飞 WebSocket 连接失败'))
-    ws.onmessage = ev => {
-      const f = parseFrame(String(ev.data))
-      if (f.error) return fail(new Error(f.error))
-      if (f.chunk) chunks.push(f.chunk)
-      if (f.done) {
-        clearTimeout(timer); ws.close()
-        if (!chunks.length) return reject(new Error('讯飞没有返回音频'))
-        resolve(new Blob(chunks as BlobPart[], { type: 'audio/mpeg' }))
-      }
-    }
+async function openSocket(creds: XfCreds): Promise<WebSocket> {
+  const ws = new WebSocket(await signedUrl(creds))
+  await new Promise<void>((res, rej) => {
+    const t = setTimeout(() => { ws.close(); rej(new Error('讯飞连接超时')) }, 6000)
+    ws.onopen = () => { clearTimeout(t); res() }
+    ws.onerror = () => { clearTimeout(t); rej(new Error('讯飞 WebSocket 连接失败')) }
   })
+  return ws
+}
+
+/**
+ * 预热池（一格）。实测建连要 1.5-2.2 秒、而空闲 8 秒后连接依然可用发帧 ——
+ * 模型思考时先把连接建好，建连时间整个藏进 LLM 延迟里。
+ * 预热失败静默：它只是加速，正式合成会自己现开。
+ */
+let warmSlot: Promise<WebSocket> | null = null
+export function warm(creds: XfCreds): void {
+  if (warmSlot) return
+  const p = openSocket(creds)
+  warmSlot = p
+  p.then(ws => { ws.onclose = () => { if (warmSlot === p) warmSlot = null } })
+    .catch(() => { if (warmSlot === p) warmSlot = null })
+}
+async function takeSocket(creds: XfCreds): Promise<WebSocket> {
+  const w = warmSlot; warmSlot = null
+  if (w) {
+    try { const ws = await w; if (ws.readyState === WebSocket.OPEN) return ws } catch { /* 预热失败就现开 */ }
+  }
+  return openSocket(creds)
+}
+
+/**
+ * 流式合成：mp3 帧到一帧回调一帧。实测一句 28 字的话 40 帧收齐要 5-6 秒，
+ * 而首帧 0.5 秒就到 —— 攒齐再播等于白等 3 秒以上。
+ */
+export function synthesizeStream(creds: XfCreds, vcn: string, text: string, rate: number,
+                                 onChunk: (c: Uint8Array) => void, timeoutMs = 15000):
+                                 { done: Promise<void>; cancel: () => void } {
+  let sock: WebSocket | null = null
+  let cancelled = false
+  const done = (async () => {
+    const ws = await takeSocket(creds)
+    if (cancelled) { ws.close(); return }
+    sock = ws
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => { ws.close(); reject(new Error('讯飞合成超时')) }, timeoutMs)
+      const fail = (e: Error) => { clearTimeout(timer); ws.close(); reject(e) }
+      ws.onerror = () => fail(new Error('讯飞 WebSocket 连接失败'))
+      ws.onclose = () => { if (cancelled) { clearTimeout(timer); resolve() } }
+      ws.onmessage = ev => {
+        const f = parseFrame(String(ev.data))
+        if (f.error) return fail(new Error(f.error))
+        if (f.chunk) onChunk(f.chunk)
+        if (f.done) { clearTimeout(timer); ws.close(); resolve() }
+      }
+      ws.send(JSON.stringify(ttsFrame(creds.appId, vcn, text, rate)))
+    })
+  })()
+  return { done, cancel: () => { cancelled = true; sock?.close() } }
+}
+
+/** 整句合成 → mp3 Blob（绘本、试听用——那两处等得起，也要拿总时长校准节奏） */
+export async function synthesize(creds: XfCreds, vcn: string, text: string, rate: number,
+                                 timeoutMs = 12000): Promise<Blob> {
+  const chunks: Uint8Array[] = []
+  await synthesizeStream(creds, vcn, text, rate, c => chunks.push(c), timeoutMs).done
+  if (!chunks.length) throw new Error('讯飞没有返回音频')
+  return new Blob(chunks as BlobPart[], { type: 'audio/mpeg' })
 }

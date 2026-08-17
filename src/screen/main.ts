@@ -2,7 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto, voiceAct } from './speech'
-import { isCloudVoice, xfVcn, synthesize as xfSynthesize } from '../integrations/xftts'
+import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
@@ -1088,12 +1088,60 @@ function cloudFallbackNote(err: unknown) {
   banners.push({ title: '云端音色不可用，这句用了本机音色', text: reason, tone: 'warn', ttl: 8000 })
 }
 let agAudio: HTMLAudioElement | null = null
+let agCancel: (() => void) | null = null
+
+/**
+ * 流式播放 mp3 帧（MSE）。首帧即开播 —— 实测一句话 40 帧收齐要 5-6 秒，
+ * 首帧 0.5 秒就到，攒齐再播等于让用户白等 3 秒以上。
+ * MSE 不可用（个别内核）返回 null，调用方走整段 Blob 的老路。
+ */
+function playStream(gen: number, onFail: (e: unknown) => void): { push(c: Uint8Array): void; end(): void; stop(): void } | null {
+  if (!('MediaSource' in window) || !MediaSource.isTypeSupported('audio/mpeg')) return null
+  const ms = new MediaSource()
+  const a = new Audio(URL.createObjectURL(ms))
+  agAudio = a
+  const q: Uint8Array[] = []
+  let sb: SourceBuffer | null = null
+  let ended = false, started = false
+  const pump = () => {
+    if (!sb || sb.updating) return
+    const c = q.shift()
+    if (c) {
+      try { sb.appendBuffer(c as BufferSource) } catch (e) { onFail(e); return }
+      if (!started) { started = true; a.play().catch(onFail) }
+    } else if (ended && ms.readyState === 'open') {
+      try { ms.endOfStream() } catch { /* 已被 stop */ }
+    }
+  }
+  ms.addEventListener('sourceopen', () => {
+    sb = ms.addSourceBuffer('audio/mpeg')
+    sb.addEventListener('updateend', pump)
+    pump()
+  })
+  a.onended = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
+  return {
+    push: c => { q.push(c); pump() },
+    end: () => { ended = true; pump() },
+    stop: () => { try { a.pause() } catch { /* 空 */ } URL.revokeObjectURL(a.src) },
+  }
+}
+
 function speakAgent(text: string) {
   const gen = ++agGen
+  agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
   const chosen = chosenVoice()
   if (isCloudVoice(chosen) && xfReady()) {
     agSpeaking = true
+    const fail = (e: unknown) => { if (gen === agGen) { cloudFallbackNote(e); speakAgentLocal(text, gen) } }
+    const player = playStream(gen, fail)
+    if (player) {
+      const s = xfStream(XF_CREDS, xfVcn(chosen), text, sbRate(), c => { if (gen === agGen) player.push(c) })
+      agCancel = () => { s.cancel(); player.stop() }
+      s.done.then(() => { if (gen === agGen) player.end() }).catch(fail)
+      return
+    }
+    // MSE 不可用：整段收齐再播的老路
     xfSynthesize(XF_CREDS, xfVcn(chosen), text, sbRate())
       .then(blob => {
         if (gen !== agGen) return   // 已被 hush/下一句接管，作废
@@ -1101,10 +1149,10 @@ function speakAgent(text: string) {
         agAudio = a
         const done = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
         a.onended = done
-        a.onerror = () => { cloudFallbackNote('音频播放失败'); speakAgentLocal(text, gen) }
-        a.play().catch(e => { cloudFallbackNote(e); speakAgentLocal(text, gen) })
+        a.onerror = () => fail('音频播放失败')
+        a.play().catch(fail)
       })
-      .catch(e => { cloudFallbackNote(e); speakAgentLocal(text, gen) })
+      .catch(fail)
     return
   }
   speakAgentLocal(text, gen)
@@ -1126,6 +1174,7 @@ let agSpeaking = false
 function hushAgent() {
   if (!agSpeaking) return
   agGen++; agSpeaking = false
+  agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
   try { speechSynthesis.cancel() } catch { /* 同上 */ }
 }
@@ -1138,6 +1187,9 @@ const bus = createBus((m: BusMsg | any) => {
     case 'cards':
       deskState = m.desk; renderDesk(); break
     case 'voice': {
+      // 预热讯飞连接：用户开口/模型思考的那几秒正好够建连（实测 1.5-2.2s）
+      if ((m.s === 'listening' || m.s === 'thinking') && isCloudVoice(chosenVoice()) && xfReady())
+        xfWarm(XF_CREDS)
       if (m.s) setVoice(m.s); if ('text' in m) setSub(m.text, m.who)
       const act = voiceAct(m, storyReading)
       if (act === 'speak') speakAgent(m.text)

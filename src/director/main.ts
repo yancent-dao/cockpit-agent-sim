@@ -9,6 +9,7 @@ import { createImageClient } from '../integrations/orimage'
 import { buildBookHtml, bookFileName } from '../integrations/h5book'
 import { planShrink, withShrink, WEBP_Q } from '../integrations/shrink'
 import { pickVoice, zhVoices } from '../screen/speech'
+import { XF_VOICES, isCloudVoice, xfVcn, synthesize as xfSynthesize } from '../integrations/xftts'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -142,16 +143,28 @@ $s('heroForget')?.addEventListener('click', () => { story.revoke(); renderStoryN
  * `storage` 事件让它立刻生效，不用给 bus 加一类消息。
  */
 const VOICE_KEY = 'cockpit-sim:tts:voice'
+const XF = {
+  appId: String((import.meta as any).env?.VITE_XFYUN_APPID ?? ''),
+  apiKey: String((import.meta as any).env?.VITE_XFYUN_API_KEY ?? ''),
+  apiSecret: String((import.meta as any).env?.VITE_XFYUN_API_SECRET ?? ''),
+}
+const xfOk = !!(XF.appId && XF.apiKey && XF.apiSecret)
 function renderVoices() {
   const sel = $s('ttsVoice'); if (!sel) return
   const list = zhVoices((speechSynthesis?.getVoices?.() ?? []) as any)
-  if (!list.length) { sel.innerHTML = '<option value="">这台机器没装中文音色</option>'; return }
   const saved = localStorage.getItem(VOICE_KEY) || pickVoice(list as any)?.name || ''
-  sel.innerHTML = list.map(v => {
-    const tag = v.female === true ? '女声' : v.female === false ? '男声' : '—'
-    return `<option value="${v.name.replace(/"/g, '&quot;')}"${v.name === saved ? ' selected' : ''}>` +
-      `${v.name}（${tag}·${v.lang}）</option>`
-  }).join('')
+  // 云端组永远列出来：没配 Key 就在标签上说清（看不见的能力等于没有能力）
+  const cloud = `<optgroup label="云端超拟人 · 讯飞${xfOk ? '' : '（未配 Key，选了也走本机）'}">` +
+    XF_VOICES.map(v => `<option value="${v.value}"${v.value === saved ? ' selected' : ''}>${v.label}</option>`).join('') +
+    '</optgroup>'
+  const local = list.length
+    ? `<optgroup label="本机音色">` + list.map(v => {
+        const tag = v.female === true ? '女声' : v.female === false ? '男声' : '—'
+        return `<option value="${v.name.replace(/"/g, '&quot;')}"${v.name === saved ? ' selected' : ''}>` +
+          `${v.name}（${tag}·${v.lang}）</option>`
+      }).join('') + '</optgroup>'
+    : '<optgroup label="本机音色"><option disabled>这台机器没装中文音色</option></optgroup>'
+  sel.innerHTML = cloud + local
 }
 $s('ttsVoice')?.addEventListener('change', (e: any) => {
   localStorage.setItem(VOICE_KEY, e.target.value)
@@ -159,10 +172,17 @@ $s('ttsVoice')?.addEventListener('change', (e: any) => {
   // 窗口所以收得到；这里只管存
 })
 $s('ttsTry')?.addEventListener('click', () => {
-  const name = $s('ttsVoice')?.value
+  const name = $s('ttsVoice')?.value ?? ''
+  const demo = '小雨点打在桥上，妞妞把伞举得高高的。'
+  if (isCloudVoice(name) && xfOk) {
+    xfSynthesize(XF, xfVcn(name), demo, .92)
+      .then(b => new Audio(URL.createObjectURL(b)).play())
+      .catch(e => log('r', `讯飞试听失败：${e?.message ?? e}`))
+    return
+  }
   const v = pickVoice((speechSynthesis.getVoices() ?? []) as any, { name })
   try { speechSynthesis.cancel() } catch { /* 没在说话时个别内核会抛 */ }
-  const u = new SpeechSynthesisUtterance('小雨点打在桥上，妞妞把伞举得高高的。')
+  const u = new SpeechSynthesisUtterance(demo)
   u.lang = 'zh-CN'; u.rate = .92
   if (v) u.voice = v as any
   speechSynthesis.speak(u)

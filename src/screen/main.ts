@@ -2,6 +2,7 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto, voiceAct } from './speech'
+import { isCloudVoice, xfVcn, synthesize as xfSynthesize } from '../integrations/xftts'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
@@ -981,7 +982,7 @@ function speakStory(node: HTMLElement, c: any) {
    * 不来就按估算的时长匀速推进。
    */
   const rate = sbRate()
-  const totalMs = estimateMs(line, rate)
+  let totalMs = estimateMs(line, rate)
   const t0 = Date.now()
   let byBoundary = false
   const paintLit = (n: number) => {
@@ -998,24 +999,58 @@ function speakStory(node: HTMLElement, c: any) {
    * 内核不发 onend —— 任何一条都会让 `onend` 永远不来，而实拍看到的
    * 就是"只讲了一页，也不翻页"。到点了自己往下走。
    */
-  const guard = setTimeout(finish, totalMs + SB_SLACK_MS)
+  let guard = setTimeout(finish, totalMs + SB_SLACK_MS)
 
-  if (!('speechSynthesis' in window)) return
-  try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
-  const u = new SpeechSynthesisUtterance(line)
-  u.lang = 'zh-CN'; u.rate = rate
-  if (!sbVoice) refreshVoice()
-  // 挑不到中文音色时不硬塞：留空让引擎按 lang 自己决定，比拿英文音色念中文强
-  if (sbVoice) u.voice = sbVoice
-  u.onboundary = (ev: any) => {
-    byBoundary = true
-    paintLit((ev.charIndex || 0) + (ev.charLength || 1))
+  const speakLocal = () => {
+    if (gen !== sbGen || !('speechSynthesis' in window)) return
+    try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
+    const u = new SpeechSynthesisUtterance(line)
+    u.lang = 'zh-CN'; u.rate = rate
+    if (!sbVoice) refreshVoice()
+    // 挑不到中文音色时不硬塞：留空让引擎按 lang 自己决定，比拿英文音色念中文强
+    if (sbVoice) u.voice = sbVoice
+    u.onboundary = (ev: any) => {
+      byBoundary = true
+      paintLit((ev.charIndex || 0) + (ev.charLength || 1))
+    }
+    u.onend = finish
+    u.onerror = finish              // 念不出来也要往下走，不是卡住
+    storyReading = true             // 正文占麦：Agent 的衔接话术这段时间只上屏不出声
+    speechSynthesis.speak(u)
   }
-  u.onend = finish
-  u.onerror = finish              // 念不出来也要往下走，不是卡住
-  storyReading = true             // 正文占麦：Agent 的衔接话术这段时间只上屏不出声
-  speechSynthesis.speak(u)
+
+  /**
+   * 云端音色（讯飞超拟人）：合成整段 mp3 再播。逐字点亮继续按时间推，
+   * 拿到真实时长后把 totalMs / 兜底 guard 校准成实际长度 ——
+   * 估算的短、云端的长，不校准会念到一半被 guard 翻页。
+   * 合成本身要等一会儿，guard 先放宽；任何一步失败回退本地音色。
+   */
+  const chosen = chosenVoice()
+  if (isCloudVoice(chosen) && xfReady()) {
+    storyReading = true
+    sbAudio?.pause(); sbAudio = null
+    clearTimeout(guard); guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9000)
+    const rearm = (ms: number) => { totalMs = ms; clearTimeout(guard); guard = setTimeout(finish, ms + SB_SLACK_MS) }
+    const local = () => { if (gen === sbGen && !done) { rearm(estimateMs(line, rate)); speakLocal() } }
+    xfSynthesize(XF_CREDS, xfVcn(chosen), line, rate)
+      .then(blob => {
+        if (gen !== sbGen || done) return
+        const a = new Audio(URL.createObjectURL(blob))
+        sbAudio = a
+        a.onloadedmetadata = () => {
+          if (gen === sbGen && Number.isFinite(a.duration) && a.duration > 0) rearm(a.duration * 1000)
+        }
+        a.onended = () => { URL.revokeObjectURL(a.src); finish() }
+        a.onerror = local
+        a.play().catch(local)
+      })
+      .catch(local)
+    return
+  }
+  speakLocal()
 }
+/** 绘本的云端音频句柄：新页开讲前停掉上一页的 */
+let sbAudio: HTMLAudioElement | null = null
 
 /* ══════════ 主对话话术的 TTS（2026-08-16 实拍：「文字没有播报」） ══════════
  *
@@ -1025,9 +1060,42 @@ function speakStory(node: HTMLElement, c: any) {
  */
 let storyReading = false
 let agGen = 0
+/**
+ * 讯飞云端音色（超拟人）。Key 走 .env.local，没配就永远走本地 ——
+ * 云端挂了（断网/超时/额度）也回退本地音色，话不能不说。
+ */
+const XF_CREDS = {
+  appId: String((import.meta as any).env?.VITE_XFYUN_APPID ?? ''),
+  apiKey: String((import.meta as any).env?.VITE_XFYUN_API_KEY ?? ''),
+  apiSecret: String((import.meta as any).env?.VITE_XFYUN_API_SECRET ?? ''),
+}
+const xfReady = () => !!(XF_CREDS.appId && XF_CREDS.apiKey && XF_CREDS.apiSecret)
+const chosenVoice = () => localStorage.getItem(VOICE_KEY) || ''
+
+let agAudio: HTMLAudioElement | null = null
 function speakAgent(text: string) {
-  if (!('speechSynthesis' in window)) return
   const gen = ++agGen
+  agAudio?.pause(); agAudio = null
+  const chosen = chosenVoice()
+  if (isCloudVoice(chosen) && xfReady()) {
+    agSpeaking = true
+    xfSynthesize(XF_CREDS, xfVcn(chosen), text, sbRate())
+      .then(blob => {
+        if (gen !== agGen) return   // 已被 hush/下一句接管，作废
+        const a = new Audio(URL.createObjectURL(blob))
+        agAudio = a
+        const done = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
+        a.onended = done
+        a.onerror = () => speakAgentLocal(text, gen)
+        a.play().catch(() => speakAgentLocal(text, gen))
+      })
+      .catch(() => speakAgentLocal(text, gen))
+    return
+  }
+  speakAgentLocal(text, gen)
+}
+function speakAgentLocal(text: string, gen: number) {
+  if (gen !== agGen || !('speechSynthesis' in window)) return
   try { speechSynthesis.cancel() } catch { /* 没说话时 cancel 在个别内核会抛 */ }
   const u = new SpeechSynthesisUtterance(text)
   u.lang = 'zh-CN'; u.rate = sbRate()
@@ -1043,6 +1111,7 @@ let agSpeaking = false
 function hushAgent() {
   if (!agSpeaking) return
   agGen++; agSpeaking = false
+  agAudio?.pause(); agAudio = null
   try { speechSynthesis.cancel() } catch { /* 同上 */ }
 }
 

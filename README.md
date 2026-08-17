@@ -238,6 +238,7 @@ flowchart TB
 | Radio Browser | 网络电台 | 零 Key | 社区节点,可用性有波动 |
 | NewsAPI | 新闻 | 可选 | ⚠ 免费层**仅限 localhost,禁止部署** |
 | Pexels | 短视频 | 可选 | — |
+| 讯飞开放平台 | 云端超拟人 TTS(可选,不配则用浏览器本机音色) | 可选,三个值 | 免费额度以控制台为准 |
 
 所有 Key 都写在本地 `.env.local`(已 gitignore)或控制面板里,**零后端,不经过任何中间服务器**。
 

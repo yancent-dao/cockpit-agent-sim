@@ -129,6 +129,20 @@ export const SIGNALS: Signal[] = [
     type: 'number', range: [0, 3], label: '右后座椅通风',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
 
+  /** 座椅按摩。档位跟加热/通风一致（0-3），不用 VSS 的 percent —— 档位对用户更自然 */
+  { alias: 'seat.driver.massage', vssPath: 'Vehicle.Cabin.Seat.Row1.DriverSide.Massage',
+    type: 'number', range: [0, 3], label: '主驾座椅按摩',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+  { alias: 'seat.passenger.massage', vssPath: 'Vehicle.Cabin.Seat.Row1.PassengerSide.Massage',
+    type: 'number', range: [0, 3], label: '副驾座椅按摩',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+  { alias: 'seat.rearLeft.massage', vssPath: 'Vehicle.Cabin.Seat.Row2.DriverSide.Massage',
+    type: 'number', range: [0, 3], label: '左后座椅按摩',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+  { alias: 'seat.rearRight.massage', vssPath: 'Vehicle.Cabin.Seat.Row2.PassengerSide.Massage',
+    type: 'number', range: [0, 3], label: '右后座椅按摩',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
   { alias: 'seat.driver.slide', vssPath: 'Vehicle.Cabin.Seat.Row1.DriverSide.Position',
     type: 'number', range: [0, 100], unit: '%', label: '主驾座椅前后',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', transition: 3000, initial: 50 },
@@ -188,11 +202,74 @@ export const SIGNALS: Signal[] = [
     type: 'number', range: [0, 3], label: '香氛浓度',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 1 },
 
-  /* ── 灯光（v0.1 简化：大灯 + 后备箱灯，阅读灯留待 v0.2） ── */
-  { alias: 'cabin.light.headlight.state', vssPath: 'Vehicle.Body.Lights.Beam.Low.IsOn',
-    type: 'enum', values: ['on', 'off', 'auto'], label: '大灯',
+  /**
+   * ── 后视镜 ──
+   * 只做折叠与加热：角度调节（VSS 的 Pan/Tilt）在屏幕上看不出任何变化，
+   * 演示价值为零，加了只是让能力目录长一点。
+   */
+  { alias: 'cabin.mirror.driver.isFolded', vssPath: 'Vehicle.Body.Mirrors.DriverSide.IsFolded',
+    type: 'boolean', label: '主驾后视镜折叠',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+  { alias: 'cabin.mirror.passenger.isFolded', vssPath: 'Vehicle.Body.Mirrors.PassengerSide.IsFolded',
+    type: 'boolean', label: '副驾后视镜折叠',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+  { alias: 'cabin.mirror.driver.heating', vssPath: 'Vehicle.Body.Mirrors.DriverSide.Heating',
+    type: 'boolean', label: '主驾后视镜加热',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+  { alias: 'cabin.mirror.passenger.heating', vssPath: 'Vehicle.Body.Mirrors.PassengerSide.Heating',
+    type: 'boolean', label: '副驾后视镜加热',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+
+  /**
+   * ── 空气净化器 ──
+   * **VSS v6 没有这一族的标准路径**，按香氛（`Vehicle.Cabin.Fragrance.*`）
+   * 的先例造。这是既有做法：清单里有、VSS 里没有的舱内配件都这么接。
+   */
+  { alias: 'cabin.airPurifier.power', vssPath: 'Vehicle.Cabin.AirPurifier.IsActive',
+    type: 'boolean', label: '空气净化器',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+  { alias: 'cabin.airPurifier.level', vssPath: 'Vehicle.Cabin.AirPurifier.Level',
+    type: 'number', range: [0, 3], label: '净化档位',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
+  /**
+   * ── 灯光 ──
+   *
+   * 2026-08-15 对着真实整车能力清单补齐。**顺带修了一个错名**：
+   * 原来的 `headlight`（"大灯"）vssPath 指向 `Beam.Low`，那是**近光** ——
+   * 补进远光之后两者语义会打架，所以改名 `lowBeam`。这是修正不是新增。
+   *
+   * 车外灯挂 `Vehicle.Body.Lights.*`，座舱灯挂 `Vehicle.Cabin.Light.*` ——
+   * 这条边界是 VSS 自己划的，别混。
+   */
+  { alias: 'cabin.light.lowBeam.state', vssPath: 'Vehicle.Body.Lights.Beam.Low.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '近光灯',
     valueLabels: { on: '开', off: '关', auto: '自动' },
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'auto' },
+  { alias: 'cabin.light.highBeam.state', vssPath: 'Vehicle.Body.Lights.Beam.High.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '远光灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+  { alias: 'cabin.light.fogFront.state', vssPath: 'Vehicle.Body.Lights.Fog.Front.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '前雾灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+  { alias: 'cabin.light.fogRear.state', vssPath: 'Vehicle.Body.Lights.Fog.Rear.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '后雾灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+  { alias: 'cabin.light.parking.state', vssPath: 'Vehicle.Body.Lights.Parking.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '示宽灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+  { alias: 'cabin.light.readingFront.state', vssPath: 'Vehicle.Cabin.Light.Row1.Reading.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '前排阅读灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
+  { alias: 'cabin.light.readingRear.state', vssPath: 'Vehicle.Cabin.Light.Row2.Reading.IsOn',
+    type: 'enum', values: ['on', 'off', 'auto'], label: '后排阅读灯',
+    valueLabels: { on: '开', off: '关', auto: '自动' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
   { alias: 'cabin.light.trunkLight.state', vssPath: 'Vehicle.Body.Trunk.Rear.Light.IsOn',
     type: 'enum', values: ['on', 'off', 'auto'], label: '后备箱灯',
     valueLabels: { on: '开', off: '关', auto: '自动' },
@@ -212,6 +289,14 @@ export const SIGNALS: Signal[] = [
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'normal' },
 
   /* ── 未选装：反幻觉验证用（Golden Case 9） ── */
+  /**
+   * 遮阳帘。跟玻璃是两个独立执行器，VSS 也是分开的两条路径。
+   * **equipped 必须跟玻璃一致** —— 天窗都没装，不可能单有一块遮阳帘。
+   */
+  { alias: 'cabin.sunroof.shade.position', vssPath: 'Vehicle.Cabin.Sunroof.Shade.Position',
+    type: 'number', range: [0, 100], unit: '%', label: '天窗遮阳帘',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', transition: 4000,
+    initial: 0, equipped: false },
   { alias: 'cabin.sunroof.glass.position', vssPath: 'Vehicle.Cabin.Sunroof.Position',
     type: 'number', range: [0, 100], unit: '%', label: '全景天窗',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', transition: 6000,

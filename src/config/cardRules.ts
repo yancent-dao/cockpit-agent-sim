@@ -16,7 +16,20 @@ import type { DomainState } from '../state/domain'
  * data builder 用具名函数白名单（沿用约束引擎具名谓词的先例）——纯配置拼不出 mapUrl 这类需要依赖的数据。
  */
 
-export interface BuilderDeps { store: Store; amap?: AmapClient; state?: DomainState }
+export interface BuilderDeps {
+  store: Store
+  amap?: AmapClient
+  state?: DomainState
+  /**
+   * 刚刚变化的那条信号路径。**回执要说「刚做了什么」，不是「现在全量什么状态」** ——
+   * 灯光从 2 个扩到 8 个之后这条立刻绷不住：用户说「开后雾灯」，
+   * 全量回执里四项有三项跟他无关，而他真正做的那件事被挤到看不见的地方。
+   *
+   * `store.subscribe` 的回调本来就带着它，编排器往下传一层就够。
+   * 补回通道（refill）拿不到，所以是可选的 —— builder 要有全量兜底。
+   */
+  changed?: string
+}
 
 export interface CardRule {
   id: string
@@ -115,9 +128,21 @@ export const CARD_RULES: CardRule[] = [
     card: { key: 'lights', template: 'control', ack: true, data: 'lightCard' } },
   { id: 'drive-feedback', watch: ['vehicle.driveMode', 'vehicle.regenLevel', 'vehicle.suspensionHeight'],
     card: { key: 'drive', template: 'control', ack: true, data: 'driveCard' } },
+  { id: 'mirror-feedback', watch: ['cabin.mirror.*.*'],
+    card: { key: 'mirrors', template: 'control', ack: true, data: 'mirrorCard' } },
+  { id: 'airpurifier-feedback', watch: ['cabin.airPurifier.*'],
+    card: { key: 'airPurifier', template: 'control', ack: true, data: 'airPurifierCard' } },
   { id: 'opening-feedback', watch: ['cabin.door.*.isOpen', 'cabin.trunk.isOpen', 'cabin.chargePort.isOpen'],
     card: { key: 'openings', template: 'control', urgency: 'urgent', data: 'openingCard' } },
 ]
+
+/** 灯具表。加一盏灯 = 加一行，卡片和回执自动跟上 */
+const LIGHTS = [
+  ['lowBeam', '近光'], ['highBeam', '远光'],
+  ['fogFront', '前雾灯'], ['fogRear', '后雾灯'], ['parking', '示宽灯'],
+  ['readingFront', '前排阅读灯'], ['readingRear', '后排阅读灯'],
+  ['trunkLight', '后备箱灯'],
+] as const
 
 const WIN_POS = ['driver', 'passenger', 'rearLeft', 'rearRight'] as const
 const SEAT_CN: Record<string, string> = { driver: '主驾', passenger: '副驾', rearLeft: '左后', rearRight: '右后' }
@@ -230,11 +255,36 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
     ],
   }),
 
-  lightCard: ({ store }) => ({
-    title: '车灯',
+  /**
+   * 车灯。八盏灯全报的话，用户说「开后雾灯」看到的是一串跟他无关的状态 ——
+   * 有 `changed` 就只报那一盏（回执的本义），没有才退回全量。
+   */
+  lightCard: ({ store, changed }) => {
+    const all = LIGHTS.map(([k, label]) => ({ label, value: cn(store.get(`cabin.light.${k}.state`)) }))
+    const hit = changed?.match(/^cabin\.light\.(\w+)\.state$/)?.[1]
+    const one = hit && LIGHTS.find(([k]) => k === hit)
+    return {
+      title: '车灯',
+      items: one ? [{ label: one[1], value: cn(store.get(`cabin.light.${one[0]}.state`)) }] : all,
+    }
+  },
+
+  mirrorCard: ({ store }) => ({
+    title: '后视镜',
     items: [
-      { label: '大灯', value: cn(store.get('cabin.light.headlight.state')) },
-      { label: '后备箱灯', value: cn(store.get('cabin.light.trunkLight.state')) },
+      ...(store.get('cabin.mirror.driver.isFolded') || store.get('cabin.mirror.passenger.isFolded')
+        ? [{ label: '折叠', value: true }] : []),
+      ...(['driver', 'passenger'] as const)
+        .filter(p => store.get(`cabin.mirror.${p}.heating`))
+        .map(p => ({ label: `${SEAT_CN[p]}加热`, value: true })),
+    ],
+  }),
+
+  airPurifierCard: ({ store }) => ({
+    title: '空气净化器',
+    items: [
+      { label: '开关', value: !!store.get('cabin.airPurifier.power') },
+      { label: '档位', value: store.get('cabin.airPurifier.level') as number },
     ],
   }),
 

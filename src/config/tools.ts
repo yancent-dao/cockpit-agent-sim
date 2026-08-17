@@ -21,6 +21,14 @@ export interface ParamDef {
    */
   items?: 'string' | Record<string, unknown>
   required?: boolean
+  /**
+   * 缺省值。**路径占位符的必要配套**：`sunroof.set` 写的是
+   * `cabin.sunroof.{part}.position`，part 不传路径就拼成 `undefined` ——
+   * 而"开天窗"这句话里用户根本不会说"玻璃还是遮阳帘"，
+   * 逼模型每次都传是把机制的缺口转嫁给它。
+   * 填进 args 的时机在**校验之前**，之后所有环节都当它是用户传的。
+   */
+  default?: Value
   desc: string
 }
 
@@ -143,7 +151,7 @@ export const TOOLS: ToolDef[] = [
     name: 'seat.set',
     brief: '座椅加热通风调节',
     fast: true,
-    desc: '控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。',
+    desc: '控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风/按摩生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。',
     permission: '彩',
     params: {
       seat: {
@@ -152,12 +160,14 @@ export const TOOLS: ToolDef[] = [
       },
       heating: { type: 'number', range: [0, 3], desc: '加热档位 0-3' },
       ventilation: { type: 'number', range: [0, 3], desc: '通风档位 0-3' },
+      massage: { type: 'number', range: [0, 3], desc: '按摩档位 0-3，0 是关' },
       slide: { type: 'number', range: [0, 100], desc: '前后位置百分比，仅前排' },
       recline: { type: 'number', range: [0, 100], desc: '靠背角度百分比，仅前排' },
     },
     writes: [
       { path: 'seat.{seat}.heating', from: 'heating' },
       { path: 'seat.{seat}.ventilation', from: 'ventilation' },
+      { path: 'seat.{seat}.massage', from: 'massage' },
       { path: 'seat.{seat}.slide', from: 'slide' },
       { path: 'seat.{seat}.recline', from: 'recline' },
     ],
@@ -180,11 +190,59 @@ export const TOOLS: ToolDef[] = [
     name: 'sunroof.set',
     brief: '天窗开合',
     fast: true,
-    desc: '控制全景天窗开度。',
+    desc: '控制全景天窗。part 不传就是动玻璃 —— 用户说「开天窗」指的就是它；' +
+      '说「拉上遮阳帘」「遮一下太阳」时传 shade。两者是独立执行器，各开各的。',
     permission: '彩',
-    params: { position: { type: 'number', range: [0, 100], required: true, desc: '开度百分比 0-100' } },
-    writes: [{ path: 'cabin.sunroof.glass.position', from: 'position' }],
+    params: {
+      position: { type: 'number', range: [0, 100], required: true, desc: '开度百分比 0-100' },
+      part: { type: 'enum', values: ['glass', 'shade'], default: 'glass', desc: '玻璃还是遮阳帘，默认 glass' },
+    },
+    // 路径里的 {part} 缺省时由 expand 填 glass —— 现有信号本来就叫
+    // cabin.sunroof.**glass**.position，加这个参数天然吻合，零破坏
+    writes: [{ path: 'cabin.sunroof.{part}.position', from: 'position' }],
     requires: 'cabin.sunroof.glass.position',
+  },
+
+  /* ── 后视镜（零 handler）。只做折叠与加热：角度调节在屏幕上看不出变化，
+     演示价值为零，加了只是让能力目录长一点 ── */
+  {
+    name: 'mirror.set',
+    brief: '后视镜折叠与加热',
+    fast: true,
+    desc: '控制后视镜。mirror 传 both 一次控制两侧。可以一次传多个字段，只传要改的即可。' +
+      '下雨起雾时用户说"后视镜看不清"，开加热。',
+    permission: '彩',
+    params: {
+      mirror: {
+        type: 'enum', values: ['driver', 'passenger', 'both'],
+        required: true, desc: '目标后视镜',
+      },
+      fold: { type: 'boolean', desc: '折叠收起' },
+      heating: { type: 'boolean', desc: '镜面加热除雾' },
+    },
+    writes: [
+      { path: 'cabin.mirror.{mirror}.isFolded', from: 'fold' },
+      { path: 'cabin.mirror.{mirror}.heating', from: 'heating' },
+    ],
+    expand: { mirror: { both: ['driver', 'passenger'] } },
+  },
+
+  /* ── 空气净化器（零 handler） ── */
+  {
+    name: 'airPurifier.set',
+    brief: '空气净化器开关档位',
+    fast: true,
+    desc: '控制空气净化器。可以一次传开关和档位。用户说"空气不好""外面味儿大"时用它，' +
+      '跟空调内循环是两件事（内循环走 climate.set）。',
+    permission: '彩',
+    params: {
+      power: { type: 'boolean', desc: '开关' },
+      level: { type: 'number', range: [0, 3], desc: '净化档位 0-3' },
+    },
+    writes: [
+      { path: 'cabin.airPurifier.power', from: 'power' },
+      { path: 'cabin.airPurifier.level', from: 'level' },
+    ],
   },
 
   {
@@ -294,11 +352,19 @@ export const TOOLS: ToolDef[] = [
     name: 'light.set',
     brief: '大灯与后备箱灯',
     fast: true,
-    desc: '开关车灯。',
+    desc: '开关车灯。用户说「开大灯」一般指近光（lowBeam）；「远光」「雾灯」「示宽灯」「阅读灯」各自独立。',
     permission: '彩',
     params: {
-      light: { type: 'enum', values: ['headlight', 'trunkLight'], required: true, desc: '目标灯具' },
-      state: { type: 'enum', values: ['on', 'off', 'auto'], required: true, desc: '状态' },
+      light: {
+        type: 'enum',
+        values: ['lowBeam', 'highBeam', 'fogFront', 'fogRear', 'parking',
+                 'readingFront', 'readingRear', 'trunkLight'],
+        required: true,
+        desc: '目标灯具：lowBeam 近光（用户说"大灯"一般指它）/ highBeam 远光 / ' +
+          'fogFront 前雾灯 / fogRear 后雾灯 / parking 示宽灯 / ' +
+          'readingFront 前排阅读灯 / readingRear 后排阅读灯 / trunkLight 后备箱灯',
+      },
+      state: { type: 'enum', values: ['on', 'off', 'auto'], required: true, desc: '状态。auto 是随环境光自动' },
     },
     writes: [{ path: 'cabin.light.{light}.state', from: 'state' }],
   },
@@ -346,7 +412,9 @@ export const TOOLS: ToolDef[] = [
       alias: { type: 'string', desc: '常用地址别名，如"家""公司"。用户说"回家"时优先用这个，不用再搜' },
       poiId: { type: 'string', desc: 'navigation.search 返回的 POI id' },
       address: { type: 'string', desc: '地址或地点名称，没有 alias/poiId 时用这个' },
-      preference: { type: 'enum', values: ['default', 'fastest', 'avoidHighway', 'avoidCongestion', 'avoidToll'], desc: '路线偏好，默认 default' },
+      preference: { type: 'enum', values: ['default', 'fastest', 'highwayFirst', 'avoidHighway', 'avoidCongestion', 'avoidToll'],
+        desc: '路线偏好，默认 default。**限行不用管** —— 车牌已经随请求传给高德，' +
+          '它会自动规避，撞了限行也会在结果里说' },
       mode: { type: 'enum', values: ['driving', 'walking', 'bicycling', 'electrobike'], desc: '出行方式，默认 driving。用户说"走过去""骑车"时改' },
       waypoints: {
         type: 'array', items: 'string',
@@ -951,10 +1019,12 @@ export const TOOLS: ToolDef[] = [
 export const CAPABILITY_DOMAINS: Array<{ match: string[]; icon: string; label: string; blurb: string }> = [
   { match: ['window'], icon: '🪟', label: '车窗', blurb: '四扇窗独立开合，说"开一半"也行' },
   { match: ['climate'], icon: '❄️', label: '空调', blurb: '温度、风量、出风口，冷了热了直接说' },
-  { match: ['seat', 'steeringWheel'], icon: '💺', label: '座椅方向盘', blurb: '加热、通风、前后与靠背，方向盘也能热' },
-  { match: ['sunroof'], icon: '🌅', label: '天窗', blurb: '开合、透气' },
+  { match: ['seat', 'steeringWheel'], icon: '💺', label: '座椅方向盘', blurb: '加热、通风、按摩、前后与靠背，方向盘也能热' },
+  { match: ['sunroof'], icon: '🌅', label: '天窗', blurb: '玻璃开合，遮阳帘也能单独拉' },
+  { match: ['mirror'], icon: '🪞', label: '后视镜', blurb: '折叠收起、镜面加热除雾' },
+  { match: ['airPurifier'], icon: '🌀', label: '空气净化', blurb: '外面味儿大时开一下' },
   { match: ['door', 'trunk', 'chargePort', 'childLock'], icon: '🚪', label: '门与舱口', blurb: '车门、后备箱、充电口、儿童锁' },
-  { match: ['ambientLight', 'fragrance', 'light'], icon: '💡', label: '灯光香氛', blurb: '氛围灯颜色亮度、香氛、大灯' },
+  { match: ['ambientLight', 'fragrance', 'light'], icon: '💡', label: '灯光香氛', blurb: '氛围灯、香氛、近光远光雾灯示宽灯、前后排阅读灯' },
   { match: ['wiper'], icon: '🌧️', label: '雨刷', blurb: '手动挡位或自动感应' },
   { match: ['driveSetting'], icon: '🎛️', label: '驾驶设置', blurb: '驾驶模式、能量回收、悬架高度' },
   { match: ['navigation', 'region', 'places'], icon: '🧭', label: '导航', blurb: '找地方、规划对比路线、沿途搜索、存常用地址' },

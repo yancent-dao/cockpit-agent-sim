@@ -22,7 +22,7 @@ import { CARD_RULES, DATA_BUILDERS } from '../../src/config/cardRules'
 const boot = () => {
   const store = createStore(SIGNALS, CONSTRAINTS)
   const desk = createDesk()
-  const acks: Array<{ title: string; text: string }> = []
+  const acks: Array<{ key: string; title: string; text: string }> = []
   createOrchestrator({
     store, desk, rules: CARD_RULES, builders: DATA_BUILDERS,
     deps: { store } as any,
@@ -62,5 +62,42 @@ describe('开车窗开空调是通知', () => {
   it('导航、播放器这些内容卡一张都没少', () => {
     const rules = CARD_RULES.filter(r => ['nav', 'player', 'player-video'].includes(r.card.key))
     for (const r of rules) expect((r.card as any).ack, `${r.card.key} 不该被标成回执`).toBeFalsy()
+  })
+})
+
+/**
+ * ══════════ 回执要说「刚做了什么」，不是「现在全量什么状态」 ══════════
+ *
+ * 灯光从 2 个扩到 8 个之后这条立刻绷不住了：用户说「开后雾灯」，
+ * 回执却是「近光 自动 · 远光 关 · 前雾灯 关 · 后雾灯 关 · 还有 4 项」——
+ * 四项里三项跟他无关，而他真正做的那件事被挤到看不见的地方。
+ *
+ * `store.subscribe` 的回调**本来就带着变化的 path**，只是编排器没往下传。
+ * 传给 builder 之后，回执才对得上「回执」这个名字。
+ */
+describe('回执只报刚变的那件事', () => {
+  it('开后雾灯 → 回执说的是后雾灯，不是把八盏灯全报一遍', () => {
+    const { store, acks } = boot()
+    store.set('cabin.light.fogRear.state', 'on')
+    const a = acks.find(x => x.key === 'lights')!
+    expect(a, '该出回执').toBeTruthy()
+    expect(a.text).toContain('后雾灯')
+    expect(a.text, '别把无关的灯也报出来').not.toContain('近光')
+    expect(a.text, '别出现"还有 N 项"').not.toContain('还有')
+  })
+
+  it('关灯也说得出来 —— 不能因为值是"关"就当没发生', () => {
+    const { store, acks } = boot()
+    store.set('cabin.light.highBeam.state', 'on')
+    acks.length = 0
+    store.set('cabin.light.highBeam.state', 'off')
+    expect(acks.find(x => x.key === 'lights')?.text).toContain('远光')
+  })
+
+  /** 补回通道（refill）没有"刚变的那条"，这时候退回全量，别报空 */
+  it('拿不到变化路径时退回全量，不是空白', () => {
+    const { store, acks } = boot()
+    store.set('cabin.light.fogFront.state', 'on')
+    expect(acks.find(x => x.key === 'lights')!.text.length).toBeGreaterThan(0)
   })
 })

@@ -292,6 +292,16 @@ export function createRegistry(
     return perm
   }
 
+  /**
+   * 把声明了 `default` 而这次没传的参数填上。**在校验之前** ——
+   * 之后的校验、展开、写入都当它是用户传的，不用每处各判一次。
+   */
+  function applyDefaults(t: ToolDef, args: Record<string, any>) {
+    for (const [key, def] of Object.entries(t.params) as [string, ParamDef][])
+      if (def.default !== undefined && (args[key] === undefined || args[key] === null))
+        args[key] = def.default
+  }
+
   function validate(t: ToolDef, args: Record<string, any>): string | null {
     for (const [key, def] of Object.entries(t.params) as [string, ParamDef][]) {
       let v = args?.[key]
@@ -406,6 +416,7 @@ export function createRegistry(
     if (!authorized(name, ctx.allow))
       return { status: 'unavailable', code: 'NOT_AUTHORIZED', message: `当前 Agent 无权调用 ${name}` }
 
+    applyDefaults(t, args)      // 填缺省值：在校验之前，之后各环节都当它是用户传的
     const bad = validate(t, args)
     if (bad) return { status: 'rejected', code: 'INVALID_PARAMS', message: bad }
 

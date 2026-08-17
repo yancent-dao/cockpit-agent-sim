@@ -33,14 +33,14 @@ export function createOrchestrator({ store, desk, rules, builders, deps, onAck }
     (r.when ?? []).every(([path, op, value]) => compare(store.get(path), op, value))
 
   /** 确保卡片在场且数据最新。事件卡顺带刷新寿命 */
-  const apply = (r: CardRule) => {
+  const apply = (r: CardRule, changed?: string) => {
     const build = builders[r.card.data]
     /**
      * 回执走横幅，不进桌面（产品判断：开车窗开空调是通知不是卡片）。
      * 分派仍然问 `channelOf` —— 判据只看卡片自己的字段，不看模板名。
      */
     if (channelOf({ ack: r.card.ack, urgency: r.card.urgency }) === 'banner') {
-      const d = build ? build(deps) : {}
+      const d = build ? build({ ...deps, changed }) : {}
       onAck?.({ key: r.card.key, title: String(d?.title ?? ''), text: ackLine(d) })
       return
     }
@@ -51,7 +51,7 @@ export function createOrchestrator({ store, desk, rules, builders, deps, onAck }
       kind: 'rule', evictable: r.card.evictable, urgency: r.card.urgency, anchor: r.card.anchor,
       ttl: r.card.ttl ?? 'untilDismissed',
       refreshTtl: r.card.ttl !== undefined,
-      data: build ? build(deps) : {},
+      data: build ? build({ ...deps, changed }) : {},
     })
   }
 
@@ -89,9 +89,10 @@ export function createOrchestrator({ store, desk, rules, builders, deps, onAck }
       for (const path of new Set((r.when ?? []).map(w => w[0])))
         unsubs.push(store.subscribe(path, () => evaluate(r)))
       for (const pattern of r.watch)
-        unsubs.push(store.subscribe(pattern, () => {
-          if (r.when) { if (isActive(r)) apply(r) } // 状态卡：活跃时刷新数据
-          else apply(r)                              // 事件卡：一触即现
+        // 回调带着**刚变的那条路径**——回执要说"刚做了什么"，不是全量状态
+        unsubs.push(store.subscribe(pattern, path => {
+          if (r.when) { if (isActive(r)) apply(r, path) } // 状态卡：活跃时刷新数据
+          else apply(r, path)                             // 事件卡：一触即现
         }))
       evaluate(r) // 启动即评估，覆盖"状态早已成立"的场景（如刷新页面时导航正在进行）
     }

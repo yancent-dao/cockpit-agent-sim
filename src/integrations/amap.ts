@@ -107,6 +107,7 @@ export interface AmapBusLine {
 const STRATEGY: Record<string, number> = {
   default: 32,          // 高德推荐（同 APP 默认）
   fastest: 38,          // 速度最快
+  highwayFirst: 34,     // 高速优先
   avoidHighway: 35,     // 不走高速
   avoidCongestion: 33,  // 躲避拥堵
   avoidToll: 36,        // 少收费

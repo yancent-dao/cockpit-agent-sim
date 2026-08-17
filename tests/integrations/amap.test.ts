@@ -345,3 +345,20 @@ describe('thinPolyline —— 路线点抽稀', () => {
     expect(thinPolyline('', 10)).toBe('')
   })
 })
+
+/**
+ * 高速优先（2026-08-15 对着真实整车清单补）。高德 strategy=34。
+ * 「避开限行」**不用补**：车牌已经随请求传给高德，它自动规避，
+ * 而且返回里的 restriction 字段我们一直在解析。
+ */
+describe('路线偏好：高速优先', () => {
+  it('highwayFirst 走 strategy 34', async () => {
+    const seen: string[] = []
+    const c = createAmapClient((async (u: string) => {
+      seen.push(u)
+      return { ok: true, json: async () => ({ status: '1', route: { paths: [] } }) }
+    }) as any, { webKey: 'k' })
+    await c.drivingRoutes('1,1', '2,2', { preference: 'highwayFirst' } as any).catch(() => {})
+    expect(seen[0]).toContain('strategy=34')
+  })
+})

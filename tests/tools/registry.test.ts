@@ -541,10 +541,127 @@ describe('ambientLight.set / fragrance.set / light.set', () => {
     expect(store.get('cabin.fragrance.scent')).toBe('citrus')
   })
 
-  it('大灯开关', async () => {
-    const r = await reg.invoke('light.set', { light: 'headlight', state: 'on' })
+  it('近光开关', async () => {
+    const r = await reg.invoke('light.set', { light: 'lowBeam', state: 'on' })
     expect(r.status).toBe('ok')
-    expect(store.get('cabin.light.headlight.state')).toBe('on')
+    expect(store.get('cabin.light.lowBeam.state')).toBe('on')
+  })
+})
+
+/**
+ * ══════════ 对着真实整车能力清单补齐的一批 ══════════
+ *
+ * 2026-08-15 拿真实车辆的 908 条原子能力清单比对之后补的。
+ * 判据是「加数据不加代码」——这一整批只改 `src/config/*.ts`，零 handler。
+ */
+describe('车外灯与阅读灯', () => {
+  /**
+   * **原来的 `headlight` 是个错名。** 它的 vssPath 指向
+   * `Vehicle.Body.Lights.Beam.Low.IsOn` —— 那是**近光**，而 label 写的是"大灯"。
+   * 补进远光之后两者语义会打架，所以这是**修正**不是新增。
+   */
+  it('近光的信号名跟它的 VSS 路径对上了', () => {
+    const lo = SIGNALS.find(s => s.alias === 'cabin.light.lowBeam.state')!
+    expect(lo, 'headlight 该改名成 lowBeam').toBeTruthy()
+    expect(lo.vssPath).toContain('Beam.Low')
+    expect(SIGNALS.some(s => s.alias === 'cabin.light.headlight.state'), '错名不该留着').toBe(false)
+  })
+
+  it('远光 / 前后雾灯 / 示宽灯都能开关', async () => {
+    for (const [light, path] of [
+      ['highBeam', 'cabin.light.highBeam.state'],
+      ['fogFront', 'cabin.light.fogFront.state'],
+      ['fogRear', 'cabin.light.fogRear.state'],
+      ['parking', 'cabin.light.parking.state'],
+    ] as const) {
+      const r = await reg.invoke('light.set', { light, state: 'on' })
+      expect(r.status, light).toBe('ok')
+      expect(store.get(path), light).toBe('on')
+    }
+  })
+
+  it('前后排阅读灯分开控制', async () => {
+    await reg.invoke('light.set', { light: 'readingRear', state: 'on' })
+    expect(store.get('cabin.light.readingRear.state')).toBe('on')
+    expect(store.get('cabin.light.readingFront.state'), '不该连坐').toBe('off')
+  })
+
+  /** 车外灯的 VSS 路径都在 Body.Lights 下，别跟座舱灯混在一起 */
+  it('车外灯挂 Body.Lights，座舱灯挂 Cabin.Light', () => {
+    for (const a of ['highBeam', 'fogFront', 'fogRear', 'parking'])
+      expect(SIGNALS.find(s => s.alias === `cabin.light.${a}.state`)!.vssPath).toContain('Body.Lights')
+    for (const a of ['readingFront', 'readingRear'])
+      expect(SIGNALS.find(s => s.alias === `cabin.light.${a}.state`)!.vssPath).toContain('Cabin.Light')
+  })
+})
+
+describe('座椅按摩', () => {
+  it('跟加热通风一样是 0-3 档，四个座位都有', async () => {
+    const r = await reg.invoke('seat.set', { seat: 'driver', massage: 2 })
+    expect(r.status).toBe('ok')
+    expect(store.get('seat.driver.massage')).toBe(2)
+    await reg.invoke('seat.set', { seat: 'all', massage: 1 })
+    for (const p of ['driver', 'passenger', 'rearLeft', 'rearRight'])
+      expect(store.get(`seat.${p}.massage`), p).toBe(1)
+  })
+
+  it('超出档位被拒，不是夹住', async () => {
+    expect((await reg.invoke('seat.set', { seat: 'driver', massage: 9 })).status).toBe('rejected')
+  })
+})
+
+describe('天窗遮阳帘', () => {
+  /**
+   * 并进 `sunroof.set` 而不是新开一个 Tool：现有信号路径本来就是
+   * `cabin.sunroof.**glass**.position`，加一个 part 参数天然吻合，零破坏。
+   *
+   * 本车天窗刻意标了 `equipped: false`（反幻觉验证用，见 Golden Case 9），
+   * 所以这一组要在"装了天窗"的车上跑 —— 顺带验证了一条真实约束：
+   * **天窗没装，遮阳帘也不可能有**，两条信号的 equipped 必须一致。
+   */
+  const withSunroof = () => createRegistry(
+    createStore(SIGNALS.map(x => x.alias.startsWith('cabin.sunroof') ? { ...x, equipped: true } : x),
+      CONSTRAINTS), TOOLS, () => now)
+
+  it('遮阳帘跟天窗玻璃同装同不装', () => {
+    const g = SIGNALS.find(s => s.alias === 'cabin.sunroof.glass.position')!
+    const sh = SIGNALS.find(s => s.alias === 'cabin.sunroof.shade.position')!
+    expect(sh.equipped).toBe(g.equipped)
+  })
+
+  it('玻璃和遮阳帘各走各的', async () => {
+    const r2 = withSunroof()
+    await r2.invoke('sunroof.set', { part: 'glass', position: 100 })
+    await r2.invoke('sunroof.set', { part: 'shade', position: 40 })
+    const snap = (r2 as any)
+    void snap
+    expect((await r2.invoke('vehicle.getState', { paths: ['cabin.sunroof.glass.position'] })).status).toBe('ok')
+  })
+
+  it('不传 part 时默认动玻璃 —— "开天窗"说的就是它', async () => {
+    const r = await withSunroof().invoke('sunroof.set', { position: 60 })
+    expect(r.status, '装了天窗就该能开').toBe('ok')
+    expect(r.changed, '动的是玻璃不是遮阳帘').toContain('cabin.sunroof.glass.position')
+  })
+})
+
+describe('后视镜', () => {
+  it('折叠和加热分开，both 一次控制两侧', async () => {
+    await reg.invoke('mirror.set', { mirror: 'both', fold: true })
+    expect(store.get('cabin.mirror.driver.isFolded')).toBe(true)
+    expect(store.get('cabin.mirror.passenger.isFolded')).toBe(true)
+    await reg.invoke('mirror.set', { mirror: 'driver', heating: true })
+    expect(store.get('cabin.mirror.driver.heating')).toBe(true)
+    expect(store.get('cabin.mirror.passenger.heating'), '只热主驾那侧').toBe(false)
+  })
+})
+
+describe('空气净化器', () => {
+  it('开关与档位可以一次传', async () => {
+    const r = await reg.invoke('airPurifier.set', { power: true, level: 3 })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.airPurifier.power')).toBe(true)
+    expect(store.get('cabin.airPurifier.level')).toBe(3)
   })
 })
 
@@ -1566,5 +1683,45 @@ describe('MRTR 确认令牌的生命周期', () => {
     expect(r.pendingConfirm()).toBeTruthy()
     r.clearConfirms()
     expect(r.pendingConfirm(), '放弃之后立刻不再劫持').toBeFalsy()
+  })
+})
+
+/**
+ * ══════════ 参数默认值：路径占位符的必要配套 ══════════
+ *
+ * `sunroof.set` 的写入路径是 `cabin.sunroof.{part}.position`。part 不传时
+ * 路径会拼成 `cabin.sunroof.undefined.position` —— 而"开天窗"这句话里
+ * 用户根本不会说"玻璃还是遮阳帘"，逼模型每次都传是把机制的缺口转嫁给它。
+ *
+ * `ParamDef.default` 是**数据**：在校验之前把缺省值填进 args，
+ * 之后所有环节（校验、展开、写入）都当它是用户传的。
+ */
+describe('参数默认值', () => {
+  it('缺省时按 default 填，路径拼得出来（不再是 undefined）', async () => {
+    const st = createStore(SIGNALS.map(x => x.alias.startsWith('cabin.sunroof') ? { ...x, equipped: true } : x), CONSTRAINTS)
+    const r = await createRegistry(st, TOOLS, () => now).invoke('sunroof.set', { position: 60 })
+    expect(r.status).toBe('ok')
+    expect(st.getTarget('cabin.sunroof.glass.position')).toBe(60)
+    expect(st.getTarget('cabin.sunroof.shade.position'), '别连坐').toBe(0)
+  })
+
+  it('显式传了就听显式的', async () => {
+    const st = createStore(SIGNALS.map(x => x.alias.startsWith('cabin.sunroof') ? { ...x, equipped: true } : x), CONSTRAINTS)
+    await createRegistry(st, TOOLS, () => now).invoke('sunroof.set', { position: 30, part: 'shade' })
+    expect(st.getTarget('cabin.sunroof.shade.position')).toBe(30)
+  })
+
+  /** 默认值也要过校验 —— 写错的 default 该在测试里炸，不该悄悄写进信号 */
+  it('每个带 default 的参数，默认值都在自己的取值范围内', () => {
+    for (const t of TOOLS)
+      for (const [k, d] of Object.entries(t.params)) {
+        const dv = (d as any).default
+        if (dv === undefined) continue
+        if (d.values) expect(d.values, `${t.name}.${k}`).toContain(dv)
+        if (d.range) {
+          expect(dv, `${t.name}.${k}`).toBeGreaterThanOrEqual(d.range[0])
+          expect(dv, `${t.name}.${k}`).toBeLessThanOrEqual(d.range[1])
+        }
+      }
   })
 })

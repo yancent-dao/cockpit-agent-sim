@@ -179,6 +179,28 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
 
     placesList: (): ToolResult => ({ status: 'ok', data: { places } }),
 
+    /**
+     * 地图显示控制。**全部状态化**：zoom 是档位、全览/跟随是视图状态、
+     * 2D/3D 与朝向是模式 —— 车机屏读状态渲染，不发命令（桌面 = f(状态)）。
+     */
+    mapControl: (args: any): ToolResult => {
+      if (!args?.action && !args?.style && !args?.heading)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: '要说清干什么：放大缩小、看全程、回自车位，或者换 2D/3D、换朝向' }
+      const changed: string[] = []
+      if (args.action === 'zoomIn' || args.action === 'zoomOut') {
+        const cur = store.get('navigation.mapZoom') as number
+        const next = Math.max(8, Math.min(18, cur + (args.action === 'zoomIn' ? 1 : -1)))
+        store.set('navigation.mapZoom', next); changed.push('navigation.mapZoom')
+      } else if (args.action === 'overview' || args.action === 'follow') {
+        store.set('navigation.mapView', args.action); changed.push('navigation.mapView')
+      }
+      if (args.style) { store.set('navigation.mapStyle', args.style); changed.push('navigation.mapStyle') }
+      if (args.heading) { store.set('navigation.mapHeading', args.heading); changed.push('navigation.mapHeading') }
+      return { status: 'ok', changed }
+    },
+
+
     /** 改名 = 删了重存，不单开 Tool —— 两个动作模型都会做，别为组合发明新协议 */
     placesRemove: (args: any): ToolResult => {
       const i = places.findIndex(p => p.alias === args.alias)

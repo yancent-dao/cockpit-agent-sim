@@ -50,6 +50,11 @@ export interface RouteView {
   polyline?: string
   /** 分号分隔的途经点坐标串 */
   waypoints?: string
+  /* ── 地图显示状态（map.control 写的信号，经导航卡 data 传到这） ── */
+  mapZoom?: number
+  mapView?: 'follow' | 'overview'
+  mapStyle?: '2d' | '3d'
+  mapHeading?: 'north' | 'vehicle'
 }
 
 /**
@@ -68,7 +73,12 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
 
   const sig = `${v.originLoc}|${v.destLoc}|${v.waypoints ?? ''}|${path.length}`
   const existing = live.get(box)
-  if (existing?.sig === sig) return true // 路线没变，别白折腾
+  if (existing?.sig === sig) {
+    // 路线没变不重建 overlay，但**视图状态每次都应用** —— zoom/视角/朝向
+    // 是 map.control 改的，跟路线无关；这些操作幂等且便宜
+    applyView(existing.map, v, path)
+    return true
+  }
 
   let map = existing?.map
   if (!map) {
@@ -112,9 +122,34 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
 
   overlays.forEach(o => map.add(o))
   live.set(box, { map, overlays, sig })
-  // 让整条路线都在视野内，留点边距别贴边
-  map.setFitView(overlays, false, [40, 40, 40, 40])
+  applyView(map, v, path)
   return true
+}
+
+/**
+ * 应用地图显示状态（map.control 写的信号，经导航卡 data 到这）。
+ * 幂等且便宜，路线没变时也每次都应用 —— zoom/视角/朝向跟路线无关。
+ *
+ * 车头朝上没有真实航向可用（模拟环境），拿路线首段的方位角近似 ——
+ * 演示里车总朝着路线方向走，误差可接受。
+ */
+function applyView(map: any, v: RouteView, path: [number, number][]) {
+  try {
+    if (v.mapView === 'overview') {
+      // 全览：让整条路线都在视野内，留点边距别贴边
+      map.setFitView(null, false, [40, 40, 40, 40])
+    } else {
+      const center = parse(v.originLoc) ?? parse(v.destLoc)
+      if (center) map.setCenter(center)
+      if (typeof v.mapZoom === 'number') map.setZoom(v.mapZoom)
+    }
+    map.setPitch?.(v.mapStyle === '3d' ? 55 : 0)
+    if (v.mapHeading === 'vehicle' && path.length > 1) {
+      const [x1, y1] = path[0], [x2, y2] = path[Math.min(8, path.length - 1)]
+      const bearing = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI
+      map.setRotation?.(-bearing)
+    } else map.setRotation?.(0)
+  } catch { /* 个别内核不支持 pitch/rotation，静默跳过 */ }
 }
 
 /**

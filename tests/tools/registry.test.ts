@@ -205,6 +205,52 @@ describe('voice.config', () => {
   })
 })
 
+/**
+ * ══════════ 地图显示控制 ══════════
+ *
+ * 2026-08-15 对照真实整车清单补的（清单里 10 条：放大缩小/全览/回自车位/2D3D/朝向）。
+ *
+ * 设计决策：**全部状态化，不发命令**。zoomIn 不是事件，是"档位 +1"；
+ * 全览/跟随是视图状态；2D/3D 与朝向是模式 —— 全进信号，车机屏读状态渲染，
+ * 完全落在「桌面 = f(车辆状态)」的公理里，bus 一类消息都不用加。
+ * 这些是**屏内展示状态**，进的是 HMI 信号族（story.* 的先例），不进桌面仲裁。
+ */
+describe('map.control', () => {
+  it('zoomIn/zoomOut 步进档位，夹在合法范围内', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    await r.invoke('map.control', { action: 'zoomIn' })
+    const z0 = store.get('navigation.mapZoom') as number
+    await r.invoke('map.control', { action: 'zoomIn' })
+    expect(store.get('navigation.mapZoom')).toBe(z0 + 1)
+    for (let i = 0; i < 20; i++) await r.invoke('map.control', { action: 'zoomIn' })
+    expect(store.get('navigation.mapZoom'), '到顶就停').toBeLessThanOrEqual(18)
+    for (let i = 0; i < 30; i++) await r.invoke('map.control', { action: 'zoomOut' })
+    expect(store.get('navigation.mapZoom'), '到底就停').toBeGreaterThanOrEqual(8)
+  })
+
+  it('全览与回自车位是同一个状态的两个值', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    await r.invoke('map.control', { action: 'overview' })
+    expect(store.get('navigation.mapView')).toBe('overview')
+    await r.invoke('map.control', { action: 'follow' })
+    expect(store.get('navigation.mapView')).toBe('follow')
+  })
+
+  it('2D/3D 与朝向是模式，跟 action 互不干扰、可一次同传', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    const res = await r.invoke('map.control', { style: '3d', heading: 'vehicle' })
+    expect(res.status).toBe('ok')
+    expect(store.get('navigation.mapStyle')).toBe('3d')
+    expect(store.get('navigation.mapHeading')).toBe('vehicle')
+  })
+
+  it('什么都不传 → 拒绝并说清能干什么', async () => {
+    const r = createRegistry(store, TOOLS, () => now)
+    const res = await r.invoke('map.control', {})
+    expect(res.status).toBe('rejected')
+  })
+})
+
 /* ────────────────────────── 注册表与 Schema ────────────────────────── */
 describe('注册表', () => {
   it('「黑」级 Tool 永不暴露给 Agent —— 永久禁区', async () => {

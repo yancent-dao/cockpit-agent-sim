@@ -400,6 +400,28 @@ export const SIGNALS: Signal[] = [
    * 实测 $0.068/张（设计估算 $0.04 的 1.7 倍），一本 7 页约 $0.5。
    * 不显示的话跑几轮就烧掉 Key 的额度还不知道。用美分是为了避免浮点噪音。
    */
+  /**
+   * ── 地图显示状态（2026-08-15 对照真实整车清单补） ──
+   * **屏内展示状态**，进 HMI 族（story.* 同款先例），不进桌面仲裁 ——
+   * zoom 每变一档要是触发全屏重排就本末倒置了。全部状态化而不发命令：
+   * zoomIn 是"档位 +1"，全览/跟随是视图状态，完全落在「桌面 = f(状态)」里。
+   */
+  { alias: 'navigation.mapZoom', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapZoom',
+    type: 'number', range: [8, 18], label: '地图缩放档位',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 13 },
+  { alias: 'navigation.mapView', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapView',
+    type: 'enum', values: ['follow', 'overview'], label: '地图视野',
+    valueLabels: { follow: '跟随自车', overview: '全览' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'follow' },
+  { alias: 'navigation.mapStyle', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapStyle',
+    type: 'enum', values: ['2d', '3d'], label: '地图视角',
+    valueLabels: { '2d': '2D', '3d': '3D' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '2d' },
+  { alias: 'navigation.mapHeading', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapHeading',
+    type: 'enum', values: ['north', 'vehicle'], label: '地图朝向',
+    valueLabels: { north: '北朝上', vehicle: '车头朝上' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'north' },
+
   { alias: 'story.cents', vssPath: 'Vehicle.Cabin.Infotainment.HMI.StoryCents',
     type: 'number', label: '这本书花了多少美分',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },

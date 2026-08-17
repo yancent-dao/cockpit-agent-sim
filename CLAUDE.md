@@ -6,7 +6,7 @@
 
 ## 命令
 
-- 测试：`npm test`（当前 1084 个，必须全绿才算完成）
+- 测试：`npm test`（当前 1114 个，必须全绿才算完成）
 - 监视：`npm run test:watch`
 - 自动化体验闭环：`npm run pilot [场景id...]`（见下方「Pilot」）
 - 开发：`npm run dev` → http://localhost:5173

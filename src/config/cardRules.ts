@@ -86,6 +86,8 @@ export const CARD_RULES: CardRule[] = [
     watch: [
       'navigation.eta', 'navigation.distanceRemaining', 'navigation.destination',
       'navigation.nextInstruction', 'navigation.destinationLocation','navigation.waypointNames',
+      // 地图显示状态（map.control 写的）——变了要刷进卡片，车机屏读它渲染
+      'navigation.mapZoom', 'navigation.mapView', 'navigation.mapStyle', 'navigation.mapHeading',
       'navigation.routePolyline', 'vehicle.location',
     ],
     card: { key: 'nav', template: 'nav', evictable: false, data: 'navCard' },
@@ -173,6 +175,9 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
       ...(next && { steps: [{ instruction: next, distance: 0 }] }),
       // 活地图（JS SDK）要的原始坐标
       originLoc, destLoc, polyline,
+      // 地图显示状态：全部状态化（桌面 = f(状态)），车机屏照着摆视角
+      mapZoom: store.get('navigation.mapZoom'), mapView: store.get('navigation.mapView'),
+      mapStyle: store.get('navigation.mapStyle'), mapHeading: store.get('navigation.mapHeading'),
       waypoints: store.get('navigation.waypoints') as string,
       via: ((store.get('navigation.waypointNames') as string) || '').split(';').filter(Boolean),
       // 静态图仍然给：JS 地图没加载出来时的兜底

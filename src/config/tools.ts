@@ -469,6 +469,21 @@ export const TOOLS: ToolDef[] = [
     handler: 'placesRemove',
   },
   {
+    name: 'map.control',
+    brief: '地图缩放/全览/2D3D/朝向',
+    desc: '控制导航地图的显示。action 是一次性的动作（放大/缩小/看全程/回到自车位），' +
+      'style 和 heading 是模式开关，可以跟 action 一起传。用户说"看下整条路线"用 overview，' +
+      '"回到当前位置"用 follow。只影响地图怎么显示，不影响导航本身。',
+    permission: '彩',
+    params: {
+      action: { type: 'enum', values: ['zoomIn', 'zoomOut', 'overview', 'follow'],
+        desc: '放大一档 / 缩小一档 / 路线全览 / 跟随自车' },
+      style: { type: 'enum', values: ['2d', '3d'], desc: '平面或立体视角' },
+      heading: { type: 'enum', values: ['north', 'vehicle'], desc: '北朝上或车头朝上' },
+    },
+    handler: 'mapControl',
+  },
+  {
     name: 'navigation.searchAlong',
     brief: '沿途周边搜服务点',
     desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
@@ -1049,7 +1064,7 @@ export const CAPABILITY_DOMAINS: Array<{ match: string[]; icon: string; label: s
   { match: ['ambientLight', 'fragrance', 'light'], icon: '💡', label: '灯光香氛', blurb: '氛围灯、香氛、近光远光雾灯示宽灯、前后排阅读灯' },
   { match: ['wiper'], icon: '🌧️', label: '雨刷', blurb: '手动挡位或自动感应' },
   { match: ['driveSetting'], icon: '🎛️', label: '驾驶设置', blurb: '驾驶模式、能量回收、悬架高度' },
-  { match: ['navigation', 'region', 'places'], icon: '🧭', label: '导航', blurb: '找地方、规划对比路线、沿途搜索、存常用地址' },
+  { match: ['navigation', 'region', 'places'], icon: '🧭', label: '导航', blurb: '找地方、规划对比路线、沿途搜索、常用地址、地图缩放全览' },
   { match: ['weather'], icon: '🌤️', label: '天气', blurb: '查任何城市的现在和未来几天' },
   { match: ['music'], icon: '🎵', label: '音乐', blurb: '搜歌放歌，自动接着放下一首' },
   { match: ['radio'], icon: '📻', label: '电台', blurb: '全球网络电台想听哪台搜哪台' },

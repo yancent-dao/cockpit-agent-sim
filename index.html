@@ -101,6 +101,14 @@ input::placeholder{color:#4A5462}
       <button id="reload">刷新模型列表</button>
       <button id="fastOnly" class="on">只看快速模型</button>
     </div>
+    <!-- 语音音色跟模型放一起（实拍反馈）：它跟慢层/快层一样是"这台车用谁的脑子和嗓子"，
+         不是绘本的私有设置。ID 不变，选择存 localStorage，车机屏靠 storage 事件生效 -->
+    <div class="fld"><label>语音音色</label>
+      <div class="row" style="flex:1;gap:8px;align-items:center">
+        <select id="ttsVoice" style="flex:1;min-width:0"></select>
+        <button id="ttsTry">试听</button>
+      </div>
+    </div>
     <div class="note">快层模型 = 过滤器小模型：车控/天气这类简单指令由它亚秒先答，大模型在后台校验接力。选最便宜最快的档就对了。</div>
     <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
   </section>
@@ -143,14 +151,6 @@ input::placeholder{color:#4A5462}
       <span class="hint">我同意把这张照片发给画图的模型，用来生成故事主角。
         照片不会存到任何服务器，但生成过程需要把它发给第三方模型。</span>
     </label>
-    <!-- 朗读音色。默认挑女声（讲儿童绘本这不是可选项），但音色是系统装的，
-         每台机器不一样，得让人自己挑 + 试听。选择存 localStorage，
-         车机屏同源读得到，storage 事件让它立刻生效。 -->
-    <div class="row" style="margin-top:10px;align-items:center;gap:8px">
-      <label class="hint" for="ttsVoice" style="white-space:nowrap">朗读音色</label>
-      <select id="ttsVoice" style="flex:1;min-width:0"></select>
-      <button id="ttsTry">试听</button>
-    </div>
     <div class="row" style="margin-top:9px">
       <button id="bookExport">导出上一本书</button>
       <button id="heroForget">清掉照片</button>

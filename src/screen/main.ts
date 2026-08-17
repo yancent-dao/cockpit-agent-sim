@@ -1031,7 +1031,10 @@ function speakStory(node: HTMLElement, c: any) {
     sbAudio?.pause(); sbAudio = null
     clearTimeout(guard); guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9000)
     const rearm = (ms: number) => { totalMs = ms; clearTimeout(guard); guard = setTimeout(finish, ms + SB_SLACK_MS) }
-    const local = () => { if (gen === sbGen && !done) { rearm(estimateMs(line, rate)); speakLocal() } }
+    const local = (e?: unknown) => {
+      if (e) cloudFallbackNote(e)
+      if (gen === sbGen && !done) { rearm(estimateMs(line, rate)); speakLocal() }
+    }
     xfSynthesize(XF_CREDS, xfVcn(chosen), line, rate)
       .then(blob => {
         if (gen !== sbGen || done) return
@@ -1041,7 +1044,7 @@ function speakStory(node: HTMLElement, c: any) {
           if (gen === sbGen && Number.isFinite(a.duration) && a.duration > 0) rearm(a.duration * 1000)
         }
         a.onended = () => { URL.revokeObjectURL(a.src); finish() }
-        a.onerror = local
+        a.onerror = () => local('音频播放失败')
         a.play().catch(local)
       })
       .catch(local)
@@ -1072,6 +1075,18 @@ const XF_CREDS = {
 const xfReady = () => !!(XF_CREDS.appId && XF_CREDS.apiKey && XF_CREDS.apiSecret)
 const chosenVoice = () => localStorage.getItem(VOICE_KEY) || ''
 
+/**
+ * 云端回退的可见性。静默回退 = 用户听着机械音色以为"讯飞也就这样"，
+ * 其实他听到的根本不是讯飞（实拍就是这么误会的）。同一个原因只报一次，
+ * 别每句话都弹横幅。
+ */
+const cloudWarned = new Set<string>()
+function cloudFallbackNote(err: unknown) {
+  const reason = String((err as any)?.message ?? err ?? '未知原因')
+  if (cloudWarned.has(reason)) return
+  cloudWarned.add(reason)
+  banners.push({ title: '云端音色不可用，这句用了本机音色', text: reason, tone: 'warn', ttl: 8000 })
+}
 let agAudio: HTMLAudioElement | null = null
 function speakAgent(text: string) {
   const gen = ++agGen
@@ -1086,10 +1101,10 @@ function speakAgent(text: string) {
         agAudio = a
         const done = () => { if (gen === agGen) agSpeaking = false; URL.revokeObjectURL(a.src) }
         a.onended = done
-        a.onerror = () => speakAgentLocal(text, gen)
-        a.play().catch(() => speakAgentLocal(text, gen))
+        a.onerror = () => { cloudFallbackNote('音频播放失败'); speakAgentLocal(text, gen) }
+        a.play().catch(e => { cloudFallbackNote(e); speakAgentLocal(text, gen) })
       })
-      .catch(() => speakAgentLocal(text, gen))
+      .catch(e => { cloudFallbackNote(e); speakAgentLocal(text, gen) })
     return
   }
   speakAgentLocal(text, gen)

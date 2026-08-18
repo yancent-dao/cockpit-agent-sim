@@ -33,6 +33,13 @@ export const UPSTREAM = {
   radio: 'https://de1.api.radio-browser.info',
   /** 讯飞 TTS 是 WebSocket —— proxy 的 ws:true 一并转发，未来接 header 鉴权的 CP 靠它 */
   xftts: 'wss://cbm01.cn-huabei-1.xf-yun.com',
+  /** 腾讯行情：qt 带 ACAO:* 可直连（单文件版也通）；smartbox 搜索无 CORS 只能走代理 */
+  qtstock: 'https://qt.gtimg.cn',
+  qtsmart: 'https://smartbox.gtimg.cn',
+  /** 节假日/调休（个人维护项目，高频会封；对无 UA 请求 403） */
+  timor: 'https://timor.tech',
+  /** 今日诗词 v1，无 token */
+  jinrishici: 'https://v1.jinrishici.com',
 } as const
 
 export type Upstream = keyof typeof UPSTREAM

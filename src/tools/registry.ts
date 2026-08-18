@@ -22,6 +22,10 @@ import type { OpenMeteoClient } from '../integrations/openmeteo'
 import type { DomainState } from '../state/domain'
 import type { Prefs } from '../state/prefs'
 import { createMemoryHandlers } from '../integrations/memoryHandlers'
+import { createLifeHandlers } from '../integrations/lifeHandlers'
+import type { StockClient } from '../integrations/qtstock'
+import type { HolidayClient } from '../integrations/holiday'
+import type { PoemClient } from '../integrations/poem'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -57,6 +61,10 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
   voices?: () => Array<{ name: string; female?: boolean }>
   /** Open-Meteo 天气（2026-08-15 换源）。缺省时 weather.query 走高德老路 */
   openmeteo?: OpenMeteoClient
+  /** 生活资讯三件套（2026-08-18，零 Key）：腾讯行情 / timor 节假日 / 今日诗词 */
+  stocks?: StockClient
+  holiday?: HolidayClient
+  poem?: PoemClient
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -219,6 +227,7 @@ export function createRegistry(
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
+    ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }
 

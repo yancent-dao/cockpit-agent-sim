@@ -549,6 +549,38 @@ export const TOOLS: ToolDef[] = [
 
   /* ── 语音 ── */
   {
+    name: 'stock.query',
+    brief: '查股价指数汇率',
+    desc: '查股票/指数/汇率实时行情（腾讯行情，秒级）。query 给名字（"茅台"、"恒生指数"）' +
+      '会自动搜索解析；也可直接给代码：A股 sh600519/sz000001，港股 hkHSI，美股 usAAPL，' +
+      '汇率 whUSDCNY。结果自动上指标卡，你口头报现价和涨跌就行，不用再建卡。' +
+      '多只并列问就并行调多次。',
+    permission: '彩',
+    fast: true,
+    params: {
+      query: { type: 'string', required: true, desc: '股票/指数名字或代码' },
+    },
+    handler: 'stockQuery',
+  },
+  {
+    name: 'holiday.query',
+    brief: '查节假日调休',
+    desc: '查节假日安排：今天是不是假期/调休班、下一个假期是什么时候、最近哪个周末要补班。' +
+      '不用传参数，按当前日期算。',
+    permission: '彩',
+    params: {},
+    handler: 'holidayQuery',
+  },
+  {
+    name: 'poem.today',
+    brief: '来一句今日诗词',
+    desc: '取一句应景的古诗词（含作者与出处）。适合开机问候、用户想听点有意思的时候。' +
+      'message 里就是完整诗句，直接念。',
+    permission: '彩',
+    params: {},
+    handler: 'poemToday',
+  },
+  {
     name: 'voice.speak',
     brief: '主动播报一句话',
     desc: '通过车内音响向用户播报一段话。用于解释、确认、反馈。',

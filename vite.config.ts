@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import { resolve } from 'path'
-import { proxyTable } from './src/config/upstream'
+import { proxyTable, ABROAD, PROXY_PREFIX } from './src/config/upstream'
 // @ts-expect-error 纯 node 的 .mjs 帮手，不进浏览器 bundle
 import { envProxyAgent } from './proxy-agent.mjs'
 
@@ -15,9 +15,12 @@ const proxy: Record<string, any> = proxyTable()
  * 转发层继承系统代理（HTTPS_PROXY）：浏览器直连本来就走它，
  * 转发不能比直连的网络环境差（实测：不带它 Google 系模型报 region 403、
  * newsapi 撞 DNS 污染——都是浏览器直连没有的问题）。
+ * **只对出海上游挂**（ABROAD 白名单）：国内上游走 VPN 是降级——
+ * 高德 IP 定位会定到代理节点头上（实拍：设置成都，天气卡显示杭州滨江）。
  */
 const agent = envProxyAgent()
-if (agent) for (const k of Object.keys(proxy)) proxy[k].agent = agent
+if (agent) for (const k of Object.keys(proxy))
+  if (ABROAD.has(k.slice(PROXY_PREFIX.length) as any)) proxy[k].agent = agent
 
 export default defineConfig({
   build: { rollupOptions: { input: {

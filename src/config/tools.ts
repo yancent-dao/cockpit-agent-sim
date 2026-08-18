@@ -571,7 +571,7 @@ export const TOOLS: ToolDef[] = [
       + '两者对不上很正常，别当成矛盾去质问用户——车里冷不冷、雨大不大以传感器为准。',
     permission: '彩',
     params: {
-      location: { type: 'string', required: true, desc: '地点名称如"北京"、"望京"；也可以直接传"经度,纬度"坐标，查当前位置天气就传 vehicle.location 的值' },
+      location: { type: 'string', required: true, desc: '真实地名（"北京"、"望京"）或"经度,纬度"数字坐标。查当前位置的天气：把车辆状态里"当前位置(经度,纬度)"的数字原样抄进来（形如 104.065861,30.657401）。绝不要传 "LOCATION"、"vehicle.location"、"当前位置" 这类字样——会查到错误城市' },
     },
     handler: 'weatherQuery',
   },

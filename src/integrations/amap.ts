@@ -206,11 +206,13 @@ export function createAmapClient(fetcher: Fetcher, keys: AmapKeys) {
       return p ? toPoi(p) : null
     },
 
-    /** 地理编码：地址 → 坐标（v3/geocode/geo）—— 用于 setDestination 传 address、weather.query 转 adcode */
-    async geocode(address: string, city?: string): Promise<{ location: string; formattedAddress: string; adcode?: string } | null> {
+    /** 地理编码：地址 → 坐标（v3/geocode/geo）—— 用于 setDestination 传 address、weather.query 转 adcode。
+     *  level 是高德的匹配粒度（国家/省/市/区县/道路/兴趣点…），
+     *  调用方拿它判断"要不要带当前城市重查一次"（细粒度=本地小地名） */
+    async geocode(address: string, city?: string): Promise<{ location: string; formattedAddress: string; adcode?: string; level?: string } | null> {
       const json = await get('/v3/geocode/geo', { address, city })
       const g = (json.geocodes ?? [])[0]
-      return g ? { location: g.location, formattedAddress: g.formatted_address, adcode: g.adcode } : null
+      return g ? { location: g.location, formattedAddress: g.formatted_address, adcode: g.adcode, level: g.level } : null
     },
 
     /** 驾车路径规划 2.0（v5/direction/driving） */

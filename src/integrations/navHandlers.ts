@@ -443,13 +443,36 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
     weatherQuery: async (args: any): Promise<ToolResult> => {
       const amap = needAmap()
       try {
+        /**
+         * 模型对"当前位置"引用的字面量退化（2026-08-18 实拍：快层传了
+         * "LOCATION"，高德对垃圾词按请求 IP 城市兜底猜——卡片标题成了
+         * "杭州市滨江区LOCATION天气"，响应完全合法 level=兴趣点 拦不住）。
+         * 判据只看数据形状：值恰为参数引用的字面量，同 {item} 展平先例。
+         */
+        if (/^(vehicle\.location|location|当前位置|current[_ ]?location|here)$/i.test(String(args.location ?? '').trim()))
+          args = { ...args, location: store.get('vehicle.location') }
         // 坐标串要走逆地理编码。geocode 是"地名→坐标"，拿 104.065861,30.657401
         // 去搜会命中内蒙古一个叫"一零四"的地方——实测撞到过，卡片标题成了
         // "阿拉善左旗一零四天气"
         const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location))
         // geocode 只打一次，adcode 和坐标都从同一份结果取 ——
         // 打两次既多一个网络往返，也会把函数式假响应（并行查多地）吃错位
-        const geo = isCoord ? null : await amap.geocode(args.location)
+        let geo = isCoord ? null : await amap.geocode(args.location)
+        /**
+         * 两段式地名解析（实拍：「春熙路」全国匹配命中云南昭通鲁甸县——
+         * "成都用户搜临平命中杭州"的同款病）。city 是硬偏置（实测「北京」+
+         * city成都 命中"彭州市北京村"），无脑加会毁掉查外地；判据用协议的
+         * level 字段：粗粒度（国家/省/市/区县）= 城市级命中直接用，
+         * 细粒度（道路/兴趣点…）= 本地小地名，带当前城市重查一次。
+         */
+        const COARSE = new Set(['国家', '省', '市', '区县'])
+        if (geo?.level && !COARSE.has(geo.level)) {
+          const city = await amap.cityOf(store.get('vehicle.location') as string).catch(() => null)
+          if (city) {
+            const local = await amap.geocode(args.location, city).catch(() => null)
+            if (local) geo = local
+          }
+        }
         const area = isCoord
           ? await amap.areaOf(String(args.location).trim())
           : geo && { adcode: geo.adcode, name: geo.formattedAddress }

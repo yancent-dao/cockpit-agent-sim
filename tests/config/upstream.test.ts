@@ -55,3 +55,25 @@ describe('api()：运行时挑路', () => {
     expect(api('itunes', 'file:')).toBe(UPSTREAM.itunes)
   })
 })
+
+/**
+ * 域内直连（2026-08-18 实拍：代理链修通后高德 IP 定位定到了 VPN 节点所在的
+ * 杭州滨江）。国内上游走 VPN 隧道纯属降级——IP 定位错城市、延迟绕地球。
+ * ABROAD 是需要出海的上游白名单，vite 只对它们挂系统代理。
+ */
+describe('ABROAD 出海白名单', () => {
+  it('国内上游一个不进：高德/腾讯/讯飞/节假日/诗词直连', async () => {
+    const { ABROAD } = await import('../../src/config/upstream')
+    for (const name of ['amap', 'qtstock', 'qtsmart', 'timor', 'jinrishici', 'xftts'])
+      expect(ABROAD.has(name as any), `${name} 不该走 VPN`).toBe(false)
+  })
+  it('锁区/被墙的上游都在：openrouter/newsapi/pexels', async () => {
+    const { ABROAD } = await import('../../src/config/upstream')
+    for (const name of ['openrouter', 'newsapi', 'pexels'])
+      expect(ABROAD.has(name as any), `${name} 需要代理`).toBe(true)
+  })
+  it('白名单里的名字都是真实上游', async () => {
+    const { ABROAD, UPSTREAM } = await import('../../src/config/upstream')
+    for (const name of ABROAD) expect(Object.keys(UPSTREAM)).toContain(name)
+  })
+})

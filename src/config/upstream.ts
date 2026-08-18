@@ -44,6 +44,14 @@ export const UPSTREAM = {
 
 export type Upstream = keyof typeof UPSTREAM
 
+/**
+ * 需要出海的上游白名单（2026-08-18 实拍教训）：vite 只对这些挂系统代理。
+ * 国内上游（高德/腾讯/讯飞/timor/诗词）走 VPN 隧道纯属降级——
+ * 高德 IP 定位会定到代理节点头上（实拍：设置成都，定位杭州滨江=VPN 落地的
+ * 阿里云），延迟还绕地球。itunes 苹果国内有 CDN，直连更快。
+ */
+export const ABROAD = new Set<Upstream>(['openrouter', 'newsapi', 'pexels', 'radio', 'openmeteo'])
+
 /** Vite 的 server.proxy / preview.proxy 配置。纯转发，一行业务逻辑都没有 */
 export function proxyTable() {
   return Object.fromEntries(

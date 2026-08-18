@@ -262,3 +262,16 @@ describe('queueAct：两层话术的排队与去重', () => {
     expect(queueAct('  ', false, '')).toBe('skip')
   })
 })
+
+/**
+ * 语音链路设计 §1：确认问句可以打断绘本——安全类问题（灰权限确认、
+ * voice.ask）不能排在故事后面。普通话术仍然不抢麦（现状保持）。
+ */
+describe('voiceAct：确认问句穿透绘本占麦', () => {
+  it('绘本朗读中，confirming 照说（由 mic 仲裁去打断绘本页）', () => {
+    expect(voiceAct({ s: 'confirming', text: '确定要打开后备箱吗', who: 'agent' }, true)).toBe('speak')
+  })
+  it('绘本朗读中，普通播报仍然不抢麦', () => {
+    expect(voiceAct({ s: 'speaking', text: '好，接着讲', who: 'agent' }, true)).toBe('ignore')
+  })
+})

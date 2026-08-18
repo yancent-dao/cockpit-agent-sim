@@ -87,11 +87,20 @@ export function createPlayer({ report }: PlayerDeps) {
     current = ''
   }
 
-  const setVolume = (v: number) => {
-    const x = Math.max(0, Math.min(1, v / 100))
+  /** 用户设定的音量（0-1）。duck 是乘在它上面的临时系数，不动设定本身 */
+  let baseVol = 1
+  let ducked = false
+  const applyVol = () => {
+    const x = baseVol * (ducked ? 0.2 : 1)
     audio.volume = x
     if (video) video.volume = x
   }
+  const setVolume = (v: number) => { baseVol = Math.max(0, Math.min(1, v / 100)); applyVol() }
+  /**
+   * 播报让位（语音链路设计 §1 第 6 条）：任何 TTS 开口，媒体压到 20%，
+   * 说完恢复——真车播报必 duck，不压的话导航音和歌声打架。
+   */
+  const duck = (on: boolean) => { if (ducked !== on) { ducked = on; applyVol() } }
 
   /**
    * 播放进度。**不进 store，不上 bus** —— position 每秒变好几次，
@@ -103,7 +112,7 @@ export function createPlayer({ report }: PlayerDeps) {
     return { current: el.currentTime, duration: el.duration }
   }
 
-  return { unlock, play, pause, stop, setVolume, attachVideo, progress,
+  return { unlock, play, pause, stop, setVolume, duck, attachVideo, progress,
     get unlocked() { return unlocked },
     get playingUrl() { return current } }
 }

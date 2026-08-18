@@ -3,6 +3,7 @@ import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto, voiceAct, queueAct } from './speech'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
+import { micAct, type MicSource } from './mic'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
@@ -935,6 +936,7 @@ function speakStory(node: HTMLElement, c: any) {
   const d = c?.data ?? {}
   const line = String(d.line ?? '')
   if (!line) return
+  lastStoryReq = { node, c }
   // 同一句话不重念，但**要借这次刷新把"等图"重新问一遍**（图刚落地就是这条路）
   if (line === sbSpoken) {
     if (sbWaiting?.line === line) decideNext(c, line)
@@ -972,6 +974,7 @@ function speakStory(node: HTMLElement, c: any) {
     clearInterval(timer); clearTimeout(guard)
     if (gen !== sbGen) return          // 已经被下一页接管了，副作用一起作废
     storyReading = false               // 麦克风还给主对话
+    updateDuck()
     const t = el(); if (t) t.textContent = line
     decideNext(c, line)
   }
@@ -1016,6 +1019,7 @@ function speakStory(node: HTMLElement, c: any) {
     u.onend = finish
     u.onerror = finish              // 念不出来也要往下走，不是卡住
     storyReading = true             // 正文占麦：Agent 的衔接话术这段时间只上屏不出声
+    updateDuck()
     speechSynthesis.speak(u)
   }
 
@@ -1028,6 +1032,7 @@ function speakStory(node: HTMLElement, c: any) {
   const chosen = chosenVoice()
   if (isCloudVoice(chosen) && xfReady()) {
     storyReading = true
+    updateDuck()
     sbAudio?.pause(); sbAudio = null
     clearTimeout(guard); guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9000)
     const rearm = (ms: number) => { totalMs = ms; clearTimeout(guard); guard = setTimeout(finish, ms + SB_SLACK_MS) }
@@ -1063,6 +1068,23 @@ let sbAudio: HTMLAudioElement | null = null
  */
 let storyReading = false
 let agGen = 0
+/** 被确认问句打断的绘本页：确认话音落地后从头重读（语音链路设计 §1） */
+let storyResume: (() => void) | null = null
+let lastStoryReq: { node: HTMLElement; c: any } | null = null
+function interruptStory() {
+  sbGen++                      // 世代作废：旧页的 onend/guard 副作用一起废
+  stopPending()
+  sbAudio?.pause(); sbAudio = null
+  try { speechSynthesis.cancel() } catch { /* 没在说时个别内核会抛 */ }
+  storyReading = false
+  sbSpoken = ''                // 允许同一页重读
+  const req = lastStoryReq
+  storyResume = req && req.node.isConnected ? () => speakStory(req.node, req.c) : null
+}
+/** TTS（话术或绘本）开口时媒体让位到 20%，全部安静后恢复 */
+function updateDuck(speaking = false) {
+  player.duck(speaking || agSpeaking || storyReading)
+}
 /**
  * 讯飞云端音色（超拟人）。Key 走 .env.local，没配就永远走本地 ——
  * 云端挂了（断网/超时/额度）也回退本地音色，话不能不说。
@@ -1129,10 +1151,27 @@ function playStream(gen: number, onFail: (e: unknown) => void): { push(c: Uint8A
 /** 同轮的待播队列与已播文本。撞车的两层话术在这排队，用户插话整队清空 */
 const agQueue: string[] = []
 let agLastText = ''
-function speakAgent(text: string) {
-  const act = queueAct(text, agSpeaking, agLastText)
-  if (act === 'skip') return
-  if (act === 'queue') { if (agQueue.length >= 3) agQueue.shift(); agQueue.push(text.trim()); return }
+/** 正在说话的那路声源（配合 micAct 判打断/排队） */
+let agSrc: MicSource = 'turn'
+function speakAgent(text: string, confirm = false) {
+  const src: MicSource = confirm ? 'confirm' : 'turn'
+  const cur: MicSource | null = storyReading ? 'story' : agSpeaking ? agSrc : null
+  switch (micAct(src, cur)) {
+    case 'drop': return
+    case 'interrupt':
+      // 确认问句打断绘本页：被打断的页记下来，确认话音落地后从头重读——
+      // 从中间续念孩子接不上。打断普通话术则直接掐（安全问题优先于播报）
+      if (storyReading) interruptStory()
+      else { agGen++; agCancel?.(); agCancel = null; agAudio?.pause(); agAudio = null; try { speechSynthesis.cancel() } catch { /* 空 */ } }
+      break
+    case 'queue': {
+      const act = queueAct(text, true, agLastText)
+      if (act === 'queue') { if (agQueue.length >= 3) agQueue.shift(); agQueue.push(text.trim()) }
+      return
+    }
+  }
+  if (queueAct(text, false, agLastText) === 'skip') return   // 同文去重照走
+  agSrc = src
   agLastText = text.trim()
   speakNow(agLastText)
 }
@@ -1141,9 +1180,12 @@ function agDone() {
   agSpeaking = false
   const next = agQueue.shift()
   if (next) { agLastText = next; speakNow(next) }
+  else if (storyResume) { const r = storyResume; storyResume = null; r() }
+  updateDuck()
 }
 function speakNow(text: string) {
   const gen = ++agGen
+  updateDuck(true)
   agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
   const chosen = chosenVoice()
@@ -1194,6 +1236,7 @@ function hushAgent() {
   agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
   try { speechSynthesis.cancel() } catch { /* 同上 */ }
+  updateDuck()
 }
 
 const bus = createBus((m: BusMsg | any) => {
@@ -1209,7 +1252,7 @@ const bus = createBus((m: BusMsg | any) => {
         xfWarm(XF_CREDS)
       if (m.s) setVoice(m.s); if ('text' in m) setSub(m.text, m.who)
       const act = voiceAct(m, storyReading)
-      if (act === 'speak') speakAgent(m.text)
+      if (act === 'speak') speakAgent(m.text, m.s === 'confirming')
       else if (act === 'hush') hushAgent()
       break
     }

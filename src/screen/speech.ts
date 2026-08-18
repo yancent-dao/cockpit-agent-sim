@@ -142,7 +142,9 @@ export type VoiceAct = 'speak' | 'hush' | 'ignore'
  *   并触发"读完翻页"的副作用；Agent 的衔接话术上屏就够了，不抢麦
  */
 export function voiceAct(m: VoiceMsg, storyReading: boolean): VoiceAct {
-  if (storyReading) return 'ignore'
+  // 确认问句穿透绘本占麦（语音链路设计 §1）：安全类问题不排在故事后面。
+  // 打断与恢复由 mic 仲裁的执行层管，这里只放行
+  if (storyReading && m.s !== 'confirming') return 'ignore'
   if (m.who === 'user') return m.text ? 'hush' : 'ignore'
   if (m.who !== 'agent' || !m.text) return 'ignore'
   return (m.s === 'speaking' || m.s === 'confirming' || m.s === 'rejected') ? 'speak' : 'ignore'

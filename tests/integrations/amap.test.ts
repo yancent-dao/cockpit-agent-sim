@@ -362,3 +362,64 @@ describe('路线偏好：高速优先', () => {
     expect(seen[0]).toContain('strategy=34')
   })
 })
+
+/**
+ * ══════════ 已有 Key 白捡（2026-08-18，接入清单梯队 01）══════════
+ *
+ * inputtips 与 IP 定位。夹具取自真实响应——两个都实测过：
+ * inputtips 对"临平@成都"照样返回杭州结果（跨城兜底与 POI 搜索一致），
+ * 它真正的增量是 **district 字段**——让 Agent 能说清"这是杭州的临平"；
+ * IP 定位在非大陆出口 IP 下返回空数组，要容忍为 null 不是报错。
+ */
+describe('inputtips 输入提示', () => {
+  it('name/district/adcode/location 逐字段解出', async () => {
+    const c = createAmapClient(async () => ({ ok: true, json: async () => ({
+      status: '1', tips: [
+        { id: 'B0', name: '临平区', district: '浙江省杭州市临平区', adcode: '330113', location: '120.299222,30.419154' },
+        { id: 'B1', name: '坏条目没坐标', district: '', adcode: [], location: [] },
+      ],
+    }) } as any), { webKey: 'test-key' })
+    const tips = await c.inputtips('临平', '成都')
+    expect(tips).toHaveLength(1)
+    expect(tips[0]).toEqual({ name: '临平区', district: '浙江省杭州市临平区', adcode: '330113', location: '120.299222,30.419154' })
+  })
+})
+
+describe('IP 定位', () => {
+  it('非大陆出口 IP 返回空数组 → null，不是报错', async () => {
+    const c = createAmapClient(async () => ({ ok: true, json: async () => ({
+      status: '1', info: 'OK', province: [], city: [], adcode: [], rectangle: [],
+    }) } as any), { webKey: 'test-key' })
+    expect(await c.ipLocate()).toBeNull()
+  })
+  it('大陆 IP 给出城市与 adcode', async () => {
+    const c = createAmapClient(async () => ({ ok: true, json: async () => ({
+      status: '1', province: '四川省', city: '成都市', adcode: '510100', rectangle: '103.9,30.5;104.4,30.9',
+    }) } as any), { webKey: 'test-key' })
+    expect(await c.ipLocate()).toEqual({ city: '成都市', adcode: '510100' })
+  })
+})
+
+describe('trafficAround 对真实响应形状', () => {
+  /**
+   * 2026-08-18 真 API 抓包修的存量静默 bug：真实响应嵌在
+   * trafficinfo.**evaluation** 里、百分比是**字符串**（"79.38%"）、
+   * status 也是字符串——旧解析直接读 trafficinfo.status，永远 unknown/0，
+   * 从没人发现，因为从没打过真 API。
+   */
+  it('evaluation 嵌套 + 百分号字符串 + 拥堵描述都解出来', async () => {
+    const c = createAmapClient(async () => ({ ok: true, json: async () => ({
+      status: '1', trafficinfo: {
+        description: '红照壁街：自西向东拥堵，反向畅通；……',
+        evaluation: { expedite: '79.38%', congested: '7.32%', blocked: '4.05%', unknown: '9.25%',
+                      status: '2', description: '轻度拥堵' },
+      },
+    }) } as any), { webKey: 'test-key' })
+    const t = await c.trafficAround('104.06,30.65')
+    expect(t.status).toBe('slow')
+    expect(t.expedite).toBe(79.38)
+    expect(t.congested).toBe(7.32)
+    expect(t.blocked).toBe(4.05)
+    expect(t.desc).toBe('轻度拥堵')
+  })
+})

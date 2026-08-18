@@ -478,10 +478,24 @@ export const TOOLS: ToolDef[] = [
     params: {
       action: { type: 'enum', values: ['zoomIn', 'zoomOut', 'overview', 'follow'],
         desc: '放大一档 / 缩小一档 / 路线全览 / 跟随自车' },
-      style: { type: 'enum', values: ['2d', '3d'], desc: '平面或立体视角' },
+      style: { type: 'enum', values: ['2d', '3d', 'satellite'], desc: '平面 / 立体 / 卫星底图' },
       heading: { type: 'enum', values: ['north', 'vehicle'], desc: '北朝上或车头朝上' },
+      traffic: { type: 'boolean', desc: '实时路况图层开关（红黄绿）' },
+      cruise: { type: 'enum', values: ['start', 'stop'], desc: '模拟行驶：车标沿当前路线跑一遍（演示用，需要正在导航）' },
     },
     handler: 'mapControl',
+  },
+  {
+    name: 'traffic.status',
+    brief: '查路况拥堵情况',
+    desc: '查一个地方的实时交通态势（拥堵评价 + 畅通/缓行/拥堵占比）。不传 location 查车辆附近。' +
+      '想在地图上直接看红黄绿，用 map.control 开 traffic 图层——一个给你读，一个给用户看。',
+    permission: '彩',
+    params: {
+      location: { type: 'string', desc: '地名，如"春熙路"。不传查车辆当前位置附近' },
+      radius: { type: 'number', desc: '半径米数，默认 2000' },
+    },
+    handler: 'trafficStatus',
   },
   {
     name: 'navigation.searchAlong',

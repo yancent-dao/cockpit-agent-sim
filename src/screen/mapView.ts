@@ -41,7 +41,11 @@ const parse = (loc?: string): [number, number] | null => {
   return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null
 }
 
-interface Live { map: any; overlays: any[]; sig: string }
+interface Live {
+  map: any; overlays: any[]; sig: string
+  /** 图层与模拟行驶的活对象（2026-08-18 白捡批）：加了要能撤，撤了要能再加 */
+  sat?: any; traf?: any; mover?: any; cruising?: boolean
+}
 const live = new WeakMap<HTMLElement, Live>()
 
 export interface RouteView {
@@ -53,8 +57,12 @@ export interface RouteView {
   /* ── 地图显示状态（map.control 写的信号，经导航卡 data 传到这） ── */
   mapZoom?: number
   mapView?: 'follow' | 'overview'
-  mapStyle?: '2d' | '3d'
+  mapStyle?: '2d' | '3d' | 'satellite'
   mapHeading?: 'north' | 'vehicle'
+  /** 实时路况图层（红黄绿） */
+  mapTraffic?: boolean
+  /** 模拟行驶：车标沿路线跑一遍（演示用） */
+  cruise?: boolean
 }
 
 /**
@@ -77,6 +85,7 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
     // 路线没变不重建 overlay，但**视图状态每次都应用** —— zoom/视角/朝向
     // 是 map.control 改的，跟路线无关；这些操作幂等且便宜
     applyView(existing.map, v, path, existing.overlays)
+    applyExtras(existing, v, path)
     return true
   }
 
@@ -121,9 +130,39 @@ export async function showRoute(box: HTMLElement, v: RouteView): Promise<boolean
   if (dest) overlays.push(pin(dest, '#DB4045'))
 
   overlays.forEach(o => map.add(o))
-  live.set(box, { map, overlays, sig })
+  const entry: Live = { map, overlays, sig }
+  live.set(box, entry)
   applyView(map, v, path, overlays)
+  applyExtras(entry, v, path)
   return true
+}
+
+/**
+ * 图层与模拟行驶（2026-08-18 已有 Key 白捡批）。
+ * 全部幂等：开了不重复加、关了真移除——map.control 每次刷新都会走到这。
+ */
+function applyExtras(l: Live, v: RouteView, path: [number, number][]) {
+  const AMap = (window as any).AMap
+  try {
+    // 卫星底图
+    if (v.mapStyle === 'satellite' && !l.sat) { l.sat = new AMap.TileLayer.Satellite(); l.map.add(l.sat) }
+    else if (v.mapStyle !== 'satellite' && l.sat) { l.map.remove(l.sat); l.sat = null }
+    // 实时路况（红黄绿），autoRefresh 让它自己保持新鲜
+    if (v.mapTraffic && !l.traf) { l.traf = new AMap.TileLayer.Traffic({ autoRefresh: true }); l.map.add(l.traf) }
+    else if (!v.mapTraffic && l.traf) { l.map.remove(l.traf); l.traf = null }
+    // 模拟行驶：车标沿路线 moveAlong（MoveAnimation 插件按需加载）
+    if (v.cruise && !l.cruising && path.length > 1) {
+      l.cruising = true
+      AMap.plugin(['AMap.MoveAnimation'], () => {
+        if (!l.cruising) return   // 插件加载回来前用户已经停了
+        if (!l.mover) l.mover = new AMap.Marker({ map: l.map, position: path[0], zIndex: 200, anchor: 'center' })
+        l.mover.moveAlong(path, { duration: 300, autoRotation: true })
+      })
+    } else if (!v.cruise && l.cruising) {
+      l.cruising = false
+      l.mover?.stopMove?.()
+    }
+  } catch { /* 图层能力缺失（老内核）不该影响路线本体 */ }
 }
 
 /**

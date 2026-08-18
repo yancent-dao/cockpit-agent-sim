@@ -87,6 +87,8 @@ export interface AmapTraffic {
   expedite: number
   congested: number
   blocked: number
+  /** 高德给的整体评价（"轻度拥堵"），有就直接说它 */
+  desc?: string
 }
 
 export interface AmapDistrict {
@@ -336,13 +338,45 @@ export function createAmapClient(fetcher: Fetcher, keys: AmapKeys) {
       }))
     },
 
+    /**
+     * 输入提示（v3/assistant/inputtips）。配额是关键字搜索的 50 倍
+     * （5000 vs 100 次/日）。实测跨城时照样全国兜底（临平@成都返回杭州），
+     * 真正的增量是 district 字段——POI 搜空时拿它告诉用户"你说的地方在哪个城市"。
+     */
+    async inputtips(keywords: string, city?: string): Promise<Array<{ name: string; district: string; adcode: string; location: string }>> {
+      const json = await get('/v3/assistant/inputtips', { keywords, city, citylimit: false })
+      return (json.tips ?? [])
+        .filter((t: any) => typeof t.location === 'string' && t.location)
+        .map((t: any) => ({ name: String(t.name), district: String(t.district ?? ''),
+                            adcode: String(t.adcode ?? ''), location: String(t.location) }))
+    },
+
+    /**
+     * IP 定位（v3/ip）。Demo 冷启动"车在哪"不用手填；精度到城市。
+     * 非大陆出口 IP（实测本机）各字段返回空数组——容忍为 null，不是报错。
+     * 注意走代理后拿到的是 dev server 本机的出口 IP，语义没变。
+     */
+    async ipLocate(): Promise<{ city: string; adcode: string } | null> {
+      const json = await get('/v3/ip', {})
+      return typeof json.city === 'string' && json.city
+        ? { city: json.city, adcode: String(json.adcode ?? '') } : null
+    },
+
     /** 圆形区域交通态势（v3/traffic/status/circle） */
     async trafficAround(location: string, radius = 1000): Promise<AmapTraffic> {
       const json = await get('/v3/traffic/status/circle', { location, radius, level: 6 })
-      const info = json.trafficinfo ?? {}
+      /**
+       * 2026-08-18 真 API 抓包修的存量静默 bug：真实响应嵌在
+       * trafficinfo.**evaluation** 里、百分比是字符串（"79.38%"）——
+       * 旧解析直接读 trafficinfo.status，永远 unknown/0。
+       * 兼容两种形状（文档示例是平的，现实是嵌套的）。
+       */
+      const info = json.trafficinfo?.evaluation ?? json.trafficinfo ?? {}
+      const pct = (v: any) => Number(String(v ?? 0).replace('%', '')) || 0
       return {
         status: TRAFFIC_STATUS[Number(info.status ?? 0)] ?? 'unknown',
-        expedite: Number(info.expedite ?? 0), congested: Number(info.congested ?? 0), blocked: Number(info.blocked ?? 0),
+        expedite: pct(info.expedite), congested: pct(info.congested), blocked: pct(info.blocked),
+        ...(info.description && { desc: String(info.description) }),
       }
     },
 

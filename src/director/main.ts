@@ -839,6 +839,18 @@ const setCity = (value: string, announce: boolean) => {
   store.setDirect('vehicle.location', value)
   if (announce) log('p', `当前城市 → ${citySelect.selectedOptions[0].textContent}`)
 }
+/**
+ * 冷启动"车在哪"（2026-08-18）：没手选过城市就问一次 IP 定位（精度到市，
+ * 高德已有 Key 白捡）。非大陆出口 IP 会返回 null——那就维持默认，不瞎猜。
+ */
+if (!localStorage.getItem(CITY_KEY) && amap) {
+  amap.ipLocate().then(r => {
+    if (!r || localStorage.getItem(CITY_KEY)) return
+    const opt = Array.from(citySelect.options).find(o => r.city.includes(o.textContent ?? '～'))
+    if (opt) { citySelect.value = opt.value; citySelect.dispatchEvent(new Event('change')) }
+    log('p', `IP 定位：当前城市按 ${r.city} 初始化（可在下拉框改）`)
+  }).catch(() => { /* 定位失败维持默认 */ })
+}
 citySelect.onchange = e => {
   const v = (e.target as HTMLSelectElement).value
   localStorage.setItem(CITY_KEY, v)

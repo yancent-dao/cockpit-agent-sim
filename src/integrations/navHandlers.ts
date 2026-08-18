@@ -138,6 +138,19 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 实测用户在成都说"临平出口"，搜到了杭州临平区，规划出 1800 公里
         const region = args.near || await amap.cityOf(store.get('vehicle.location') as string).catch(() => null)
         const pois = await amap.placeSearch(args.query, region ?? undefined)
+        /**
+         * 搜空兜底（2026-08-18）：inputtips 的 district 字段能说清
+         * "你要找的地方在哪个城市"——实测临平@成都返回的全是杭州结果，
+         * 修不了误命中，但能把"没搜到"变成"它在杭州，要去吗"。
+         */
+        if (!pois.length) {
+          const tips = await amap.inputtips(args.query, region ?? undefined).catch(() => [])
+          if (tips.length)
+            return { status: 'unavailable', code: 'NOT_FOUND', data: { tips: tips.slice(0, 5) },
+              message: `${region ? region + '范围内' : ''}没搜到「${args.query}」，你可能想找：` +
+                tips.slice(0, 3).map(t => `${t.name}（${t.district}）`).join('、'),
+              suggestion: '要去外地的话把城市说清楚我再搜' }
+        }
         const notShown = pois.length >= 2 && showCandidates(pois)
         return {
           status: 'ok', data: { pois },
@@ -186,9 +199,9 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
      * 2D/3D 与朝向是模式 —— 车机屏读状态渲染，不发命令（桌面 = f(状态)）。
      */
     mapControl: (args: any): ToolResult => {
-      if (!args?.action && !args?.style && !args?.heading)
+      if (!args?.action && !args?.style && !args?.heading && args?.traffic === undefined && !args?.cruise)
         return { status: 'rejected', code: 'INVALID_PARAMS',
-          message: '要说清干什么：放大缩小、看全程、回自车位，或者换 2D/3D、换朝向' }
+          message: '要说清干什么：放大缩小、看全程、回自车位，或者换视角、开路况、模拟行驶' }
       const changed: string[] = []
       if (args.action === 'zoomIn' || args.action === 'zoomOut') {
         const cur = store.get('navigation.mapZoom') as number
@@ -199,7 +212,32 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
       }
       if (args.style) { store.set('navigation.mapStyle', args.style); changed.push('navigation.mapStyle') }
       if (args.heading) { store.set('navigation.mapHeading', args.heading); changed.push('navigation.mapHeading') }
+      if (args.traffic !== undefined) { store.set('navigation.mapTraffic', !!args.traffic); changed.push('navigation.mapTraffic') }
+      if (args.cruise) {
+        if (args.cruise === 'start' && store.get('navigation.active') !== true)
+          return { status: 'rejected', code: 'NO_ROUTE', message: '现在没在导航，没有路线可以模拟行驶', suggestion: '先设个目的地' }
+        store.set('navigation.cruise', args.cruise === 'start'); changed.push('navigation.cruise')
+      }
       return { status: 'ok', changed }
+    },
+
+    /** 交通态势：给模型读的那半边（红黄绿图层是给人看的那半边） */
+    trafficStatus: async (args: any): Promise<ToolResult> => {
+      const amap = needAmap()
+      try {
+        let loc = String(store.get('vehicle.location') ?? '')
+        let where = '车辆附近'
+        if (args.location) {
+          const g = await amap.geocode(args.location)
+          if (!g?.location)
+            return { status: 'unavailable', code: 'PLACE_NOT_FOUND', message: `没找到「${args.location}」这个地方` }
+          loc = g.location; where = String(args.location)
+        }
+        const t = await amap.trafficAround(loc, args.radius ?? 2000)
+        const label = t.desc ?? (({ clear: '畅通', slow: '缓行', congested: '拥堵', unknown: '未知' } as any)[t.status] ?? t.status)
+        return { status: 'ok', data: t,
+          message: `${where}整体${label}：畅通路段 ${t.expedite}%、缓行 ${t.congested}%、拥堵 ${t.blocked}%` }
+      } catch (e) { return amapFail(e, '路况查询') }
     },
 
 

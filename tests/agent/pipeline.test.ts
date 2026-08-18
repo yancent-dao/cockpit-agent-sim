@@ -684,3 +684,31 @@ describe('慢层复述静音', () => {
     expect(texts).toContain('我是车载助手，能开窗调温放歌')
   })
 })
+
+
+/**
+ * ══════════ 慢层的视图里不该存在「无权」（2026-08-18 实拍） ══════════
+ *
+ * 「导航去一个可以打游戏的地方」：工具预载成功（注入 13 工具）、接力提示
+ * 也在，慢层照样说"权限没给到"。原因是共享 thread 里躺着快层那条
+ * NOT_AUTHORIZED 的工具结果**原文**——对小模型，一条鲜活的错误记录比
+ * 末尾一条 system 提示重得多，它信了证据没信提示。
+ *
+ * 根治从证据下手：那条记录对慢层是**假的**（被拒的是快层，慢层全权）。
+ * 每层看到的应该是自己视角下的真相——慢层视图里把它改写成转交语义；
+ * thread 原文不动（快层的历史是真的），面板 trace 照旧真实。
+ */
+describe('慢层视图的被拒记录改写', () => {
+  it('NOT_AUTHORIZED 在慢层视图里变成转交语义，thread 原文不动', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('navigation.search', { query: '网吧' })] }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去网吧')
+    const view = (slow as any).seen[0].messages
+    const toolMsgs = view.filter((m: any) => m.role === 'tool').map((m: any) => String(m.content))
+    expect(toolMsgs.some((t: string) => t.includes('NOT_AUTHORIZED')), '慢层不该看到"无权"').toBe(false)
+    expect(toolMsgs.some((t: string) => t.includes('转交') || t.includes('你有权限')), '要看到的是转交语义').toBe(true)
+    // thread 里的原始记录不动——那是快层的真实历史
+    expect(p.thread.some(m => m.role === 'tool' && String(m.content).includes('NOT_AUTHORIZED'))).toBe(true)
+  })
+})

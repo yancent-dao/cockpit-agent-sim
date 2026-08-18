@@ -567,7 +567,24 @@ export function createPipeline(deps: PipelineDeps) {
     let slowActed = false
     const sm = deps.slowManifest
     const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n))])
-    const view = thread.slice()   // 冻结视图：旧代慢层不许看见新 turn 的内容
+    /**
+     * 冻结视图 + **视角改写**（2026-08-18 实拍）：thread 里快层的
+     * NOT_AUTHORIZED 记录对慢层是假的——被拒的是快层，慢层全权。
+     * 实拍证明一条鲜活的错误记录比末尾的 system 提示重得多（工具预载了、
+     * 提示也在，慢层照样说"权限没给到"）。每层该看到自己视角下的真相：
+     * 慢层视图里把它改写成转交语义。thread 原文不动（快层的历史是真的），
+     * trace 照旧真实——这只改模型看到的，不改人排查看到的。
+     */
+    const view = thread.slice().map(m => {
+      if (m.role !== 'tool' || !String(m.content).includes('NOT_AUTHORIZED')) return m
+      try {
+        const r = JSON.parse(String(m.content))
+        if (r.code !== 'NOT_AUTHORIZED') return m
+        const tool = /调用\s*([\w.]+)/.exec(String(r.message ?? ''))?.[1]
+        return { ...m, content: JSON.stringify({ status: 'handover',
+          message: `这条是权限受限的快层分身被拒后转交的——你有权限${tool ? `，直接调 ${tool} 继续` : '，直接调同名工具继续'}` }) }
+      } catch { return m }
+    })
     /**
      * **接力棒必须看得见**（2026-08-17 实拍回归）。「整轮越权立刻转交」把
      * 快层第二轮省掉之后，thread 的最后一幕是「调工具 → NOT_AUTHORIZED」——

@@ -135,3 +135,26 @@ describe('尺寸自愈只在模板声明的档位里走', () => {
     }
   })
 })
+
+/**
+ * 排版一致性（2026-08-18 实拍：贪吃蛇卡自带 sans-serif/#1a1a1a/三种字号，
+ * 跟整张桌面脱节——"一会大一会小"）。沙箱基底必须带系统字体栈与字阶，
+ * 模型不写样式时天然一体。
+ */
+describe('沙箱排版基底', () => {
+  it('srcdoc 基底用 FONT_STACK，不再有旧字体栈', async () => {
+    const { buildSrcdoc } = await import('../../src/screen/canvasApp')
+    const { FONT_STACK } = await import('../../src/design/tokens')
+    const doc = buildSrcdoc('<p>hi</p>')
+    expect(doc).toContain(FONT_STACK)
+    expect(doc).not.toContain('"Noto Sans CJK SC"')
+  })
+
+  it('常见元素落在字阶上（h1/h2/small/button 有基底样式）', async () => {
+    const { buildSrcdoc } = await import('../../src/screen/canvasApp')
+    const doc = buildSrcdoc('<p>hi</p>')
+    expect(doc).toContain('h1{font-size:var(--t-lead)}')
+    expect(doc).toContain('small{font-size:var(--t-cap)')
+    expect(doc).toContain('button{font-size:var(--t-body)')
+  })
+})

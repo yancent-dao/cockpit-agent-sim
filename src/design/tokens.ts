@@ -65,7 +65,7 @@ export const BASE_CSS = `
   --u:1;
 }
 /* 字重收到 400/500/600/700 四档——300 在车机上远看发虚 */
-body,.card{font-family:"PingFang SC","Noto Sans CJK SC",-apple-system,"Segoe UI",sans-serif;
+body,.card{font-family:${FONT_STACK};
   -webkit-font-smoothing:antialiased}
 /* 所有数字容器都要等宽，否则 ETA 从 28 跳到 27 时会左右抖 */
 .num,.clock,.batt,.gear,[data-num]{font-variant-numeric:tabular-nums}

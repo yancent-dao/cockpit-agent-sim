@@ -270,6 +270,11 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'canvas-app', label: '生成式小组件', defaultSize: 'hall', sizes: [...CANVAS_ALLOWED],
     desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。' +
       '会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。' +
+      '**排版必须跟整张桌面一体**：沙箱已带系统字体和浅色配色（文字 var(--tx-1)、底透明），' +
+      '不要写 font-family、不要另起深色背景、不要用 px 自定字号——字号只用 ' +
+      'var(--t-cap)/var(--t-body)/var(--t-title)/var(--t-lead)/var(--t-hero) 五档，' +
+      '颜色只用 var(--tx-1/2/3) 和 var(--ac)，让内容自然撑开高度（别写 100vh）。' +
+      '一会大一会小、一张黑一张白，用户一眼就看出是外来的。' +
       '沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。' +
       '可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。' +
       'data: {title, html, text}。text 是纯文字兜底必填。' +

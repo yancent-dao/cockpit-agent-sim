@@ -8,7 +8,7 @@
  *
  * 纯字符串构造，不碰 DOM —— 安全属性必须可测（铁律写在测试里，不是注释里的善意）。
  */
-import { tokensFor } from '../design/tokens'
+import { tokensFor, FONT_STACK } from '../design/tokens'
 
 /**
  * 铁律 ①：只有 allow-scripts。
@@ -47,8 +47,16 @@ export function buildSrcdoc(html: string): string {
   return `<!doctype html><html><head>
 <meta http-equiv="Content-Security-Policy" content="${CSP}">
 <style>${tokensFor('screen')}
-html,body{margin:0;background:transparent;color:var(--tx-1);font-family:"PingFang SC","Noto Sans CJK SC",sans-serif;font-size:var(--t-cap)}
-*{box-sizing:border-box;max-width:100%}</style>
+html,body{margin:0;background:transparent;color:var(--tx-1);font-family:${FONT_STACK};font-size:var(--t-body)}
+*{box-sizing:border-box;max-width:100%;font-family:inherit}
+/* 排版基底（实拍：模型自带 sans-serif/#1a1a1a/三种字号，跟整张桌面脱节）——
+   常见元素直接落在字阶上，模型不写样式也跟系统一体 */
+h1,h2,h3{font-weight:700;color:var(--tx-1)}
+h1{font-size:var(--t-lead)}h2{font-size:var(--t-title)}h3{font-size:var(--t-body)}
+small{font-size:var(--t-cap);color:var(--tx-2)}
+button{font-size:var(--t-body);font-family:inherit;border:1px solid rgba(0,0,0,.1);
+  border-radius:12px;padding:8px 22px;background:var(--sf-raised);color:var(--tx-1);cursor:pointer}
+b,strong{font-variant-numeric:tabular-nums}</style>
 ${BRIDGE}
 </head><body>${html}</body></html>`
 }

@@ -256,6 +256,7 @@ input::placeholder{color:#4A5462}
     full: "var(--r-l)"
   };
   var tierRules = Object.keys(TIER_UNITS).map((t) => `.t-${t}{--u:${TIER_UNITS[t]};border-radius:${TIER_RADIUS[t]}}`).join("\n");
+  var FONT_STACK = '"MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif';
   var BASE_CSS = `
 :root{
   /* 字阶 7 阶。--t-title 刻意小于 --t-body：标题让位，数值才是主角 */
@@ -273,7 +274,7 @@ input::placeholder{color:#4A5462}
   --u:1;
 }
 /* 字重收到 400/500/600/700 四档——300 在车机上远看发虚 */
-body,.card{font-family:"PingFang SC","Noto Sans CJK SC",-apple-system,"Segoe UI",sans-serif;
+body,.card{font-family:${FONT_STACK};
   -webkit-font-smoothing:antialiased}
 /* 所有数字容器都要等宽，否则 ETA 从 28 跳到 27 时会左右抖 */
 .num,.clock,.batt,.gear,[data-num]{font-variant-numeric:tabular-nums}
@@ -648,7 +649,8 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     statusH: 96,
     // 状态栏
     voiceH: 300,
-    // 语音区（待机时收到 148，按大的算才不会撑破）
+    // 底部留白带（横幅+呼吸感）。语音带 2026-08-18 退役进顶栏角标，
+    // 但这 300 是像素契约的地基（996 由它算出）——名字留着，数值不动
     padX: 60,
     padY: 24,
     // #desk 的内边距
@@ -949,7 +951,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       label: "生成式小组件",
       defaultSize: "hall",
       sizes: [...CANVAS_ALLOWED],
-      desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。**按放得下写**，行数是硬预算。各档位容量：' + CANVAS_SIZES + "。",
+      desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。**排版必须跟整张桌面一体**：沙箱已带系统字体和浅色配色（文字 var(--tx-1)、底透明），不要写 font-family、不要另起深色背景、不要用 px 自定字号——字号只用 var(--t-cap)/var(--t-body)/var(--t-title)/var(--t-lead)/var(--t-hero) 五档，颜色只用 var(--tx-1/2/3) 和 var(--ac)，让内容自然撑开高度（别写 100vh）。一会大一会小、一张黑一张白，用户一眼就看出是外来的。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。**按放得下写**，行数是硬预算。各档位容量：' + CANVAS_SIZES + "。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
@@ -6194,7 +6196,7 @@ ${extras.desktop}`);
     type: "function",
     function: {
       name: "agent_handoff",
-      description: "收尾必调：say 放给用户的一句话（报你干成/没干成的结果，≤15 字），suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。",
+      description: '收尾必调：say 放给用户的一句话（≤15 字）——你办成了就报结果；没轮到你办的只说衔接语（"稍等""这就来"），绝不说"做不了/抱歉"，你办不了≠系统办不了，同事马上接手。suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。',
       parameters: {
         type: "object",
         properties: {
@@ -9255,10 +9257,12 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 2. 工具面里没有的活**一个不碰、一字不评**——后面有你的大模型同事接手兜底。这单全轮不到你
    而「工具目录」里显然有工具能干时，只说两三个字的承接（"我看看""稍等"）；纯闲聊就自然答。
    **你不了解的状态（导航开没开、放的什么歌）一个字不许答**——那是同事的地盘，编错比沉默糟十倍。
-3. 收尾**必调一次 agent.handoff**：say 放给用户的话（报你干成/没干成了什么，≤15 字），
+3. 收尾**必调一次 agent.handoff**：say 放给用户的话（≤15 字）——办成了报结果，
+   没轮到你办的只说衔接语（"稍等""这就来"）。
    suggestedTools 勾同事接下来可能用到的工具（从目录挑，没有就空着）。
-4. **绝不说"抱歉/我不懂/我做不了"**——轮不到你的活你的同事都会做，你一说不会，
-   用户就以为整个系统不会（实拍翻车话术："抱歉，我不懂股票分析"）。轮不到就说"稍等"。
+4. **绝不说"抱歉/我不懂/我做不了"，say 里也不许**——轮不到你的活你的同事都会做，
+   你一说不会，用户就以为整个系统不会（实拍两连翻车："抱歉，我不懂股票分析"、
+   "抱歉，我做不了"贪吃蛇——话音刚落同事就把游戏做出来了，前后矛盾最伤信任）。
 5. 别复述指令、别提模型和公司。`
   };
 

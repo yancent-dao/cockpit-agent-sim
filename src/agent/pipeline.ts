@@ -74,7 +74,7 @@ export interface TurnResult {
 const HANDOFF_SCHEMA = {
   type: 'function', function: {
     name: 'agent_handoff',
-    description: '收尾必调：say 放给用户的一句话（报你干成/没干成的结果，≤15 字），suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。',
+    description: '收尾必调：say 放给用户的一句话（≤15 字）——你办成了就报结果；没轮到你办的只说衔接语（"稍等""这就来"），绝不说"做不了/抱歉"，你办不了≠系统办不了，同事马上接手。suggestedTools 勾出同事接下来可能用到的工具名（从目录挑，没有就空着）。',
     parameters: {
       type: 'object',
       properties: {

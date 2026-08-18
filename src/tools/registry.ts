@@ -27,6 +27,9 @@ import type { StockClient } from '../integrations/qtstock'
 import type { HolidayClient } from '../integrations/holiday'
 import type { PoemClient } from '../integrations/poem'
 import type { PodcastClient } from '../integrations/podcast'
+import { createGenHandlers } from '../integrations/genHandlers'
+import type { VideoGenClient } from '../integrations/orvideo'
+import type { MusicGenClient } from '../integrations/ormusic'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -68,6 +71,9 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
   poem?: PoemClient
   /** 播客 RSS 直取（只实时流播）。发现走 itunes.searchPodcasts */
   podcast?: PodcastClient
+  /** OpenRouter 生成式媒体（与绘本插图同一个 Key 同一个账本） */
+  orvideo?: VideoGenClient
+  ormusic?: MusicGenClient
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -230,6 +236,7 @@ export function createRegistry(
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
+    ...createGenHandlers(store, () => deps.orvideo, () => deps.ormusic),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }

@@ -22,6 +22,8 @@ import { createStockClient } from '../integrations/qtstock'
 import { createHolidayClient } from '../integrations/holiday'
 import { createPoemClient } from '../integrations/poem'
 import { createPodcastClient } from '../integrations/podcast'
+import { createVideoGen } from '../integrations/orvideo'
+import { createMusicGen } from '../integrations/ormusic'
 import { createRadioClient } from '../integrations/radio'
 import { createNewsClient } from '../integrations/news'
 import { createPexelsClient } from '../integrations/pexels'
@@ -260,6 +262,8 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   stocks: createStockClient(fetch.bind(window)), holiday: createHolidayClient(fetch.bind(window)),
   poem: createPoemClient(fetch.bind(window)), podcast: createPodcastClient(fetch.bind(window)),
+  orvideo: createVideoGen(fetch.bind(window), () => apiKey),
+  ormusic: createMusicGen(fetch.bind(window), () => apiKey),
   news: createNewsClient(fetch.bind(window), () => newsKey),
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),

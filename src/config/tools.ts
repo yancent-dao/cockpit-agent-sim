@@ -837,6 +837,33 @@ export const TOOLS: ToolDef[] = [
 
   /* ══════════ 联网搜索 ══════════ */
   {
+    name: 'video.generate',
+    brief: 'AI 生成一段视频',
+    desc: '按描述生成一段短视频（约 5 秒，Seedance 等模型）。异步的：调完立刻返回，' +
+      '一两分钟后生成完会自动开始播放，你先告诉用户在做了。行驶中不会弹画面（安全约束）。' +
+      '花真钱（约 1-2 元/条），用户没明确要生成视频就别调。',
+    permission: '彩',
+    params: {
+      prompt: { type: 'string', required: true, desc: '画面描述，说清主体/动作/风格' },
+      duration: { type: 'number', desc: '时长秒数，默认 5' },
+      ratio: { type: 'enum', values: ['16:9', '9:16', '1:1'], desc: '画幅，默认 16:9' },
+    },
+    handler: 'videoGenerate',
+  },
+  {
+    name: 'music.generate',
+    brief: 'AI 写一段音乐',
+    desc: '按描述生成一段 30 秒音乐（Lyria，48kHz 立体声，可含人声）。生成完直接开始播放。' +
+      '描述里可以给风格、心情、场景，比如"给孩子的轻快生日歌，唱到妞妞的名字"。' +
+      '花真钱（约 3 毛/段），用户没明确要就别调。',
+    permission: '彩',
+    params: {
+      prompt: { type: 'string', required: true, desc: '想要什么样的音乐' },
+      instrumental: { type: 'boolean', desc: 'true = 纯音乐不要人声' },
+    },
+    handler: 'musicGenerate',
+  },
+  {
     name: 'web.search',
     brief: '联网搜索现查',
     // 每次搜索 15 秒起——问句写全一次问够，别拆成三四次搜（用户在车里等不起）

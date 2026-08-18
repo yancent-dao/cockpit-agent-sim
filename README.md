@@ -3,7 +3,7 @@
 一个面向智能座舱业务的 Agent 框架。零后端、零运行时依赖。
 An agent framework for smart-cockpit applications. Zero backend, zero runtime deps.
 
-这个项目最早是给座舱产品经理搭 AI Demo 用的。做着做着发现，不管是搭演示、验证架构，还是探索座舱里"无 APP 化"的交互，底下要的机制其实是同一套：信号怎么管、工具怎么分级授权、危险操作怎么确认、卡片怎么上屏、快慢两个模型怎么配合。既然如此，索性把机制层做扎实（现在有 1177 个测试盯着），把业务留成数据——你要接自己的东西，往 `src/config/` 里加就行，一条信号、一个 Tool、一条卡片规则，平台代码一行不用动。
+这个项目最早是给座舱产品经理搭 AI Demo 用的。做着做着发现，不管是搭演示、验证架构，还是探索座舱里"无 APP 化"的交互，底下要的机制其实是同一套：信号怎么管、工具怎么分级授权、危险操作怎么确认、卡片怎么上屏、快慢两个模型怎么配合。既然如此，索性把机制层做扎实（现在有 1229 个测试盯着），把业务留成数据——你要接自己的东西，往 `src/config/` 里加就行，一条信号、一个 Tool、一条卡片规则，平台代码一行不用动。
 
 对话是真实 LLM 驱动的，导航、天气、音乐、新闻、云端 TTS 接的都是真实服务。车机屏是独立窗口，拖到外接屏按 F 全屏，直接就能拿去演示。
 
@@ -28,7 +28,7 @@ npm run dev                        # → http://localhost:5173
 Key 的门槛很低：一个 [OpenRouter](https://openrouter.ai) 的 Key 就能对话和车控。导航和地图要高德的 Key；天气、音乐、电台用的都是免注册服务，什么都不用配。
 
 ```bash
-npm test               # 1177 个测试，全绿才算完成
+npm test               # 1229 个测试，全绿才算完成
 npx tsc --noEmit       # 类型检查
 npm run pilot [场景id] # 自动化体验闭环（消耗真实 API 额度，不进 npm test）
 node build-single.mjs  # 单文件版 → single/（双击可开；注意读不到 .env，Key 相关能力不可用）
@@ -63,10 +63,10 @@ flowchart TB
         state["src/state/ 记忆四级<br/>瞬时 · 会话 · 领域 · 长期"]
     end
     subgraph DATA["src/config/ 数据（越多越好）+ agents/ 实例"]
-        config["105 信号(VSS) · 67 Tool · 约束 · 卡片规则/模板契约"]
+        config["107 信号(VSS) · 75 Tool · 约束 · 卡片规则/模板契约"]
         manifest["manifest + 人设 + 快层微人设 + 技能包"]
     end
-    integrations["src/integrations/ 三方适配<br/>高德 · Open-Meteo · iTunes · Radio Browser · NewsAPI · Pexels · OpenRouter 图像"]
+    integrations["src/integrations/ 三方适配<br/>高德 · Open-Meteo · iTunes/播客 · Radio Browser · NewsAPI · Pexels · 腾讯行情 · OpenRouter 图像/视频/音乐"]
 
     director --> AGENT
     screen <--> cards
@@ -99,13 +99,13 @@ flowchart TB
 
 ### 工程纪律
 
-开发全程 TDD：先写测试看它红，再写实现看它绿，1177 个测试全绿才算完成。每个目录有行数预算，超了不是上调预算，是先查有没有业务逻辑漏进了不该在的层。Tool 是机制，Agent 是策略——`climate.set` 绝不因为外面冷就自作主张多加两度。命名不自己发明：信号对齐 COVESA VSS v6.0，元数据对齐 AAOS，确认流对齐 MCP 的 MRTR。
+开发全程 TDD：先写测试看它红，再写实现看它绿，1229 个测试全绿才算完成。每个目录有行数预算，超了不是上调预算，是先查有没有业务逻辑漏进了不该在的层。Tool 是机制，Agent 是策略——`climate.set` 绝不因为外面冷就自作主张多加两度。命名不自己发明：信号对齐 COVESA VSS v6.0，元数据对齐 AAOS，确认流对齐 MCP 的 MRTR。
 
 另外有一套叫 pilot 的自动化体验闭环：用一个独立的 LLM 扮演坐在车里的真人，跟真实 Agent 跑多轮对话，过程落盘成快照，人按四个维度评审。很多真问题——几何死局导致导航卡出不来、思维链泄漏进播报、模型把六轮全烧在调工具上一句话没说——都是它抓出来的。
 
 更细的东西都在 docs 里：[需求规格说明书](docs/需求规格说明书_v1.0.md) 讲要做什么，[工程约束](docs/工程约束_v1.1.md) 讲底线，[superpowers/specs/](docs/superpowers/specs/) 是每一轮的设计文档。
 
-## 能力清单（67 Tools）
+## 能力清单（75 Tools）
 
 下面是全部工具，按域分组。权限一栏：彩是直接执行，灰要二次确认，黑永不注册给 Agent；带 ⚡ 的挂在快层，小模型可以先斩后奏。整张清单声明在 `src/config/tools.ts` 里，加工具就是往里加一段数据。
 
@@ -136,7 +136,7 @@ flowchart TB
 </details>
 
 <details>
-<summary><b>导航 · 地图 · 天气（高德 + Open-Meteo）</b>（12 个）</summary>
+<summary><b>导航 · 地图 · 天气 · 路况（高德 + Open-Meteo）</b>（13 个）</summary>
 
 | Tool | 说明 | 权限 | 快层 |
 |---|---|:-:|:-:|
@@ -147,6 +147,7 @@ flowchart TB
 | `navigation.control` | 暂停恢复结束导航 | 彩 |  |
 | `navigation.getStatus` | 读导航当前状态 | 彩 |  |
 | `map.control` | 地图缩放/全览/2D3D/朝向 | 彩 |  |
+| `traffic.status` | 查路况拥堵情况 | 彩 |  |
 | `region.districts` | 查周边区县列表 | 彩 |  |
 | `places.save` | 存常用地址 | 彩 |  |
 | `places.list` | 列常用地址 | 彩 |  |
@@ -156,7 +157,7 @@ flowchart TB
 </details>
 
 <details>
-<summary><b>媒体（传输控制共用，内容源各自）</b>（17 个）</summary>
+<summary><b>媒体（传输控制共用，内容源各自）</b>（19 个）</summary>
 
 | Tool | 说明 | 权限 | 快层 |
 |---|---|:-:|:-:|
@@ -171,12 +172,35 @@ flowchart TB
 | `music.play` | 搜歌并播放入队 | 彩 | ⚡ |
 | `radio.search` | 搜网络电台 | 彩 |  |
 | `radio.play` | 搜台并播放 | 彩 | ⚡ |
+| `podcast.search` | 搜播客节目 | 彩 |  |
+| `podcast.play` | 播播客最新一集 | 彩 | ⚡ |
 | `news.headlines` | 今日头条新闻 | 彩 | ⚡ |
 | `news.search` | 按话题搜新闻 | 彩 | ⚡ |
 | `news.read` | 念一条新闻正文 | 彩 |  |
 | `video.search` | 搜短视频 | 彩 |  |
 | `video.play` | 搜视频并播放 | 彩 | ⚡ |
 | `web.search` | 联网搜索现查 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>AI 生成（OpenRouter，与绘本插图同一个 Key）</b>（2 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `video.generate` | AI 生成一段视频 | 彩 |  |
+| `music.generate` | AI 写一段音乐 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>生活资讯（零 Key）</b>（3 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `stock.query` | 查股价指数汇率 | 彩 | ⚡ |
+| `holiday.query` | 查节假日调休 | 彩 |  |
+| `poem.today` | 来一句今日诗词 | 彩 |  |
 
 </details>
 

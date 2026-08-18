@@ -87,7 +87,13 @@ export function createOnlineChat(getKey: () => string, getModel: () => string) {
       signal: AbortSignal.timeout(60_000),
       headers: { Authorization: `Bearer ${getKey()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: `${getModel()}:online`,
+        /**
+         * 引擎显式选 Parallel Turbo（2026-08-18，接入清单里最便宜的一次优化）：
+         * :online 后缀的默认引擎是 Exa（$0.007/次），Parallel Turbo $0.001，
+         * 同样含 10 条结果 —— 改一个配置字段成本降 7 倍。
+         */
+        model: getModel(),
+        plugins: [{ id: 'web', engine: 'parallel', mode: 'turbo', max_results: 6 }],
         messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
       }),
     })

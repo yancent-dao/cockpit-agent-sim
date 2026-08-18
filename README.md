@@ -3,7 +3,7 @@
 **面向智能座舱业务的 Agent 框架** —— 零后端、零运行时依赖,加能力 = 加数据不加代码。
 An agent framework for smart-cockpit applications. Zero backend, zero runtime deps.
 
-只要在做座舱 AI 相关的事,机制层需要的都是同一套:信号系统(对齐 COVESA VSS)、工具注册与黑/灰/彩权限分级、危险操作确认流(对齐 MCP MRTR)、卡片桌面编排(布局仲裁/抢占/等位区)、快慢双层 Agent pipeline、四级记忆、真实三方集成(导航/天气/音乐/新闻/云端 TTS)。这套底座把机制做完并配了 1170+ 个测试,**接入你的业务 = 往 `src/config/` 加数据**——一条信号、一个 Tool、一条卡片规则,平台代码一行不动。
+只要在做座舱 AI 相关的事,机制层需要的都是同一套:信号系统(对齐 COVESA VSS)、工具注册与黑/灰/彩权限分级、危险操作确认流(对齐 MCP MRTR)、卡片桌面编排(布局仲裁/抢占/等位区)、快慢双层 Agent pipeline、四级记忆、真实三方集成(导航/天气/音乐/新闻/云端 TTS)。这套底座把机制做完并配了 1177 个测试,**接入你的业务 = 往 `src/config/` 加数据**——一条信号、一个 Tool、一条卡片规则,平台代码一行不动。
 
 拿它做什么都行:产品经理搭 Demo(车机屏直接投屏)、工程团队验证座舱 Agent 架构、HMI 设计师探索"无 APP 化"交互、研究快慢双层/生成式 UI 这类 Agent 范式。
 
@@ -29,7 +29,7 @@ npm run dev                        # → http://localhost:5173
 最低只需一个 [OpenRouter](https://openrouter.ai) Key 即可对话与车控;导航/地图要高德 Key,天气(Open-Meteo)、音乐(iTunes)、电台(Radio Browser)零 Key。
 
 ```bash
-npm test               # 1142 个测试，全绿才算完成
+npm test               # 1177 个测试，全绿才算完成
 npx tsc --noEmit       # 类型检查
 npm run pilot [场景id] # 自动化体验闭环（消耗真实 API 额度，不进 npm test）
 node build-single.mjs  # 单文件版 → single/（双击可开；注意读不到 .env，Key 相关能力不可用）
@@ -95,7 +95,7 @@ flowchart TB
 
 ### 工程纪律
 
-- **TDD 先红后绿**,1142 个测试全绿才算完成;每个目录有行数预算,超了先查是不是逻辑漏进了不该在的层
+- **TDD 先红后绿**,1177 个测试全绿才算完成;每个目录有行数预算,超了先查是不是逻辑漏进了不该在的层
 - **Tools = 机制,Agent = 策略**:Tool 内不写贴心逻辑,`climate.set` 绝不因为外面冷就自己多加两度
 - **不发明命名**:信号对齐 COVESA VSS v6.0,元数据对齐 AAOS 三元组,确认流对齐 MCP MRTR
 - **pilot 自动化体验闭环**:独立 LLM 扮"坐在车里的真人"跟真实 Agent 跑多轮对话,落盘快照,按四维清单人工评审

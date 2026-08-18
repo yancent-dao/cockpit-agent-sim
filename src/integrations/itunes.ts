@@ -1,13 +1,20 @@
 /**
  * iTunes Search API。
  *
- * 它**不支持 CORS**，所以不能用 fetch —— 走 JSONP（动态 <script> + callback 参数），
- * 这也是 Apple 官方文档教的用法。零后端的前提下这是唯一可行的路子。
+ * 它**不支持 CORS** —— 以前只能走 JSONP（动态 script 注入），40 行代码全是
+ * 为了绕这道墙：自增回调名（只靠时间戳会撞，浏览器把 performance.now() 粗化到
+ * 100µs~1ms，并行两个搜索大概率同名，第二次覆盖第一次的 resolver，用户搜
+ * 周杰伦拿到儿歌列表）、全局回调清理、script.onerror、4 秒超时。
+ *
+ * 2026-08-17 起走**同源代理**（`src/config/upstream.ts`），它就是一次普通
+ * fetch，那 40 行连同它的坑一起删了。
  *
  * 免费、无需 Key、无需注册，限流约 20 次/分钟。
  * 只给 30 秒预览（previewUrl），**没有完整播放** —— 版权决定的，
  * 没有任何个人可注册的免费 CP 能提供华语流行乐整首播放。
  */
+
+import { api } from '../config/upstream'
 
 export interface Track {
   id: number
@@ -25,35 +32,8 @@ export class ItunesError extends Error {
   constructor(message: string, readonly code?: string) { super(message) }
 }
 
-/** JSONP 载入器。注入是为了测试能不打真实网络 */
-export type Jsonp = (url: string, callbackParam: string) => Promise<any>
-
-/** 浏览器实现：动态 script 标签。iTunes 没有 CORS，这是唯一的路 */
-/**
- * 回调名的自增序号。**不能只靠时间戳**：浏览器出于 Spectre 缓解会把
- * performance.now() 粗化到 100µs~1ms，同一轮并行发两个 music.search
- * （项目明确鼓励并行调用）大概率取到同一个名字——第二次注册覆盖第一次的
- * resolver，先回来的响应会 resolve 到另一个 Promise 上（用户搜周杰伦拿到
- * 儿歌列表），另一个则挂到 4 秒超时。
- */
-let jsonpSeq = 0
-
-export const browserJsonp: Jsonp = (url, cbParam) =>
-  new Promise((resolve, reject) => {
-    const name = `__itunes_cb_${++jsonpSeq}_${Math.floor(performance.now() * 1000)}`
-    const el = document.createElement('script')
-    const done = (fn: () => void) => {
-      delete (window as any)[name]
-      el.remove()
-      clearTimeout(timer)
-      fn()
-    }
-    const timer = setTimeout(() => done(() => reject(new ItunesError('iTunes 没有响应', 'TIMEOUT'))), 4000)   // 8s→4s：正常响应 <2s，挂的时候它拖住整轮 Promise.all
-    ;(window as any)[name] = (data: any) => done(() => resolve(data))
-    el.onerror = () => done(() => reject(new ItunesError('iTunes 连不上', 'NETWORK')))
-    el.src = `${url}&${cbParam}=${name}`
-    document.head.appendChild(el)
-  })
+/** 注入 fetch 是为了测试能不打真实网络 */
+export type Fetcher = (url: string, init?: any) => Promise<{ ok: boolean; status?: number; json(): Promise<any> }>
 
 const toTrack = (r: any): Track => ({
   id: r.trackId,
@@ -66,10 +46,23 @@ const toTrack = (r: any): Track => ({
   duration: Math.round((r.trackTimeMillis ?? 0) / 1000),
 })
 
-export function createItunesClient(jsonp: Jsonp = browserJsonp) {
+export function createItunesClient(fetcher: Fetcher = ((u, i) => fetch(u, i)) as Fetcher,
+                                   { timeoutMs = 4000 } = {}) {
   const search = async (term: string, limit = 8, country = 'CN'): Promise<Track[]> => {
     const q = new URLSearchParams({ term, media: 'music', entity: 'song', limit: String(limit), country })
-    const json = await jsonp(`https://itunes.apple.com/search?${q}`, 'callback')
+    // per-request 超时：挂的时候它会拖住整轮 Promise.all（正常响应 <2s）
+    const ac = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null
+    let res
+    try {
+      res = await fetcher(`${api('itunes')}/search?${q}`, ac ? { signal: ac.signal } : undefined)
+    } catch (e) {
+      throw new ItunesError('iTunes 连不上', 'NETWORK')
+    } finally {
+      if (timer) clearTimeout(timer)
+    }
+    if (!res.ok) throw new ItunesError(`iTunes 返回 ${res.status ?? '错误'}`, 'HTTP')
+    const json = await res.json()
     // 没有 preview 的条目对我们没用——放不出声的"搜到了"比没搜到更糟
     return (json?.results ?? []).map(toTrack).filter((t: Track) => t.preview)
   }

@@ -35,7 +35,7 @@ node build-single.mjs  # 单文件版 → single/（双击可开；注意读不�
 
 ## 系统架构
 
-四条硬约束框定一切设计:**零后端**(产物是静态文件)· **加能力 = 加数据,不加代码**(新信号/Tool 只改 `src/config/`)· **代码里不许有意图分支**(出现 `if (intent === ...)` 即违规,Agent 表现不好改 Prompt 不改代码)· **运行时依赖为零**(仅 vite / vitest / typescript 三个 devDependency)。
+四条硬约束框定一切设计:**零后端产物**(静态文件;dev/preview 自带纯转发代理免疫 CORS,代理层不许有业务逻辑)· **加能力 = 加数据,不加代码**(新信号/Tool 只改 `src/config/`)· **代码里不许有意图分支**(出现 `if (intent === ...)` 即违规,Agent 表现不好改 Prompt 不改代码)· **运行时依赖为零**(仅 vite / vitest / typescript 三个 devDependency)。
 
 ```mermaid
 flowchart TB

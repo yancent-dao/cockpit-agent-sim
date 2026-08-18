@@ -204,7 +204,7 @@ async function runScenario(s: Scenario) {
     desk, amap, state, prefs,
     // iTunes 走 JSONP（浏览器 script 标签），Node 里没有 document——
     // 这里用 fetch 直连，它对服务端请求是放行的，只有浏览器才被 CORS 挡
-    itunes: createItunesClient(async url => (await fetch(url)).json()),
+    itunes: createItunesClient(),
     radio: createRadioClient(fetch as any),
     ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),

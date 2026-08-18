@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createStore } from '../../src/core/store'
 import { createRegistry } from '../../src/tools/registry'
 import { createDesk } from '../../src/cards/desk'
-import { createItunesClient, type Jsonp } from '../../src/integrations/itunes'
+import { createItunesClient, type Fetcher } from '../../src/integrations/itunes'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
 import { TOOLS } from '../../src/config/tools'
@@ -21,23 +21,45 @@ const song = (n: number, over: any = {}) => ({
   trackTimeMillis: 215000, ...over,
 })
 
-/** 假 JSONP：不打真实网络，但走真实的 createItunesClient 拼装链路 */
-const fakeItunes = (results: any[], onUrl?: (u: string) => void): Jsonp => async (url, cb) => {
-  onUrl?.(url)
-  expect(url).not.toContain(cb + '=')   // callback 由载入器自己加，客户端不该拼
-  return { resultCount: results.length, results }
+/** 假 fetch：不打真实网络，但走真实的 createItunesClient 拼装链路 */
+const fakeItunes = (results: any[], onUrl?: (u: string) => void): Fetcher => async url => {
+  onUrl?.(String(url))
+  return { ok: true, json: async () => ({ resultCount: results.length, results }) } as any
 }
 
-const mk = (jsonp: Jsonp) =>
-  createRegistry(store, TOOLS, Date.now, { desk, itunes: createItunesClient(jsonp) } as any)
+const mk = (f: Fetcher) =>
+  createRegistry(store, TOOLS, Date.now, { desk, itunes: createItunesClient(f) } as any)
 
 describe('iTunes 适配', () => {
-  it('走 JSONP 而不是 fetch —— iTunes 不支持 CORS', async () => {
+  /**
+   * **JSONP 退役了**（2026-08-17）。iTunes 不支持 CORS，以前只能走动态
+   * script 注入 —— 40 行代码全是为了绕开一道墙：自增回调名（时间戳被
+   * Spectre 缓解粗化后并行搜索会撞名、把周杰伦的结果 resolve 给儿歌）、
+   * 全局回调清理、script.onerror、4 秒超时。同源代理之后它就是一次
+   * 普通 fetch，那 40 行连同它的坑一起删掉。
+   */
+  it('走同源代理的普通 fetch，JSONP 那套彻底退役', async () => {
+    vi.stubGlobal('location', { protocol: 'http:' })   // 模拟浏览器：有 dev server 在转发
+    try {
+      let seen = ''
+      const c = createItunesClient(fakeItunes([song(1)], u => { seen = u }))
+      await c.search('周杰伦')
+      expect(seen, '经代理，不再直连 itunes.apple.com').toContain('/x/itunes/search')
+      expect(seen).toContain('entity=song')
+      expect(seen, 'JSONP 的 callback 参数不该再出现').not.toContain('callback=')
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('node 环境（pilot）没有转发层，如实直连原 host', async () => {
     let seen = ''
     const c = createItunesClient(fakeItunes([song(1)], u => { seen = u }))
     await c.search('周杰伦')
     expect(seen).toContain('itunes.apple.com/search')
-    expect(seen).toContain('entity=song')
+  })
+
+  it('上游报错要说人话，不是抛裸异常', async () => {
+    const c = createItunesClient(async () => ({ ok: false, status: 503 } as any))
+    await expect(c.search('x')).rejects.toThrow(/iTunes/)
   })
 
   it('封面换成 300 尺寸——100x100 在车机上太糊', async () => {

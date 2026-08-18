@@ -34,7 +34,7 @@ beforeEach(() => {
   reg = createRegistry(store, TOOLS, Date.now, {
     desk: createDesk(),
     state,
-    itunes: createItunesClient(async () => FAKE_TRACKS),
+    itunes: createItunesClient(async () => ({ ok: true, json: async () => FAKE_TRACKS }) as any),
   })
 })
 

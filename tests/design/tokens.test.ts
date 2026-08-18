@@ -142,11 +142,19 @@ describe('数字排版', () => {
 import { wallpaperCss } from '../../src/design/tokens'
 
 describe('壁纸层', () => {
-  it('预设走渐变，自定义走图，都压一层遮罩', () => {
-    expect(wallpaperCss('preset:dusk', 'day')).toContain('linear-gradient(rgba(231')
+  /**
+   * 遮罩是**垂直渐变 scrim** 不是整片盖（2026-08-19 实拍：78% 平铺把
+   * 熊猫糊成磨砂玻璃）——上下两端重（状态栏/语音条的可读区），
+   * 中段放开让壁纸呼吸；卡片自己有玻璃底，不靠全局遮罩。
+   */
+  it('预设走渐变，自定义走图，scrim 是上下重中间轻的渐变', () => {
+    const day = wallpaperCss('preset:dusk', 'day')
+    expect(day).toContain('linear-gradient(180deg')
+    expect(day).toMatch(/rgba\(238,242,247,\.7\d?\)/)   // 端部重
+    expect(day).toMatch(/rgba\(238,242,247,\.2\d?\)/)   // 中段轻
     expect(wallpaperCss('custom:x', 'day', 'data:image/webp;base64,AA')).toContain('url(data:image/webp')
   })
-  it('夜间遮罩换深色', () => {
+  it('夜间 scrim 换深色', () => {
     expect(wallpaperCss('preset:aurora', 'night')).toContain('rgba(11,15,22')
   })
   it('空值/查无预设/自定义无图 → 空串（恢复默认底）', () => {

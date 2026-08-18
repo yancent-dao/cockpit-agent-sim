@@ -140,13 +140,20 @@ export const WALLPAPER_PRESETS: Record<string, string> = {
  * value: '' | 'preset:<name>' | 'custom:<戳>'（图从 localStorage 取，调用方传入）
  */
 export function wallpaperCss(value: string, mode: 'day' | 'night', customImg?: string | null): string {
-  const veil = mode === 'night' ? 'rgba(11,15,22,.72)' : 'rgba(231,236,243,.78)'
+  /**
+   * 遮罩是**垂直渐变 scrim** 不是整片盖（2026-08-19 实拍：78% 平铺把熊猫
+   * 糊成磨砂玻璃）。上下两端重——那是状态栏和语音条的可读区；中段放轻
+   * 让壁纸呼吸。卡片自己有玻璃底 + 背景模糊，不靠全局遮罩活着。
+   */
+  const [strong, weak] = mode === 'night'
+    ? ['rgba(11,15,22,.78)', 'rgba(11,15,22,.32)']
+    : ['rgba(238,242,247,.72)', 'rgba(238,242,247,.22)']
   if (!value) return ''
   const [kind, name] = value.split(':')
   const img = kind === 'preset' ? WALLPAPER_PRESETS[name]
     : customImg ? `url(${customImg}) center/cover no-repeat` : ''
   if (!img) return ''
-  return `linear-gradient(${veil},${veil}), ${img}`
+  return `linear-gradient(180deg, ${strong} 0%, ${weak} 16%, ${weak} 84%, ${strong} 100%), ${img}`
 }
 
 /**

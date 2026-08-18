@@ -418,4 +418,20 @@ export const SCENARIOS: Scenario[] = [
     goal: '你一边跟助手闲扯今天多热，一边顺口说了句"这天气真该开空调了"，看它能不能接住这个隐含的需求。',
     maxTurns: 5,
   },
+  {
+    id: 'real-briefing', name: '出发晨报', group: 'real',
+    goal: '你刚上车准备出发。对助手说"早上好，我们出发吧，今天啥情况"，听它给你来一段今天的简报（天气/假期/路况/新闻）。它说完你就说谢谢结束。',
+    maxTurns: 3,
+  },
+  {
+    id: 'real-rainy', name: '雨天联动', group: 'real',
+    initial: { 'cabin.window.driver.position': 60, 'vehicle.speed': 30, 'vehicle.gear': 'd' },
+    goal: '你正在开车，外面突然下大雨了。告诉助手"下大雨了"，看它会不会把雨刷、车窗、除雾这些一次弄好。弄好了说谢谢结束。',
+    maxTurns: 3,
+  },
+  {
+    id: 'real-mood', name: '氛围导演', group: 'real',
+    goal: '你今天很累。对助手说"我好累，来点放松的氛围"。它调完灯光音乐后，你嫌灯太暗，让它调亮一点，然后结束。',
+    maxTurns: 4,
+  },
 ]

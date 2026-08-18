@@ -208,6 +208,19 @@ export const TOOLS: ToolDef[] = [
   /* ── 后视镜（零 handler）。只做折叠与加热：角度调节在屏幕上看不出变化，
      演示价值为零，加了只是让能力目录长一点 ── */
   {
+    name: 'defrost.set',
+    brief: '前后风挡除雾',
+    fast: true,
+    desc: '开关前/后风挡除雾除霜。雨天起雾、冬天结霜用。target 传 both 一次开双侧。',
+    permission: '彩',
+    params: {
+      target: { type: 'enum', values: ['front', 'rear', 'both'], required: true, desc: '前挡 / 后挡 / 都开' },
+      on: { type: 'boolean', required: true, desc: '开或关' },
+    },
+    writes: [{ path: 'cabin.defrost.{target}.isOn', from: 'on' }],
+    expand: { target: { both: ['front', 'rear'] } },
+  },
+  {
     name: 'mirror.set',
     brief: '后视镜折叠与加热',
     fast: true,

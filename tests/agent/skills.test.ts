@@ -56,7 +56,18 @@ describe('skill 全是数据', () => {
     for (const s of SKILLS) {
       expect(s.whenToUse.length, `${s.name} whenToUse 超长`).toBeLessThanOrEqual(20)
       expect(s.inject.split('\n').length, `${s.name} 正文超 40 行`).toBeLessThanOrEqual(40)
+      // 技能点的工具必须真实存在——剧本引用幽灵工具，模型照着调只会撞 UNKNOWN_TOOL
+      for (const t of s.tools ?? [])
+        expect(TOOLS.some(x => x.name === t), `${s.name} 引用了不存在的工具 ${t}`).toBe(true)
     }
+  })
+
+  it('新三件（晨报/天气应对/氛围导演）在目录里', () => {
+    const names = SKILLS.map(s => s.name)
+    for (const n of ['出发晨报', '天气应对', '氛围导演']) expect(names).toContain(n)
+    // 天气应对的核心论点：贴心逻辑在剧本不在代码——剧本里必须真提到联动件
+    const w = SKILLS.find(s => s.name === '天气应对')!
+    for (const t of ['wiper.set', 'defrost.set', 'light.set']) expect(w.tools).toContain(t)
   })
 
   it('「生成卡片」是场景无关的设计规范：配色/图标/图表/代码规范/输出格式全齐', () => {

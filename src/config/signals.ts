@@ -207,6 +207,13 @@ export const SIGNALS: Signal[] = [
    * 只做折叠与加热：角度调节（VSS 的 Pan/Tilt）在屏幕上看不出任何变化，
    * 演示价值为零，加了只是让能力目录长一点。
    */
+  /* ── 除雾（2026-08-18 做雨天章法时发现的缺口）── */
+  { alias: 'cabin.defrost.front.isOn', vssPath: 'Vehicle.Cabin.HVAC.IsFrontDefrosterActive',
+    type: 'boolean', label: '前风挡除雾',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
+  { alias: 'cabin.defrost.rear.isOn', vssPath: 'Vehicle.Cabin.HVAC.IsRearDefrosterActive',
+    type: 'boolean', label: '后风挡除雾',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },
   { alias: 'cabin.mirror.driver.isFolded', vssPath: 'Vehicle.Body.Mirrors.DriverSide.IsFolded',
     type: 'boolean', label: '主驾后视镜折叠',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: false },

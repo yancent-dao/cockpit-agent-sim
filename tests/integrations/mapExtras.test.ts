@@ -75,3 +75,24 @@ describe('navigation.search 搜空时 inputtips 兜底', () => {
     expect(res.message).toContain('临平区')
   })
 })
+
+/**
+ * defrost.set（2026-08-18，做雨天章法时发现的缺口）：车控 18 件里竟然
+ * 没有除雾——雨天联动的第一反应就是它。声明式 writes，零 handler 代码。
+ */
+describe('defrost.set 除雾', () => {
+  const mk = () => createRegistry(store, TOOLS, Date.now, {} as any)
+  it('前后风挡分开控，写进信号', async () => {
+    const r = await mk().invoke('defrost.set', { target: 'front', on: true })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.defrost.front.isOn')).toBe(true)
+    await mk().invoke('defrost.set', { target: 'rear', on: true })
+    expect(store.get('cabin.defrost.rear.isOn')).toBe(true)
+  })
+  it('both 一次开双侧', async () => {
+    const r = await mk().invoke('defrost.set', { target: 'both', on: true })
+    expect(r.status).toBe('ok')
+    expect(store.get('cabin.defrost.front.isOn')).toBe(true)
+    expect(store.get('cabin.defrost.rear.isOn')).toBe(true)
+  })
+})

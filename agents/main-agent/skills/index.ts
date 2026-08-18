@@ -2,6 +2,9 @@ import { NAV_SKILL } from './nav'
 import { MEDIA_SKILL } from './media'
 import { CARDCRAFT_SKILL } from './cardcraft'
 import { STORY_SKILL } from './story'
+import { BRIEFING_SKILL } from './briefing'
+import { WEATHERWISE_SKILL } from './weatherwise'
+import { MOOD_SKILL } from './mood'
 
 /**
  * Skill：过程性知识的第三个家（设计文档 §9）。
@@ -19,4 +22,5 @@ export interface Skill {
   tools?: string[]
 }
 
-export const SKILLS: Skill[] = [NAV_SKILL, MEDIA_SKILL, CARDCRAFT_SKILL, STORY_SKILL]
+export const SKILLS: Skill[] = [NAV_SKILL, MEDIA_SKILL, CARDCRAFT_SKILL, STORY_SKILL,
+  BRIEFING_SKILL, WEATHERWISE_SKILL, MOOD_SKILL]

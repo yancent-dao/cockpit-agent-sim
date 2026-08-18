@@ -117,9 +117,36 @@ export const DARK_CSS = `
 
 export type Scene = 'screen' | 'director'
 
-/** 基础层 + 该场景的语义色。顺序不能反——后面的层要能覆盖前面的 */
-export function tokensFor(scene: Scene): string {
-  return `${BASE_CSS}\n${scene === 'screen' ? LIGHT_CSS : DARK_CSS}`
+/**
+ * 基础层 + 该场景的语义色。顺序不能反——后面的层要能覆盖前面的。
+ * 2026-08-18 解禁主题切换：车机屏夜间复用 DARK 语义层（面板那套深色
+ * 本来就是同一族 token，两套配色一直都在，只是以前不许运行时切）。
+ */
+export function tokensFor(scene: Scene, mode: 'day' | 'night' = 'day'): string {
+  const dark = scene === 'director' || mode === 'night'
+  return `${BASE_CSS}\n${dark ? DARK_CSS : LIGHT_CSS}`
+}
+
+/** 内置壁纸（CSS 渐变，零资源零网络——单文件版也带得走） */
+export const WALLPAPER_PRESETS: Record<string, string> = {
+  aurora: 'linear-gradient(160deg,#0f2027,#203a43 45%,#2c5364)',
+  dusk: 'linear-gradient(160deg,#355C7D,#6C5B7B 55%,#C06C84)',
+  forest: 'linear-gradient(160deg,#134E5E,#3d7a63 60%,#71B280)',
+}
+
+/**
+ * 壁纸层样式（纯函数）。**暗化/亮化遮罩是可读性底线**：卡片浮在壁纸上，
+ * 不压一层半透明的话，浅色卡撞上亮壁纸就是一片糊。
+ * value: '' | 'preset:<name>' | 'custom:<戳>'（图从 localStorage 取，调用方传入）
+ */
+export function wallpaperCss(value: string, mode: 'day' | 'night', customImg?: string | null): string {
+  const veil = mode === 'night' ? 'rgba(11,15,22,.72)' : 'rgba(231,236,243,.78)'
+  if (!value) return ''
+  const [kind, name] = value.split(':')
+  const img = kind === 'preset' ? WALLPAPER_PRESETS[name]
+    : customImg ? `url(${customImg}) center/cover no-repeat` : ''
+  if (!img) return ''
+  return `linear-gradient(${veil},${veil}), ${img}`
 }
 
 /**

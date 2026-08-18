@@ -12,7 +12,7 @@ import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { classifyGesture } from './gestures'
 import { sanitize } from './sanitize'
 import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
-import { tokensFor , CANVAS_KIT_CSS } from '../design/tokens'
+import { tokensFor, CANVAS_KIT_CSS, wallpaperCss } from '../design/tokens'
 import { dimsOf, GRID, TIERS, SCREEN } from '../config/grid'
 import { cardBody, tierClass, accentClass, fmtTime, progressPct,
   NAV_SKELETON, NAV_SLOTS, PLAYER_SKELETON, PLAYER_SLOTS } from './render'
@@ -23,7 +23,7 @@ import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT, weatherIcon } f
 import { routeOf } from '../config/interactions'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
-injectTokens('screen')
+const themeStyleEl = injectTokens('screen')
 // 几何常量注入：栅格/内边距的唯一出处是 grid.ts，CSS 只消费变量——
 // 之前 repeat(12,1fr) 和 padding 在两边手工同步，注释里自己承认"改这里要同步改那边"
 {
@@ -307,7 +307,7 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
   const r = sanitize(String(d.html ?? ''))
   // 剥了什么要上报 —— 不说出来的话没人知道模型哪里写错了
   if (r.stripped.length) bus.send({ type: 'canvasNote', cardId: c.id, stripped: r.stripped } as any)
-  root.innerHTML = `<style>${tokensFor('screen')}${CANVAS_KIT_CSS}
+  root.innerHTML = `<style>${tokensFor('screen', hmiTheme)}${CANVAS_KIT_CSS}
     :host{display:flex;flex-direction:column;height:100%;overflow:hidden;color:var(--tx-1);
       font-family:inherit;font-size:var(--t-cap)}
     *{box-sizing:border-box;margin:0;max-width:100%}
@@ -1239,11 +1239,35 @@ function hushAgent() {
   updateDuck()
 }
 
+/* ── 主题与壁纸（2026-08-18 解禁）：信号变了换 token 套 / 换壁纸层 ── */
+let hmiTheme: 'day' | 'night' = 'day'
+let hmiWall = ''
+function applyHmi() {
+  const th = (tgt as any)['hmi.theme'] === 'night' ? 'night' : 'day'
+  const wp = String((tgt as any)['hmi.wallpaper'] ?? '')
+  if (th !== hmiTheme) {
+    hmiTheme = th
+    themeStyleEl.textContent = tokensFor('screen', th)
+    // 玻璃层（卡片底/描边/内高光）跟着 body 标记走——token 管语义色，标记管玻璃
+    document.body.toggleAttribute('data-night', th === 'night')
+    renderDesk()   // canvas 卡的 shadow 样式带着主题色，重画一遍才换过来
+  }
+  if (wp !== hmiWall) {
+    hmiWall = wp
+    // 图片内容在 localStorage（信号里只有版本戳——几百 KB 不进信号系统）
+    const custom = wp.startsWith('custom:') ? localStorage.getItem('cockpit-sim:wallpaper') : null
+    const css = wallpaperCss(wp, hmiTheme, custom)
+    const stage = $('stage')
+    if (css) stage.style.background = css
+    else stage.style.background = ''
+  }
+}
+
 const bus = createBus((m: BusMsg | any) => {
   connected()
   switch (m.type) {
     case 'state':
-      Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); break
+      Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); applyHmi(); break
     case 'cards':
       deskState = m.desk; renderDesk(); break
     case 'voice': {

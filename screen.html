@@ -72,10 +72,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    字号一律 = 字阶 × --u。--u 由档位类（.t-box / .t-stage …）给，
    一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
    加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
-.card{position:relative;border:1px solid rgba(255,255,255,.62);
-  background:rgba(255,255,255,.58);
+/* 玻璃层变量化（2026-08-18 主题解禁）：夜间只换这几个值，玻璃质感不变 */
+:root{--glass-bd:rgba(255,255,255,.62);--glass-bg:rgba(255,255,255,.58);
+  --glass-gloss:rgba(255,255,255,.8);--glass-shadow:rgba(60,68,140,.35)}
+body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
+  --glass-gloss:rgba(255,255,255,.06);--glass-shadow:rgba(0,0,0,.5);
+  --bg-base:#0B0F16;--bg-surface:#131A25;--bg-elevated:#1B2432}
+.card{position:relative;border:1px solid var(--glass-bd);
+  background:var(--glass-bg);
   backdrop-filter:blur(30px) saturate(1.25);-webkit-backdrop-filter:blur(30px) saturate(1.25);
-  border-radius:var(--r-l);box-shadow:0 18px 50px -18px rgba(60,68,140,.35),inset 0 1px 0 rgba(255,255,255,.8);overflow:hidden;
+  border-radius:var(--r-l);box-shadow:0 18px 50px -18px var(--glass-shadow),inset 0 1px 0 var(--glass-gloss);overflow:hidden;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}

@@ -211,6 +211,36 @@ export function createRegistry(
      * 车机屏靠 storage 事件跨窗口即时生效（先例就是那个下拉框）。
      * 不进信号 store：语音配置不是车辆状态，VSS 里塞 TTS 音色是硬凑。
      */
+    /**
+     * 壁纸（2026-08-18）。图片内容进 localStorage，信号只写「来源:版本戳」——
+     * dataURL 几百 KB，塞进信号会被 bus 全量广播背着走。屏端收到信号变化
+     * 再从同源 localStorage 取图。
+     */
+    wallpaperSet: async (args: any): Promise<ToolResult> => {
+      const W = 'cockpit-sim:wallpaper'
+      if (args.source === 'none') {
+        store.set('hmi.wallpaper', '')
+        return { status: 'ok', message: '壁纸恢复默认了' }
+      }
+      if (args.source === 'preset') {
+        if (!args.name) return { status: 'rejected', code: 'INVALID_PARAMS', message: '要选哪张预设？aurora/dusk/forest' }
+        store.set('hmi.wallpaper', `preset:${args.name}`)
+        return { status: 'ok', message: '壁纸换好了' }
+      }
+      if (!deps.image) return { status: 'unavailable', code: 'NO_CP', message: '图像生成没配（要 OpenRouter Key）' }
+      if (!args.prompt) return { status: 'rejected', code: 'INVALID_PARAMS', message: '要生成什么样的壁纸？' }
+      try {
+        const g = await deps.image.generate({ prompt:
+          `车机桌面壁纸，宽幅横构图，画面简洁留有大面积呼吸空间，避免居中主体和文字：${args.prompt}` })
+        if (!g?.dataUrl) return { status: 'failed', code: 'GEN_EMPTY', message: '壁纸没生成出来' }
+        deps.storage?.set(W, g.dataUrl)
+        store.set('hmi.wallpaper', `custom:${clock().toString(36)}`)
+        return { status: 'ok', message: '壁纸画好换上了（约 3 毛）' }
+      } catch (e) {
+        return { status: 'failed', code: 'GEN_ERROR', message: `壁纸没生成出来：${e instanceof Error ? e.message : e}` }
+      }
+    },
+
     voiceConfig: (args: any): ToolResult => {
       if (!deps.voices)
         return { status: 'unavailable', code: 'NOT_WIRED', message: '这个环境里拿不到音色清单，设不了' }

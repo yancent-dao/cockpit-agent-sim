@@ -610,6 +610,31 @@ export const TOOLS: ToolDef[] = [
     handler: 'poemToday',
   },
   {
+    name: 'theme.set',
+    brief: '切日间/夜间主题',
+    fast: true,
+    desc: '切换车机屏主题。day 日间浅色 / night 夜间深色。',
+    permission: '彩',
+    params: {
+      mode: { type: 'enum', values: ['day', 'night'], required: true, desc: '日间或夜间' },
+    },
+    writes: [{ path: 'hmi.theme', from: 'mode' }],
+  },
+  {
+    name: 'wallpaper.set',
+    brief: '换壁纸（可 AI 生成）',
+    desc: '换车机屏壁纸。source=preset 用内置（name 传 aurora 极光 / dusk 暮色 / forest 山林）；' +
+      'source=generate 按 prompt 现场 AI 生成一张（约 0.3 元，用户明确要才用，' +
+      '画面描述写清风格，壁纸会自动加暗化保证卡片可读）；source=none 恢复默认。',
+    permission: '彩',
+    params: {
+      source: { type: 'enum', values: ['preset', 'generate', 'none'], required: true, desc: '来源' },
+      name: { type: 'enum', values: ['aurora', 'dusk', 'forest'], desc: 'preset 时选哪张' },
+      prompt: { type: 'string', desc: 'generate 时的画面描述' },
+    },
+    handler: 'wallpaperSet',
+  },
+  {
     name: 'voice.speak',
     brief: '主动播报一句话',
     desc: '通过车内音响向用户播报一段话。用于解释、确认、反馈。',

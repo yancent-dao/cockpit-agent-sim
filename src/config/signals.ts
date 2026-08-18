@@ -419,6 +419,14 @@ export const SIGNALS: Signal[] = [
    * 一条 1.8 公里的路线在全城视野里只剩一个小点。模拟环境里车不动，
    * 整条路线可见才是有用的默认；follow 的语义是"贴近自车"，档位就该近。
    */
+  /* ── 主题与壁纸（2026-08-18 产品决策解禁；壁纸内容在 localStorage，信号只放名字/版本戳）── */
+  { alias: 'hmi.theme', vssPath: 'Vehicle.Cabin.Infotainment.HMI.DayNightMode',
+    type: 'enum', values: ['day', 'night'], label: '主题',
+    valueLabels: { day: '日间', night: '夜间' },
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'day' },
+  { alias: 'hmi.wallpaper', vssPath: 'Vehicle.Cabin.Infotainment.HMI.Wallpaper',
+    type: 'string', label: '壁纸',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: '' },
   { alias: 'navigation.mapZoom', vssPath: 'Vehicle.Cabin.Infotainment.HMI.MapZoom',
     type: 'number', range: [8, 18], label: '地图缩放档位',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 16 },

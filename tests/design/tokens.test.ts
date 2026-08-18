@@ -135,3 +135,30 @@ describe('数字排版', () => {
     expect(LIGHT_CSS).not.toMatch(/font-weight\s*:\s*300/)
   })
 })
+
+/**
+ * 壁纸与主题（2026-08-18 解禁）。决策是纯函数：遮罩是可读性底线。
+ */
+import { wallpaperCss } from '../../src/design/tokens'
+
+describe('壁纸层', () => {
+  it('预设走渐变，自定义走图，都压一层遮罩', () => {
+    expect(wallpaperCss('preset:dusk', 'day')).toContain('linear-gradient(rgba(231')
+    expect(wallpaperCss('custom:x', 'day', 'data:image/webp;base64,AA')).toContain('url(data:image/webp')
+  })
+  it('夜间遮罩换深色', () => {
+    expect(wallpaperCss('preset:aurora', 'night')).toContain('rgba(11,15,22')
+  })
+  it('空值/查无预设/自定义无图 → 空串（恢复默认底）', () => {
+    expect(wallpaperCss('', 'day')).toBe('')
+    expect(wallpaperCss('preset:ghost', 'day')).toBe('')
+    expect(wallpaperCss('custom:x', 'day', null)).toBe('')
+  })
+})
+
+describe('主题 token', () => {
+  it('车机屏夜间复用 DARK 语义层', () => {
+    expect(tokensFor('screen', 'night')).toContain('--sf-base:#0')
+    expect(tokensFor('screen', 'day')).not.toContain('--sf-base:#0B0F16')
+  })
+})

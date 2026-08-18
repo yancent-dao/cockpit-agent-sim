@@ -1,9 +1,11 @@
 # cockpit-agent-sim
 
-**给座舱产品经理的 AI Agent 模拟环境** —— 零后端、零运行时依赖的智能座舱 Demo 公共底座。
-An agent-centric smart-cockpit simulation sandbox. Zero backend, zero runtime deps.
+**面向智能座舱业务的 Agent 框架** —— 零后端、零运行时依赖,加能力 = 加数据不加代码。
+An agent framework for smart-cockpit applications. Zero backend, zero runtime deps.
 
-目标不是做一个产品,是让每次做座舱 AI Demo 不用从零开始:真实 LLM 驱动、真实第三方 API(导航/天气/音乐/新闻),车机屏可直接投屏演示。
+只要在做座舱 AI 相关的事,机制层需要的都是同一套:信号系统(对齐 COVESA VSS)、工具注册与黑/灰/彩权限分级、危险操作确认流(对齐 MCP MRTR)、卡片桌面编排(布局仲裁/抢占/等位区)、快慢双层 Agent pipeline、四级记忆、真实三方集成(导航/天气/音乐/新闻/云端 TTS)。这套底座把机制做完并配了 1170+ 个测试,**接入你的业务 = 往 `src/config/` 加数据**——一条信号、一个 Tool、一条卡片规则,平台代码一行不动。
+
+拿它做什么都行:产品经理搭 Demo(车机屏直接投屏)、工程团队验证座舱 Agent 架构、HMI 设计师探索"无 APP 化"交互、研究快慢双层/生成式 UI 这类 Agent 范式。
 
 ![车机屏桌面:导航活地图 + 天气 + 音乐](docs/screenshots/界面1.png)
 

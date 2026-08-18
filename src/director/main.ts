@@ -519,7 +519,7 @@ const bus = createBus(m => {
     } else {
       const said = `（用户在屏幕上点选）${m.value ?? m.act}`
       log('u', `[屏幕] ${said}`)
-      ask(said)
+      ask(said, { answer: true })   // 屏端回答直达慢层——快层对"第4个"无事可做
     }
     return
   }
@@ -749,7 +749,7 @@ pipeline.on(e => {
 })
 
 /* ══════════ 发起一轮对话 ══════════ */
-async function ask(text: string) {
+async function ask(text: string, opts: { answer?: boolean } = {}) {
   // 夺回写权：用户在这个面板开口 = 要用它
   if (muted) { muted = false; ME.boot = Date.now(); log('p', '本面板已接管写屏'); pushDesk(); push() }
   // 不设 busy 闸：barge-in 是常态，世代戳在 pipeline 里管（§4.1）
@@ -761,7 +761,7 @@ async function ask(text: string) {
   log('u', `\n▸ ${text}`)
 
   const t0 = performance.now()
-  const r = await pipeline.run(text)
+  const r = await pipeline.run(text, opts)
 
   let rn = 0
   for (const s of r.trace) {

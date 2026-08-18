@@ -712,3 +712,92 @@ describe('慢层视图的被拒记录改写', () => {
     expect(p.thread.some(m => m.role === 'tool' && String(m.content).includes('NOT_AUTHORIZED'))).toBe(true)
   })
 })
+
+/**
+ * ══════════ 语音链路批1（设计文档 2026-08-18-voice-channel-design.md） ══════════
+ */
+describe('成功型打转熔断', () => {
+  it('相邻两轮同工具同参数、上轮已 ok → 本轮先斩为 REPEAT_CALL', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent_handoff', { say: '', suggestedTools: ['voice.speak'] })] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('voice.speak', { text: '选哪个？' })] }),
+      () => ({ text: '', toolCalls: [call('voice.speak', { text: '选哪个？' })] }),
+      () => ({ text: '好' }),
+    )
+    const { p } = mk(fast, slow)
+    await p.run('问个问题')
+    const toolMsgs = p.thread.filter(m => m.role === 'tool').map(m => String(m.content))
+    expect(toolMsgs.some((t: string) => t.includes('REPEAT_CALL')), '重复调用要被斩').toBe(true)
+  })
+
+  it('同一轮内的并行重复不拦——连跳两首歌是一轮两个调用', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [
+      call('window.set', { window: 'driver', position: 50 }, 'c1'),
+      call('window.set', { window: 'driver', position: 50 }, 'c2'),
+    ] }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('开窗')
+    const toolMsgs = p.thread.filter(m => m.role === 'tool').map(m => String(m.content))
+    expect(toolMsgs.some((t: string) => t.includes('REPEAT_CALL'))).toBe(false)
+  })
+
+  it('跨 turn 不拦——新输入是新意愿', async () => {
+    // responder 按轮消费：每个 turn 快层跑两轮（调完 + 收尾），要摆四个
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('climate.set', { targetTemp: 24 })] }),
+      () => ({ text: '好' }),
+      () => ({ text: '', toolCalls: [call('climate.set', { targetTemp: 24 })] }),
+      () => ({ text: '好' }),
+    )
+    const slow = fakeLLM(() => ({ text: '' }), () => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('空调24')
+    await p.run('再确认下空调24')
+    const toolMsgs = p.thread.filter(m => m.role === 'tool').map(m => String(m.content))
+    expect(toolMsgs.some((t: string) => t.includes('REPEAT_CALL'))).toBe(false)
+  })
+})
+
+describe('stale 下 mic 工具拒绝——说话就是抢麦，建问题卡也是', () => {
+  it('旧轮的 voice.ask 被拒且不建卡', async () => {
+    /**
+     * 确定性构造 barge-in：t1 的慢层在自己第一次被调用时触发插话
+     * （等一个宏任务让 gen 先走），再返回 voice.ask——此刻它已是旧代。
+     * 靠并发时序摆 responder 会把门闩发错人（前两版都这么假红/假绿过）。
+     */
+    let pipe: any
+    let first = true
+    const fast = fakeLLM(
+      () => ({ text: '', toolCalls: [call('agent_handoff', { say: '', suggestedTools: ['voice.ask'] })] }),
+      () => ({ text: '好' }),
+    )
+    const slowRespond = async () => {
+      if (first) {
+        first = false
+        void pipe.run('第4个')                       // barge-in：本轮变旧
+        await new Promise(r => setTimeout(r, 0))
+        return { text: '', toolCalls: [call('voice.ask', { question: '去哪个？', options: ['A', 'B'] })] }
+      }
+      return { text: '' }
+    }
+    const slow = fakeLLM(slowRespond, slowRespond, slowRespond)
+    const { p } = mk(fast, slow)
+    pipe = p
+    await p.run('导航去春熙路')
+    await new Promise(r => setTimeout(r, 5))         // 等插话 turn 收尾
+    const toolMsgs = p.thread.filter(m => m.role === 'tool').map(m => String(m.content))
+    expect(toolMsgs.some((t: string) => t.includes('STALE_TURN')), '过期的问题不该再问').toBe(true)
+  })
+})
+
+describe('屏端合成的回答直达慢层', () => {
+  it('answer 输入不跑快层——快层对"第4个"无事可做', async () => {
+    const fast = fakeLLM(() => ({ text: '不该被调用' }))
+    const slow = fakeLLM(() => ({ text: '好，导航到春熙路步行街' }))
+    const { p } = mk(fast, slow)
+    await p.run('（用户在屏幕上点选）第4个：春熙路', { answer: true })
+    expect((fast as any).seen.length, '快层一轮都不该跑').toBe(0)
+    expect((slow as any).seen.length).toBe(1)
+  })
+})

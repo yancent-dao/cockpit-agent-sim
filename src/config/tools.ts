@@ -51,6 +51,8 @@ export interface ToolDef {
   confirmPrompt?: string
   /** 有真实逻辑的 Tool 用具名 handler，登记在 handlers/ 白名单 */
   handler?: string
+  /** mic 类工具（说话/提问）。stale 轮里 pipeline 会拒——说话就是抢麦，建问题卡也是 */
+  mic?: boolean
   /** 依赖的信号：该信号 equipped=false 时，能力目录里此 Tool 标记为未选装 */
   requires?: string
   /**
@@ -598,6 +600,7 @@ export const TOOLS: ToolDef[] = [
     name: 'voice.speak',
     brief: '主动播报一句话',
     desc: '通过车内音响向用户播报一段话。用于解释、确认、反馈。',
+    mic: true,
     permission: '彩',
     params: {
       text: { type: 'string', required: true, desc: '要播报的内容，口语化、简短' },
@@ -609,6 +612,7 @@ export const TOOLS: ToolDef[] = [
     name: 'voice.ask',
     brief: '向用户提问出选择卡',
     desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
+    mic: true,
     permission: '彩',
     params: {
       question: { type: 'string', required: true, desc: '问题内容，口语化' },

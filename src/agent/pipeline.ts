@@ -139,7 +139,7 @@ const isMeta = (name: string, meta: string) => name === meta || name === meta.re
 const SELF_FIX_CODES = new Set([
   'INVALID_PARAMS', 'DATA_SHAPE_MISMATCH', 'TTL_REQUIRED', 'SIZE_NOT_SUPPORTED',
   'UNKNOWN_TOOL', 'UNKNOWN_SKILL', 'EMPTY_CARD', 'TASK_NOT_FOUND', 'SYSTEM_TEMPLATE',
-  'LAST_STOP',
+  'LAST_STOP', 'REPEAT_CALL', 'STALE_TURN',
 ])
 
 /** epoch 摘要消息的识别标 */
@@ -211,12 +211,22 @@ export function createPipeline(deps: PipelineDeps) {
     else { thread.splice(boundary, 0, ...msgs); boundary += msgs.length }
   }
 
+  /** mic 类工具名单（声明在 ToolDef.mic）。stale 轮里说话/提问都算抢麦 */
+  const MIC = new Set(registry.list().filter((t: any) => t.mic).map((t: any) => t.name))
+  /**
+   * 成功型打转熔断（语音链路设计 §3）：按 lane（fast/slow）记上一轮 ok 的
+   * 调用签名。撞墙检测只看失败，实拍同文 voice.speak 连 ok 6 轮烧光轮次——
+   * 相邻两轮同签名且上轮已成功，本轮先斩。一轮内并行重复不拦（连跳两首
+   * 是一轮两个调用），跨 turn 不拦（新输入=新意愿，run() 清表）。
+   */
+  const prevOk = new Map<string, Set<string>>()
+
   /** 执行一轮 tool calls（元工具由 interceptors 拦，业务走 registry）。返回 tool 消息 */
   async function execRound(
     g: number, calls: NonNullable<Awaited<ReturnType<LLM['chat']>>['toolCalls']>,
     allow: string[], trace: TraceStep[],
     interceptors: Record<string, (args: any) => ToolResult | Promise<ToolResult>>,
-    opts: { quietRejects?: boolean; background?: boolean } = {},
+    opts: { quietRejects?: boolean; background?: boolean; lane?: string } = {},
   ): Promise<Msg[]> {
     /**
      * 这一轮的事件该不该露面。以前 emit 既不看世代也不看来源（g 参数在函数体里
@@ -233,9 +243,16 @@ export function createPipeline(deps: PipelineDeps) {
       trace.push({ type: 'toolCall', at: clock(), name, args: c.args, permission: registry.permissionOf(c.name) })
       if (audible()) emit({ type: 'executing', name })
       const s = clock()
-      const result = metaKey
+      const sig = `${name}|${JSON.stringify(c.args ?? {})}`
+      const result: ToolResult = metaKey
         ? await interceptors[metaKey](c.args)
-        : await registry.invoke(c.name, c.args, { allow, round })
+        : MIC.has(name) && stale(g) && !discarded(g)
+          ? { status: 'rejected', code: 'STALE_TURN',
+              message: '用户已经继续别的话题了，这轮的问题/播报已过期——收尾即可，别再输出' }
+          : opts.lane && prevOk.get(opts.lane)?.has(sig)
+            ? { status: 'rejected', code: 'REPEAT_CALL',
+                message: '这个调用上一轮刚成功过，重复只会原地打转——直接收尾' }
+            : await registry.invoke(c.name, c.args, { allow, round })
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
       if (result.status === 'inputRequired' && audible()) emit({ type: 'confirming', text: result.message ?? '需要确认' })
       // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
@@ -269,6 +286,10 @@ export function createPipeline(deps: PipelineDeps) {
       .filter(({ result }) => result.code === 'NOT_AUTHORIZED')
       .map(({ c }) => registry.canonicalName(c.name))
     allDenied = denied.length > 0 && denied.length === results.length
+    if (opts.lane)
+      prevOk.set(opts.lane, new Set(results
+        .filter(({ c, result }) => result.status === 'ok' && !Object.keys(interceptors).find(k => isMeta(c.name, k)))
+        .map(({ c }) => `${registry.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)))
     const biz = results.filter(({ c }) => !Object.keys(interceptors).find(k => isMeta(c.name, k)))
     bizCalls = biz.length
     bizOk = biz.filter(({ result }) => result.status === 'ok').length
@@ -395,7 +416,7 @@ export function createPipeline(deps: PipelineDeps) {
           handedOff = true
           return { status: 'ok', message: '已转交' }
         },
-      }, { quietRejects: true })
+      }, { quietRejects: true, lane: 'fast' })
       did += bizOk
       commit(g, ...toolMsgs)
       // 手头这批工具做完就收手：作废的那一轮不该再开新一轮 LLM，
@@ -665,7 +686,7 @@ export function createPipeline(deps: PipelineDeps) {
           cancelTask(t.id)
           return { status: 'ok', message: `已取消：${t.label}` }
         },
-      })
+      }, { lane: 'slow' })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
       if (bizCalls > 0) slowActed = true   // 动过业务工具（含被拒——解释失败是新信息）
       // 撞墙了：直接跳到最后一轮 —— 那一轮撤工具，模型只能说话。
@@ -688,12 +709,13 @@ export function createPipeline(deps: PipelineDeps) {
     return { said: fallback, rounds, stop: 'maxRounds' }
   }
 
-  async function run(text: string): Promise<TurnResult> {
+  async function run(text: string, runOpts: { answer?: boolean } = {}): Promise<TurnResult> {
     const trace: TraceStep[] = []
     // 空输入直接返回：送进模型它会凭空发挥（实测会无端开窗）
     if (!text.trim()) return { reply: '', trace, rounds: 0, stopReason: 'empty' }
     const g = ++gen
     resetWall()          // 新一轮从零开始数，别把上一轮的墙带过来
+    prevOk.clear()       // 打转熔断同理：跨 turn 的重复是新意愿，不拦
     deps.onTurnStart?.()
     trace.push({ type: 'userInput', at: clock(), text })
     boundary = thread.length
@@ -720,7 +742,13 @@ export function createPipeline(deps: PipelineDeps) {
     try {
       let handover: string[] = []
       let fastReported = false
-      if (!pending) {
+      if (runOpts.answer) {
+        /**
+         * 屏端合成的回答（点选候选/问题卡）直达慢层（设计 §4）：快层对
+         * "第4个"无事可做——实拍它编造 placeId 去调无权工具白烧 3.6 秒。
+         * 跟「pending 确认直达慢层」同族：输入来源是系统状态，不是意图。
+         */
+      } else if (!pending) {
         fast = await runFast(g, trace)
         // denied 是 execRound 写的共享变量，慢层自己跑起来会覆盖 —— 先拷贝
         handover = allDenied ? [...denied] : []

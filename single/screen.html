@@ -2954,6 +2954,7 @@ ${BRIDGE}
     let video = null;
     let unlocked = false;
     let current = "";
+    let laneUrl = { audio: "", video: "" };
     const wire = (el) => {
       el.onended = () => report("ended");
       el.onerror = () => report("error", el.error?.message ?? "播放失败");
@@ -2978,8 +2979,29 @@ ${BRIDGE}
       if (video.parentElement !== box) box.appendChild(video);
       return video;
     }
+    const unloadAudio = () => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    };
+    const unloadVideo = () => {
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+    };
     async function play(t) {
       const el = t.source === "video" ? video ?? audio : audio;
+      if (el === audio) {
+        unloadVideo();
+        laneUrl.video = "";
+        laneUrl.audio = t.url;
+      } else {
+        unloadAudio();
+        laneUrl.audio = "";
+        laneUrl.video = t.url;
+      }
       if (current !== t.url) {
         el.src = t.url;
         current = t.url;
@@ -2996,10 +3018,16 @@ ${BRIDGE}
       video?.pause();
     }
     function stop() {
-      pause();
-      audio.removeAttribute("src");
-      audio.load();
+      unloadAudio();
+      unloadVideo();
       current = "";
+      laneUrl = { audio: "", video: "" };
+    }
+    function stopLane(lane) {
+      if (lane === "video") unloadVideo();
+      else unloadAudio();
+      if (current === laneUrl[lane]) current = "";
+      laneUrl[lane] = "";
     }
     let baseVol = 1;
     let ducked = false;
@@ -3032,6 +3060,7 @@ ${BRIDGE}
       play,
       pause,
       stop,
+      stopLane,
       setVolume,
       duck,
       attachVideo,
@@ -3634,7 +3663,8 @@ ${BRIDGE}
     }
     for (const [id, node] of cardNodes) {
       if (!seen.has(id)) {
-        if (!stagedIds.has(id) && node.classList.contains("tpl-media")) player.stop();
+        if (!stagedIds.has(id) && node.classList.contains("tpl-media"))
+          player.stopLane(node.classList.contains("is-video") ? "video" : "audio");
         cardNodes.delete(id);
         node.classList.add(stagedIds.has(id) ? "tostage" : "leaving");
         node.addEventListener("animationend", () => node.remove(), { once: true });

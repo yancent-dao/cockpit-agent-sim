@@ -34,6 +34,8 @@ export function createPlayer({ report }: PlayerDeps) {
   let video: HTMLVideoElement | null = null
   let unlocked = false
   let current = ''
+  /** 每路各自记着在放什么——stopLane 只许动自己那路的账 */
+  let laneUrl = { audio: '', video: '' }
 
   const wire = (el: HTMLMediaElement) => {
     el.onended = () => report('ended')
@@ -66,8 +68,16 @@ export function createPlayer({ report }: PlayerDeps) {
     return video
   }
 
+  /** 按路卸载：pause 不够——detached 的 <video> 在 Chrome 里照样出声，必须卸源 */
+  const unloadAudio = () => { audio.pause(); audio.removeAttribute('src'); audio.load() }
+  const unloadVideo = () => { if (video) { video.pause(); video.removeAttribute('src'); video.load() } }
+
   async function play(t: PlayTarget) {
     const el: HTMLMediaElement = t.source === 'video' ? (video ?? audio) : audio
+    // 换源换路（视频→音乐/电台，或反过来）：另一路必须先卸掉。
+    // 实拍：播着视频说"放音乐"，audio 开始响、video 也还在响——两路各自为政
+    if (el === audio) { unloadVideo(); laneUrl.video = ''; laneUrl.audio = t.url }
+    else { unloadAudio(); laneUrl.audio = ''; laneUrl.video = t.url }
     if (current !== t.url) { el.src = t.url; current = t.url }
     el.volume = Math.max(0, Math.min(1, t.volume / 100))
     try {
@@ -81,10 +91,22 @@ export function createPlayer({ report }: PlayerDeps) {
 
   function pause() { audio.pause(); video?.pause() }
 
+  /** 全停（media.control stop 用）：两路都卸 */
   function stop() {
-    pause()
-    audio.removeAttribute('src'); audio.load()
-    current = ''
+    unloadAudio(); unloadVideo()
+    current = ''; laneUrl = { audio: '', video: '' }
+  }
+  /**
+   * 单路停（卡片退场用）：视频卡退场只停视频、音频卡退场只停音频。
+   * 换源时新卡先播、旧卡后删——退场若"全停"会把刚开始的新源一起杀掉。
+   * current 只在**这一路正是它的持有者**时才清：视频卡退场时音乐已经
+   * 接管了 current，无脑清会让下一次心跳把音乐从头重播一遍。
+   */
+  function stopLane(lane: 'audio' | 'video') {
+    if (lane === 'video') unloadVideo()
+    else unloadAudio()
+    if (current === laneUrl[lane]) current = ''
+    laneUrl[lane] = ''
   }
 
   /** 用户设定的音量（0-1）。duck 是乘在它上面的临时系数，不动设定本身 */
@@ -119,7 +141,7 @@ export function createPlayer({ report }: PlayerDeps) {
     if (video) video.playbackRate = r
   }
 
-  return { unlock, play, pause, stop, setVolume, duck, attachVideo, progress, setSpeed,
+  return { unlock, play, pause, stop, stopLane, setVolume, duck, attachVideo, progress, setSpeed,
     get unlocked() { return unlocked },
     get playingUrl() { return current } }
 }

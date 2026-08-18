@@ -758,7 +758,10 @@ function renderDesk() {
       // 播放器卡**真的消失**才停声。下台进等位区不算消失——设计不变量是
       // 「播放器被挤掉后歌还在放」，在这里停的话 store 的 playing 仍是 true，
       // 模型和规则都以为在播放，用户却只听到寂静（召回后还会从 0 秒重播）
-      if (!stagedIds.has(id) && node.classList.contains('tpl-media')) player.stop()
+      // 只停这张卡自己那路：换源时新卡已在播另一路，"全停"会误伤（实拍：
+      // 视频→音乐，退场的视频卡把刚响起来的音乐一起掐了）
+      if (!stagedIds.has(id) && node.classList.contains('tpl-media'))
+        player.stopLane(node.classList.contains('is-video') ? 'video' : 'audio')
       // 退场：先缩到 .94 再淡出，动画结束才真正移除节点。
       // 直接 remove 的话卡片是"啪"地不见的，用户不知道刚才那儿有过东西
       cardNodes.delete(id)

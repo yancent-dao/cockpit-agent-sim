@@ -711,6 +711,31 @@ export const TOOLS: ToolDef[] = [
 
   /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
   {
+    name: 'podcast.search',
+    brief: '搜播客节目',
+    desc: '搜播客节目（iTunes 目录，覆盖小宇宙/喜马拉雅等主流中文播客的 RSS）。' +
+      '结果自动上候选卡。要直接听就用 podcast.play，不用先搜。',
+    permission: '彩',
+    params: {
+      query: { type: 'string', required: true, desc: '节目名或主题关键词' },
+    },
+    handler: 'podcastSearch',
+  },
+  {
+    name: 'podcast.play',
+    brief: '播播客最新一集',
+    desc: '搜到就播。默认放最新一集；episode 传 2 表示第二新的一集。' +
+      '单集通常几十分钟，是完整内容不是试听。整批单集会入播放队列，"下一集"直接切。',
+    permission: '彩',
+    fast: true,
+    params: {
+      query: { type: 'string', desc: '节目名，如"故事FM"' },
+      showId: { type: 'number', desc: 'podcast.search 结果里的节目 id（有就优先用）' },
+      episode: { type: 'number', desc: '第几新的一集，默认 1（最新）' },
+    },
+    handler: 'podcastPlay',
+  },
+  {
     name: 'radio.search',
     brief: '搜网络电台',
     desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',

@@ -24,7 +24,7 @@ export interface PlayerDeps {
 export interface PlayTarget {
   url: string
   /** video 走 <video>，其余走 <audio> */
-  source: 'music' | 'radio' | 'video' | 'none'
+  source: 'music' | 'radio' | 'video' | 'podcast' | 'none'
   volume: number
 }
 

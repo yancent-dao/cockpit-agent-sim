@@ -46,28 +46,51 @@ const toTrack = (r: any): Track => ({
   duration: Math.round((r.trackTimeMillis ?? 0) / 1000),
 })
 
+export interface Show {
+  id: number
+  name: string
+  author: string
+  artwork: string
+  /** RSS 地址——search 结果直接带（2026-08-18 真实响应确认），不用 lookup 二跳 */
+  feedUrl: string
+  count: number
+}
+
 export function createItunesClient(fetcher: Fetcher = ((u, i) => fetch(u, i)) as Fetcher,
                                    { timeoutMs = 4000 } = {}) {
-  const search = async (term: string, limit = 8, country = 'CN'): Promise<Track[]> => {
-    const q = new URLSearchParams({ term, media: 'music', entity: 'song', limit: String(limit), country })
-    // per-request 超时：挂的时候它会拖住整轮 Promise.all（正常响应 <2s）
+  /** 带 per-request 超时的取数。挂的时候它会拖住整轮 Promise.all（正常响应 <2s） */
+  const run = async (url: string): Promise<any> => {
     const ac = typeof AbortController !== 'undefined' ? new AbortController() : null
     const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null
     let res
-    try {
-      res = await fetcher(`${api('itunes')}/search?${q}`, ac ? { signal: ac.signal } : undefined)
-    } catch (e) {
-      throw new ItunesError('iTunes 连不上', 'NETWORK')
-    } finally {
-      if (timer) clearTimeout(timer)
-    }
+    try { res = await fetcher(url, ac ? { signal: ac.signal } : undefined) }
+    catch { throw new ItunesError('iTunes 连不上', 'NETWORK') }
+    finally { if (timer) clearTimeout(timer) }
     if (!res.ok) throw new ItunesError(`iTunes 返回 ${res.status ?? '错误'}`, 'HTTP')
-    const json = await res.json()
+    return res.json()
+  }
+
+  const search = async (term: string, limit = 8, country = 'CN'): Promise<Track[]> => {
+    const q = new URLSearchParams({ term, media: 'music', entity: 'song', limit: String(limit), country })
+    const json = await run(`${api('itunes')}/search?${q}`)
     // 没有 preview 的条目对我们没用——放不出声的"搜到了"比没搜到更糟
     return (json?.results ?? []).map(toTrack).filter((t: Track) => t.preview)
   }
 
-  return { search }
+  /** 播客节目搜索。同一个端点换 media=podcast，一跳接入整个播客生态 */
+  const searchPodcasts = async (term: string, limit = 6, country = 'CN'): Promise<Show[]> => {
+    const q = new URLSearchParams({ term, media: 'podcast', limit: String(limit), country })
+    const res = await run(`${api('itunes')}/search?${q}`)
+    return (res?.results ?? [])
+      .filter((r: any) => r.feedUrl)
+      .map((r: any): Show => ({
+        id: r.collectionId, name: r.collectionName ?? '', author: r.artistName ?? '',
+        artwork: String(r.artworkUrl100 ?? '').replace('100x100', '300x300'),
+        feedUrl: r.feedUrl, count: r.trackCount ?? 0,
+      }))
+  }
+
+  return { search, searchPodcasts }
 }
 
 export type ItunesClient = ReturnType<typeof createItunesClient>

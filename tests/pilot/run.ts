@@ -20,6 +20,7 @@ import { createItunesClient } from '../../src/integrations/itunes'
 import { createStockClient } from '../../src/integrations/qtstock'
 import { createHolidayClient } from '../../src/integrations/holiday'
 import { createPoemClient } from '../../src/integrations/poem'
+import { createPodcastClient } from '../../src/integrations/podcast'
 import { createRadioClient } from '../../src/integrations/radio'
 import { createNewsClient } from '../../src/integrations/news'
 import { createPexelsClient } from '../../src/integrations/pexels'
@@ -209,7 +210,7 @@ async function runScenario(s: Scenario) {
     // 这里用 fetch 直连，它对服务端请求是放行的，只有浏览器才被 CORS 挡
     itunes: createItunesClient(),
     stocks: createStockClient(fetch as any), holiday: createHolidayClient(fetch as any),
-    poem: createPoemClient(fetch as any),
+    poem: createPoemClient(fetch as any), podcast: createPodcastClient(fetch as any),
     radio: createRadioClient(fetch as any),
     ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),

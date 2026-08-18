@@ -367,8 +367,8 @@ export const SIGNALS: Signal[] = [
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'off' },
 
   { alias: 'media.source', vssPath: 'Vehicle.Cabin.Infotainment.Media.Played.Source',
-    type: 'enum', values: ['none', 'music', 'radio', 'video'], label: '媒体来源',
-    valueLabels: { none: '无', music: '音乐', radio: '电台', video: '视频' },
+    type: 'enum', values: ['none', 'music', 'radio', 'video', 'podcast'], label: '媒体来源',
+    valueLabels: { none: '无', music: '音乐', radio: '电台', video: '视频', podcast: '播客' },
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'none' },
 
   /* ── 路上的故事（2026-08-14）：AI 儿童有声绘本 ──

@@ -7,11 +7,12 @@ import type { Store } from '../core/store'
 import type { DomainState, QueueTrack } from '../state/domain'
 import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
-import type { Track, ItunesClient } from './itunes'
+import type { Track, Show, ItunesClient } from './itunes'
 import type { Station, RadioClient } from './radio'
 import type { Article, NewsClient } from './news'
 import type { Clip, PexelsClient } from './pexels'
 import type { WebSearchClient } from './websearch'
+import type { PodcastClient } from './podcast'
 
 /**
  * 所有候选列表共用一个 key —— 一次只在选一样东西。
@@ -50,6 +51,7 @@ export interface MediaDeps {
   websearch?: () => WebSearchClient
   /** 领域状态仓：队列/历史/收藏。不传则收藏退化为内存数组（老测试兼容），队列功能不可用 */
   state?: DomainState
+  podcast?: () => PodcastClient
 }
 
 /** 把一条队列内容写进 media.* 信号组开播。续播和 next/prev 共用这一条路 */
@@ -115,6 +117,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
   /** 上一次搜索结果，用来把"第二个"翻译成具体条目 */
   let lastResults: Track[] = []
   let lastStations: Station[] = []
+  let lastShows: Show[] = []
   let lastArticles: Article[] = []
   let lastClips: Clip[] = []
 
@@ -343,6 +346,54 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           message: `在放${track.name}（${track.artist}）。iTunes 只提供 30 秒预览，放完就停`,
         }
       } catch (e) { return cpFail(e, '音乐播放') }
+    },
+
+    /* ══════════ 播客（iTunes 发现 + RSS 直取；只实时流播不缓存） ══════════ */
+
+    podcastSearch: async (args: any): Promise<ToolResult> => {
+      try {
+        const shows = await need('itunes').searchPodcasts(String(args.query ?? ''), 6)
+        if (!shows.length)
+          return { status: 'unavailable', code: 'NOT_FOUND', message: `没搜到「${args.query}」相关的播客`, suggestion: '换个关键词' }
+        lastShows = shows
+        desk?.()?.render({
+          key: CANDIDATES, template: 'list', kind: 'task', ttl: 120, refreshTtl: true,
+          data: { title: '搜到这些播客', items: shows.map(p => ({ label: p.name, sub: `${p.author} · ${p.count} 集` })) },
+        })
+        return { status: 'ok', data: { shows: shows.map(p => ({ id: p.id, name: p.name, author: p.author })) },
+          message: `搜到 ${shows.length} 个播客，已上屏。要听哪个直接说名字` }
+      } catch (e) { return cpFail(e, '播客搜索') }
+    },
+
+    podcastPlay: async (args: any): Promise<ToolResult> => {
+      try {
+        let show = args.showId ? lastShows.find(p => p.id === Number(args.showId)) : undefined
+        if (!show) {
+          const found = await need('itunes').searchPodcasts(String(args.query ?? args.showId ?? ''), 3)
+          if (!found.length)
+            return { status: 'unavailable', code: 'NOT_FOUND', message: `没搜到「${args.query}」这个播客`, suggestion: '先 podcast.search 看看有什么' }
+          lastShows = found
+          show = found[0]
+        }
+        const eps = await need('podcast').episodes(show.feedUrl)
+        // RSS 按新到旧排，第 1 集 = 最新
+        const idx = Math.min(Math.max(Number(args.episode ?? 1) - 1, 0), eps.length - 1)
+        const ep = eps[idx]
+        store.set('media.source', 'podcast')
+        store.set('media.track', ep.title)
+        store.set('media.artist', show.name)
+        store.set('media.artwork', show.artwork)
+        store.set('media.streamUrl', ep.url)
+        store.set('media.playing', true)
+        deps.state?.queue.set(eps.map(e => ({
+          source: 'podcast', track: e.title, artist: show!.name, artwork: show!.artwork, streamUrl: e.url,
+        })), idx, 'search')
+        deps.state?.history.push({ source: 'podcast', track: ep.title, artist: show.name, streamUrl: ep.url })
+        dismissKey(CANDIDATES)
+        const mins = ep.duration ? `，${Math.round(ep.duration / 60)} 分钟` : ''
+        return { status: 'ok', data: { playing: { show: show.name, episode: ep.title } },
+          message: `在放《${show.name}》${idx === 0 ? '最新一集' : `第 ${idx + 1} 新的一集`}：${ep.title}${mins}` }
+      } catch (e) { return cpFail(e, '播客播放') }
     },
 
     /* ══════════ 电台（Radio Browser） ══════════ */

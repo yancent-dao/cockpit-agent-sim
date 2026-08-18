@@ -26,6 +26,7 @@ import { createLifeHandlers } from '../integrations/lifeHandlers'
 import type { StockClient } from '../integrations/qtstock'
 import type { HolidayClient } from '../integrations/holiday'
 import type { PoemClient } from '../integrations/poem'
+import type { PodcastClient } from '../integrations/podcast'
 
 /** 统一返回契约。inputRequired 对齐 MCP 2026-07-28 的 MRTR */
 export interface ToolResult {
@@ -65,6 +66,8 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
   stocks?: StockClient
   holiday?: HolidayClient
   poem?: PoemClient
+  /** 播客 RSS 直取（只实时流播）。发现走 itunes.searchPodcasts */
+  podcast?: PodcastClient
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -228,7 +231,7 @@ export function createRegistry(
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
-    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
+    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }
 
   /**
@@ -259,7 +262,7 @@ export function createRegistry(
     try { sizedDesk()?.render(input) } catch { /* 显示失败不拖累执行 */ }
   }
   /** 三方能力未装配时给一句人话，而不是让 undefined 一路炸到堆栈里 */
-  const needCp = <K extends 'itunes' | 'radio' | 'news' | 'pexels' | 'websearch'>(k: K): NonNullable<RegistryDeps[K]> => {
+  const needCp = <K extends 'itunes' | 'radio' | 'news' | 'pexels' | 'websearch' | 'podcast'>(k: K): NonNullable<RegistryDeps[K]> => {
     const c = deps[k]
     if (!c) throw new Error(`${k} 能力未装配：createRegistry 缺少 ${k}`)
     return c

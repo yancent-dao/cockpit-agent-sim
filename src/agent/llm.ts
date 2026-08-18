@@ -11,6 +11,26 @@ export interface Msg {
   tool_call_id?: string
 }
 
+/**
+ * 模型调用失败的人话化（原则 4：message 写人话不写日志）。
+ * 实拍：慢层撞锁区模型，403 的英文 JSON 原样蹦给用户。
+ * 状态码是形状判断不是内容判断；正文只用来分辨 403 的两种含义
+ * （OpenRouter 用 403 既表锁区也表内容审核），不往外带。
+ */
+export function llmErrorText(status: number, body: string): string {
+  if (status === 401) return '模型没连上：API Key 不对或过期了，在控制面板里重新填一下'
+  if (status === 402) return '模型没连上：账户额度用完了，去 OpenRouter 充值或换个免费模型'
+  if (status === 403) {
+    if (/region|country|location/i.test(body))
+      return '这个模型在当前网络出口所在的地区不可用——换一个不锁区的模型，' +
+        '或检查代理（浏览器走 VPN 不等于 dev server 也走：它只认启动终端里的 HTTPS_PROXY）'
+    return '模型拒绝了这次请求（403）——换个模型试试'
+  }
+  if (status === 429) return '模型限流了：请求太频繁，稍等几秒再说一次'
+  if (status >= 500) return '模型服务临时故障，稍后再试；总失败就换个模型'
+  return `模型没连上（${status}）——换个模型试试，或看浏览器控制台的完整响应`
+}
+
 export interface LLMRequest {
   system: string
   messages: Msg[]
@@ -147,7 +167,7 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
           provider: { sort: 'latency' },
         }),
       })
-      if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`)
+      if (!res.ok) throw new Error(llmErrorText(res.status, await res.text()))
       const json = await res.json()
       const m = json.choices?.[0]?.message
       if (!m) throw new Error('模型返回为空')

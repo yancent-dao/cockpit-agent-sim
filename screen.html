@@ -657,21 +657,34 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .pl-next{font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 视频：画面就是主角——plmain 整个让给画面，控件行沉底 */
-.is-video .plmain{align-items:stretch}
-.is-video .plart{flex:1;width:auto;height:auto;border-radius:calc(12px*var(--u))}
-.is-video .plmeta{display:none}
+
 .pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 .pl-hint b{font-weight:500;color:var(--ac)}
-/* 视频占满整张卡，文字压在底部——stage 是给它准备的大画面 */
-.card.is-video{padding:0;position:relative}
+/* ── 视频（重设计 v2）：画面就是主角——满卡出血，控件沉入底部渐隐浮层 ── */
+.card.is-video{padding:0;position:relative;background:#0B0F16}
 .card.is-video>h3{display:none}
 .card.is-video .plwrap{display:block}
-.card.is-video .plart{width:100%;height:100%;border-radius:0}
+.card.is-video .plmain{position:absolute;inset:0;display:block}
+.card.is-video .plart{position:absolute;inset:0;width:100%;height:100%;border-radius:0;box-shadow:none}
+.card.is-video .plhead{position:absolute;left:calc(20px*var(--u));top:calc(16px*var(--u));right:calc(20px*var(--u));z-index:2}
+.card.is-video .plpos{color:rgba(255,255,255,.65)}
 .card.is-video .plmeta{position:absolute;left:calc(26px*var(--u));right:calc(26px*var(--u));
-  bottom:calc(22px*var(--u));color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
-.card.is-video .plmeta b{color:#fff}
-.card.is-video .plmeta span{color:rgba(255,255,255,.82)}
+  bottom:calc(150px*var(--u));z-index:2;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.card.is-video .plmeta b{color:#fff;font-size:calc(var(--t-body)*var(--u))}
+.card.is-video .plmeta>span{color:rgba(255,255,255,.82)}
+.card.is-video .plaux,.card.is-video .pl-next,.card.is-video .plqueue{display:none!important}
+.card.is-video .plfoot{position:absolute;left:0;right:0;bottom:0;z-index:2;
+  padding:calc(40px*var(--u)) calc(24px*var(--u)) calc(14px*var(--u));
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.74))}
+.card.is-video .pltime{color:rgba(255,255,255,.65)}
+.card.is-video .pltrk{background:rgba(255,255,255,.24)}
+.card.is-video .plfl{background:#fff}
+.card.is-video .plknob{border-color:#fff;background:#fff}
+.card.is-video .plctl .pside{color:rgba(255,255,255,.85)}
+.card.is-video .plctl .pmain{background:rgba(255,255,255,.92);color:#0B0F16;box-shadow:none}
+.card.is-video .plxtra .pxi{color:rgba(255,255,255,.75)}
+.card.is-video .plxtra .pfav{color:#FF7A8C}
 
 
 /* ── 自动播放解锁遮罩 ── */

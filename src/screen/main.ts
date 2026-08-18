@@ -222,7 +222,6 @@ function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   const st = sourceStyle(String(d.source ?? 'music'))
   const form = mediaForm(...dimsOf(c.size))
   if (!node.querySelector('.plwrap')) node.innerHTML = PLAYER_SKELETON
-  node.classList.toggle('is-video', isVideo)
   node.style.setProperty('--plac', st.accent)
 
   // 槽位表统一显隐（extras 有左右两个容器，qsa 全选）
@@ -672,8 +671,11 @@ function renderDesk() {
     const picking = c.template === 'confirm'
     // fresh（流光两态）由挂载分支加、定时器摘——className 重写要保留它
     const isFresh = node.classList.contains('fresh')
+    // is-video 必须在这算：className 是**单写者**（每次心跳整体重写保幂等），
+    // 渲染器里 toggle 上去的类 4 秒内必被抹掉（实拍：视频卡渲染成音乐版式）
     const cls = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
-      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}${isFresh ? ' fresh' : ''}`
+      accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}${isFresh ? ' fresh' : ''}${
+      c.template === 'media' && c.data?.source === 'video' ? ' is-video' : ''}`
     // 变了才写：hello 心跳每 4 秒全量重推（容错设计），renderDesk 必须真幂等，
     // 否则属性风暴让整屏看着在"周期刷新"（用户实拍）
     if (node.className !== cls) node.className = cls

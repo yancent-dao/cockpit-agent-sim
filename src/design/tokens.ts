@@ -36,6 +36,15 @@ const tierRules = Object.keys(TIER_UNITS)
   .join('\n')
 
 /**
+ * 全局字体（Avatar 定稿 §04）：MiSans 优先的系统栈，**零打包**——
+ * 运行时依赖为零、file:// 单文件版不膨胀。装了 MiSans（免费商用）的
+ * 演示机 100% 一致，没装的优雅回退到各系统最好的中文黑体。
+ * 车机屏、控制面板、导出 H5 共用这一处定义。
+ */
+export const FONT_STACK =
+  '"MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif'
+
+/**
  * 基础层：排版与运动，两个场景共用。
  * 这里**不放任何颜色**——颜色在 LIGHT/DARK 里，换场景只换那一层。
  */

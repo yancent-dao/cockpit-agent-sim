@@ -101,6 +101,14 @@ input::placeholder{color:#4A5462}
       <button id="reload">刷新模型列表</button>
       <button id="fastOnly" class="on">只看快速模型</button>
     </div>
+    <!-- 语音音色跟模型放一起（实拍反馈）：它跟慢层/快层一样是"这台车用谁的脑子和嗓子"，
+         不是绘本的私有设置。ID 不变，选择存 localStorage，车机屏靠 storage 事件生效 -->
+    <div class="fld"><label>语音音色</label>
+      <div class="row" style="flex:1;gap:8px;align-items:center">
+        <select id="ttsVoice" style="flex:1;min-width:0"></select>
+        <button id="ttsTry">试听</button>
+      </div>
+    </div>
     <div class="note">快层模型 = 过滤器小模型：车控/天气这类简单指令由它亚秒先答，大模型在后台校验接力。选最便宜最快的档就对了。</div>
     <div class="note" id="modelNote">快速模型按名称启发式筛选（flash / mini / haiku / lite / turbo / small / nano）并按价格升序排列——价格低通常意味着模型小、首字快。关掉筛选可看全部支持 function calling 的模型。</div>
   </section>
@@ -319,9 +327,10 @@ ${tierRules}
   --ac:var(--brand-fg); --acbg:var(--brand-bg); --acbd:var(--brand-bd); --acgr:var(--brand-gr);
 }
 `.trim();
-  function tokensFor(scene) {
+  function tokensFor(scene, mode = "day") {
+    const dark = scene === "director" || mode === "night";
     return `${BASE_CSS}
-${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
+${dark ? DARK_CSS : LIGHT_CSS}`;
   }
   function injectTokens(scene, doc = document) {
     const el = doc.createElement("style");
@@ -668,9 +677,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var COMMON_SIZES = ["chip", "box", "wide"];
   var LIST_SIZES = ["box", "tower", "court"];
   var CANVAS_ALLOWED = ["tile", "box", "frame", "wide", "panel", "hall", "tower", "court", "stage"];
+  var CANVAS_LINE_PX = 38;
   var CANVAS_SIZES = CANVAS_ALLOWED.map((z) => {
     const p = pixelsOf(z);
-    return `${z} ${p.w}×${p.h}`;
+    return `${z} ${p.w}×${p.h}（约 ${Math.max(1, Math.floor(p.h / CANVAS_LINE_PX))} 行）`;
   }).join("，");
   var CARD_TEMPLATES = [
     {
@@ -902,6 +912,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       fields: { line: { type: "string", required: true } }
     },
     {
+      id: "automation",
+      label: "自动任务卡",
+      defaultSize: "tower",
+      sizes: ["box", "tower", "court"],
+      requireItems: true,
+      desc: "自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停",
+      fields: { items: { type: "array", required: true } }
+    },
+    {
       id: "generic",
       label: "通用卡",
       defaultSize: "box",
@@ -917,7 +936,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式卡",
       defaultSize: "wide",
       sizes: [...CANVAS_ALLOWED],
-      desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
+      desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。**按放得下写**——行数是硬预算，超了就得砍内容而不是缩字号。各档位容量：" + CANVAS_SIZES + "。按这个容量排版：写不下就砍内容、拆成两张卡（用不同的 key），别指望缩字号或滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     },
     /**
@@ -930,7 +949,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式小组件",
       defaultSize: "hall",
       sizes: [...CANVAS_ALLOWED],
-      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
+      desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。**按放得下写**，行数是硬预算。各档位容量：' + CANVAS_SIZES + "。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
@@ -1031,7 +1050,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       name: "seat.set",
       brief: "座椅加热通风调节",
       fast: true,
-      desc: "控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。",
+      desc: "控制座椅。seat 传 all 可一次控制四个座椅（仅对加热/通风/按摩生效，滑动和靠背只有前排有）。可以一次传多个字段，只传要改的即可。",
       permission: "彩",
       params: {
         seat: {
@@ -1042,12 +1061,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         },
         heating: { type: "number", range: [0, 3], desc: "加热档位 0-3" },
         ventilation: { type: "number", range: [0, 3], desc: "通风档位 0-3" },
+        massage: { type: "number", range: [0, 3], desc: "按摩档位 0-3，0 是关" },
         slide: { type: "number", range: [0, 100], desc: "前后位置百分比，仅前排" },
         recline: { type: "number", range: [0, 100], desc: "靠背角度百分比，仅前排" }
       },
       writes: [
         { path: "seat.{seat}.heating", from: "heating" },
         { path: "seat.{seat}.ventilation", from: "ventilation" },
+        { path: "seat.{seat}.massage", from: "massage" },
         { path: "seat.{seat}.slide", from: "slide" },
         { path: "seat.{seat}.recline", from: "recline" }
       ],
@@ -1068,11 +1089,69 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       name: "sunroof.set",
       brief: "天窗开合",
       fast: true,
-      desc: "控制全景天窗开度。",
+      desc: "控制全景天窗。part 不传就是动玻璃 —— 用户说「开天窗」指的就是它；说「拉上遮阳帘」「遮一下太阳」时传 shade。两者是独立执行器，各开各的。",
       permission: "彩",
-      params: { position: { type: "number", range: [0, 100], required: true, desc: "开度百分比 0-100" } },
-      writes: [{ path: "cabin.sunroof.glass.position", from: "position" }],
+      params: {
+        position: { type: "number", range: [0, 100], required: true, desc: "开度百分比 0-100" },
+        part: { type: "enum", values: ["glass", "shade"], default: "glass", desc: "玻璃还是遮阳帘，默认 glass" }
+      },
+      // 路径里的 {part} 缺省时由 expand 填 glass —— 现有信号本来就叫
+      // cabin.sunroof.**glass**.position，加这个参数天然吻合，零破坏
+      writes: [{ path: "cabin.sunroof.{part}.position", from: "position" }],
       requires: "cabin.sunroof.glass.position"
+    },
+    /* ── 后视镜（零 handler）。只做折叠与加热：角度调节在屏幕上看不出变化，
+       演示价值为零，加了只是让能力目录长一点 ── */
+    {
+      name: "defrost.set",
+      brief: "前后风挡除雾",
+      fast: true,
+      desc: "开关前/后风挡除雾除霜。雨天起雾、冬天结霜用。target 传 both 一次开双侧。",
+      permission: "彩",
+      params: {
+        target: { type: "enum", values: ["front", "rear", "both"], required: true, desc: "前挡 / 后挡 / 都开" },
+        on: { type: "boolean", required: true, desc: "开或关" }
+      },
+      writes: [{ path: "cabin.defrost.{target}.isOn", from: "on" }],
+      expand: { target: { both: ["front", "rear"] } }
+    },
+    {
+      name: "mirror.set",
+      brief: "后视镜折叠与加热",
+      fast: true,
+      desc: '控制后视镜。mirror 传 both 一次控制两侧。可以一次传多个字段，只传要改的即可。下雨起雾时用户说"后视镜看不清"，开加热。',
+      permission: "彩",
+      params: {
+        mirror: {
+          type: "enum",
+          values: ["driver", "passenger", "both"],
+          required: true,
+          desc: "目标后视镜"
+        },
+        fold: { type: "boolean", desc: "折叠收起" },
+        heating: { type: "boolean", desc: "镜面加热除雾" }
+      },
+      writes: [
+        { path: "cabin.mirror.{mirror}.isFolded", from: "fold" },
+        { path: "cabin.mirror.{mirror}.heating", from: "heating" }
+      ],
+      expand: { mirror: { both: ["driver", "passenger"] } }
+    },
+    /* ── 空气净化器（零 handler） ── */
+    {
+      name: "airPurifier.set",
+      brief: "空气净化器开关档位",
+      fast: true,
+      desc: '控制空气净化器。可以一次传开关和档位。用户说"空气不好""外面味儿大"时用它，跟空调内循环是两件事（内循环走 climate.set）。',
+      permission: "彩",
+      params: {
+        power: { type: "boolean", desc: "开关" },
+        level: { type: "number", range: [0, 3], desc: "净化档位 0-3" }
+      },
+      writes: [
+        { path: "cabin.airPurifier.power", from: "power" },
+        { path: "cabin.airPurifier.level", from: "level" }
+      ]
     },
     {
       name: "wiper.set",
@@ -1176,11 +1255,25 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       name: "light.set",
       brief: "大灯与后备箱灯",
       fast: true,
-      desc: "开关车灯。",
+      desc: "开关车灯。用户说「开大灯」一般指近光（lowBeam）；「远光」「雾灯」「示宽灯」「阅读灯」各自独立。",
       permission: "彩",
       params: {
-        light: { type: "enum", values: ["headlight", "trunkLight"], required: true, desc: "目标灯具" },
-        state: { type: "enum", values: ["on", "off", "auto"], required: true, desc: "状态" }
+        light: {
+          type: "enum",
+          values: [
+            "lowBeam",
+            "highBeam",
+            "fogFront",
+            "fogRear",
+            "parking",
+            "readingFront",
+            "readingRear",
+            "trunkLight"
+          ],
+          required: true,
+          desc: '目标灯具：lowBeam 近光（用户说"大灯"一般指它）/ highBeam 远光 / fogFront 前雾灯 / fogRear 后雾灯 / parking 示宽灯 / readingFront 前排阅读灯 / readingRear 后排阅读灯 / trunkLight 后备箱灯'
+        },
+        state: { type: "enum", values: ["on", "off", "auto"], required: true, desc: "状态。auto 是随环境光自动" }
       },
       writes: [{ path: "cabin.light.{light}.state", from: "state" }]
     },
@@ -1226,7 +1319,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         alias: { type: "string", desc: '常用地址别名，如"家""公司"。用户说"回家"时优先用这个，不用再搜' },
         poiId: { type: "string", desc: "navigation.search 返回的 POI id" },
         address: { type: "string", desc: "地址或地点名称，没有 alias/poiId 时用这个" },
-        preference: { type: "enum", values: ["default", "fastest", "avoidHighway", "avoidCongestion", "avoidToll"], desc: "路线偏好，默认 default" },
+        preference: {
+          type: "enum",
+          values: ["default", "fastest", "highwayFirst", "avoidHighway", "avoidCongestion", "avoidToll"],
+          desc: "路线偏好，默认 default。**限行不用管** —— 车牌已经随请求传给高德，它会自动规避，撞了限行也会在结果里说"
+        },
         mode: { type: "enum", values: ["driving", "walking", "bicycling", "electrobike"], desc: '出行方式，默认 driving。用户说"走过去""骑车"时改' },
         waypoints: {
           type: "array",
@@ -1273,6 +1370,43 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       permission: "彩",
       params: {},
       handler: "placesList"
+    },
+    {
+      name: "places.remove",
+      brief: "删一条常用地址",
+      desc: "删掉一条存过的常用地址。改名 = 先 remove 再 save。",
+      permission: "彩",
+      params: { alias: { type: "string", required: true, desc: '要删的别名，如"家"' } },
+      handler: "placesRemove"
+    },
+    {
+      name: "map.control",
+      brief: "地图缩放/全览/2D3D/朝向",
+      desc: '控制导航地图的显示。action 是一次性的动作（放大/缩小/看全程/回到自车位），style 和 heading 是模式开关，可以跟 action 一起传。用户说"看下整条路线"用 overview，"回到当前位置"用 follow。只影响地图怎么显示，不影响导航本身。',
+      permission: "彩",
+      params: {
+        action: {
+          type: "enum",
+          values: ["zoomIn", "zoomOut", "overview", "follow"],
+          desc: "放大一档 / 缩小一档 / 路线全览 / 跟随自车"
+        },
+        style: { type: "enum", values: ["2d", "3d", "satellite"], desc: "平面 / 立体 / 卫星底图" },
+        heading: { type: "enum", values: ["north", "vehicle"], desc: "北朝上或车头朝上" },
+        traffic: { type: "boolean", desc: "实时路况图层开关（红黄绿）" },
+        cruise: { type: "enum", values: ["start", "stop"], desc: "模拟行驶：车标沿当前路线跑一遍（演示用，需要正在导航）" }
+      },
+      handler: "mapControl"
+    },
+    {
+      name: "traffic.status",
+      brief: "查路况拥堵情况",
+      desc: "查一个地方的实时交通态势（拥堵评价 + 畅通/缓行/拥堵占比）。不传 location 查车辆附近。想在地图上直接看红黄绿，用 map.control 开 traffic 图层——一个给你读，一个给用户看。",
+      permission: "彩",
+      params: {
+        location: { type: "string", desc: '地名，如"春熙路"。不传查车辆当前位置附近' },
+        radius: { type: "number", desc: "半径米数，默认 2000" }
+      },
+      handler: "trafficStatus"
     },
     {
       name: "navigation.searchAlong",
@@ -1336,9 +1470,60 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     /* ── 语音 ── */
     {
+      name: "stock.query",
+      brief: "查股价指数汇率",
+      desc: '查股票/指数/汇率实时行情（腾讯行情，秒级）。query 给名字（"茅台"、"恒生指数"）会自动搜索解析；也可直接给代码：A股 sh600519/sz000001，港股 hkHSI，美股 usAAPL，汇率 whUSDCNY。结果自动上指标卡，你口头报现价和涨跌就行，不用再建卡。多只并列问就并行调多次。',
+      permission: "彩",
+      fast: true,
+      params: {
+        query: { type: "string", required: true, desc: "股票/指数名字或代码" }
+      },
+      handler: "stockQuery"
+    },
+    {
+      name: "holiday.query",
+      brief: "查节假日调休",
+      desc: "查节假日安排：今天是不是假期/调休班、下一个假期是什么时候、最近哪个周末要补班。不用传参数，按当前日期算。",
+      permission: "彩",
+      params: {},
+      handler: "holidayQuery"
+    },
+    {
+      name: "poem.today",
+      brief: "来一句今日诗词",
+      desc: "取一句应景的古诗词（含作者与出处）。适合开机问候、用户想听点有意思的时候。message 里就是完整诗句，直接念。",
+      permission: "彩",
+      params: {},
+      handler: "poemToday"
+    },
+    {
+      name: "theme.set",
+      brief: "切日间/夜间主题",
+      fast: true,
+      desc: "切换车机屏主题。day 日间浅色 / night 夜间深色。",
+      permission: "彩",
+      params: {
+        mode: { type: "enum", values: ["day", "night"], required: true, desc: "日间或夜间" }
+      },
+      writes: [{ path: "hmi.theme", from: "mode" }]
+    },
+    {
+      name: "wallpaper.set",
+      brief: "换壁纸（可 AI 生成）",
+      desc: "换车机屏壁纸。source=preset 用内置（name 传 aurora 极光 / dusk 暮色 / forest 山林）；source=generate 按 prompt 现场 AI 生成一张（约 0.3 元，用户明确要才用，画面描述写清风格，壁纸会自动加暗化保证卡片可读）；source=none 恢复默认。",
+      permission: "彩",
+      params: {
+        source: { type: "enum", values: ["preset", "generate", "none"], required: true, desc: "来源" },
+        name: { type: "enum", values: ["aurora", "dusk", "forest"], desc: "preset 时选哪张" },
+        prompt: { type: "string", desc: "generate 时的画面描述" }
+      },
+      handler: "wallpaperSet"
+    },
+    {
       name: "voice.speak",
       brief: "主动播报一句话",
       desc: "通过车内音响向用户播报一段话。用于解释、确认、反馈。",
+      mic: true,
       permission: "彩",
       params: {
         text: { type: "string", required: true, desc: "要播报的内容，口语化、简短" },
@@ -1350,12 +1535,24 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       name: "voice.ask",
       brief: "向用户提问出选择卡",
       desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
+      mic: true,
       permission: "彩",
       params: {
         question: { type: "string", required: true, desc: "问题内容，口语化" },
         options: { type: "array", items: "string", desc: "候选项，供确认卡展示" }
       },
       handler: "ask"
+    },
+    {
+      name: "voice.config",
+      brief: "换朗读音色、调语速",
+      desc: '设置语音播报的音色与语速。**先不带参数调一次拿可选音色清单**（含名字和男女声标注），再按用户的意思挑一个把 name 一字不差传回来。用户说"换个声音""声音温柔一点""说慢一点"时用它。改完立即生效，不用重启。',
+      permission: "彩",
+      params: {
+        voice: { type: "string", desc: "音色名，必须来自查询返回的 voices 清单" },
+        rate: { type: "number", range: [0.5, 1.5], desc: "语速倍率，1 是正常，默认 0.92" }
+      },
+      handler: "voiceConfig"
     },
     /* ── 卡片调度（无APP化核心） ── */
     /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
@@ -1450,6 +1647,29 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     /* ══════════ 电台（Radio Browser，全球 5 万+ 台） ══════════ */
     {
+      name: "podcast.search",
+      brief: "搜播客节目",
+      desc: "搜播客节目（iTunes 目录，覆盖小宇宙/喜马拉雅等主流中文播客的 RSS）。结果自动上候选卡。要直接听就用 podcast.play，不用先搜。",
+      permission: "彩",
+      params: {
+        query: { type: "string", required: true, desc: "节目名或主题关键词" }
+      },
+      handler: "podcastSearch"
+    },
+    {
+      name: "podcast.play",
+      brief: "播播客最新一集",
+      desc: '搜到就播。默认放最新一集；episode 传 2 表示第二新的一集。单集通常几十分钟，是完整内容不是试听。整批单集会入播放队列，"下一集"直接切。',
+      permission: "彩",
+      fast: true,
+      params: {
+        query: { type: "string", desc: '节目名，如"故事FM"' },
+        showId: { type: "number", desc: "podcast.search 结果里的节目 id（有就优先用）" },
+        episode: { type: "number", desc: "第几新的一集，默认 1（最新）" }
+      },
+      handler: "podcastPlay"
+    },
+    {
       name: "radio.search",
       brief: "搜网络电台",
       desc: '找电台。可以按台名搜，也可以按分类（news/jazz/pop/classical/talk 这类英文 tag）、国家、语言筛。结果自动上屏带编号，你说一句"找到几个"就行。注意：只返回加密流的台，有些台因为用不加密的流放不了，这是车机的限制。',
@@ -1534,6 +1754,29 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     /* ══════════ 联网搜索 ══════════ */
     {
+      name: "video.generate",
+      brief: "AI 生成一段视频",
+      desc: "按描述生成一段短视频（约 5 秒，Seedance 等模型）。异步的：调完立刻返回，一两分钟后生成完会自动开始播放，你先告诉用户在做了。行驶中不会弹画面（安全约束）。花真钱（约 1-2 元/条），用户没明确要生成视频就别调。",
+      permission: "彩",
+      params: {
+        prompt: { type: "string", required: true, desc: "画面描述，说清主体/动作/风格" },
+        duration: { type: "number", desc: "时长秒数，默认 5" },
+        ratio: { type: "enum", values: ["16:9", "9:16", "1:1"], desc: "画幅，默认 16:9" }
+      },
+      handler: "videoGenerate"
+    },
+    {
+      name: "music.generate",
+      brief: "AI 写一段音乐",
+      desc: '按描述生成一段 30 秒音乐（Lyria，48kHz 立体声，可含人声）。生成完直接开始播放。描述里可以给风格、心情、场景，比如"给孩子的轻快生日歌，唱到妞妞的名字"。花真钱（约 3 毛/段），用户没明确要就别调。',
+      permission: "彩",
+      params: {
+        prompt: { type: "string", required: true, desc: "想要什么样的音乐" },
+        instrumental: { type: "boolean", desc: "true = 纯音乐不要人声" }
+      },
+      handler: "musicGenerate"
+    },
+    {
       name: "web.search",
       brief: "联网搜索现查",
       // 每次搜索 15 秒起——问句写全一次问够，别拆成三四次搜（用户在车里等不起）
@@ -1568,7 +1811,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           required: true,
           desc: '这张卡该活多久。**默认用 untilDismissed**（一直留着，桌面满了会自动腾位）—— 天气、续航、播放器、执行结果这类"看一眼就知道"的内容都用它，别给它们设秒数，用户还在看的时候卡片自己消失是最招人烦的事。只有**在等用户回应**的卡才设秒数：你问了"要哪个"、"确认吗"，而用户可能压根不打算答 —— 挂在那儿就是一直在问一个他早就跳过的问题。这种给 20~60 秒，问句越短给得越少。另外还有 untilTaskEnd（本轮任务一结束就退，适合中间步骤的临时提示）和 persistent（常驻，几乎用不到）。'
         },
-        key: { type: "string", desc: "逻辑标识，如 windows、nav。同 key 的卡会被复用而不是重复新建" },
+        /**
+         * key 一直是声明着的，但原描述只说「逻辑标识，如 windows、nav。同 key 的卡
+         * 会被复用」—— 模型读不出"我重排报告时该复用它"。实拍后果：子 Agent
+         * 因为内容溢出反复重排，每次建新卡，屏幕上堆了 6 张同一份报告的不同版本
+         * （用户原话"满屏幕都是"）。**说清什么时候该用，比有这个参数更重要。**
+         */
+        key: {
+          type: "string",
+          desc: "这张卡的身份。**同一份内容改版、重排、换尺寸重发时必须用同一个 key**，屏幕上就是刷新那一张而不是再堆一张 —— 不给 key 每次都是新卡，试排几次桌面就满了。上下两篇、左右两栏这种真的是两张，才给不同的 key。常规用法同理：windows、nav 这类固定内容一直用同一个 key。"
+        },
         data: { type: "object", desc: "卡片内容，字段取决于模板" },
         kind: { type: "enum", values: ["task", "system"], desc: "卡片类别，默认 task" },
         urgency: {
@@ -1641,6 +1893,80 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     },
     /* ══════════ 记忆（显式，长期） ══════════ */
     {
+      name: "automation.create",
+      brief: "建自动任务（情景模式）",
+      desc: '把用户的自动化意愿建成规则："每天下午四点开空调""下雨自动关窗""我说跑晨报就跑晨报"。when 是触发条件（空数组=手动任务，靠说话或点卡片运行）；do 是动作序列——车控查询用 {tool,args}（机制直接执行），需要你临场判断的用 {prompt}（到时会叫醒你处理，如"推荐当天值得关注的股票"）。ask:true 表示执行前先问用户。建好自动上卡，用户能看到你理解成了什么。',
+      permission: "彩",
+      params: {
+        name: { type: "string", required: true, desc: '任务名，短一点，如"雨天模式"' },
+        when: {
+          type: "array",
+          desc: "触发条件（全部满足才触发；空=手动任务）",
+          items: { type: "object", properties: {
+            kind: { type: "string", enum: ["time", "signal"] },
+            at: { type: "string", description: "kind=time 时的每天时刻，HH:MM" },
+            path: { type: "string", description: "kind=signal 时的信号路径，如 vehicle.gear" },
+            op: { type: "string", enum: ["==", "!=", ">", "<", ">=", "<="] },
+            value: { description: "比较值" }
+          }, required: ["kind"] }
+        },
+        do: {
+          type: "array",
+          required: true,
+          desc: "动作序列，按顺序执行",
+          items: { type: "object", properties: {
+            tool: { type: "string", description: "工具名（车控/查询这类确定动作）" },
+            args: { type: "object", description: "工具参数" },
+            prompt: { type: "string", description: "或者：到时叫醒你处理的一句话任务" }
+          } }
+        },
+        ask: { type: "boolean", desc: "触发时先弹确认，用户点了才执行" }
+      },
+      handler: "automationCreate"
+    },
+    {
+      name: "automation.list",
+      brief: "看已有的自动任务",
+      desc: '列出全部自动任务并上卡。data.rules 就是任务码（JSON），用户要"分享/导出"时念给他或建卡展示。',
+      permission: "彩",
+      params: {},
+      handler: "automationList"
+    },
+    {
+      name: "automation.toggle",
+      brief: "启停自动任务",
+      desc: "启用/停用一条自动任务。不传 on 就翻转当前状态（卡片上点一下走的就是这条）。",
+      permission: "彩",
+      params: {
+        id: { type: "string", desc: "任务 id" },
+        name: { type: "string", desc: "或者用任务名找" },
+        on: { type: "boolean", desc: "开或关；不传=翻转" }
+      },
+      handler: "automationToggle"
+    },
+    {
+      name: "automation.delete",
+      brief: "删自动任务",
+      desc: "删除一条自动任务。",
+      permission: "彩",
+      params: {
+        id: { type: "string", desc: "任务 id" },
+        name: { type: "string", desc: "或者用任务名找" }
+      },
+      handler: "automationDelete"
+    },
+    {
+      name: "automation.run",
+      brief: "立即运行一条任务",
+      desc: "手动执行一条任务（多用于无条件的手动任务；ask 类任务用户确认后也用它跑）。",
+      permission: "彩",
+      params: {
+        id: { type: "string", desc: "任务 id" },
+        name: { type: "string", desc: "或者用任务名找" }
+      },
+      handler: "automationRun"
+    },
+    {
       name: "memory.remember",
       brief: "记住用户偏好",
       desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。只记**用户明说要记**的；你自己猜的规律不许存。这些偏好每次对话都会注入给你，落实靠你自己。',
@@ -1687,7 +2013,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       name: "story.cast",
       brief: "把孩子的照片画成故事主角",
-      desc: "按家长给的照片生成一张动漫版**定妆照**，家长确认「像不像」。这是全书唯一需要家长把关的一步，也是角色一致性的锚：之后每一页都拿这张当参考图（**不是拿上一页**），所以误差不累积、某页画歪单页重画就行。style 默认扁平童书风——写实风细节多、跨页漂移大，这不只是审美选择。",
+      desc: "按家长给的照片生成一张动漫版**定妆照**。**画完就停下来问「像不像」，不要接着调 story.begin** —— 这是全书唯一需要家长把关的一步：之后每一页都拿这张当参考图，主角不像就是整本都不像，而一本要画七八张。屏幕上有「就是他」和「再画一张」两个按钮，家长点了或者开口说了你才往下走。它也是角色一致性的锚：每页锚在同一张上（**不是拿上一页**），所以误差不累积、某页画歪单页重画就行。style 默认扁平童书风——写实风细节多、跨页漂移大，这不只是审美选择。",
       permission: "彩",
       params: {
         look: {
@@ -1702,14 +2028,27 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       name: "story.begin",
       brief: "开一本新绘本，讲第一章",
-      desc: "按主题开篇。**第一章给 3 页**——刚好够「谁·在哪·出事了」一个完整的开头，把孩子拉进去。每页一句话配一张插图，文字先出立刻开讲、图片后台补齐。把车窗外的真实世界织进故事（正在过的桥、外面的天气、要去的地方）——孩子抬头看窗外故事和现实对上了，这是手机上的绘本做不到的事。讲完这一章系统会自动问孩子「你觉得后面会发生什么」。",
+      desc: "按主题开篇。**必须等家长认可定妆照之后再调。****pages 必须给满 3 条**——刚好够「谁·在哪·出事了」一个完整的开头，把孩子拉进去；只给 1 条等于开了个头就没了，孩子还没进入故事就要被追问。每页一到两句话（约 25–45 字）配一张插图，插图后台并发画、到位了屏幕自己开口。**调完之后只说一句衔接的话，不要把 line 的内容再念一遍** —— 屏幕会逐页朗读并逐字点亮，你抢着念等于同一段讲两遍，而且你几秒就念完了插图还在画。把车窗外的真实世界织进故事（正在过的桥、外面的天气、要去的地方）——孩子抬头看窗外故事和现实对上了，这是手机上的绘本做不到的事。讲完这一章系统会自动问孩子「你觉得后面会发生什么」。",
       permission: "彩",
       params: {
         title: { type: "string", required: true, desc: "书名" },
         pages: {
           type: "array",
           required: true,
-          desc: "这一章每页一条 {line, scene}：line 是念给孩子听的一句话（一屏一句，别写成一段），scene 是这一页画什么（一句画面描述，主角形象不用重复写，系统会带上定妆照）"
+          /**
+           * 元素形状必须是**机器可读**的。只声明"是个数组"时实拍看到模型
+           * 连着猜错两次（`pageCount:"3"`、`pages:{item:[...]}`），第三次才蒙对 ——
+           * 三次调用两次被拒，用户干等。
+           */
+          items: {
+            type: "object",
+            properties: {
+              line: { type: "string", description: "念给孩子听的一句话，一屏一句，别写成一段" },
+              scene: { type: "string", description: "这一页画什么，一句画面描述即可；主角形象不用重复写，系统会带上定妆照" }
+            },
+            required: ["line", "scene"]
+          },
+          desc: "这一章的页，**第一章必须给满 3 条**。每条 {line, scene}"
         }
       },
       handler: "storyBegin"
@@ -1717,11 +2056,23 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     {
       name: "story.continue",
       brief: "接着孩子说的往下写一章",
-      desc: "按孩子刚才说的续写。**每章给 2 页**——2 页约 40 秒，孩子的注意力刚好在这个尺度上，问得太晚他已经跑神了。先复述一遍孩子的想法再往下编（「哇，会飞的自行车！」——让他知道被听见了，这一秒比什么都重要），idea 会记进书里，导出的封底要单列出来。",
+      desc: "按孩子刚才说的续写。**每章给 2 页**——2 页约 40 秒，孩子的注意力刚好在这个尺度上，问得太晚他已经跑神了。先复述一遍孩子的想法再往下编（「哇，会飞的自行车！」——让他知道被听见了，这一秒比什么都重要），idea 会记进书里，导出的封底要单列出来。复述完就交给屏幕，**正文不要自己念**。",
       permission: "彩",
       params: {
         idea: { type: "string", required: true, desc: "孩子说了什么，原话记下来" },
-        pages: { type: "array", required: true, desc: "同 story.begin 的 pages" }
+        pages: {
+          type: "array",
+          required: true,
+          items: {
+            type: "object",
+            properties: {
+              line: { type: "string", description: "念给孩子听的一句话，一屏一句" },
+              scene: { type: "string", description: "这一页画什么，一句画面描述即可" }
+            },
+            required: ["line", "scene"]
+          },
+          desc: "这一章的页，**给满 2 条**。每条 {line, scene}"
+        }
       },
       handler: "storyContinue"
     },
@@ -1756,13 +2107,16 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   var CAPABILITY_DOMAINS = [
     { match: ["window"], icon: "🪟", label: "车窗", blurb: '四扇窗独立开合，说"开一半"也行' },
     { match: ["climate"], icon: "❄️", label: "空调", blurb: "温度、风量、出风口，冷了热了直接说" },
-    { match: ["seat", "steeringWheel"], icon: "💺", label: "座椅方向盘", blurb: "加热、通风、前后与靠背，方向盘也能热" },
-    { match: ["sunroof"], icon: "🌅", label: "天窗", blurb: "开合、透气" },
+    { match: ["seat", "steeringWheel"], icon: "💺", label: "座椅方向盘", blurb: "加热、通风、按摩、前后与靠背，方向盘也能热" },
+    { match: ["sunroof"], icon: "🌅", label: "天窗", blurb: "玻璃开合，遮阳帘也能单独拉" },
+    { match: ["mirror"], icon: "🪞", label: "后视镜", blurb: "折叠收起、镜面加热除雾" },
+    { match: ["voice"], icon: "🗣️", label: "语音", blurb: "换播报音色（有男女声可挑）、调语速" },
+    { match: ["airPurifier"], icon: "🌀", label: "空气净化", blurb: "外面味儿大时开一下" },
     { match: ["door", "trunk", "chargePort", "childLock"], icon: "🚪", label: "门与舱口", blurb: "车门、后备箱、充电口、儿童锁" },
-    { match: ["ambientLight", "fragrance", "light"], icon: "💡", label: "灯光香氛", blurb: "氛围灯颜色亮度、香氛、大灯" },
+    { match: ["ambientLight", "fragrance", "light"], icon: "💡", label: "灯光香氛", blurb: "氛围灯、香氛、近光远光雾灯示宽灯、前后排阅读灯" },
     { match: ["wiper"], icon: "🌧️", label: "雨刷", blurb: "手动挡位或自动感应" },
     { match: ["driveSetting"], icon: "🎛️", label: "驾驶设置", blurb: "驾驶模式、能量回收、悬架高度" },
-    { match: ["navigation", "region", "places"], icon: "🧭", label: "导航", blurb: "找地方、规划对比路线、沿途搜索、存常用地址" },
+    { match: ["navigation", "region", "places"], icon: "🧭", label: "导航", blurb: "找地方、规划对比路线、沿途搜索、常用地址、地图缩放全览" },
     { match: ["weather"], icon: "🌤️", label: "天气", blurb: "查任何城市的现在和未来几天" },
     { match: ["music"], icon: "🎵", label: "音乐", blurb: "搜歌放歌，自动接着放下一首" },
     { match: ["radio"], icon: "📻", label: "电台", blurb: "全球网络电台想听哪台搜哪台" },
@@ -1853,9 +2207,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   };
   var storybookForm = (c, _r) => {
-    const blocks = ["art", "line", "dots"];
-    if (c >= 8) blocks.push("chapter");
-    if (c >= 12) blocks.push("lesson", "ctl");
+    const blocks = ["art", "line", "dots", "ctl"];
+    if (c >= 8) blocks.push("chapter", "side");
+    if (c >= 12) blocks.push("lesson");
     return { blocks };
   };
   var carouselForm = (c, r) => {
@@ -1902,6 +2256,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
     // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
     stagedlist: listForm,
+    automation: listForm,
     info: genericForm,
     media: mediaForm,
     weather: weatherForm,
@@ -1949,9 +2304,45 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       lines.push(`台下排队等桌面腾地方：${l.staged.map(titleOf).join("、")}（不是没了，有空位自动显示，或${recallHint()}）`);
     return lines.join("\n");
   }
+  var ACK_MAX = 4;
+  function ackLine(data) {
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const shown = items.slice(0, ACK_MAX);
+    const line = shown.map((i) => {
+      if (!i || i.label === void 0 || i.value === void 0) return "";
+      const v = typeof i.value === "boolean" ? i.value ? "开" : "关" : `${i.value}${i.unit ?? ""}`;
+      return `${i.label} ${v} `;
+    }).filter(Boolean).join("· ");
+    const rest = items.length - shown.length;
+    return rest > 0 ? `${line}· 还有 ${rest} 项` : line;
+  }
+
+  // src/config/upstream.ts
+  var PROXY_PREFIX = "/x/";
+  var UPSTREAM = {
+    itunes: "https://itunes.apple.com",
+    amap: "https://restapi.amap.com",
+    openmeteo: "https://api.open-meteo.com",
+    newsapi: "https://newsapi.org",
+    pexels: "https://api.pexels.com",
+    openrouter: "https://openrouter.ai",
+    radio: "https://de1.api.radio-browser.info",
+    /** 讯飞 TTS 是 WebSocket —— proxy 的 ws:true 一并转发，未来接 header 鉴权的 CP 靠它 */
+    xftts: "wss://cbm01.cn-huabei-1.xf-yun.com",
+    /** 腾讯行情：qt 带 ACAO:* 可直连（单文件版也通）；smartbox 搜索无 CORS 只能走代理 */
+    qtstock: "https://qt.gtimg.cn",
+    qtsmart: "https://smartbox.gtimg.cn",
+    /** 节假日/调休（个人维护项目，高频会封；对无 UA 请求 403） */
+    timor: "https://timor.tech",
+    /** 今日诗词 v1，无 token */
+    jinrishici: "https://v1.jinrishici.com"
+  };
+  function api(name, protocol = typeof location === "undefined" ? "file:" : location.protocol) {
+    return protocol.startsWith("http") ? PROXY_PREFIX + name : UPSTREAM[name];
+  }
 
   // src/integrations/amap.ts
-  var BASE = "https://restapi.amap.com";
+  var BASE = () => api("amap");
   var AmapError = class extends Error {
     constructor(message, code) {
       super(message);
@@ -1964,6 +2355,8 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     // 高德推荐（同 APP 默认）
     fastest: 38,
     // 速度最快
+    highwayFirst: 34,
+    // 高速优先
     avoidHighway: 35,
     // 不走高速
     avoidCongestion: 33,
@@ -1989,7 +2382,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     async function get(path, params) {
       const qs = new URLSearchParams({ key: keys.webKey });
       for (const [k, v] of Object.entries(params)) if (v !== void 0) qs.set(k, String(v));
-      const url = `${BASE}${path}?${qs.toString()}`;
+      const url = `${BASE()}${path}?${qs.toString()}`;
       for (let attempt = 1; ; attempt++) {
         const res = await fetcher(url);
         if (!res.ok) throw new AmapError(`高德服务网络异常 ${JSON.stringify(res)}`, "NETWORK_ERROR");
@@ -2053,14 +2446,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         });
         const paths = json.route?.paths ?? [];
         if (!paths.length) throw new AmapError("规划不出路线", "NO_ROUTE");
-        const num = (v) => v !== void 0 && v !== null && v !== "" ? Number(v) : void 0;
+        const num2 = (v) => v !== void 0 && v !== null && v !== "" ? Number(v) : void 0;
         return paths.map((path) => ({
           distance: Number(path.distance),
-          duration: num(path.cost?.duration),
-          tolls: num(path.cost?.tolls),
+          duration: num2(path.cost?.duration),
+          tolls: num2(path.cost?.tolls),
           tollDistance: path.cost?.toll_distance !== void 0 ? Math.round(Number(path.cost.toll_distance) / 100) / 10 : void 0,
           restricted: path.restriction !== void 0 ? path.restriction === "1" : void 0,
-          trafficLights: num(path.traffic_lights),
+          trafficLights: num2(path.traffic_lights),
           polyline: path.steps?.map((s) => s.polyline).filter(Boolean).join(";"),
           steps: (path.steps ?? []).map((s) => ({
             instruction: s.instruction,
@@ -2155,15 +2548,40 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           nightTemp: Number(c.nighttemp)
         }));
       },
+      /**
+       * 输入提示（v3/assistant/inputtips）。配额是关键字搜索的 50 倍
+       * （5000 vs 100 次/日）。实测跨城时照样全国兜底（临平@成都返回杭州），
+       * 真正的增量是 district 字段——POI 搜空时拿它告诉用户"你说的地方在哪个城市"。
+       */
+      async inputtips(keywords, city) {
+        const json = await get("/v3/assistant/inputtips", { keywords, city, citylimit: false });
+        return (json.tips ?? []).filter((t) => typeof t.location === "string" && t.location).map((t) => ({
+          name: String(t.name),
+          district: String(t.district ?? ""),
+          adcode: String(t.adcode ?? ""),
+          location: String(t.location)
+        }));
+      },
+      /**
+       * IP 定位（v3/ip）。Demo 冷启动"车在哪"不用手填；精度到城市。
+       * 非大陆出口 IP（实测本机）各字段返回空数组——容忍为 null，不是报错。
+       * 注意走代理后拿到的是 dev server 本机的出口 IP，语义没变。
+       */
+      async ipLocate() {
+        const json = await get("/v3/ip", {});
+        return typeof json.city === "string" && json.city ? { city: json.city, adcode: String(json.adcode ?? "") } : null;
+      },
       /** 圆形区域交通态势（v3/traffic/status/circle） */
       async trafficAround(location2, radius = 1e3) {
         const json = await get("/v3/traffic/status/circle", { location: location2, radius, level: 6 });
-        const info = json.trafficinfo ?? {};
+        const info = json.trafficinfo?.evaluation ?? json.trafficinfo ?? {};
+        const pct = (v) => Number(String(v ?? 0).replace("%", "")) || 0;
         return {
           status: TRAFFIC_STATUS[Number(info.status ?? 0)] ?? "unknown",
-          expedite: Number(info.expedite ?? 0),
-          congested: Number(info.congested ?? 0),
-          blocked: Number(info.blocked ?? 0)
+          expedite: pct(info.expedite),
+          congested: pct(info.congested),
+          blocked: pct(info.blocked),
+          ...info.description && { desc: String(info.description) }
         };
       },
       /**
@@ -2182,7 +2600,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         }
         if (opts.path) qs.set("paths", `6,0x1E6FD9,1,,:${opts.path}`);
         if (opts.markers) qs.set("markers", opts.markers);
-        return `${BASE}/v3/staticmap?${qs.toString()}`;
+        return `${BASE()}/v3/staticmap?${qs.toString()}`;
       },
       /** 公交路线关键字查询（v3/bus/linename）——city 必填，高德这个接口不接受留空 */
       async busSearch(keywords, city) {
@@ -2268,6 +2686,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
     let lastResults = [];
     let lastStations = [];
+    let lastShows = [];
     let lastArticles = [];
     let lastClips = [];
     const need = (k) => {
@@ -2484,6 +2903,68 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           };
         } catch (e) {
           return cpFail(e, "音乐播放");
+        }
+      },
+      /* ══════════ 播客（iTunes 发现 + RSS 直取；只实时流播不缓存） ══════════ */
+      podcastSearch: async (args) => {
+        try {
+          const shows = await need("itunes").searchPodcasts(String(args.query ?? ""), 6);
+          if (!shows.length)
+            return { status: "unavailable", code: "NOT_FOUND", message: `没搜到「${args.query}」相关的播客`, suggestion: "换个关键词" };
+          lastShows = shows;
+          desk2?.()?.render({
+            key: CANDIDATES,
+            template: "list",
+            kind: "task",
+            ttl: 120,
+            refreshTtl: true,
+            data: { title: "搜到这些播客", items: shows.map((p) => ({ label: p.name, sub: `${p.author} · ${p.count} 集` })) }
+          });
+          return {
+            status: "ok",
+            data: { shows: shows.map((p) => ({ id: p.id, name: p.name, author: p.author })) },
+            message: `搜到 ${shows.length} 个播客，已上屏。要听哪个直接说名字`
+          };
+        } catch (e) {
+          return cpFail(e, "播客搜索");
+        }
+      },
+      podcastPlay: async (args) => {
+        try {
+          let show = args.showId ? lastShows.find((p) => p.id === Number(args.showId)) : void 0;
+          if (!show) {
+            const found = await need("itunes").searchPodcasts(String(args.query ?? args.showId ?? ""), 3);
+            if (!found.length)
+              return { status: "unavailable", code: "NOT_FOUND", message: `没搜到「${args.query}」这个播客`, suggestion: "先 podcast.search 看看有什么" };
+            lastShows = found;
+            show = found[0];
+          }
+          const eps = await need("podcast").episodes(show.feedUrl);
+          const idx = Math.min(Math.max(Number(args.episode ?? 1) - 1, 0), eps.length - 1);
+          const ep = eps[idx];
+          store2.set("media.source", "podcast");
+          store2.set("media.track", ep.title);
+          store2.set("media.artist", show.name);
+          store2.set("media.artwork", show.artwork);
+          store2.set("media.streamUrl", ep.url);
+          store2.set("media.playing", true);
+          deps.state?.queue.set(eps.map((e) => ({
+            source: "podcast",
+            track: e.title,
+            artist: show.name,
+            artwork: show.artwork,
+            streamUrl: e.url
+          })), idx, "search");
+          deps.state?.history.push({ source: "podcast", track: ep.title, artist: show.name, streamUrl: ep.url });
+          dismissKey(CANDIDATES);
+          const mins = ep.duration ? `，${Math.round(ep.duration / 60)} 分钟` : "";
+          return {
+            status: "ok",
+            data: { playing: { show: show.name, episode: ep.title } },
+            message: `在放《${show.name}》${idx === 0 ? "最新一集" : `第 ${idx + 1} 新的一集`}：${ep.title}${mins}`
+          };
+        } catch (e) {
+          return cpFail(e, "播客播放");
         }
       },
       /* ══════════ 电台（Radio Browser） ══════════ */
@@ -2711,8 +3192,21 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     plate: store2.get("vehicle.plate") || void 0,
     carType: store2.get("vehicle.carType") || void 0
   });
-  function createNavHandlers(store2, needAmap, desk2, round) {
-    const places = [];
+  function createNavHandlers(store2, needAmap, desk2, round, storage, openmeteo) {
+    const PLACES_KEY = "cockpit-sim:places";
+    const places = (() => {
+      try {
+        return JSON.parse(storage?.get(PLACES_KEY) ?? "[]");
+      } catch {
+        return [];
+      }
+    })();
+    const persistPlaces = () => {
+      try {
+        storage?.set(PLACES_KEY, JSON.stringify(places));
+      } catch {
+      }
+    };
     const showCandidates = (pois) => {
       const r = desk2?.()?.render({
         key: CANDIDATES,
@@ -2749,6 +3243,17 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           const amap2 = needAmap();
           const region = args.near || await amap2.cityOf(store2.get("vehicle.location")).catch(() => null);
           const pois = await amap2.placeSearch(args.query, region ?? void 0);
+          if (!pois.length) {
+            const tips = await amap2.inputtips(args.query, region ?? void 0).catch(() => []);
+            if (tips.length)
+              return {
+                status: "unavailable",
+                code: "NOT_FOUND",
+                data: { tips: tips.slice(0, 5) },
+                message: `${region ? region + "范围内" : ""}没搜到「${args.query}」，你可能想找：` + tips.slice(0, 3).map((t) => `${t.name}（${t.district}）`).join("、"),
+                suggestion: "要去外地的话把城市说清楚我再搜"
+              };
+          }
           const notShown = pois.length >= 2 && showCandidates(pois);
           return {
             status: "ok",
@@ -2784,10 +3289,90 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const place = { alias: args.alias, address: args.address, location: args.location };
         if (i >= 0) places[i] = place;
         else places.push(place);
+        persistPlaces();
         dismissCandidates();
         return { status: "ok", data: { saved: place }, message: `记住了，${args.alias}` };
       },
       placesList: () => ({ status: "ok", data: { places } }),
+      /**
+       * 地图显示控制。**全部状态化**：zoom 是档位、全览/跟随是视图状态、
+       * 2D/3D 与朝向是模式 —— 车机屏读状态渲染，不发命令（桌面 = f(状态)）。
+       */
+      mapControl: (args) => {
+        if (!args?.action && !args?.style && !args?.heading && args?.traffic === void 0 && !args?.cruise)
+          return {
+            status: "rejected",
+            code: "INVALID_PARAMS",
+            message: "要说清干什么：放大缩小、看全程、回自车位，或者换视角、开路况、模拟行驶"
+          };
+        const changed = [];
+        if (args.action === "zoomIn" || args.action === "zoomOut") {
+          const cur = store2.get("navigation.mapZoom");
+          const next = Math.max(8, Math.min(18, cur + (args.action === "zoomIn" ? 1 : -1)));
+          store2.set("navigation.mapZoom", next);
+          changed.push("navigation.mapZoom");
+        } else if (args.action === "overview" || args.action === "follow") {
+          store2.set("navigation.mapView", args.action);
+          changed.push("navigation.mapView");
+        }
+        if (args.style) {
+          store2.set("navigation.mapStyle", args.style);
+          changed.push("navigation.mapStyle");
+        }
+        if (args.heading) {
+          store2.set("navigation.mapHeading", args.heading);
+          changed.push("navigation.mapHeading");
+        }
+        if (args.traffic !== void 0) {
+          store2.set("navigation.mapTraffic", !!args.traffic);
+          changed.push("navigation.mapTraffic");
+        }
+        if (args.cruise) {
+          if (args.cruise === "start" && store2.get("navigation.active") !== true)
+            return { status: "rejected", code: "NO_ROUTE", message: "现在没在导航，没有路线可以模拟行驶", suggestion: "先设个目的地" };
+          store2.set("navigation.cruise", args.cruise === "start");
+          changed.push("navigation.cruise");
+        }
+        return { status: "ok", changed };
+      },
+      /** 交通态势：给模型读的那半边（红黄绿图层是给人看的那半边） */
+      trafficStatus: async (args) => {
+        const amap2 = needAmap();
+        try {
+          let loc = String(store2.get("vehicle.location") ?? "");
+          let where = "车辆附近";
+          if (args.location) {
+            const g = await amap2.geocode(args.location);
+            if (!g?.location)
+              return { status: "unavailable", code: "PLACE_NOT_FOUND", message: `没找到「${args.location}」这个地方` };
+            loc = g.location;
+            where = String(args.location);
+          }
+          const t = await amap2.trafficAround(loc, args.radius ?? 2e3);
+          const label = t.desc ?? ({ clear: "畅通", slow: "缓行", congested: "拥堵", unknown: "未知" }[t.status] ?? t.status);
+          return {
+            status: "ok",
+            data: t,
+            message: `${where}整体${label}：畅通路段 ${t.expedite}%、缓行 ${t.congested}%、拥堵 ${t.blocked}%`
+          };
+        } catch (e) {
+          return amapFail(e, "路况查询");
+        }
+      },
+      /** 改名 = 删了重存，不单开 Tool —— 两个动作模型都会做，别为组合发明新协议 */
+      placesRemove: (args) => {
+        const i = places.findIndex((p) => p.alias === args.alias);
+        if (i < 0)
+          return {
+            status: "rejected",
+            code: "NOT_FOUND",
+            message: `没有存过「${args.alias}」`,
+            suggestion: "用 places.list 看看现在都存了哪些"
+          };
+        const [gone] = places.splice(i, 1);
+        persistPlaces();
+        return { status: "ok", data: { removed: gone }, message: `删掉了，${gone.alias}` };
+      },
       /**
        * 沿途/周边搜索。导航中沿路线前方找，没导航就绕当前位置找。
        * 不传关键词时按车型给默认：电车找充电站、油车找加油站。
@@ -2987,11 +3572,27 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         const amap2 = needAmap();
         try {
           const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location));
-          const area2 = isCoord ? await amap2.areaOf(String(args.location).trim()) : await amap2.geocode(args.location).then((x) => x && { adcode: x.adcode, name: x.formattedAddress });
+          const geo = isCoord ? null : await amap2.geocode(args.location);
+          const area2 = isCoord ? await amap2.areaOf(String(args.location).trim()) : geo && { adcode: geo.adcode, name: geo.formattedAddress };
           const g = area2?.adcode ? { adcode: area2.adcode, formattedAddress: area2.name } : null;
           if (!g?.adcode)
             return { status: "unavailable", code: "PLACE_NOT_FOUND", message: "找不到这个地方的天气", suggestion: "换个更常见的地名试试" };
-          const [now, forecast] = await Promise.all([amap2.weatherNow(g.adcode), amap2.weatherForecast(g.adcode)]);
+          let hourly, range;
+          let now, forecast;
+          const loc = isCoord ? String(args.location).trim() : geo?.location;
+          if (openmeteo && loc) {
+            try {
+              const [lng, lat] = String(loc).split(",").map(Number);
+              const w = await openmeteo.forecast(lat, lng);
+              now = w.now;
+              forecast = w.forecast;
+              hourly = w.hourly;
+              range = w.range;
+            } catch {
+            }
+          }
+          if (!now)
+            [now, forecast] = await Promise.all([amap2.weatherNow(g.adcode), amap2.weatherForecast(g.adcode)]);
           desk2?.()?.render({
             key: `weather:${g.adcode}`,
             family: "weather",
@@ -2999,9 +3600,24 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
             template: "weather",
             kind: "task",
             ttl: "untilDismissed",
-            data: { title: `${shortPlace(g.formattedAddress)}天气`, now, forecast }
+            data: {
+              title: `${shortPlace(g.formattedAddress)}天气`,
+              now,
+              forecast,
+              ...hourly && { hourly },
+              ...range && { range }
+            }
           });
-          return { status: "ok", data: { city: g.formattedAddress, now, forecast } };
+          return {
+            status: "ok",
+            message: `${shortPlace(g.formattedAddress)}天气已上屏${hourly ? "（含逐小时降水与多日预报，已是最全）" : ""}，不用再建卡或搬数据，口头讲重点就行`,
+            data: {
+              city: g.formattedAddress,
+              now,
+              forecast,
+              ...hourly && { hourly: hourly.slice(0, 6) }
+            }
+          };
         } catch (e) {
           return amapFail(e, "天气查询");
         }
@@ -3012,11 +3628,17 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   // src/integrations/storyHandlers.ts
   var CARD = "storybook";
   var DEFAULT_STYLE = "扁平矢量童书插画，柔和暖色，干净背景";
+  var NO_TEXT = "画面中不要出现任何文字、字母、标题、字幕或水印，只画画面本身。";
   function createStoryHandlers(store2, desk2, story2, image) {
     let draft = null;
+    let finished = null;
     let look = "";
     let style = DEFAULT_STYLE;
     let spent = 0;
+    const bill = (usd) => {
+      spent += usd;
+      store2.set("story.cents", Math.round(spent * 100));
+    };
     const reject = (code, message) => ({ status: "rejected", code, message });
     const paint = (extra = {}) => {
       const page = store2.get("story.page");
@@ -3028,6 +3650,13 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         urgency: "urgent",
         ttl: "untilDismissed",
         data: {
+          /**
+           * **一次性字段自己负责收尾。** `desk.update()` 的语义是合并
+           * （`{...旧, ...新}`）—— 这对 ETA 每秒刷一次那种局部更新是对的，
+           * 但定妆时写进去的 `photo` 一旦不显式清掉就永远活着：实拍看到
+           * 故事讲到第二页，卡上还挂着孩子的原始照片、还是定妆那个并排版式。
+           */
+          photo: void 0,
           title: draft?.title ?? "",
           chapter: store2.get("story.chapter"),
           page,
@@ -3042,28 +3671,30 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         }
       });
     };
-    const draw = async (scene, aspect = "16:9") => {
+    const draw = async (scene, aspect = "1:1") => {
       const cast = story2().cast();
       try {
+        const who = cast ? `参考图里的这个小女孩就是主角，保持她的长相、发型、发色、衣着、鞋子完全一致。` : `主角：${look}。`;
         const r = await image().generate({
-          prompt: `${style}。${scene}。主角形象保持一致：${look}`,
+          prompt: `${who}画面内容：${scene}。形象要点复核：${look}。整体画风：${style}。${NO_TEXT}`,
           refs: cast ? [cast] : void 0,
           aspect
         });
-        spent += r.cost;
+        bill(r.cost);
         return r.dataUrl;
       } catch {
         return void 0;
       }
     };
     const fillImages = async (from, specs) => {
-      store2.set("story.pending", specs.length);
-      for (let i = 0; i < specs.length; i++) {
-        const url = await draw(specs[i].scene);
+      let left = specs.length;
+      store2.set("story.pending", left);
+      await Promise.all(specs.map(async (s, i) => {
+        const url = await draw(s.scene);
         if (draft?.pages[from + i]) draft.pages[from + i].image = url;
-        store2.set("story.pending", specs.length - i - 1);
+        store2.set("story.pending", --left);
         paint();
-      }
+      }));
     };
     const addChapter = async (specs) => {
       const from = draft.pages.length;
@@ -3074,7 +3705,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       store2.set("story.page", from + 1);
       store2.set("story.phase", "telling");
       paint();
-      await fillImages(from, specs);
+      void fillImages(from, specs);
     };
     return {
       storyProfile: async (a) => {
@@ -3098,11 +3729,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         let url;
         try {
           const r = await image().generate({
-            prompt: `${style}。为这个孩子画一张动漫版定妆立绘，正面、全身、表情友好。形象要点：${look}`,
+            prompt: `${style}。为这个孩子画一张动漫版定妆立绘，正面、全身、表情友好。形象要点：${look}。${NO_TEXT}`,
             refs: [photo],
             aspect: "1:1"
           });
-          spent += r.cost;
+          bill(r.cost);
           url = r.dataUrl;
         } catch (e) {
           return reject(e?.code ?? "DRAW_FAILED", e?.message ?? "这次没画出来，再试一次看看");
@@ -3148,12 +3779,14 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           ideas: draft.ideas,
           trip: String(store2.get("navigation.destination") || "")
         };
-        story2().saveBook(book);
+        const kept = story2().saveBook(book);
+        finished = book;
+        const note = kept === "text" ? "，不过手机存不下这么多图，只留住了文字" : kept === "failed" ? "，不过这本没能存下来，想留着就现在导出" : "";
         store2.set("story.phase", "done");
         store2.set("story.active", false);
         store2.set("story.pending", 0);
         paint({ done: true });
-        return { status: "ok", message: `《${book.title}》讲完了，${book.pages.length} 页`, data: { cost: spent } };
+        return { status: "ok", message: `《${book.title}》讲完了，${book.pages.length} 页${note}`, data: { cost: spent } };
       },
       /** 翻页：屏幕按钮直调，不叫醒模型。翻到头停住，不绕回也不报错 */
       storyPage: async (a) => {
@@ -3166,7 +3799,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         return { status: "ok", data: { page: next } };
       },
       storyExport: async () => {
-        const b = story2().books()[0];
+        const b = finished ?? story2().books()[0];
         if (!b) return reject("NO_BOOK", "还没有讲完的书可以导出");
         return { status: "ok", message: `《${b.title}》可以导出了`, data: { book: b } };
       }
@@ -3210,6 +3843,268 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       }
     };
   }
+
+  // src/integrations/lifeHandlers.ts
+  var CODE_SHAPE = /^(sh|sz|hk|us|wh)[A-Za-z0-9.]+$/;
+  var weekday = (date) => "日一二三四五六"[(/* @__PURE__ */ new Date(date + "T00:00:00")).getDay()];
+  function createLifeHandlers(desk2, stocks, holiday, poem, clock) {
+    return {
+      stockQuery: async (args) => {
+        const cp = stocks();
+        if (!cp) return { status: "unavailable", code: "NO_CP", message: "行情服务没接" };
+        const q = String(args.query ?? "").trim();
+        if (!q) return { status: "rejected", code: "INVALID_PARAMS", message: "要查哪只股票或指数？" };
+        try {
+          let code = q;
+          if (!CODE_SHAPE.test(q)) {
+            const hits = await cp.search(q);
+            if (!hits.length)
+              return {
+                status: "unavailable",
+                code: "NOT_FOUND",
+                message: `没搜到「${q}」这只股票`,
+                suggestion: "换个名字或直接给代码（如 sh600519）"
+              };
+            code = hits[0].code;
+          }
+          const [quote] = await cp.quote([code]);
+          if (!quote) return { status: "unavailable", code: "NO_DATA", message: "行情数据没取到" };
+          const up = quote.change >= 0;
+          const sign = up ? "+" : "";
+          desk2()?.render({
+            key: `stock-${quote.code}`,
+            template: "metric",
+            kind: "task",
+            ttl: "untilDismissed",
+            data: {
+              title: quote.name,
+              value: quote.price,
+              trend: `${sign}${quote.change} (${sign}${quote.pct}%)`,
+              ...quote.high !== void 0 && { sub: `高 ${quote.high} · 低 ${quote.low}` }
+            }
+          });
+          return {
+            status: "ok",
+            data: { quote },
+            message: `${quote.name}现价 ${quote.price}，${up ? "涨" : "跌"} ${Math.abs(quote.change)}（${sign}${quote.pct}%），已上屏`
+          };
+        } catch (e) {
+          return { status: "failed", code: "STOCK_ERROR", message: `行情没查成：${e instanceof Error ? e.message : e}` };
+        }
+      },
+      holidayQuery: async () => {
+        const cp = holiday();
+        if (!cp) return { status: "unavailable", code: "NO_CP", message: "节假日服务没接" };
+        try {
+          const today = new Date(clock()).toISOString().slice(0, 10);
+          const r = await cp.query(today);
+          const parts = [];
+          if (r.today.kind === "holiday") parts.push(`今天${r.today.name}放假`);
+          if (r.today.kind === "workday") parts.push(`今天是${r.today.name}，要上班`);
+          if (r.next) parts.push(`下一个假期是${r.next.name}，${r.next.date.slice(5).replace("-", "月")}日（周${weekday(r.next.date)}），还有 ${r.next.days} 天`);
+          if (r.makeup && (!r.next || r.makeup.days < r.next.days))
+            parts.push(`注意 ${r.makeup.date.slice(5).replace("-", "月")}日（周${weekday(r.makeup.date)}）调休要上班`);
+          return { status: "ok", data: r, message: parts.join("；") || "近期没有假期安排" };
+        } catch (e) {
+          return { status: "failed", code: "HOLIDAY_ERROR", message: `节假日没查成：${e instanceof Error ? e.message : e}` };
+        }
+      },
+      poemToday: async () => {
+        const cp = poem();
+        if (!cp) return { status: "unavailable", code: "NO_CP", message: "诗词服务没接" };
+        try {
+          const p = await cp.today();
+          return {
+            status: "ok",
+            data: p,
+            message: `${p.content}——${p.author}${p.origin ? `《${p.origin}》` : ""}`
+          };
+        } catch (e) {
+          return { status: "failed", code: "POEM_ERROR", message: `诗词没取到：${e instanceof Error ? e.message : e}` };
+        }
+      }
+    };
+  }
+
+  // src/integrations/genHandlers.ts
+  function createGenHandlers(store2, orvideo, ormusic) {
+    const play = (source, track, url, artwork = "") => {
+      store2.set("media.source", source);
+      store2.set("media.track", track);
+      store2.set("media.artist", "AI 生成");
+      store2.set("media.artwork", artwork);
+      store2.set("media.streamUrl", url);
+      store2.set("media.playing", true);
+    };
+    return {
+      videoGenerate: async (args) => {
+        const cp = orvideo();
+        if (!cp) return { status: "unavailable", code: "NO_CP", message: "视频生成没配（要 OpenRouter Key）" };
+        const prompt = String(args.prompt ?? "").trim();
+        if (!prompt) return { status: "rejected", code: "INVALID_PARAMS", message: "要生成什么样的视频？" };
+        void cp.generate(prompt, { model: args.model, duration: args.duration, ratio: args.ratio }).then(({ url }) => {
+          const gate = store2.set("media.videoActive", true);
+          if (gate.status !== "ok") return;
+          play("video", `生成：${prompt.slice(0, 20)}`, url);
+        }).catch(() => {
+        });
+        return {
+          status: "ok",
+          data: { started: true },
+          message: "视频在生成了，通常要一两分钟，好了会自动开始放（约 1-2 元一条）"
+        };
+      },
+      musicGenerate: async (args) => {
+        const cp = ormusic();
+        if (!cp) return { status: "unavailable", code: "NO_CP", message: "音乐生成没配（要 OpenRouter Key）" };
+        const prompt = String(args.prompt ?? "").trim();
+        if (!prompt) return { status: "rejected", code: "INVALID_PARAMS", message: "要什么样的音乐？" };
+        try {
+          const blob = await cp.generate(prompt, { instrumental: args.instrumental });
+          const url = URL.createObjectURL(blob);
+          play("music", `生成：${prompt.slice(0, 20)}`, url);
+          return {
+            status: "ok",
+            data: { seconds: 30 },
+            message: `写好了，在放。30 秒的小段子，想要完整歌曲说一声（约 3 毛一段）`
+          };
+        } catch (e) {
+          return { status: "failed", code: "MUSIC_ERROR", message: `音乐没生成出来：${e instanceof Error ? e.message : e}` };
+        }
+      }
+    };
+  }
+
+  // src/integrations/automationHandlers.ts
+  var CARD_KEY = "automations";
+  var condText = (c, labelOf) => c[0] === "time" ? `每天 ${c[1]}` : `${labelOf(c[1])}${c[2]}${c[3]}`;
+  function createAutomationHandlers(desk2, deps, toolExists, validateArgs, signalLabel, clock) {
+    const refreshCard = (a) => {
+      const rules = a.list();
+      const d = desk2();
+      if (!d) return;
+      if (!rules.length) {
+        const c = d.findByKey(CARD_KEY);
+        if (c) d.dismiss(c.id);
+        return;
+      }
+      d.render({
+        key: CARD_KEY,
+        template: "automation",
+        kind: "task",
+        ttl: "untilDismissed",
+        urgency: "normal",
+        data: {
+          title: "自动任务",
+          items: rules.map((r) => ({
+            value: r.id,
+            label: `${r.enabled ? "●" : "○"} ${r.name}`,
+            sub: r.when.length ? r.when.map((c) => condText(c, (p) => signalLabel(p) ?? p)).join(" 且 ") + (r.ask ? " · 先问我" : "") : '手动任务 · 说"运行' + r.name + '"'
+          }))
+        }
+      });
+    };
+    const need = () => deps() ?? { status: "unavailable", code: "NO_STORE", message: "自动化没接存储" };
+    return {
+      automationCreate: (args) => {
+        const dep = need();
+        if ("status" in dep) return dep;
+        const name = String(args.name ?? "").trim();
+        if (!name) return { status: "rejected", code: "INVALID_PARAMS", message: "任务要有个名字" };
+        const when = [];
+        for (const w of args.when ?? []) {
+          if (w.kind === "time") {
+            if (!/^\d{2}:\d{2}$/.test(String(w.at)))
+              return { status: "rejected", code: "INVALID_PARAMS", message: `时间要写成 HH:MM，收到「${w.at}」` };
+            when.push(["time", String(w.at)]);
+          } else {
+            if (signalLabel(String(w.path)) === void 0)
+              return {
+                status: "rejected",
+                code: "INVALID_PARAMS",
+                message: `没有 ${w.path} 这个信号`,
+                suggestion: "对照系统提示里的信号名"
+              };
+            when.push(["signal", String(w.path), String(w.op ?? "=="), w.value]);
+          }
+        }
+        const actions = [];
+        for (const d of args.do ?? []) {
+          if (d.prompt) actions.push({ prompt: String(d.prompt) });
+          else {
+            if (!toolExists(String(d.tool)))
+              return { status: "rejected", code: "INVALID_PARAMS", message: `没有 ${d.tool} 这个工具` };
+            const err = validateArgs(String(d.tool), d.args ?? {});
+            if (err) return {
+              status: "rejected",
+              code: "INVALID_PARAMS",
+              message: `「${d.tool}」的参数不对：${err}`,
+              suggestion: "对照工具目录里的参数改一下"
+            };
+            actions.push({ tool: String(d.tool), args: d.args ?? {} });
+          }
+        }
+        if (!actions.length) return { status: "rejected", code: "INVALID_PARAMS", message: "总得有一个动作" };
+        const rule = {
+          id: `au${clock().toString(36)}`,
+          name,
+          when,
+          do: actions,
+          ask: !!args.ask,
+          enabled: true
+        };
+        dep.store.add(rule);
+        refreshCard(dep.store);
+        const how = when.length ? "条件满足会自动执行" : '说"运行' + name + '"或点卡片就执行';
+        return {
+          status: "ok",
+          data: { rule },
+          message: `建好了：「${name}」，${how}。规则已上屏，不对的话让我改`
+        };
+      },
+      automationList: () => {
+        const dep = need();
+        if ("status" in dep) return dep;
+        const rules = dep.store.list();
+        refreshCard(dep.store);
+        return {
+          status: "ok",
+          data: { rules },
+          message: `现在有 ${rules.length} 条自动任务，已上屏。data 里的 rules 就是任务码，可以整段导出分享`
+        };
+      },
+      automationToggle: (args) => {
+        const dep = need();
+        if ("status" in dep) return dep;
+        const r = find(dep.store, args);
+        if (!r) return { status: "rejected", code: "NOT_FOUND", message: "没找到这条任务" };
+        const on = args.on !== void 0 ? !!args.on : !r.enabled;
+        dep.store.toggle(r.id, on);
+        refreshCard(dep.store);
+        return { status: "ok", message: `「${r.name}」${on ? "已启用" : "先停了"}` };
+      },
+      automationDelete: (args) => {
+        const dep = need();
+        if ("status" in dep) return dep;
+        const r = find(dep.store, args);
+        if (!r) return { status: "rejected", code: "NOT_FOUND", message: "没找到这条任务" };
+        dep.store.remove(r.id);
+        refreshCard(dep.store);
+        return { status: "ok", message: `「${r.name}」删掉了` };
+      },
+      automationRun: async (args) => {
+        const dep = need();
+        if ("status" in dep) return dep;
+        const r = find(dep.store, args);
+        if (!r) return { status: "rejected", code: "NOT_FOUND", message: "没找到这条任务" };
+        if (!dep.execute) return { status: "unavailable", code: "NO_EXECUTOR", message: "这环境跑不了任务" };
+        const brief2 = await dep.execute(r);
+        dep.store.markRun(r.id, clock());
+        return { status: "ok", message: `「${r.name}」跑完了：${brief2}` };
+      }
+    };
+  }
+  var find = (a, args) => a.list().find((r) => r.id === args?.id || args?.name && r.name === args.name);
 
   // src/tools/registry.ts
   var CONFIRM_TTL = 6e4;
@@ -3330,12 +4225,82 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
           }
         };
       },
+      /**
+       * ── 语音配置：音色与语速 ──
+       * 写的是跟控制面板音色下拉框**同一个 localStorage key** —— 单一事实，
+       * 车机屏靠 storage 事件跨窗口即时生效（先例就是那个下拉框）。
+       * 不进信号 store：语音配置不是车辆状态，VSS 里塞 TTS 音色是硬凑。
+       */
+      /**
+       * 壁纸（2026-08-18）。图片内容进 localStorage，信号只写「来源:版本戳」——
+       * dataURL 几百 KB，塞进信号会被 bus 全量广播背着走。屏端收到信号变化
+       * 再从同源 localStorage 取图。
+       */
+      wallpaperSet: async (args) => {
+        const W = "cockpit-sim:wallpaper";
+        if (args.source === "none") {
+          store2.set("hmi.wallpaper", "");
+          return { status: "ok", message: "壁纸恢复默认了" };
+        }
+        if (args.source === "preset") {
+          if (!args.name) return { status: "rejected", code: "INVALID_PARAMS", message: "要选哪张预设？aurora/dusk/forest" };
+          store2.set("hmi.wallpaper", `preset:${args.name}`);
+          return { status: "ok", message: "壁纸换好了" };
+        }
+        if (!deps.image) return { status: "unavailable", code: "NO_CP", message: "图像生成没配（要 OpenRouter Key）" };
+        if (!args.prompt) return { status: "rejected", code: "INVALID_PARAMS", message: "要生成什么样的壁纸？" };
+        try {
+          const g = await deps.image.generate({ prompt: `车机桌面壁纸，宽幅横构图，画面简洁留有大面积呼吸空间，避免居中主体和文字：${args.prompt}` });
+          if (!g?.dataUrl) return { status: "failed", code: "GEN_EMPTY", message: "壁纸没生成出来" };
+          deps.storage?.set(W, g.dataUrl);
+          store2.set("hmi.wallpaper", `custom:${clock().toString(36)}`);
+          return { status: "ok", message: "壁纸画好换上了（约 3 毛）" };
+        } catch (e) {
+          return { status: "failed", code: "GEN_ERROR", message: `壁纸没生成出来：${e instanceof Error ? e.message : e}` };
+        }
+      },
+      voiceConfig: (args) => {
+        if (!deps.voices)
+          return { status: "unavailable", code: "NOT_WIRED", message: "这个环境里拿不到音色清单，设不了" };
+        const voices = deps.voices();
+        if (args?.voice === void 0 && args?.rate === void 0)
+          return { status: "ok", data: {
+            current: {
+              voice: deps.storage?.get("cockpit-sim:tts:voice") ?? null,
+              rate: Number(deps.storage?.get("cockpit-sim:tts:rate") ?? 0.92)
+            },
+            voices
+          } };
+        if (args.voice !== void 0) {
+          if (!voices.some((v) => v.name === args.voice))
+            return {
+              status: "rejected",
+              code: "NOT_FOUND",
+              message: `没有叫「${args.voice}」的音色`,
+              data: { voices },
+              suggestion: "从返回的 voices 里挑一个，名字要一字不差"
+            };
+          deps.storage?.set("cockpit-sim:tts:voice", args.voice);
+        }
+        if (args.rate !== void 0) deps.storage?.set("cockpit-sim:tts:rate", String(args.rate));
+        return { status: "ok", message: "换好了，下一句就用新的" };
+      },
       /* ── 导航 + 天气：真实逻辑在 navHandlers.ts，这里只是并进同一张白名单 ── */
-      ...createNavHandlers(store2, () => needAmap(), () => sizedDesk(), () => currentRound),
+      ...createNavHandlers(store2, () => needAmap(), () => sizedDesk(), () => currentRound, deps.storage, deps.openmeteo),
       ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
       /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
       ...createStoryHandlers(store2, () => sizedDesk(), () => needStory(), () => needImage()),
-      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
+      ...createGenHandlers(store2, () => deps.orvideo, () => deps.ormusic),
+      ...createAutomationHandlers(
+        () => sizedDesk(),
+        () => deps.automation,
+        (n) => tools.some((t) => t.name === n),
+        validateArgs,
+        (p) => store2.signals.find((sg) => sg.alias === p)?.label,
+        clock
+      ),
+      ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
+      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), podcast: () => needCp("podcast"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
     };
     const sizedDesk = () => {
       const d = deps.desk;
@@ -3420,6 +4385,11 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       }
       return perm;
     }
+    function applyDefaults(t, args) {
+      for (const [key, def] of Object.entries(t.params))
+        if (def.default !== void 0 && (args[key] === void 0 || args[key] === null))
+          args[key] = def.default;
+    }
     function validate(t, args) {
       for (const [key, def] of Object.entries(t.params)) {
         let v = args?.[key];
@@ -3438,9 +4408,22 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         }
         if (def.type === "enum" && !def.values?.includes(v)) return `${key} 不支持取值 ${v}`;
         if (def.type === "boolean" && typeof v !== "boolean") return `${key} 需要布尔值`;
-        if (def.type === "array" && !Array.isArray(v)) return `${key} 需要数组`;
+        if (def.type === "array" && !Array.isArray(v)) {
+          if (v && typeof v === "object") {
+            args[key] = [v];
+          } else return `${key} 需要数组`;
+        }
       }
       return null;
+    }
+    function validateArgs(name, args = {}) {
+      const t = resolve(name);
+      if (!t) return `没有 ${name} 这个工具`;
+      const copy = unwrapItem({ ...args });
+      for (const k of Object.keys(copy))
+        if (!(k in t.params)) return `没有 ${k} 这个参数（可用：${Object.keys(t.params).join("/")}）`;
+      applyDefaults(t, copy);
+      return validate(t, copy);
     }
     function applyWrites(t, args) {
       const jobs = [];
@@ -3475,8 +4458,18 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       }
       return { status: "ok", changed, ...code && { code, message } };
     }
+    const unwrapItem = (v) => {
+      if (Array.isArray(v)) return v.map(unwrapItem);
+      if (!v || typeof v !== "object") return v;
+      const keys = Object.keys(v);
+      if (keys.length === 1 && keys[0] === "item") return unwrapItem(v.item);
+      const out = {};
+      for (const k of keys) out[k] = unwrapItem(v[k]);
+      return out;
+    };
     async function invoke(name, args = {}, ctx = {}) {
       currentRound = ctx.round ?? ++autoRound;
+      args = unwrapItem(args);
       const t = resolve(name);
       if (!t) return { status: "unavailable", code: "UNKNOWN_TOOL", message: `没有名为 ${name} 的能力` };
       name = t.name;
@@ -3490,6 +4483,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         };
       if (!authorized(name, ctx.allow))
         return { status: "unavailable", code: "NOT_AUTHORIZED", message: `当前 Agent 无权调用 ${name}` };
+      applyDefaults(t, args);
       const bad = validate(t, args);
       if (bad) return { status: "rejected", code: "INVALID_PARAMS", message: bad };
       const supplied = ctx.confirmToken || args.confirmToken || void 0;
@@ -3547,7 +4541,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
         for (const [k, d] of Object.entries(t.params)) {
           properties[k] = { type: jsonType(d), description: d.desc };
           if (d.values) properties[k].enum = d.values;
-          if (d.items) properties[k].items = { type: d.items };
+          if (d.items) properties[k].items = typeof d.items === "string" ? { type: d.items } : d.items;
           if (d.required) required.push(k);
         }
         if (t.permission === "灰" || t.escalate?.some((e) => e.to === "灰"))
@@ -3774,7 +4768,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const write = (k, v) => {
       try {
         storage.set(k, JSON.stringify(v));
+        return true;
       } catch {
+        return false;
       }
     };
     return {
@@ -3811,9 +4807,26 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       },
       /** 最新的排最前 —— 孩子想接着讲的多半是刚才那本 */
       books: () => read(K.books, []).slice().sort((a, b) => b.createdAt - a.createdAt),
+      /**
+       * 存这本书。**配额撑爆是必然不是意外**：实测一张图 base64 之后 ~580KB，
+       * 七页 4MB，而 localStorage 的 5MB 配额按 **UTF-16 双字节**算 ——
+       * 4MB 字符等于 8MB 占用，**一本书都存不下**。
+       *
+       * 原来的写法是"存不下就算了"，后果是讲了一路的故事在这一刻静默蒸发：
+       * 用户点导出拿到的是**上一本**（`books()[0]` 还在），或者干脆 NO_BOOK。
+       * 交付物没了还没人知道 —— 这是最坏的一种失败。
+       *
+       * 所以走三级阶梯，并且**把结果交出去**让上层能说人话：
+       *   full   → 图文都存下了
+       *   text   → 剥掉图存了文字（故事还在，"再讲一遍会飞的自行车"仍然成立）
+       *   failed → 真存不下，别假装成功
+       */
       saveBook(b) {
-        const all = [...read(K.books, []), b].sort((x, y) => y.createdAt - x.createdAt).slice(0, BOOK_CAP);
-        write(K.books, all);
+        const older = read(K.books, []).filter((x) => x.createdAt !== b.createdAt).sort((x, y) => y.createdAt - x.createdAt).slice(0, BOOK_CAP - 1);
+        for (let keep = older.length; keep >= 0; keep--)
+          if (write(K.books, [b, ...older.slice(0, keep)])) return "full";
+        const light = { ...b, pages: b.pages.map(({ text }) => ({ text })) };
+        return write(K.books, [light]) ? "text" : "failed";
       }
     };
   }
@@ -3821,7 +4834,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   // src/integrations/orimage.ts
   var REF_CAP = 14;
   var DEFAULT_MODEL = "google/gemini-3.1-flash-image";
-  var ENDPOINT = "https://openrouter.ai/api/v1/images";
+  var ENDPOINT = () => `${api("openrouter")}/api/v1/images`;
   var TIMEOUT_MS = 6e4;
   var ImageError = class extends Error {
     constructor(message, code) {
@@ -3835,14 +4848,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       const k = key();
       if (!k) throw new ImageError("还没配 OpenRouter 的 Key，画不了图", "NO_KEY");
       const body = { model: o.model ?? DEFAULT_MODEL, prompt: o.prompt };
-      if (o.refs?.length) body.input_references = o.refs.slice(0, REF_CAP);
+      if (o.refs?.length)
+        body.input_references = o.refs.slice(0, REF_CAP).map((url) => ({ type: "image_url", image_url: { url } }));
       if (o.aspect) body.aspect_ratio = o.aspect;
       let timer;
       const timeout = new Promise((_, rej) => {
         timer = setTimeout(() => rej(new ImageError("画图超时了，等太久", "TIMEOUT")), timeoutMs);
       });
       const res = await Promise.race([
-        fetcher(ENDPOINT, {
+        fetcher(ENDPOINT(), {
           method: "POST",
           headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" },
           body: JSON.stringify(body)
@@ -3863,6 +4877,43 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     }
     return { generate };
   }
+
+  // src/screen/speech.ts
+  var PREFERRED_SRC = "google|普通话|tingting|ting-ting|婷婷|siri|微软|xiaoxiao|yunxi";
+  var PREFERRED = new RegExp(PREFERRED_SRC, "i");
+  var FEMALE = /tingting|ting-ting|婷婷|meijia|美嘉|sin-?ji|xiaoxiao|xiaoyi|yaoyao|huihui|flo|sandy|shelley|grandma|普通话|female|女/i;
+  var MALE = /eddy|reed|rocko|grandpa|yunxi|yunyang|kangkang|male|男/i;
+  var femaleOf = (name) => MALE.test(name) ? false : FEMALE.test(name) ? true : void 0;
+  function zhVoices(voices) {
+    return (voices ?? []).filter((v) => String(v?.lang ?? "").toLowerCase().startsWith("zh")).map((v) => ({
+      name: v.name,
+      lang: v.lang,
+      localService: v.localService,
+      default: v.default,
+      female: femaleOf(v.name)
+    }));
+  }
+  function pickVoice(voices, opts = {}) {
+    const all = voices ?? [];
+    if (opts.name) {
+      const hit = all.find((v) => v.name === opts.name);
+      if (hit) return hit;
+    }
+    const zh = all.filter((v) => String(v?.lang ?? "").toLowerCase().startsWith("zh"));
+    if (!zh.length) return void 0;
+    const score = (v) => {
+      let s = 0;
+      if (/^zh([-_]cn)?$/i.test(v.lang)) s += 40;
+      const f = femaleOf(v.name);
+      if (f === true) s += 30;
+      else if (f === false) s -= 30;
+      if (PREFERRED.test(v.name)) s += 20;
+      if (v.default) s += 2;
+      return s;
+    };
+    return zh.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+  var CPS = 4.2;
 
   // src/integrations/h5book.ts
   var esc2 = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -3976,9 +5027,26 @@ section.on{opacity:1;pointer-events:auto}
     if(e.key==='ArrowRight'||e.key===' ') go(1);
     if(e.key==='ArrowLeft') go(-1);
   });
-  // 朗读：浏览器原生。onboundary 给逐字点亮，第三方 TTS 多数不给这个时间戳
-  var cur=null;
-  function stop(){ try{speechSynthesis.cancel()}catch(_){} clearLit(); }
+  /* 朗读：浏览器原生。两个坑都是中文特有的（2026-08-14 实拍）：
+     ① 只设 lang='zh-CN' 不保证换音色，拿英文音色念中文出来是一串怪音 ——
+        得自己从 getVoices() 里挑，而它第一次调用常常是空的（异步加载）。
+     ② onboundary 对中文基本不发事件，逐字点亮得能纯靠时间推。 */
+  var voice=null;
+  function pickVoice(){
+    try{
+      var vs=speechSynthesis.getVoices()||[];
+      var zh=[].filter.call(vs,function(v){return (v.lang||'').toLowerCase().indexOf('zh')===0});
+      if(!zh.length)return;                       /* 没中文音色就别硬塞英文的 */
+      zh.sort(function(a,b){return sc(b)-sc(a)});
+      voice=zh[0];
+    }catch(_){}
+  }
+  var PREF=new RegExp(${JSON.stringify(PREFERRED_SRC)},'i');
+  function sc(v){ return (/^zh([-_]cn)?$/i.test(v.lang)?40:0)+(PREF.test(v.name)?20:0) }
+  if('speechSynthesis' in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+  function stop(){ try{speechSynthesis.cancel()}catch(_){} clearTimer(); clearLit(); }
+  var litTimer=null;
+  function clearTimer(){ if(litTimer){clearInterval(litTimer);litTimer=null} }
   function clearLit(){
     var m=document.querySelectorAll('.lit');
     [].forEach.call(m,function(el){el.replaceWith(el.textContent)});
@@ -3986,15 +5054,19 @@ section.on{opacity:1;pointer-events:auto}
   document.getElementById('say').addEventListener('click',function(){
     if(!('speechSynthesis' in window))return;
     var p=pages[i].querySelector('.cap p, h2, h1'); if(!p)return;
-    var text=p.textContent; clearLit();
-    var u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=.92;
-    u.onboundary=function(ev){
-      if(ev.name!=='word'&&ev.charIndex==null)return;
-      var s=ev.charIndex||0, e=s+(ev.charLength||2);
-      p.innerHTML=esc(text.slice(0,s))+'<span class="lit">'+esc(text.slice(s,e))+'</span>'+esc(text.slice(e));
-    };
-    u.onend=function(){p.textContent=text};
-    speechSynthesis.speak(u); cur=u;
+    var text=p.textContent; stop();
+    var rate=.92, total=text.length/${CPS}/rate*1000, t0=Date.now(), byB=false;
+    function lit(n){ p.innerHTML='<span class="lit">'+esc(text.slice(0,n))+'</span>'+esc(text.slice(n)) }
+    litTimer=setInterval(function(){
+      if(byB)return;
+      lit(Math.max(0,Math.min(text.length,Math.floor(text.length*((Date.now()-t0)/total)))));
+    },90);
+    var u=new SpeechSynthesisUtterance(text); u.lang='zh-CN'; u.rate=rate;
+    if(!voice)pickVoice();
+    if(voice)u.voice=voice;
+    u.onboundary=function(ev){ byB=true; lit((ev.charIndex||0)+(ev.charLength||1)) };
+    u.onend=u.onerror=function(){ clearTimer(); p.textContent=text };
+    speechSynthesis.speak(u);
   });
   function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
   show(0);
@@ -4006,6 +5078,198 @@ section.on{opacity:1;pointer-events:auto}
     const d = new Date(book.createdAt);
     const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
     return `${safe}-${stamp}.html`;
+  }
+
+  // src/integrations/shrink.ts
+  var MAX_EDGE = 1280;
+  var WEBP_Q = 0.82;
+  function planShrink(w, h) {
+    if (![w, h].every((n) => Number.isFinite(n) && n > 0)) return { w, h, skip: true };
+    const long = Math.max(w, h);
+    if (long <= MAX_EDGE) return { w, h, skip: true };
+    const k = MAX_EDGE / long;
+    return { w: Math.round(w * k), h: Math.round(h * k) };
+  }
+  function withShrink(client, resample) {
+    return {
+      ...client,
+      async generate(o) {
+        const r = await client.generate(o);
+        try {
+          return { ...r, dataUrl: await resample(r.dataUrl) };
+        } catch {
+          return r;
+        }
+      }
+    };
+  }
+
+  // src/integrations/xftts.ts
+  var XF_ENDPOINT = "wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6";
+  var XF_VOICES = [
+    { value: "xf:x6_lingxiaoxuan_pro", label: "聆小璇（讯飞云·女）" },
+    { value: "xf:x6_lingxiaoyue_pro", label: "聆小玥（讯飞云·女）" },
+    { value: "xf:x6_lingyuyan_pro", label: "聆玉言（讯飞云·女）" },
+    { value: "xf:x5_lingxiaotang_flow", label: "聆小糖（讯飞云·女）" },
+    { value: "xf:x5_lingyuzhao_flow", label: "聆玉昭（讯飞云·女）" },
+    { value: "xf:x6_lingfeiyi_pro", label: "聆飞逸（讯飞云·男）" }
+  ];
+  var isCloudVoice = (name) => name.startsWith("xf:");
+  var xfVcn = (name) => name.replace(/^xf:/, "");
+  var xfSpeed = (rate) => Math.max(0, Math.min(100, Math.round(rate * 50)));
+  var signOrigin = (host, date, path) => `host: ${host}
+date: ${date}
+GET ${path} HTTP/1.1`;
+  function authUrl(endpoint, apiKey2, sigB64, date) {
+    const u = new URL(endpoint.replace(/^wss:/, "https:"));
+    const auth = btoa(`api_key="${apiKey2}", algorithm="hmac-sha256", headers="host date request-line", signature="${sigB64}"`);
+    return `${endpoint}?authorization=${encodeURIComponent(auth)}&date=${encodeURIComponent(date)}&host=${u.host}`;
+  }
+  var utf8b64 = (s) => {
+    const bytes = new TextEncoder().encode(s);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin);
+  };
+  function ttsFrame(appId, vcn, text, rate) {
+    return {
+      header: { app_id: appId, status: 2 },
+      parameter: { tts: {
+        vcn,
+        speed: xfSpeed(rate),
+        volume: 50,
+        pitch: 50,
+        audio: { encoding: "lame", sample_rate: 24e3 }
+      } },
+      payload: { text: { encoding: "utf8", compress: "raw", format: "plain", status: 2, seq: 0, text: utf8b64(text) } }
+    };
+  }
+  function parseFrame(raw) {
+    let m;
+    try {
+      m = JSON.parse(raw);
+    } catch {
+      return { done: true, error: "响应不是合法 JSON" };
+    }
+    const h = m?.header ?? {};
+    if (h.code !== 0) return { done: true, error: `讯飞合成失败（${h.code}）：${h.message ?? "未知错误"}` };
+    const a = m?.payload?.audio;
+    const chunk = a?.audio ? Uint8Array.from(atob(a.audio), (c) => c.charCodeAt(0)) : void 0;
+    return { chunk, done: h.status === 2 };
+  }
+  async function signedUrl(creds) {
+    const u = new URL(XF_ENDPOINT.replace(/^wss:/, "https:"));
+    const date = (/* @__PURE__ */ new Date()).toUTCString();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(creds.apiSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(signOrigin(u.host, date, u.pathname))
+    );
+    return authUrl(XF_ENDPOINT, creds.apiKey, btoa(String.fromCharCode(...new Uint8Array(sig))), date);
+  }
+  function proxiedWsUrl(direct) {
+    const u = new URL(direct.replace(/^wss:/, "https:"));
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${location.host}/x/xftts${u.pathname}${u.search}`;
+  }
+  async function connect(url, timeoutMs) {
+    const ws = new WebSocket(url);
+    await new Promise((res, rej) => {
+      const t = setTimeout(() => {
+        ws.close();
+        rej(new Error("讯飞连接超时"));
+      }, timeoutMs);
+      ws.onopen = () => {
+        clearTimeout(t);
+        res();
+      };
+      ws.onerror = () => {
+        clearTimeout(t);
+        rej(new Error("讯飞 WebSocket 连接失败"));
+      };
+    });
+    return ws;
+  }
+  async function openSocket(creds) {
+    const direct = await signedUrl(creds);
+    if (typeof location !== "undefined" && location.protocol.startsWith("http")) {
+      try {
+        return await connect(proxiedWsUrl(direct), 4e3);
+      } catch {
+      }
+    }
+    return connect(direct, 6e3);
+  }
+  var warmSlot = null;
+  async function takeSocket(creds) {
+    const w = warmSlot;
+    warmSlot = null;
+    if (w) {
+      try {
+        const ws = await w;
+        if (ws.readyState === WebSocket.OPEN) return ws;
+      } catch {
+      }
+    }
+    return openSocket(creds);
+  }
+  function synthesizeStream(creds, vcn, text, rate, onChunk, timeoutMs = 15e3) {
+    let sock = null;
+    let cancelled = false;
+    const done = (async () => {
+      const ws = await takeSocket(creds);
+      if (cancelled) {
+        ws.close();
+        return;
+      }
+      sock = ws;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          ws.close();
+          reject(new Error("讯飞合成超时"));
+        }, timeoutMs);
+        const fail = (e) => {
+          clearTimeout(timer);
+          ws.close();
+          reject(e);
+        };
+        ws.onerror = () => fail(new Error("讯飞 WebSocket 连接失败"));
+        ws.onclose = () => {
+          if (cancelled) {
+            clearTimeout(timer);
+            resolve();
+          }
+        };
+        ws.onmessage = (ev) => {
+          const f = parseFrame(String(ev.data));
+          if (f.error) return fail(new Error(f.error));
+          if (f.chunk) onChunk(f.chunk);
+          if (f.done) {
+            clearTimeout(timer);
+            ws.close();
+            resolve();
+          }
+        };
+        ws.send(JSON.stringify(ttsFrame(creds.appId, vcn, text, rate)));
+      });
+    })();
+    return { done, cancel: () => {
+      cancelled = true;
+      sock?.close();
+    } };
+  }
+  async function synthesize(creds, vcn, text, rate, timeoutMs = 12e3) {
+    const chunks = [];
+    await synthesizeStream(creds, vcn, text, rate, (c) => chunks.push(c), timeoutMs).done;
+    if (!chunks.length) throw new Error("讯飞没有返回音频");
+    return new Blob(chunks, { type: "audio/mpeg" });
   }
 
   // src/state/session.ts
@@ -4055,6 +5319,8 @@ section.on{opacity:1;pointer-events:auto}
     list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
     stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    // 自动任务：点条目=启停直调（不叫醒模型——开关没有理解成分）
+    automation: [{ on: "tap:item", route: "tool", tool: "automation.toggle", valueParam: "id" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     capability: [SWIPE_AWAY, ...RESIZE, CLOSE],
     weather: [SWIPE_AWAY, ...RESIZE, CLOSE],
@@ -4087,6 +5353,8 @@ section.on{opacity:1;pointer-events:auto}
     chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
     image: [SWIPE_AWAY, ...RESIZE, CLOSE],
     storybook: [
+      // 定妆卡的「就是他 / 再画一张」——点了等于说了这句话，怎么处置归模型
+      { on: "tap:item", route: "answer" },
       { on: "tap:prev", route: "tool", tool: "story.page", args: { dir: "prev" } },
       { on: "tap:next", route: "tool", tool: "story.page", args: { dir: "next" } },
       { on: "tap:toggle", route: "tool", tool: "story.page", args: { dir: "toggle" } },
@@ -4114,22 +5382,6 @@ section.on{opacity:1;pointer-events:auto}
       this.code = code;
     }
   };
-  var jsonpSeq = 0;
-  var browserJsonp = (url, cbParam) => new Promise((resolve, reject) => {
-    const name = `__itunes_cb_${++jsonpSeq}_${Math.floor(performance.now() * 1e3)}`;
-    const el = document.createElement("script");
-    const done = (fn) => {
-      delete window[name];
-      el.remove();
-      clearTimeout(timer);
-      fn();
-    };
-    const timer = setTimeout(() => done(() => reject(new ItunesError("iTunes 没有响应", "TIMEOUT"))), 4e3);
-    window[name] = (data) => done(() => resolve(data));
-    el.onerror = () => done(() => reject(new ItunesError("iTunes 连不上", "NETWORK")));
-    el.src = `${url}&${cbParam}=${name}`;
-    document.head.appendChild(el);
-  });
   var toTrack = (r) => ({
     id: r.trackId,
     name: r.trackName,
@@ -4140,13 +5392,421 @@ section.on{opacity:1;pointer-events:auto}
     preview: r.previewUrl ?? "",
     duration: Math.round((r.trackTimeMillis ?? 0) / 1e3)
   });
-  function createItunesClient(jsonp = browserJsonp) {
+  function createItunesClient(fetcher = ((u, i) => fetch(u, i)), { timeoutMs = 4e3 } = {}) {
+    const run = async (url) => {
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetcher(url, ac ? { signal: ac.signal } : void 0);
+      } catch {
+        throw new ItunesError("iTunes 连不上", "NETWORK");
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (!res.ok) throw new ItunesError(`iTunes 返回 ${res.status ?? "错误"}`, "HTTP");
+      return res.json();
+    };
     const search = async (term, limit = 8, country = "CN") => {
       const q = new URLSearchParams({ term, media: "music", entity: "song", limit: String(limit), country });
-      const json = await jsonp(`https://itunes.apple.com/search?${q}`, "callback");
+      const json = await run(`${api("itunes")}/search?${q}`);
       return (json?.results ?? []).map(toTrack).filter((t) => t.preview);
     };
-    return { search };
+    const searchPodcasts = async (term, limit = 6, country = "CN") => {
+      const q = new URLSearchParams({ term, media: "podcast", limit: String(limit), country });
+      const res = await run(`${api("itunes")}/search?${q}`);
+      return (res?.results ?? []).filter((r) => r.feedUrl).map((r) => ({
+        id: r.collectionId,
+        name: r.collectionName ?? "",
+        author: r.artistName ?? "",
+        artwork: String(r.artworkUrl100 ?? "").replace("100x100", "300x300"),
+        feedUrl: r.feedUrl,
+        count: r.trackCount ?? 0
+      }));
+    };
+    return { search, searchPodcasts };
+  }
+
+  // src/integrations/qtstock.ts
+  var StockError = class extends Error {
+    constructor(message, codeName) {
+      super(message);
+      this.codeName = codeName;
+    }
+  };
+  var gbk = (buf) => new TextDecoder("gbk").decode(buf);
+  var num = (s) => {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : void 0;
+  };
+  function parseQuotes(text) {
+    const out = [];
+    for (const m of text.matchAll(/v_([A-Za-z0-9.]+)="([^"]*)"/g)) {
+      const code = m[1];
+      const f = m[2].split("~");
+      if (f.length < 10) continue;
+      const name = f[1];
+      const price = num(f[3]);
+      if (!name || price === void 0) continue;
+      if (code.startsWith("wh")) {
+        const prev = num(f[6]);
+        out.push({
+          code,
+          name,
+          price,
+          change: num(f[12]) ?? (prev !== void 0 ? Number((price - prev).toFixed(4)) : 0),
+          pct: num(f[13]) ?? 0
+        });
+      } else {
+        out.push({
+          code,
+          name,
+          price,
+          change: num(f[31]) ?? 0,
+          pct: num(f[32]) ?? 0,
+          high: num(f[33]),
+          low: num(f[34])
+        });
+      }
+    }
+    return out;
+  }
+  function parseHint(text) {
+    const m = text.match(/v_hint="([^"]*)"/);
+    if (!m || !m[1]) return [];
+    const out = [];
+    for (const seg of m[1].split("^")) {
+      const f = seg.split("~");
+      if (f.length < 3) continue;
+      const [market, rawCode, rawName] = f;
+      let name = rawName;
+      try {
+        name = JSON.parse(`"${rawName}"`);
+      } catch {
+      }
+      out.push({ code: market + rawCode.split(".")[0], name, kind: f[4] ?? "" });
+    }
+    return out;
+  }
+  function createStockClient(fetcher, { timeoutMs = 5e3 } = {}) {
+    const get = async (url) => {
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetcher(url);
+      } catch {
+        throw new StockError("行情服务连不上", "NETWORK");
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (!res.ok) throw new StockError(`行情服务返回 ${res.status ?? "错误"}`, "HTTP");
+      return gbk(await res.arrayBuffer());
+    };
+    const quote = async (codes) => parseQuotes(await get(`${api("qtstock")}/q=${codes.join(",")}`));
+    const search = async (name) => parseHint(await get(`${api("qtsmart")}/s3/?v=2&q=${encodeURIComponent(name)}&t=all`));
+    return { quote, search };
+  }
+
+  // src/integrations/holiday.ts
+  var HolidayError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var dayMs = 864e5;
+  var diffDays = (from, to) => Math.round((Date.parse(to) - Date.parse(from)) / dayMs);
+  function nextHoliday(year, today, kind = "holiday") {
+    const want = kind === "holiday";
+    const hit = Object.values(year).filter((d) => d.holiday === want && d.date > today).sort((a, b) => a.date.localeCompare(b.date))[0];
+    return hit ? { name: hit.name, date: hit.date, days: diffDays(today, hit.date) } : null;
+  }
+  function todayIs(year, today) {
+    const d = Object.values(year).find((x) => x.date === today);
+    return d ? { kind: d.holiday ? "holiday" : "workday", name: d.name } : { kind: "normal" };
+  }
+  function createHolidayClient(fetcher) {
+    const fetchYear = async (y) => {
+      let res;
+      try {
+        res = await fetcher(
+          `${api("timor")}/api/holiday/year/${y}`,
+          { headers: { "User-Agent": "Mozilla/5.0 cockpit-sim" } }
+        );
+      } catch {
+        throw new HolidayError("节假日服务连不上", "NETWORK");
+      }
+      if (!res.ok) throw new HolidayError(`节假日服务返回 ${res.status}`, "HTTP");
+      const json = await res.json();
+      if (json.code !== 0) throw new HolidayError("节假日数据异常", "DATA");
+      return json.holiday ?? {};
+    };
+    const query = async (today) => {
+      const y = Number(today.slice(0, 4));
+      let year = await fetchYear(y);
+      let next = nextHoliday(year, today);
+      if (!next) {
+        year = { ...year, ...await fetchYear(y + 1) };
+        next = nextHoliday(year, today);
+      }
+      return { today: todayIs(year, today), next, makeup: nextHoliday(year, today, "workday") };
+    };
+    return { query };
+  }
+
+  // src/integrations/poem.ts
+  var PoemError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  function createPoemClient(fetcher) {
+    const today = async () => {
+      let res;
+      try {
+        res = await fetcher(`${api("jinrishici")}/all.json`);
+      } catch {
+        throw new PoemError("诗词服务连不上", "NETWORK");
+      }
+      if (!res.ok) throw new PoemError(`诗词服务返回 ${res.status}`, "HTTP");
+      const j = await res.json();
+      if (!j?.content) throw new PoemError("诗词数据为空", "DATA");
+      return { content: String(j.content), origin: String(j.origin ?? ""), author: String(j.author ?? "") };
+    };
+    return { today };
+  }
+
+  // src/integrations/podcast.ts
+  var PodcastError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var CD = /^<!\[CDATA\[([\s\S]*)\]\]>$/;
+  var toSeconds = (s) => {
+    if (!s) return void 0;
+    if (/^\d+$/.test(s)) return Number(s);
+    const parts = s.split(":").map(Number);
+    if (parts.some((n) => !Number.isFinite(n))) return void 0;
+    return parts.reduce((acc, n) => acc * 60 + n, 0);
+  };
+  function parseFeed(xml, limit = 30) {
+    const out = [];
+    for (const m of xml.matchAll(/<item[\s>][\s\S]*?<\/item>/g)) {
+      if (out.length >= limit) break;
+      const item = m[0];
+      const title = (item.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] ?? "").trim().replace(CD, "$1").trim();
+      const url = item.match(/<enclosure[^>]*\burl="([^"]+)"/)?.[1];
+      if (!title || !url) continue;
+      out.push({
+        title,
+        url,
+        duration: toSeconds(item.match(/<itunes:duration[^>]*>([^<]*)/)?.[1]?.trim() ?? ""),
+        date: item.match(/<pubDate[^>]*>([^<]*)/)?.[1]?.trim()
+      });
+    }
+    return out;
+  }
+  function createPodcastClient(fetcher, { timeoutMs = 8e3 } = {}) {
+    const episodes = async (feedUrl) => {
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetcher(feedUrl, ac ? { signal: ac.signal } : void 0);
+      } catch {
+        throw new PodcastError("这个播客源取不到（可能不允许浏览器直接访问）", "NETWORK");
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (!res.ok) throw new PodcastError(`播客源返回 ${res.status ?? "错误"}`, "HTTP");
+      const eps = parseFeed(await res.text());
+      if (!eps.length) throw new PodcastError("播客源里没有可播的单集", "EMPTY");
+      return eps;
+    };
+    return { episodes };
+  }
+
+  // src/state/automation.ts
+  var KEY = "cockpit-sim:automations";
+  function createAutomationStore(storage) {
+    let rules = [];
+    try {
+      const raw = storage.get(KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) rules = parsed;
+    } catch {
+    }
+    const persist = () => {
+      try {
+        storage.set(KEY, JSON.stringify(rules));
+      } catch {
+      }
+    };
+    return {
+      list: () => rules.map((r) => ({ ...r })),
+      get: (id) => rules.find((r) => r.id === id),
+      // 防御性拷贝：外部引用不许穿透进仓——共享对象被调用方改一下，
+      // 仓里的"事实"就悄悄变了（测试里真踩到：常量夹具被 toggle 改瘫）
+      add(r) {
+        rules.push({ ...r, when: [...r.when], do: [...r.do] });
+        persist();
+      },
+      toggle(id, on) {
+        const r = rules.find((x) => x.id === id);
+        if (r) {
+          r.enabled = on;
+          persist();
+        }
+        return r;
+      },
+      remove(id) {
+        const i = rules.findIndex((x) => x.id === id);
+        if (i >= 0) {
+          rules.splice(i, 1);
+          persist();
+        }
+      },
+      markRun(id, at) {
+        const r = rules.find((x) => x.id === id);
+        if (r) {
+          r.lastRun = at;
+          persist();
+        }
+      }
+    };
+  }
+
+  // src/core/automation.ts
+  function createAutomationEngine(store2, rules, onFire, clock = Date.now) {
+    const lastKey = /* @__PURE__ */ new Map();
+    const stamp = (ms) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+    const metKey = (r) => {
+      if (!r.when.length) return "";
+      const hasTime = r.when.some((c) => c[0] === "time");
+      const ok = r.when.every((c) => c[0] === "time" ? stamp(clock()).endsWith(` ${c[1]}`) : compare(store2.get(c[1]), c[2], c[3]));
+      if (!ok) return "";
+      return hasTime ? stamp(clock()) : "met";
+    };
+    function evaluate() {
+      for (const r of rules.list()) {
+        if (!r.enabled || !r.when.length) {
+          lastKey.delete(r.id);
+          continue;
+        }
+        const key = metKey(r);
+        const before = lastKey.get(r.id) ?? "";
+        lastKey.set(r.id, key);
+        if (key && key !== before) {
+          rules.markRun(r.id, clock());
+          onFire(rules.get(r.id) ?? r);
+        }
+      }
+    }
+    return { evaluate };
+  }
+
+  // src/integrations/orvideo.ts
+  var VideoGenError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var DEFAULT_VIDEO_MODEL = "bytedance/seedance-1.5-pro";
+  function createVideoGen(fetcher, key, { pollMs = 5e3, maxWaitMs = 18e4 } = {}) {
+    const headers = () => ({ Authorization: `Bearer ${key()}`, "Content-Type": "application/json" });
+    const generate = async (prompt, opts) => {
+      if (!key()) throw new VideoGenError("没配 OpenRouter Key", "NO_KEY");
+      const res = await fetcher(`${api("openrouter")}/api/v1/videos`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          model: opts.model ?? DEFAULT_VIDEO_MODEL,
+          prompt,
+          ...opts.duration && { duration: opts.duration },
+          ...opts.ratio && { aspect_ratio: opts.ratio }
+        })
+      });
+      if (!res.ok) throw new VideoGenError(`视频任务没提交上（${res.status}）`, "SUBMIT");
+      const { id } = await res.json();
+      if (!id) throw new VideoGenError("视频服务没返回任务号", "NO_ID");
+      const t0 = Date.now();
+      for (; ; ) {
+        await new Promise((r) => setTimeout(r, pollMs));
+        if (Date.now() - t0 > maxWaitMs) throw new VideoGenError("视频生成超时了", "TIMEOUT");
+        const poll = await fetcher(`${api("openrouter")}/api/v1/videos/${id}`, { headers: headers() });
+        if (!poll.ok) continue;
+        const j = await poll.json();
+        if (j.status === "completed") {
+          const url = j.unsigned_urls?.[0];
+          if (!url) throw new VideoGenError("生成完了但没拿到视频地址", "NO_URL");
+          return { url };
+        }
+        if (j.status === "failed")
+          throw new VideoGenError(`视频生成失败：${j.error?.message ?? "服务端未说明原因"}`, "FAILED");
+      }
+    };
+    return { generate };
+  }
+
+  // src/integrations/ormusic.ts
+  var MusicGenError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var DEFAULT_MUSIC_MODEL = "google/lyria-3-clip-preview";
+  function parseAudioSSE(sse) {
+    const out = [];
+    for (const line of sse.split("\n")) {
+      const m = line.match(/^data:\s*(.+)$/);
+      if (!m || m[1] === "[DONE]") continue;
+      try {
+        const d = JSON.parse(m[1])?.choices?.[0]?.delta?.audio?.data;
+        if (typeof d === "string" && d) out.push(d);
+      } catch {
+      }
+    }
+    return out;
+  }
+  function createMusicGen(fetcher, key, { timeoutMs = 9e4 } = {}) {
+    const generate = async (prompt, opts = {}) => {
+      if (!key()) throw new MusicGenError("没配 OpenRouter Key", "NO_KEY");
+      const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ac ? setTimeout(() => ac.abort(), timeoutMs) : null;
+      let res;
+      try {
+        res = await fetcher(`${api("openrouter")}/api/v1/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: opts.model ?? DEFAULT_MUSIC_MODEL,
+            modalities: ["text", "audio"],
+            stream: true,
+            messages: [{ role: "user", content: opts.instrumental ? `${prompt}（纯音乐，不要人声）` : prompt }]
+          }),
+          ...ac && { signal: ac.signal }
+        });
+      } catch {
+        throw new MusicGenError("音乐服务连不上或超时", "NETWORK");
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (!res.ok) throw new MusicGenError(`音乐生成失败（${res.status}）`, "HTTP");
+      const chunks = parseAudioSSE(await res.text());
+      if (!chunks.length) throw new MusicGenError("没收到音频数据", "EMPTY");
+      const bytes = chunks.map((b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+      return new Blob(bytes, { type: "audio/wav" });
+    };
+    return { generate };
   }
 
   // src/integrations/radio.ts
@@ -4156,17 +5816,21 @@ section.on{opacity:1;pointer-events:auto}
       this.code = code;
     }
   };
-  var NODES = [
+  var NODES = () => [.../* @__PURE__ */ new Set([
+    // 浏览器下同源代理排最前：它转发到 de1，但不吃浏览器侧的跨域问题；
+    // node/file:// 下 api() 返回的就是 de1 直连——Set 去重，故障切换不浪费一次重试
+    `${api("radio")}/json`,
     "https://de1.api.radio-browser.info/json",
     "https://de2.api.radio-browser.info/json",
     "https://nl1.api.radio-browser.info/json",
     "https://at1.api.radio-browser.info/json"
-  ];
+  ])];
   function createRadioClient(fetcher, opts = {}) {
     let preferred = 0;
     const NODE_TIMEOUT = opts.nodeTimeoutMs ?? 5e3;
     async function viaNodes(path) {
-      const order = [...NODES.slice(preferred), ...NODES.slice(0, preferred)];
+      const nodes = NODES();
+      const order = [...nodes.slice(preferred), ...nodes.slice(0, preferred)];
       let last;
       for (const base of order) {
         try {
@@ -4179,14 +5843,14 @@ section.on{opacity:1;pointer-events:auto}
             last = new RadioError("节点没响应");
             continue;
           }
-          preferred = NODES.indexOf(base);
+          preferred = nodes.indexOf(base);
           return await res.json();
         } catch (e) {
           last = e;
         }
       }
       throw new RadioError(
-        `电台服务连不上了（试了 ${NODES.length} 个节点）：${last instanceof Error ? last.message : ""}`,
+        `电台服务连不上了（试了 ${NODES().length} 个节点）：${last instanceof Error ? last.message : ""}`,
         "ALL_NODES_DOWN"
       );
     }
@@ -4248,7 +5912,12 @@ section.on{opacity:1;pointer-events:auto}
       const k = key();
       if (!k) throw new NewsError("没配新闻服务的 Key", "NO_KEY");
       const p = new URLSearchParams({ ...params, apiKey: k, pageSize: params.pageSize ?? "8" });
-      const res = await fetcher(`https://newsapi.org/v2/${path}?${p}`);
+      let res;
+      try {
+        res = await fetcher(`${api("newsapi")}/v2/${path}?${p}`);
+      } catch {
+        res = await fetcher(`${UPSTREAM.newsapi}/v2/${path}?${p}`);
+      }
       const json = await res.json();
       if (json.status !== "ok")
         throw new NewsError(json.message ?? "新闻服务返回异常", json.code ?? "NEWS_ERROR");
@@ -4293,7 +5962,7 @@ section.on{opacity:1;pointer-events:auto}
         // 竖版更像短视频
         size: "small"
       });
-      const res = await fetcher(`https://api.pexels.com/videos/search?${p}`, { headers: { Authorization: k } });
+      const res = await fetcher(`${api("pexels")}/videos/search?${p}`, { headers: { Authorization: k } });
       if (!res.ok) throw new PexelsError("短视频服务没响应", "HTTP_ERROR");
       const json = await res.json();
       return (json.videos ?? []).map((v) => {
@@ -4338,6 +6007,112 @@ section.on{opacity:1;pointer-events:auto}
         return { brief: brief2, detail };
       }
     };
+  }
+
+  // src/integrations/openmeteo.ts
+  var ENDPOINT2 = () => `${api("openmeteo")}/v1/forecast`;
+  var TIMEOUT_MS2 = 6e3;
+  var HOURS = 12;
+  var OmError = class extends Error {
+    constructor(message, code) {
+      super(message);
+      this.code = code;
+    }
+  };
+  var WMO = {
+    0: "晴",
+    1: "晴间多云",
+    2: "多云",
+    3: "阴",
+    45: "雾",
+    48: "冻雾",
+    51: "毛毛雨",
+    53: "毛毛雨",
+    55: "毛毛雨",
+    56: "冻雨",
+    57: "冻雨",
+    61: "小雨",
+    63: "中雨",
+    65: "大雨",
+    66: "冻雨",
+    67: "冻雨",
+    71: "小雪",
+    73: "中雪",
+    75: "大雪",
+    77: "雪粒",
+    80: "阵雨",
+    81: "阵雨",
+    82: "暴雨",
+    85: "阵雪",
+    86: "阵雪",
+    95: "雷阵雨",
+    96: "雷阵雨伴冰雹",
+    99: "雷阵雨伴冰雹"
+  };
+  var wmoLabel = (code) => WMO[code] ?? "多云";
+  var DIRS = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"];
+  var BEAUFORT = [1, 5, 11, 19, 28, 38, 49, 61, 74, 88, 102, 117];
+  function windLabel(deg, kmh) {
+    const dir = DIRS[Math.round((deg % 360 + 360) % 360 / 45) % 8];
+    const level = BEAUFORT.findIndex((max) => kmh <= max);
+    return `${dir}风 ${level < 0 ? 12 : level}级`;
+  }
+  function createOpenMeteoClient(fetcher, opts = {}) {
+    const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS2;
+    async function forecast(lat, lon) {
+      const qs = new URLSearchParams({
+        latitude: String(lat),
+        longitude: String(lon),
+        current: "temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,apparent_temperature",
+        hourly: "temperature_2m,weather_code,precipitation_probability",
+        daily: "weather_code,temperature_2m_max,temperature_2m_min",
+        // auto 不写死 Asia/Shanghai —— 查国外城市时逐时要按当地时区对齐
+        timezone: "auto",
+        forecast_days: "5"
+      });
+      let timer;
+      const timeout = new Promise((_, rej) => {
+        timer = setTimeout(() => rej(new OmError("天气服务没响应，等太久", "TIMEOUT")), timeoutMs);
+      });
+      const res = await Promise.race([fetcher(`${ENDPOINT2()}?${qs}`), timeout]).finally(() => clearTimeout(timer));
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new OmError(json?.reason || "天气服务没接受这次请求", "UPSTREAM");
+      const cur = json?.current;
+      const h = json?.hourly;
+      const d = json?.daily;
+      if (!cur || !h?.time?.length || !d?.time?.length)
+        throw new OmError("天气服务没给出数据", "NO_DATA");
+      const nowHour = String(cur.time ?? "").slice(0, 13);
+      let start = h.time.findIndex((t) => t.slice(0, 13) >= nowHour);
+      if (start < 0) start = 0;
+      const hourly = h.time.slice(start, start + HOURS).map((time, i) => ({
+        time,
+        temp: Number(h.temperature_2m[start + i]),
+        pop: Number(h.precipitation_probability?.[start + i] ?? 0),
+        weather: wmoLabel(Number(h.weather_code?.[start + i]))
+      }));
+      const forecast2 = d.time.map((date, i) => ({
+        date,
+        // Open-Meteo 的 daily 只有一个码，日夜共用 —— 比编一个夜间码诚实
+        dayWeather: wmoLabel(Number(d.weather_code[i])),
+        nightWeather: wmoLabel(Number(d.weather_code[i])),
+        dayTemp: Number(d.temperature_2m_max[i]),
+        nightTemp: Number(d.temperature_2m_min[i])
+      }));
+      return {
+        now: {
+          temperature: Number(cur.temperature_2m),
+          weather: wmoLabel(Number(cur.weather_code)),
+          wind: windLabel(Number(cur.wind_direction_10m), Number(cur.wind_speed_10m)),
+          humidity: Number(cur.relative_humidity_2m),
+          feelsLike: Number(cur.apparent_temperature)
+        },
+        range: { high: forecast2[0].dayTemp, low: forecast2[0].nightTemp },
+        hourly,
+        forecast: forecast2
+      };
+    }
+    return { forecast };
   }
 
   // src/agent/context.ts
@@ -4493,7 +6268,10 @@ ${extras.desktop}`);
     "UNKNOWN_SKILL",
     "EMPTY_CARD",
     "TASK_NOT_FOUND",
-    "SYSTEM_TEMPLATE"
+    "SYSTEM_TEMPLATE",
+    "LAST_STOP",
+    "REPEAT_CALL",
+    "STALE_TURN"
   ]);
   var SUM_MARK = "【前情摘要】";
   var KEEP_ROUNDS = 4;
@@ -4535,6 +6313,8 @@ ${extras.desktop}`);
         boundary += msgs.length;
       }
     };
+    const MIC = new Set(registry2.list().filter((t) => t.mic).map((t) => t.name));
+    const prevOk = /* @__PURE__ */ new Map();
     async function execRound(g, calls, allow, trace, interceptors, opts = {}) {
       const audible = () => !opts.background && !stale(g);
       const round = ++toolRound;
@@ -4544,19 +6324,55 @@ ${extras.desktop}`);
         trace.push({ type: "toolCall", at: clock(), name, args: c.args, permission: registry2.permissionOf(c.name) });
         if (audible()) emit({ type: "executing", name });
         const s = clock();
-        const result = metaKey ? await interceptors[metaKey](c.args) : await registry2.invoke(c.name, c.args, { allow, round });
+        const sig2 = `${name}|${JSON.stringify(c.args ?? {})}`;
+        const result = metaKey ? await interceptors[metaKey](c.args) : MIC.has(name) && stale(g) && !discarded(g) ? {
+          status: "rejected",
+          code: "STALE_TURN",
+          message: "用户已经继续别的话题了，这轮的问题/播报已过期——收尾即可，别再输出"
+        } : opts.lane && prevOk.get(opts.lane)?.has(sig2) ? {
+          status: "rejected",
+          code: "REPEAT_CALL",
+          message: "这个调用上一轮刚成功过，重复只会原地打转——直接收尾"
+        } : await registry2.invoke(c.name, c.args, { allow, round });
         trace.push({ type: "toolResult", at: clock(), name, result, ms: clock() - s });
         if (result.status === "inputRequired" && audible()) emit({ type: "confirming", text: result.message ?? "需要确认" });
         if (!opts.quietRejects && audible() && (result.status === "rejected" || result.status === "unavailable") && !SELF_FIX_CODES.has(result.code ?? ""))
           emit({ type: "rejected", text: result.message ?? "无法执行" });
         return { c, result };
       }));
+      denied = results.filter(({ result }) => result.code === "NOT_AUTHORIZED").map(({ c }) => registry2.canonicalName(c.name));
+      allDenied = denied.length > 0 && denied.length === results.length;
+      if (opts.lane)
+        prevOk.set(opts.lane, new Set(results.filter(({ c, result }) => result.status === "ok" && !Object.keys(interceptors).find((k) => isMeta(c.name, k))).map(({ c }) => `${registry2.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)));
+      const biz = results.filter(({ c }) => !Object.keys(interceptors).find((k) => isMeta(c.name, k)));
+      bizCalls = biz.length;
+      bizOk = biz.filter(({ result }) => result.status === "ok").length;
+      const bad = opts.quietRejects ? [] : results.filter(({ result }) => result.status === "rejected" || result.status === "unavailable");
+      const sig = bad.length === results.length && bad.length ? bad.map(({ c, result }) => `${registry2.canonicalName(c.name)}|${result.code ?? ""}`).sort().join(",") : "";
+      const metaOnly = results.every(({ c }) => Object.keys(interceptors).find((k) => isMeta(c.name, k)));
+      if (sig && sig === lastFailSig) failStreak++;
+      else if (!metaOnly) {
+        lastFailSig = sig;
+        failStreak = sig ? 1 : 0;
+      }
       return results.map(({ c, result }) => ({
         role: "tool",
         tool_call_id: c.id,
         content: JSON.stringify(result)
       }));
     }
+    let denied = [];
+    let allDenied = false;
+    let bizCalls = 0;
+    let bizOk = 0;
+    const WALL_LIMIT = 3;
+    let lastFailSig = "";
+    let failStreak = 0;
+    const hitWall = () => failStreak >= WALL_LIMIT;
+    const resetWall = () => {
+      lastFailSig = "";
+      failStreak = 0;
+    };
     const asstMsg = (reply) => ({
       role: "assistant",
       content: reply.text ?? "",
@@ -4577,6 +6393,8 @@ ${extras.desktop}`);
       let suggested = [];
       let said = "";
       let rounds = 0;
+      let did = 0;
+      let handedOff = false;
       while (rounds < fm.maxRounds) {
         rounds++;
         const last = rounds === fm.maxRounds;
@@ -4595,37 +6413,47 @@ ${extras.desktop}`);
           reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : 800 });
         } catch (e) {
           trace.push({ type: "error", at: clock(), message: `快层：${e}` });
-          return { suggested, said, rounds };
+          return { suggested, said, rounds, did };
         }
         ;
         pEntry.llmMs = clock() - tChat;
         pEntry.llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map((c) => ({ name: c.name, args: c.args })) };
-        if (stale(g)) return { suggested, said, rounds };
-        if (reply.text) {
+        if (discarded(g)) return { suggested, said, rounds, did };
+        if (reply.text && !stale(g)) {
           said = reply.text;
           trace.push({ type: "reply", at: clock(), text: reply.text, layer: "fast" });
           emit({ type: "speaking", text: reply.text, layer: "fast" });
         }
         if (!reply.toolCalls?.length) {
           if (reply.text) commit(g, { role: "assistant", content: reply.text });
-          return { suggested, said, rounds };
+          return { suggested, said, rounds, did };
         }
         commit(g, asstMsg(reply));
         const toolMsgs = await execRound(g, reply.toolCalls, fm.tools, trace, {
           "agent.handoff": (args) => {
-            suggested = (args?.suggestedTools ?? []).filter((n) => registry2.list().some((t) => t.name === registry2.canonicalName(n)));
+            const st = args?.suggestedTools;
+            const arr = Array.isArray(st) ? st : st && typeof st === "object" && Object.keys(st).length === 1 && "item" in st ? [st.item].flat() : [];
+            suggested = arr.filter((n) => registry2.list().some((t) => t.name === registry2.canonicalName(n)));
             const say = String(args?.say ?? "").trim();
             if (say && !said && !stale(g)) {
               said = say;
               trace.push({ type: "reply", at: clock(), text: say, layer: "fast" });
               emit({ type: "speaking", text: say, layer: "fast" });
             }
+            handedOff = true;
             return { status: "ok", message: "已转交" };
           }
-        }, { quietRejects: true });
+        }, { quietRejects: true, lane: "fast" });
+        did += bizOk;
         commit(g, ...toolMsgs);
+        if (stale(g)) return { suggested, said, rounds, did };
+        if (handedOff) return { suggested, said, rounds, did };
+        if (allDenied) {
+          for (const n of denied) if (!suggested.includes(n)) suggested.push(n);
+          return { suggested, said, rounds, did };
+        }
       }
-      return { suggested, said, rounds };
+      return { suggested, said, rounds, did };
     }
     const taskPool = [];
     let taskSeq = 0;
@@ -4754,10 +6582,26 @@ ${extras.desktop}`);
       const unknown = names.filter((n) => !known.includes(n));
       return known.length ? { status: "ok", message: `已装载：${known.join("、")}${unknown.length ? `；没有这些工具：${unknown.join("、")}` : ""}` } : { status: "rejected", code: "UNKNOWN_TOOL", message: `目录里没有：${names.join("、")}`, suggestion: "对照工具目录里的名字再试" };
     };
-    async function runSlow(g, suggested, trace) {
+    async function runSlow(g, suggested, trace, handover = [], fastReported = false) {
+      let slowActed = false;
       const sm = deps.slowManifest;
       const loaded = /* @__PURE__ */ new Set([...sm.resident ?? [], ...suggested.map((n) => registry2.canonicalName(n))]);
-      const view = thread.slice();
+      const view = thread.slice().map((m) => {
+        if (m.role !== "tool" || !String(m.content).includes("NOT_AUTHORIZED")) return m;
+        try {
+          const r = JSON.parse(String(m.content));
+          if (r.code !== "NOT_AUTHORIZED") return m;
+          const tool = /调用\s*([\w.]+)/.exec(String(r.message ?? ""))?.[1];
+          return { ...m, content: JSON.stringify({
+            status: "handover",
+            message: `这条是权限受限的快层分身被拒后转交的——你有权限${tool ? `，直接调 ${tool} 继续` : "，直接调同名工具继续"}`
+          }) };
+        } catch {
+          return m;
+        }
+      });
+      if (handover.length)
+        view.push({ role: "system", content: `刚才的 NOT_AUTHORIZED 是权限受限的快层同事被拒，不是你——**你有权限**，工具已装进你手边：${handover.join("、")}。直接调它把事办完，转交到你为止，不用再转给任何人。` });
       let rounds = 0;
       while (rounds < sm.maxRounds) {
         rounds++;
@@ -4794,18 +6638,31 @@ ${extras.desktop}`);
           const text = reply.text ?? "";
           if (text) commit(g, { role: "assistant", content: text });
           trace.push({ type: "reply", at: clock(), text, layer: "slow" });
+          const echo = fastReported && !slowActed;
           if (stale(g)) {
-            if (text) emit({ type: "lateNote", text });
+            if (text && !echo) emit({ type: "lateNote", text });
           } else {
-            if (text) emit({ type: "speaking", text, layer: "slow" });
+            if (text && !echo) emit({ type: "speaking", text, layer: "slow" });
             emit({ type: "done" });
           }
-          return { said: text, rounds, stop: "reply" };
+          return { said: echo ? "" : text, rounds, stop: "reply" };
         }
         const am = asstMsg(reply);
         commit(g, am);
         view.push(am);
         const toolMsgs = await execRound(g, reply.toolCalls, sm.tools, trace, {
+          /**
+           * 慢层迷路时扶正（2026-08-16 实拍「打开后备箱」）：它会模仿共享 thread
+           * 里快层的调用记录来调 agent.handoff，以前吃 UNKNOWN_TOOL 就放弃，
+           * 嘴上让用户"在屏幕上点确认"——那个确认弹窗根本不存在。
+           * 回执指路（SELF_FIX 不上横幅），下一轮把工具真调起来。
+           */
+          "agent.handoff": () => ({
+            status: "rejected",
+            code: "LAST_STOP",
+            message: "转交到你为止，没有下一棒。要用的工具就在手边，直接调它把事办完",
+            suggestion: "需要用户确认的工具，调了系统会自动在屏幕上弹确认"
+          }),
           "tools.load": mkLoader(loaded),
           "skill.use": mkSkillUse(loaded),
           "task.delegate": delegateInterceptor,
@@ -4815,28 +6672,42 @@ ${extras.desktop}`);
             cancelTask(t.id);
             return { status: "ok", message: `已取消：${t.label}` };
           }
-        });
+        }, { lane: "slow" });
         commit(g, ...toolMsgs);
         view.push(...toolMsgs);
+        if (bizCalls > 0) slowActed = true;
+        if (hitWall() && rounds < sm.maxRounds - 1) rounds = sm.maxRounds - 1;
       }
-      if (!stale(g)) emit({ type: "done" });
-      return { said: "", rounds, stop: "maxRounds" };
+      const fallback = "这件事我没弄成，换个说法我再试试";
+      if (!stale(g)) {
+        emit({ type: "speaking", text: fallback, layer: "slow" });
+        emit({ type: "done" });
+      }
+      return { said: fallback, rounds, stop: "maxRounds" };
     }
-    async function run(text) {
+    async function run(text, runOpts = {}) {
       const trace = [];
       if (!text.trim()) return { reply: "", trace, rounds: 0, stopReason: "empty" };
       const g = ++gen;
+      resetWall();
+      prevOk.clear();
       deps.onTurnStart?.();
       trace.push({ type: "userInput", at: clock(), text });
       boundary = thread.length;
       thread.push({ role: "user", content: text });
       emit({ type: "thinking" });
       const pending = registry2.pendingConfirm();
-      let fast = { suggested: [], said: "", rounds: 0 };
+      let fast = { suggested: [], said: "", rounds: 0, did: 0 };
       try {
-        if (!pending) fast = await runFast(g, trace);
-        else fast.suggested = [pending.tool];
-        const slow = await runSlow(g, fast.suggested, trace);
+        let handover = [];
+        let fastReported = false;
+        if (runOpts.answer) {
+        } else if (!pending) {
+          fast = await runFast(g, trace);
+          handover = allDenied ? [...denied] : [];
+          fastReported = !!fast.said && fast.did > 0;
+        } else fast.suggested = [pending.tool];
+        const slow = await runSlow(g, fast.suggested, trace, handover, fastReported);
         if (!stale(g)) compaction = doCompact(g).catch(() => {
         });
         return {
@@ -4916,13 +6787,19 @@ ${text}` });
   ];
   function createOnlineChat(getKey, getModel) {
     return async (system, prompt) => {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const res = await fetch(`${api("openrouter")}/api/v1/chat/completions`, {
         method: "POST",
         // 60s 超时：实测 :online 正常 4-30s；挂起的连接不许冻住任务（实拍几分钟没反应）
         signal: AbortSignal.timeout(6e4),
         headers: { Authorization: `Bearer ${getKey()}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: `${getModel()}:online`,
+          /**
+           * 引擎显式选 Parallel Turbo（2026-08-18，接入清单里最便宜的一次优化）：
+           * :online 后缀的默认引擎是 Exa（$0.007/次），Parallel Turbo $0.001，
+           * 同样含 10 条结果 —— 改一个配置字段成本降 7 倍。
+           */
+          model: getModel(),
+          plugins: [{ id: "web", engine: "parallel", mode: "turbo", max_results: 6 }],
           messages: [{ role: "system", content: system }, { role: "user", content: prompt }]
         })
       });
@@ -4932,7 +6809,7 @@ ${text}` });
     };
   }
   function createOpenRouter(getKey, getModel) {
-    const base = "https://openrouter.ai/api/v1";
+    const base = `${api("openrouter")}/api/v1`;
     return {
       async models() {
         const res = await fetch(`${base}/models`, {
@@ -5092,7 +6969,7 @@ ${text}` });
   var minTierFor = (urgency) => MIN_TIER[normalizeUrgency(urgency)];
   function channelOf(c) {
     if (normalizeUrgency(c.urgency) === "critical") return "overlay";
-    if (c.reason) return "banner";
+    if (c.reason || c.ack) return "banner";
     if (c.size === "full") return "overlay";
     return "card";
   }
@@ -5364,6 +7241,8 @@ ${text}` });
     function show(input) {
       if (input.ttl === void 0 || input.ttl === null)
         return { status: "rejected", code: "TTL_REQUIRED", message: "卡片必须声明 ttl，否则会在桌面堆积" };
+      if (input.key && [...cards.values(), ...staged.values()].some((c) => c.key === input.key))
+        return render(input);
       const tmplDefault = CARD_TEMPLATES.find((t) => t.id === input.template)?.defaultSize;
       const size = input.size ?? (Array.isArray(input.data?.items) && input.data.items.length ? suggestSize(input.template, input.data.items.length) : void 0) ?? tmplDefault ?? "box";
       const sizeErr = checkSize(input.template, size);
@@ -5616,11 +7495,20 @@ ${text}` });
   }
 
   // src/cards/orchestrator.ts
-  function createOrchestrator({ store: store2, desk: desk2, rules, builders, deps }) {
+  function createOrchestrator({ store: store2, desk: desk2, rules, builders, deps, onAck }) {
     const unsubs = [];
+    const lastAck = /* @__PURE__ */ new Map();
     const isActive = (r) => (r.when ?? []).every(([path, op, value]) => compare(store2.get(path), op, value));
-    const apply = (r) => {
+    const apply = (r, changed) => {
       const build = builders[r.card.data];
+      if (channelOf({ ack: r.card.ack, urgency: r.card.urgency }) === "banner") {
+        const d = build ? build({ ...deps, changed }) : {};
+        const text = ackLine(d);
+        if (lastAck.get(r.card.key) === text) return;
+        lastAck.set(r.card.key, text);
+        onAck?.({ key: r.card.key, title: String(d?.title ?? ""), text });
+        return;
+      }
       const size = r.card.size ?? CARD_TEMPLATES.find((t) => t.id === r.card.template)?.defaultSize;
       desk2.render({
         key: r.card.key,
@@ -5632,7 +7520,7 @@ ${text}` });
         anchor: r.card.anchor,
         ttl: r.card.ttl ?? "untilDismissed",
         refreshTtl: r.card.ttl !== void 0,
-        data: build ? build(deps) : {}
+        data: build ? build({ ...deps, changed }) : {}
       });
     };
     const refill = () => {
@@ -5655,10 +7543,10 @@ ${text}` });
         for (const path of new Set((r.when ?? []).map((w) => w[0])))
           unsubs.push(store2.subscribe(path, () => evaluate(r)));
         for (const pattern of r.watch)
-          unsubs.push(store2.subscribe(pattern, () => {
+          unsubs.push(store2.subscribe(pattern, (path) => {
             if (r.when) {
-              if (isActive(r)) apply(r);
-            } else apply(r);
+              if (isActive(r)) apply(r, path);
+            } else apply(r, path);
           }));
         evaluate(r);
       }
@@ -6004,6 +7892,51 @@ ${text}` });
       permission: "彩",
       initial: 0
     },
+    /** 座椅按摩。档位跟加热/通风一致（0-3），不用 VSS 的 percent —— 档位对用户更自然 */
+    {
+      alias: "seat.driver.massage",
+      vssPath: "Vehicle.Cabin.Seat.Row1.DriverSide.Massage",
+      type: "number",
+      range: [0, 3],
+      label: "主驾座椅按摩",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    {
+      alias: "seat.passenger.massage",
+      vssPath: "Vehicle.Cabin.Seat.Row1.PassengerSide.Massage",
+      type: "number",
+      range: [0, 3],
+      label: "副驾座椅按摩",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    {
+      alias: "seat.rearLeft.massage",
+      vssPath: "Vehicle.Cabin.Seat.Row2.DriverSide.Massage",
+      type: "number",
+      range: [0, 3],
+      label: "左后座椅按摩",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    {
+      alias: "seat.rearRight.massage",
+      vssPath: "Vehicle.Cabin.Seat.Row2.PassengerSide.Massage",
+      type: "number",
+      range: [0, 3],
+      label: "右后座椅按摩",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
     {
       alias: "seat.driver.slide",
       vssPath: "Vehicle.Cabin.Seat.Row1.DriverSide.Position",
@@ -6201,18 +8134,191 @@ ${text}` });
       permission: "彩",
       initial: 1
     },
-    /* ── 灯光（v0.1 简化：大灯 + 后备箱灯，阅读灯留待 v0.2） ── */
+    /**
+     * ── 后视镜 ──
+     * 只做折叠与加热：角度调节（VSS 的 Pan/Tilt）在屏幕上看不出任何变化，
+     * 演示价值为零，加了只是让能力目录长一点。
+     */
+    /* ── 除雾（2026-08-18 做雨天章法时发现的缺口）── */
     {
-      alias: "cabin.light.headlight.state",
+      alias: "cabin.defrost.front.isOn",
+      vssPath: "Vehicle.Cabin.HVAC.IsFrontDefrosterActive",
+      type: "boolean",
+      label: "前风挡除雾",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.defrost.rear.isOn",
+      vssPath: "Vehicle.Cabin.HVAC.IsRearDefrosterActive",
+      type: "boolean",
+      label: "后风挡除雾",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.mirror.driver.isFolded",
+      vssPath: "Vehicle.Body.Mirrors.DriverSide.IsFolded",
+      type: "boolean",
+      label: "主驾后视镜折叠",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.mirror.passenger.isFolded",
+      vssPath: "Vehicle.Body.Mirrors.PassengerSide.IsFolded",
+      type: "boolean",
+      label: "副驾后视镜折叠",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.mirror.driver.heating",
+      vssPath: "Vehicle.Body.Mirrors.DriverSide.Heating",
+      type: "boolean",
+      label: "主驾后视镜加热",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.mirror.passenger.heating",
+      vssPath: "Vehicle.Body.Mirrors.PassengerSide.Heating",
+      type: "boolean",
+      label: "副驾后视镜加热",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    /**
+     * ── 空气净化器 ──
+     * **VSS v6 没有这一族的标准路径**，按香氛（`Vehicle.Cabin.Fragrance.*`）
+     * 的先例造。这是既有做法：清单里有、VSS 里没有的舱内配件都这么接。
+     */
+    {
+      alias: "cabin.airPurifier.power",
+      vssPath: "Vehicle.Cabin.AirPurifier.IsActive",
+      type: "boolean",
+      label: "空气净化器",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "cabin.airPurifier.level",
+      vssPath: "Vehicle.Cabin.AirPurifier.Level",
+      type: "number",
+      range: [0, 3],
+      label: "净化档位",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    /**
+     * ── 灯光 ──
+     *
+     * 2026-08-15 对着真实整车能力清单补齐。**顺带修了一个错名**：
+     * 原来的 `headlight`（"大灯"）vssPath 指向 `Beam.Low`，那是**近光** ——
+     * 补进远光之后两者语义会打架，所以改名 `lowBeam`。这是修正不是新增。
+     *
+     * 车外灯挂 `Vehicle.Body.Lights.*`，座舱灯挂 `Vehicle.Cabin.Light.*` ——
+     * 这条边界是 VSS 自己划的，别混。
+     */
+    {
+      alias: "cabin.light.lowBeam.state",
       vssPath: "Vehicle.Body.Lights.Beam.Low.IsOn",
       type: "enum",
       values: ["on", "off", "auto"],
-      label: "大灯",
+      label: "近光灯",
       valueLabels: { on: "开", off: "关", auto: "自动" },
       access: "READ_WRITE",
       changeMode: "ONCHANGE",
       permission: "彩",
       initial: "auto"
+    },
+    {
+      alias: "cabin.light.highBeam.state",
+      vssPath: "Vehicle.Body.Lights.Beam.High.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "远光灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
+    },
+    {
+      alias: "cabin.light.fogFront.state",
+      vssPath: "Vehicle.Body.Lights.Fog.Front.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "前雾灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
+    },
+    {
+      alias: "cabin.light.fogRear.state",
+      vssPath: "Vehicle.Body.Lights.Fog.Rear.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "后雾灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
+    },
+    {
+      alias: "cabin.light.parking.state",
+      vssPath: "Vehicle.Body.Lights.Parking.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "示宽灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
+    },
+    {
+      alias: "cabin.light.readingFront.state",
+      vssPath: "Vehicle.Cabin.Light.Row1.Reading.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "前排阅读灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
+    },
+    {
+      alias: "cabin.light.readingRear.state",
+      vssPath: "Vehicle.Cabin.Light.Row2.Reading.IsOn",
+      type: "enum",
+      values: ["on", "off", "auto"],
+      label: "后排阅读灯",
+      valueLabels: { on: "开", off: "关", auto: "自动" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "off"
     },
     {
       alias: "cabin.light.trunkLight.state",
@@ -6263,6 +8369,24 @@ ${text}` });
       initial: "normal"
     },
     /* ── 未选装：反幻觉验证用（Golden Case 9） ── */
+    /**
+     * 遮阳帘。跟玻璃是两个独立执行器，VSS 也是分开的两条路径。
+     * **equipped 必须跟玻璃一致** —— 天窗都没装，不可能单有一块遮阳帘。
+     */
+    {
+      alias: "cabin.sunroof.shade.position",
+      vssPath: "Vehicle.Cabin.Sunroof.Shade.Position",
+      type: "number",
+      range: [0, 100],
+      unit: "%",
+      label: "天窗遮阳帘",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      transition: 4e3,
+      initial: 0,
+      equipped: false
+    },
     {
       alias: "cabin.sunroof.glass.position",
       vssPath: "Vehicle.Cabin.Sunroof.Position",
@@ -6423,9 +8547,9 @@ ${text}` });
       alias: "media.source",
       vssPath: "Vehicle.Cabin.Infotainment.Media.Played.Source",
       type: "enum",
-      values: ["none", "music", "radio", "video"],
+      values: ["none", "music", "radio", "video", "podcast"],
       label: "媒体来源",
-      valueLabels: { none: "无", music: "音乐", radio: "电台", video: "视频" },
+      valueLabels: { none: "无", music: "音乐", radio: "电台", video: "视频", podcast: "播客" },
       access: "READ_WRITE",
       changeMode: "ONCHANGE",
       permission: "彩",
@@ -6479,6 +8603,124 @@ ${text}` });
     },
     // 进度点里那几个虚线圈靠它。"故事一边讲一边长"这件事必须让人看见，
     // 否则用户会以为卡住了
+    /**
+     * 这本书累计花了多少美分。**图像比文本贵一个量级** ——
+     * 实测 $0.068/张（设计估算 $0.04 的 1.7 倍），一本 7 页约 $0.5。
+     * 不显示的话跑几轮就烧掉 Key 的额度还不知道。用美分是为了避免浮点噪音。
+     */
+    /**
+     * ── 地图显示状态（2026-08-15 对照真实整车清单补） ──
+     * **屏内展示状态**，进 HMI 族（story.* 同款先例），不进桌面仲裁 ——
+     * zoom 每变一档要是触发全屏重排就本末倒置了。全部状态化而不发命令：
+     * zoomIn 是"档位 +1"，全览/跟随是视图状态，完全落在「桌面 = f(状态)」里。
+     */
+    /**
+     * 默认**全览** + follow 用近档（2026-08-15 实拍回归修正）：
+     * 第一版初始值是 follow@13，把改造前"路线永远撑满视野"的行为破坏了 ——
+     * 一条 1.8 公里的路线在全城视野里只剩一个小点。模拟环境里车不动，
+     * 整条路线可见才是有用的默认；follow 的语义是"贴近自车"，档位就该近。
+     */
+    /* ── 主题与壁纸（2026-08-18 产品决策解禁；壁纸内容在 localStorage，信号只放名字/版本戳）── */
+    {
+      alias: "hmi.theme",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.DayNightMode",
+      type: "enum",
+      values: ["day", "night"],
+      label: "主题",
+      valueLabels: { day: "日间", night: "夜间" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "day"
+    },
+    {
+      alias: "hmi.wallpaper",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.Wallpaper",
+      type: "string",
+      label: "壁纸",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: ""
+    },
+    {
+      alias: "navigation.mapZoom",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.MapZoom",
+      type: "number",
+      range: [8, 18],
+      label: "地图缩放档位",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 16
+    },
+    {
+      alias: "navigation.mapView",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.MapView",
+      type: "enum",
+      values: ["follow", "overview"],
+      label: "地图视野",
+      valueLabels: { follow: "跟随自车", overview: "全览" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "overview"
+    },
+    {
+      alias: "navigation.mapStyle",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.MapStyle",
+      type: "enum",
+      values: ["2d", "3d", "satellite"],
+      label: "地图视角",
+      valueLabels: { "2d": "2D", "3d": "3D", satellite: "卫星" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "2d"
+    },
+    {
+      alias: "navigation.mapTraffic",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.TrafficLayer",
+      type: "boolean",
+      label: "路况图层",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    /** 模拟行驶（演示用）：车标沿当前路线跑一遍。纯显示状态，不动导航本身 */
+    {
+      alias: "navigation.cruise",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.CruiseDemo",
+      type: "boolean",
+      label: "模拟行驶",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: false
+    },
+    {
+      alias: "navigation.mapHeading",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.MapHeading",
+      type: "enum",
+      values: ["north", "vehicle"],
+      label: "地图朝向",
+      valueLabels: { north: "北朝上", vehicle: "车头朝上" },
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: "north"
+    },
+    {
+      alias: "story.cents",
+      vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryCents",
+      type: "number",
+      label: "这本书花了多少美分",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
     {
       alias: "story.pending",
       vssPath: "Vehicle.Cabin.Infotainment.HMI.StoryPending",
@@ -6641,6 +8883,13 @@ ${text}` });
         "navigation.nextInstruction",
         "navigation.destinationLocation",
         "navigation.waypointNames",
+        // 地图显示状态（map.control 写的）——变了要刷进卡片，车机屏读它渲染
+        "navigation.mapZoom",
+        "navigation.mapView",
+        "navigation.mapStyle",
+        "navigation.mapHeading",
+        "navigation.mapTraffic",
+        "navigation.cruise",
         "navigation.routePolyline",
         "vehicle.location"
       ],
@@ -6671,48 +8920,68 @@ ${text}` });
     {
       id: "window-feedback",
       watch: ["cabin.window.*.position"],
-      card: { key: "windows", template: "control", data: "windowCard" }
+      card: { key: "windows", template: "control", ack: true, data: "windowCard" }
     },
     {
       id: "climate-feedback",
       watch: ["cabin.climate.*"],
-      card: { key: "climate", template: "control", data: "climateCard" }
+      card: { key: "climate", template: "control", ack: true, data: "climateCard" }
     },
     {
       id: "seat-feedback",
       watch: ["seat.*.*"],
-      card: { key: "seats", template: "control", data: "seatCard" }
+      card: { key: "seats", template: "control", ack: true, data: "seatCard" }
     },
     {
       id: "steering-feedback",
       watch: ["cabin.steeringWheel.heating"],
-      card: { key: "steering", template: "control", data: "steeringCard" }
+      card: { key: "steering", template: "control", ack: true, data: "steeringCard" }
     },
     {
       id: "ambient-feedback",
       watch: ["cabin.ambientLight.*"],
-      card: { key: "ambient", template: "control", data: "ambientCard" }
+      card: { key: "ambient", template: "control", ack: true, data: "ambientCard" }
     },
     {
       id: "fragrance-feedback",
       watch: ["cabin.fragrance.*"],
-      card: { key: "fragrance", template: "control", data: "fragranceCard" }
+      card: { key: "fragrance", template: "control", ack: true, data: "fragranceCard" }
     },
     {
       id: "light-feedback",
       watch: ["cabin.light.*.state"],
-      card: { key: "lights", template: "control", data: "lightCard" }
+      card: { key: "lights", template: "control", ack: true, data: "lightCard" }
     },
     {
       id: "drive-feedback",
       watch: ["vehicle.driveMode", "vehicle.regenLevel", "vehicle.suspensionHeight"],
-      card: { key: "drive", template: "control", data: "driveCard" }
+      card: { key: "drive", template: "control", ack: true, data: "driveCard" }
+    },
+    {
+      id: "mirror-feedback",
+      watch: ["cabin.mirror.*.*"],
+      card: { key: "mirrors", template: "control", ack: true, data: "mirrorCard" }
+    },
+    {
+      id: "airpurifier-feedback",
+      watch: ["cabin.airPurifier.*"],
+      card: { key: "airPurifier", template: "control", ack: true, data: "airPurifierCard" }
     },
     {
       id: "opening-feedback",
       watch: ["cabin.door.*.isOpen", "cabin.trunk.isOpen", "cabin.chargePort.isOpen"],
       card: { key: "openings", template: "control", urgency: "urgent", data: "openingCard" }
     }
+  ];
+  var LIGHTS = [
+    ["lowBeam", "近光"],
+    ["highBeam", "远光"],
+    ["fogFront", "前雾灯"],
+    ["fogRear", "后雾灯"],
+    ["parking", "示宽灯"],
+    ["readingFront", "前排阅读灯"],
+    ["readingRear", "后排阅读灯"],
+    ["trunkLight", "后备箱灯"]
   ];
   var WIN_POS = ["driver", "passenger", "rearLeft", "rearRight"];
   var SEAT_CN = { driver: "主驾", passenger: "副驾", rearLeft: "左后", rearRight: "右后" };
@@ -6768,6 +9037,13 @@ ${text}` });
         originLoc,
         destLoc,
         polyline,
+        // 地图显示状态：全部状态化（桌面 = f(状态)），车机屏照着摆视角
+        mapZoom: store2.get("navigation.mapZoom"),
+        mapView: store2.get("navigation.mapView"),
+        mapStyle: store2.get("navigation.mapStyle"),
+        mapHeading: store2.get("navigation.mapHeading"),
+        mapTraffic: store2.get("navigation.mapTraffic"),
+        cruise: store2.get("navigation.cruise"),
         waypoints: store2.get("navigation.waypoints"),
         via: (store2.get("navigation.waypointNames") || "").split(";").filter(Boolean),
         // 静态图仍然给：JS 地图没加载出来时的兜底
@@ -6849,11 +9125,31 @@ ${text}` });
         { label: "浓度", value: store2.get("cabin.fragrance.intensity"), unit: "档" }
       ]
     }),
-    lightCard: ({ store: store2 }) => ({
-      title: "车灯",
+    /**
+     * 车灯。八盏灯全报的话，用户说「开后雾灯」看到的是一串跟他无关的状态 ——
+     * 有 `changed` 就只报那一盏（回执的本义），没有才退回全量。
+     */
+    lightCard: ({ store: store2, changed }) => {
+      const all = LIGHTS.map(([k, label]) => ({ label, value: cn2(store2.get(`cabin.light.${k}.state`)) }));
+      const hit = changed?.match(/^cabin\.light\.(\w+)\.state$/)?.[1];
+      const one = hit && LIGHTS.find(([k]) => k === hit);
+      return {
+        title: "车灯",
+        items: one ? [{ label: one[1], value: cn2(store2.get(`cabin.light.${one[0]}.state`)) }] : all
+      };
+    },
+    mirrorCard: ({ store: store2 }) => ({
+      title: "后视镜",
       items: [
-        { label: "大灯", value: cn2(store2.get("cabin.light.headlight.state")) },
-        { label: "后备箱灯", value: cn2(store2.get("cabin.light.trunkLight.state")) }
+        ...store2.get("cabin.mirror.driver.isFolded") || store2.get("cabin.mirror.passenger.isFolded") ? [{ label: "折叠", value: true }] : [],
+        ...["driver", "passenger"].filter((p) => store2.get(`cabin.mirror.${p}.heating`)).map((p) => ({ label: `${SEAT_CN[p]}加热`, value: true }))
+      ]
+    }),
+    airPurifierCard: ({ store: store2 }) => ({
+      title: "空气净化器",
+      items: [
+        { label: "开关", value: !!store2.get("cabin.airPurifier.power") },
+        { label: "档位", value: store2.get("cabin.airPurifier.level") }
       ]
     }),
     driveCard: ({ store: store2 }) => ({
@@ -6913,7 +9209,11 @@ ${text}` });
    **要联网查证、要成文交付的耗时活，必须 task.delegate(background:true) 转后台**——
    不是建议是规矩：子任务有独立轮次预算，状态栏会亮任务芯片让用户知道在跑，完成自动
    通知；你亲自一轮轮搜，用户只能对着"思考中"干等，轮次还会耗尽在查证上（实测两次翻车）。
-5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。`,
+5. "快层/慢层/快手分身/核验"是内部分工，**一个字都不许对用户说**——用户面前只有一个助手。
+6. **你是最后一站，你之后没有别人。**"转给同事了""我帮你转交"都是谎话——你不办就没人办。
+   对话里若有 NOT_AUTHORIZED 的调用记录，被拒的是权限受限的分身不是你，你有权限，直接调。
+   没有现成工具的临场小需求（计算器、单位换算、小游戏、倒计时），用 card.show 的
+   canvas-app 现写一个放上屏——这正是它存在的意义。`,
     context: ["vehicleState", "capabilities", "speaker", "environment", "desktop"],
     // 6→8（2026-08-13）：调研报告实测要 7+ 轮（skill 取剧本 + 查证若干轮 +
     // 看桌面 + 建 canvas 卡 + 话术），6 轮在建卡前就被掐断
@@ -7028,27 +9328,33 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     name: "生成卡片",
     whenToUse: "用 canvas 建卡前必读",
     tools: ["card.show", "card.dismiss"],
-    inject: `canvas 卡设计规范（不分内容类型，一律照此）：
-【结构】从上到下四段，缺内容的段可省，顺序不乱：
-  ① 标题行：flex 两端对齐——左标题 38px/700，右侧弱化补充（日期/范围）22px #5C6675
-  ② 主信息：一个 64-80px/800 的核心数字或一句结论；旁边可跟 28px 语义色的变化量
-  ③ 内容区：要点逐行 <div>，24-26px、line-height 1.8，行首 emoji 当图标（📈 ⚠️ ✅ 💡）；
-     超过 5 行必须提炼——整段长文塞进卡片就是文字墙，宁可少说
-  ④ 脚注：20px #8A94A6，来源/时间，来源写名字不写网址
-【配色】只用这几个：正文 #1B2430 / 次要 #5C6675 / 弱 #8A94A6 / 强调 #1E6FD9 /
-  好·涨 #DB4045 / 坏·跌 #1B9E68 / 警示 #C97A16（涨跌按中国习惯红涨绿跌），别自造颜色
-【图表】有数据序列就画 svg，别只写数字：
-  折线 <svg viewBox="0 0 560 110" style="width:100%;height:110px">
-    <polyline points="…" fill="none" stroke="#1E6FD9" stroke-width="4" stroke-linecap="round"/></svg>
-  柱状用若干 <rect>。坐标按真实数据换算（y 越小越靠上），点数 6-10 个就够
-【代码规范】只用 div/span/svg + style 属性；布局用 flex；禁 ul/table/style 标签；
-  画布不能滚动，超出直接裁——按模板说明里的像素预算排，排不下就删内容不缩字号
-【尺寸】按内容形状选，拧着来就是"裁一半+空一片"：游戏/排行/长列表这类**竖向**
-  内容用 2/3（最大档）或 tower；横向信息流用 1/2；图文多段的成文页用 2/3；
-  单指标小部件 1/6。高度排不下不许指望滚动——删内容或换更高的档
-【输出】data.html 是纯片段（无 html/body 包裹）；data.text 必填：两句话的纯文字兜底
-【收尾】交付卡建好后，把过程中自动上屏的查证/中间结果卡用 card.dismiss 收掉，
-  交付物只留一张；语音只说三句以内结论，卡上的内容一个字不念`
+    inject: `canvas 卡设计规范（不分内容类型，一律照此）。
+【铁律】卡片环境已内置一套 HMI 类，**只用类拼结构，不手写 style 排版**——
+你挑类填内容，版式就不会错。可用类（就这些，别自造）：
+  .hd（标题行）> b 标题 + i 右侧弱化说明
+  .hero（主信息）> b 核心大数字/一句结论 + em 变化量（配 .up 红涨/.down 绿跌）
+  .rows > .row（要点行）> span.ic 行首 emoji 图标 + 正文 + small 附注
+  .grid2 > .cell（两列小格，对比/多指标用）
+  .pill（标签）　.foot（脚注：来源/时间，写名字不写网址）
+  语义色类：.up .down .good .bad .warn .acc
+【骨架示例】（填空，别改结构）：
+<div class="hd"><b>今日行情</b><i>08-18 收盘</i></div>
+<div class="hero"><b>1286.21</b><em class="down">-6.88 (-0.53%)</em></div>
+<div class="rows">
+  <div class="row"><span class="ic">📈</span>成交额放大三成<small>较昨日</small></div>
+  <div class="row"><span class="ic">💡</span>机构目标价中位数 191</div>
+</div>
+<div class="foot">数据来自腾讯行情</div>
+【图表】有数据序列就画 svg（唯一允许手写样式的地方）：
+  <svg viewBox="0 0 560 110" style="width:100%;height:110px">
+  <polyline points="…" fill="none" stroke="#1E6FD9" stroke-width="4" stroke-linecap="round"/></svg>
+  柱状用 <rect> 填 #1E6FD9；涨跌色 #DB4045 / #1B9E68。坐标按真实数据换算，6-10 个点
+【负面清单】以下直接算错：整卡居中、渐变背景、自造颜色、style 里写字号边距、
+  超过 5 行的 .row（提炼！）、ul/table/style 标签、指望滚动（超出即裁，删内容不缩字号）
+【尺寸】竖向内容（排行/长列表/成文）用 2/3 或 tower；横向信息流 1/2；单指标 1/6
+【输出】data.html 纯片段（无 html/body）；data.text 必填：两句话纯文字兜底
+【收尾】交付卡建好后 card.dismiss 收掉过程中的中间结果卡，交付物只留一张；
+  语音三句以内说结论，卡上内容一个字不念`
   };
 
   // agents/main-agent/skills/story.ts
@@ -7058,41 +9364,135 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     tools: ["story.profile", "story.cast", "story.begin", "story.continue", "story.finish", "story.export"],
     inject: `给孩子讲绘本的章法：
 
-【节奏】第一章 3 页，之后每章 2 页。第一章要把孩子拉进去——3 页刚好够
-「谁·在哪·出事了」一个完整的开头；之后每章 2 页约 40 秒，孩子的注意力
-刚好在这个尺度上，问得太晚他已经跑神了。
+【先定妆，然后停下来等家长开口】没有主角形象就先 story.cast，look 里把不变量
+写死（发型、发色、上衣颜色、年龄段），每页都会带上，别换说法。**画完就停住**，
+说一句「像不像？不像我再画一张」然后什么都别做，不要接着 story.begin——
+定妆是全书唯一要家长把关的一步，之后每页都拿它当参考图，主角不像就是整本不像。
+屏幕上有「就是他」和「再画一张」两个按钮，家长点了或开口了你才往下走。
 
-【每章结束必须问】讲完一章就停下来问孩子：「你觉得后面会发生什么呢？
-我们一起来写这个故事吧！」——这是**开放问题不是选择题**。孩子随便说
-（会飞的自行车、变成小猫、天上掉下一个西瓜）都接得住。给两个选项让他挑
-是在玩别人写好的故事，开放续写才是"一起写"。
+【节奏】第一章 3 页，之后每章 2 页。3 页刚好够「谁·在哪·出事了」一个完整的
+开头；之后每章约 40 秒，孩子的注意力刚好在这个尺度上，问得太晚他已经跑神了。
 
-【孩子说完先复述再往下编】「哇，会飞的自行车！好主意，我这就画出来」——
-让他知道被听见了，这一秒比什么都重要。然后把他的原话原样填进
-story.continue 的 idea（封底要单列出来，让他看见这本书里有他写的部分）。
+【一屏一到两句】每页的 line 是念给孩子听的**一到两句话**（约 25–45 字），
+不是一整段。屏幕左图右文，右栏放得下两三行，太短反而空。scene 是这一页
+画什么，一句画面描述就够——主角形象不用重复写，系统会带上定妆照。
 
-【一屏一句】每页的 line 是**念给孩子听的一句话**，不是一段。孩子在动的车里
-不该盯着屏幕读长文。scene 是这一页画什么，一句画面描述就够——主角形象
-不用重复写，系统会带上定妆照。
+【正文你不要念】调完 story.begin / story.continue **只说一句衔接的话**
+（「好，我们开始咯」），**绝对不要复述 line 的内容**。屏幕会逐页朗读、
+逐字点亮、等插图到位再开口；你抢着念就是同一段讲两遍，而且你几秒念完了
+插图还在画——用户看到的就是"故事都讲完了图还没出来"。章末提问是例外。
 
-【把车窗外写进故事】这是车里讲故事相对手机 App 唯一真正的优势：
-正在过的桥、外面的天气、要去的地方、几点钟——都织进去。孩子抬头看窗外，
-故事和现实对上了。先看一眼 navigation.* 和 weather 的信号再动笔。
+【每章结束必须问】「你觉得后面会发生什么呢？我们一起来写这个故事吧！」——
+**开放问题不是选择题**。给两个选项让他挑是在玩别人写好的故事。
+孩子说完先复述（「哇，会飞的自行车！」）让他知道被听见了，再把原话原样
+填进 story.continue 的 idea——封底要单列出来，让他看见书里有他写的部分。
 
-【收尾】孩子说不想听了、或者快到站了（导航剩余时间少于两分钟），
-就用 story.finish 给个像样的结局，别硬停。默认讲到第三章之后主动问一句
-「这个故事就到这里好不好？」——他说继续就接着写，没有上限。
+【把车窗外写进故事】这是车里讲故事相对手机 App 唯一真正的优势：正在过的桥、
+外面的天气、要去的地方、几点钟——都织进去。先看一眼 navigation.* 和 weather。
 
-【安全】只讲温暖的、寓教于乐的内容。不碰暴力、恐怖、成人话题；
-主角遇到困难要能解决，不留悬着的恐惧。孩子提了不合适的方向就顺着
-拐回来（「小怪兽其实只是想找朋友」），不要生硬拒绝。
+【收尾】孩子说不想听了、或快到站了（导航剩余少于两分钟），就 story.finish
+给个像样的结局，别硬停。默认讲到第三章之后问一句「就到这里好不好？」，
+他说继续就接着写，没有上限。
 
-【先定妆】没有主角形象就先 story.cast。look 里把不变量写死：
-发型、发色、上衣颜色、年龄段——这几条每页都会带上，别每次换说法。`
+【安全】只讲温暖的、寓教于乐的内容。不碰暴力、恐怖、成人话题；主角遇到困难
+要能解决，不留悬着的恐惧。孩子提了不合适的方向就顺着拐回来
+（「小怪兽其实只是想找朋友」），不要生硬拒绝。`
+  };
+
+  // agents/main-agent/skills/briefing.ts
+  var BRIEFING_SKILL = {
+    name: "出发晨报",
+    whenToUse: "出发了/早上好/今天啥情况",
+    tools: [
+      "weather.query",
+      "holiday.query",
+      "traffic.status",
+      "news.headlines",
+      "stock.query",
+      "poem.today",
+      "memory.list"
+    ],
+    inject: `出发晨报的章法——目标是 30 秒内一段连贯的口头简报，不是逐项汇报：
+1. **一轮并行**把料备齐：weather.query（当前位置）+ holiday.query +
+   traffic.status + news.headlines + memory.list。别一轮查一个，那要等半分钟。
+2. 记忆里有关注的股票/指数才补一轮 stock.query（可多只并行）；没有就跳过，
+   **不要问用户"要不要听股价"**——晨报是端上来的，不是点菜。
+3. 组稿次序：天气一句（有雨必说带伞/开慢点）→ 假期调休一句（只说最近的，
+   平常日子不提）→ 路况一句（畅通就并进天气里带过）→ 新闻挑 1-2 条标题
+   （屏上有列表，你只点题）→ 股票一句（涨跌幅说人话）。
+4. 收尾用 poem.today 的诗句点个景——念诗句和作者就行，别解释诗意。
+5. 全程**一段话说完**，中间不停顿不确认。信息缺哪块（服务挂了）就自然跳过，
+   别说"XX 查询失败"。`
+  };
+
+  // agents/main-agent/skills/weatherwise.ts
+  var WEATHERWISE_SKILL = {
+    name: "天气应对",
+    whenToUse: "下雨了/起雾/太晒/天气突变",
+    tools: [
+      "weather.query",
+      "wiper.set",
+      "light.set",
+      "window.set",
+      "sunroof.set",
+      "defrost.set",
+      "airPurifier.set",
+      "climate.set",
+      "traffic.status"
+    ],
+    inject: `天气应对的章法——按当下天气把车调到位，一轮并行调完，一句话交代：
+1. 先确认事实：用户说"下雨了"直接信；说"天气好像不对"先 weather.query。
+2. **下雨**：wiper.set 开雨刷（小雨 low 大雨 high）→ 车窗天窗有开着的关上
+   （先 vehicle 状态里看，全关着就别动）→ light.set 开近光 → 湿度大容易起雾，
+   defrost.set both 打开 → 顺手 traffic.status，雨天必堵，提前说一句。
+3. **起雾**：defrost.set both + 空调制冷除湿（climate.set 温度别动只开 AC）。
+4. **暴晒**：关天窗遮阳、空调降 2 度以内、提醒屏幕反光可开卫星图对比。
+5. **空气差/有异味**：airPurifier.set 开高档 + 车窗关严 + 内循环。
+6. 全部动作**一轮并行**下发，完事只报一句结果（"雨刷灯除雾都开了，慢点开"）——
+   动了哪五样不逐条念，回执横幅屏上有。
+7. 边界：车速高时车窗调整会转确认，别硬来；用户明说不要的（"别关我窗户"）
+   记到 memory.remember。`
+  };
+
+  // agents/main-agent/skills/mood.ts
+  var MOOD_SKILL = {
+    name: "氛围导演",
+    whenToUse: "来点氛围/放松/浪漫/提神",
+    tools: [
+      "ambientLight.set",
+      "fragrance.set",
+      "climate.set",
+      "music.generate",
+      "music.play",
+      "media.volume"
+    ],
+    inject: `氛围导演的章法——一个场景词，灯、香、乐、温一步到位：
+场景映射表（可按用户口味微调，用户改过的记 memory.remember）：
+- **放松/下班**：氛围灯暖橙 40% 亮度 · 香氛木质调低档 · 音乐"轻柔钢琴或 lofi"
+  · 空调 +1 度 · 音量调低两格
+- **浪漫/约会**：灯玫瑰紫 30% · 香氛花香 · 音乐"慢爵士,萨克斯"
+- **提神/犯困**：灯冰蓝 80% · 香氛薄荷高档 · 音乐"节奏明快的电子或摇滚"
+  · 空调 -2 度吹面——犯困是安全问题，语气可以直接点
+- **专注/别吵我**：灯关 · 香氛关 · 音乐停或纯白噪音 · 之后你也少说话
+章法：
+1. 灯/香/温**一轮并行**调完。
+2. 音乐优先 music.generate 现写一段贴合的（30 秒会自动循环氛围），
+   用户点名歌手/歌名才用 music.play 搜。生成花钱（几毛），同场景刚生成过的
+   别重复生成。
+3. 完事一句话收（"灯光音乐都给你调到放松档了"），别报参数明细。
+4. 用户说"不对，太暗了"这类微调，只动被点名的那一样。`
   };
 
   // agents/main-agent/skills/index.ts
-  var SKILLS = [NAV_SKILL, MEDIA_SKILL, CARDCRAFT_SKILL, STORY_SKILL];
+  var SKILLS = [
+    NAV_SKILL,
+    MEDIA_SKILL,
+    CARDCRAFT_SKILL,
+    STORY_SKILL,
+    BRIEFING_SKILL,
+    WEATHERWISE_SKILL,
+    MOOD_SKILL
+  ];
 
   // src/director/main.ts
   var import_meta = {};
@@ -7110,7 +9510,7 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
   var muted = false;
   var state = createDomainState();
   var story = createStoryStore(defaultStorage());
-  var imageGen = createImageClient(fetch.bind(window), () => apiKey);
+  var imageGen = withShrink(createImageClient(fetch.bind(window), () => apiKey), shrinkDataUrl);
   var $s = (id) => document.getElementById(id);
   function renderStoryNote() {
     const pic = $s("heroPic"), ok = $s("heroOk"), note = $s("storyNote");
@@ -7121,8 +9521,11 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     }
     if (ok) ok.checked = story.consented();
     const b = story.books()[0];
-    if (note) note.textContent = b ? `上一本：《${b.title}》，${b.pages.length} 页` : photo ? "照片就位，说「给孩子讲个故事」就能开始" : "还没有照片";
+    const cents = Number(store.get("story.cents") || 0);
+    const money = cents ? `　本次已花 $${(cents / 100).toFixed(2)}` : "";
+    if (note) note.textContent = (b ? `上一本：《${b.title}》，${b.pages.length} 页` : photo ? "照片就位，说「给孩子讲个故事」就能开始" : "还没有照片") + money;
   }
+  store.subscribe("story.cents", renderStoryNote);
   async function loadHeroFromPublic() {
     if (story.photo()) return;
     for (const n of ["child.jpg", "child.png", "child.jpeg", "child.webp"]) {
@@ -7130,7 +9533,7 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
         const r = await fetch("/hero/" + n);
         if (!r.ok) continue;
         const blob = await r.blob();
-        story.savePhoto(await new Promise((res) => {
+        await savePhoto(await new Promise((res) => {
           const fr = new FileReader();
           fr.onload = () => res(String(fr.result));
           fr.readAsDataURL(blob);
@@ -7141,14 +9544,15 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     }
     renderStoryNote();
   }
+  async function savePhoto(dataUrl) {
+    story.savePhoto(await shrinkDataUrl(dataUrl));
+    renderStoryNote();
+  }
   $s("heroFile")?.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     const fr = new FileReader();
-    fr.onload = () => {
-      story.savePhoto(String(fr.result));
-      renderStoryNote();
-    };
+    fr.onload = () => void savePhoto(String(fr.result));
     fr.readAsDataURL(f);
   });
   $s("heroOk")?.addEventListener("change", (e) => {
@@ -7160,22 +9564,150 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     story.revoke();
     renderStoryNote();
   });
-  $s("bookExport")?.addEventListener("click", () => {
-    const b = story.books()[0];
-    if (!b) return;
+  var VOICE_KEY = "cockpit-sim:tts:voice";
+  var XF = {
+    appId: String(import_meta.env?.VITE_XFYUN_APPID ?? ""),
+    apiKey: String(import_meta.env?.VITE_XFYUN_API_KEY ?? ""),
+    apiSecret: String(import_meta.env?.VITE_XFYUN_API_SECRET ?? "")
+  };
+  var xfOk = !!(XF.appId && XF.apiKey && XF.apiSecret);
+  function renderVoices() {
+    const sel = $s("ttsVoice");
+    if (!sel) return;
+    const list = zhVoices(speechSynthesis?.getVoices?.() ?? []);
+    const saved = localStorage.getItem(VOICE_KEY) || pickVoice(list)?.name || "";
+    const cloud = `<optgroup label="云端超拟人 · 讯飞${xfOk ? "" : "（未配 Key，选了也走本机）"}">` + XF_VOICES.map((v) => `<option value="${v.value}"${v.value === saved ? " selected" : ""}>${v.label}</option>`).join("") + "</optgroup>";
+    const local = list.length ? `<optgroup label="本机音色">` + list.map((v) => {
+      const tag = v.female === true ? "女声" : v.female === false ? "男声" : "—";
+      return `<option value="${v.name.replace(/"/g, "&quot;")}"${v.name === saved ? " selected" : ""}>${v.name}（${tag}·${v.lang}）</option>`;
+    }).join("") + "</optgroup>" : '<optgroup label="本机音色"><option disabled>这台机器没装中文音色</option></optgroup>';
+    sel.innerHTML = cloud + local;
+  }
+  $s("ttsVoice")?.addEventListener("change", (e) => {
+    localStorage.setItem(VOICE_KEY, e.target.value);
+  });
+  $s("ttsTry")?.addEventListener("click", () => {
+    const name = $s("ttsVoice")?.value ?? "";
+    const demo = "小雨点打在桥上，妞妞把伞举得高高的。";
+    if (isCloudVoice(name) && xfOk) {
+      synthesize(XF, xfVcn(name), demo, 0.92).then((b) => new Audio(URL.createObjectURL(b)).play()).catch((e) => log("r", `讯飞试听失败：${e?.message ?? e}`));
+      return;
+    }
+    const v = pickVoice(speechSynthesis.getVoices() ?? [], { name });
+    try {
+      speechSynthesis.cancel();
+    } catch {
+    }
+    const u = new SpeechSynthesisUtterance(demo);
+    u.lang = "zh-CN";
+    u.rate = 0.92;
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  });
+  if ("speechSynthesis" in window) {
+    speechSynthesis.addEventListener?.("voiceschanged", renderVoices);
+    let tries = 0;
+    const poll = setInterval(() => {
+      renderVoices();
+      if (speechSynthesis.getVoices().length || ++tries > 12) clearInterval(poll);
+    }, 250);
+    renderVoices();
+  }
+  async function shrinkDataUrl(url) {
+    try {
+      const im = await new Promise((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = rej;
+        i.src = url;
+      });
+      const plan = planShrink(im.naturalWidth, im.naturalHeight);
+      if (plan.skip && url.startsWith("data:image/webp")) return url;
+      const cv = document.createElement("canvas");
+      cv.width = plan.w;
+      cv.height = plan.h;
+      cv.getContext("2d").drawImage(im, 0, 0, plan.w, plan.h);
+      const out = cv.toDataURL("image/webp", WEBP_Q);
+      return out.length < url.length ? out : url;
+    } catch {
+      return url;
+    }
+  }
+  $s("bookExport")?.addEventListener("click", async () => {
+    const raw = story.books()[0];
+    if (!raw) return;
+    const btn = $s("bookExport");
+    btn.disabled = true;
+    btn.textContent = "正在打包…";
+    const cast = story.cast();
+    const b = {
+      ...raw,
+      pages: await Promise.all(raw.pages.map(async (pg) => pg.image ? { ...pg, image: await shrinkDataUrl(pg.image) } : pg))
+    };
     const p = story.profile() ?? {};
-    const html = buildBookHtml(b, { name: p.name, age: p.age, cast: story.cast() ?? void 0 });
+    const html = buildBookHtml(b, {
+      name: p.name,
+      age: p.age,
+      cast: cast ? await shrinkDataUrl(cast) : void 0
+    });
+    btn.disabled = false;
+    btn.textContent = "导出上一本书";
     const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
     a.download = bookFileName(b);
     a.click();
+    const note = $s("storyNote");
+    if (note) note.textContent = `《${b.title}》已导出，${(html.length / 1024 / 1024).toFixed(1)}MB`;
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   });
   loadHeroFromPublic();
   renderStoryNote();
   var prefs = createPrefs();
   var autoplay = createAutoplay(store, state);
+  var autoStore = createAutomationStore({
+    get: (k) => localStorage.getItem(k),
+    set: (k, v) => localStorage.setItem(k, v)
+  });
+  async function executeAutomation(rule) {
+    const parts = [];
+    for (const act of rule.do) {
+      if ("prompt" in act && act.prompt) {
+        ask(`[自动任务·${rule.name}] ${act.prompt}`);
+        parts.push("已交给助手");
+      } else if ("tool" in act && act.tool) {
+        const r = await registry.invoke(act.tool, act.args ?? {});
+        parts.push(`${act.tool} ${r.status === "ok" ? "✓" : r.message ?? r.status}`);
+      }
+    }
+    return parts.join("、") || "空任务";
+  }
+  var onAutoFire = async (rule) => {
+    if (rule.ask) {
+      desk.render({
+        key: `auto-ask-${rule.id}`,
+        template: "confirm",
+        size: "wide",
+        kind: "system",
+        ttl: "untilTaskEnd",
+        data: {
+          title: "自动任务",
+          question: `「${rule.name}」条件满足了，要执行吗？`,
+          options: [`执行自动任务「${rule.name}」`, "这次跳过"]
+        }
+      });
+      log("p", `⚙ 自动任务「${rule.name}」条件满足，等用户确认`);
+      bus.send({ type: "voice", s: "confirming", text: `自动任务${rule.name}条件满足了，要执行吗`, who: "agent" });
+      return;
+    }
+    const brief2 = await executeAutomation(rule);
+    log("p", `⚙ 自动任务「${rule.name}」已执行：${brief2}`);
+    bus.send({ type: "banner", on: true, title: `自动任务 · ${rule.name}`, desc: "已执行", ttl: 6e3 });
+  };
+  var autoEngine = createAutomationEngine(store, autoStore, (r) => {
+    void onAutoFire(r);
+  });
+  setInterval(() => autoEngine.evaluate(), 5e3);
   var registry = createRegistry(store, TOOLS, Date.now, {
     state,
     prefs,
@@ -7183,13 +9715,37 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     amap,
     itunes: createItunesClient(),
     radio: createRadioClient(fetch.bind(window)),
+    stocks: createStockClient(fetch.bind(window)),
+    holiday: createHolidayClient(fetch.bind(window)),
+    poem: createPoemClient(fetch.bind(window)),
+    podcast: createPodcastClient(fetch.bind(window)),
+    orvideo: createVideoGen(fetch.bind(window), () => apiKey),
+    ormusic: createMusicGen(fetch.bind(window), () => apiKey),
     news: createNewsClient(fetch.bind(window), () => newsKey),
     pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
     websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
     story,
-    image: imageGen
+    image: imageGen,
+    automation: { store: autoStore, execute: executeAutomation },
+    // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
+    // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
+    storage: defaultStorage(),
+    voices: () => zhVoices(speechSynthesis?.getVoices?.() ?? []),
+    // 天气换源（2026-08-15）：零 Key 零注册，官方 CORS，高德留兜底
+    openmeteo: createOpenMeteoClient(fetch.bind(window))
   });
-  createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS, deps: { store, amap, state } }).start();
+  createOrchestrator({
+    store,
+    desk,
+    rules: CARD_RULES,
+    builders: DATA_BUILDERS,
+    deps: { store, amap, state },
+    onAck: (a) => {
+      if (muted) return;
+      bus.send({ type: "banner", on: true, reason: "done", title: a.title, desc: a.text, ttl: 4e3 });
+      log("a", `[回执] ${a.title}：${a.text}`);
+    }
+  }).start();
   var apiKey = "";
   var modelId = "";
   var fastModelId = "";
@@ -7397,7 +9953,7 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
       } else {
         const said = `（用户在屏幕上点选）${m.value ?? m.act}`;
         log("u", `[屏幕] ${said}`);
-        ask(said);
+        ask(said, { answer: true });
       }
       return;
     }
@@ -7436,6 +9992,8 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     if (muted) return;
     const target = {};
     for (const k of POS) target[k] = store.getTarget(`cabin.window.${k}.position`);
+    target["hmi.theme"] = store.get("hmi.theme");
+    target["hmi.wallpaper"] = store.get("hmi.wallpaper");
     bus.send({
       type: "state",
       target,
@@ -7568,9 +10126,11 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
       case "thinking":
         bus.send({ type: "voice", s: "thinking", text: null });
         break;
-      case "executing":
-        bus.send({ type: "voice", s: "executing" });
+      case "executing": {
+        const brief2 = registry.list().find((t) => t.name === e.name)?.brief;
+        bus.send({ type: "voice", s: "executing", chip: brief2 ?? e.name });
         break;
+      }
       case "speaking":
         voiceBusy = true;
         bus.send({ type: "voice", s: "speaking", text: e.text, who: "agent" });
@@ -7626,7 +10186,7 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
         break;
     }
   });
-  async function ask(text) {
+  async function ask(text, opts = {}) {
     if (muted) {
       muted = false;
       ME.boot = Date.now();
@@ -7648,7 +10208,7 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     log("u", `
 ▸ ${text}`);
     const t0 = performance.now();
-    const r = await pipeline.run(text);
+    const r = await pipeline.run(text, opts);
     let rn = 0;
     for (const s of r.trace) {
       if (s.type === "prompt") {
@@ -7756,6 +10316,18 @@ story.continue 的 idea（封底要单列出来，让他看见这本书里有他
     store.setDirect("vehicle.location", value);
     if (announce) log("p", `当前城市 → ${citySelect.selectedOptions[0].textContent}`);
   };
+  if (!localStorage.getItem(CITY_KEY) && amap) {
+    amap.ipLocate().then((r) => {
+      if (!r || localStorage.getItem(CITY_KEY)) return;
+      const opt = Array.from(citySelect.options).find((o) => r.city.includes(o.textContent ?? "～"));
+      if (opt) {
+        citySelect.value = opt.value;
+        citySelect.dispatchEvent(new Event("change"));
+      }
+      log("p", `IP 定位：当前城市按 ${r.city} 初始化（可在下拉框改）`);
+    }).catch(() => {
+    });
+  }
   citySelect.onchange = (e) => {
     const v = e.target.value;
     localStorage.setItem(CITY_KEY, v);

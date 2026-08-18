@@ -170,3 +170,19 @@ describe('主题 token', () => {
     expect(tokensFor('screen', 'day')).not.toContain('--sf-base:#0B0F16')
   })
 })
+
+/**
+ * 全局字体（Avatar 定稿 §04）：MiSans 优先的系统栈，零打包——
+ * 运行时依赖为零、file:// 单文件版不膨胀。装了 MiSans 的演示机 100% 一致，
+ * 没装的优雅回退到各系统最好的中文黑体。
+ */
+describe('FONT_STACK', () => {
+  it('MiSans 打头，带 HarmonyOS/PingFang/YaHei 回退，system-ui 兜底', async () => {
+    const { FONT_STACK } = await import('../../src/design/tokens')
+    expect(FONT_STACK.startsWith('"MiSans"')).toBe(true)
+    for (const f of ['HarmonyOS Sans SC', 'PingFang SC', 'Microsoft YaHei', 'system-ui'])
+      expect(FONT_STACK).toContain(f)
+    // 栈是给 CSS 直接用的一行值，不带分号
+    expect(FONT_STACK).not.toContain(';')
+  })
+})

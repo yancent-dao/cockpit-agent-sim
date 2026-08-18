@@ -14,7 +14,9 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
-  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  /* 全局字体（Avatar 定稿 §04）：MiSans 优先零打包，没装就回退系统中文黑体。
+     单一事实来源在 src/design/tokens.ts 的 FONT_STACK——这里是静态壳，改要一起改 */
+  font-family:"MiSans","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
 /* 真机外壳（风格稿）：细黑边悬浮屏 + 天际线背景——上半是舱外天空，
    下半是仪表台深色，屏幕浮在分界线上 */
@@ -54,13 +56,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 #chipTask .spin{display:inline-block;font-style:normal;animation:taskspin 1.6s linear infinite}
 @keyframes taskspin{to{transform:rotate(360deg)}}
 
-/* 3列×2行栅格：上行 Agent 区，下行固定区 */
-/* 语音条待机时缩到 148px，激活长到 300px。但**桌面高度锚死在 300**：
-   之前桌面跟着 --voiceH 走，avatar 一激活桌面被压掉 152px，卡片内容
-   拦腰截断（用户实拍：天气预报只剩半行字）。待机时下方那条壁纸留白
-   是呼吸感，不是浪费——卡片高度可预测比多挤一排像素重要 */
-#stage{--voiceH:300px;--deskBottom:300px}
-#stage[data-s=idle]{--voiceH:148px}
+/* 桌面高度锚死在 300（像素契约：996 从这来，231/486/741/996 一个都不能动）。
+   语音带退场（2026-08-18 角落蒙层定稿）后底部这条留白归横幅与呼吸感——
+   曾想让桌面长高占掉它，那会把全套档位像素、形态阈值、画廊校准一起掀翻 */
+#stage{--deskBottom:300px}
 #desk{position:absolute;top:var(--status-h,96px);left:0;right:0;bottom:var(--deskBottom);
   padding:var(--desk-pad,24px 60px);
   display:grid;grid-template-columns:repeat(var(--grid-cols,12),1fr);
@@ -171,8 +170,7 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
   animation:cdrun linear forwards}
 @keyframes cdrun{from{width:100%}to{width:0}}
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
-/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟着 --voiceH 走，
-   跟桌面区同一块地方 —— 语音区不该被盖住，用户还得听得见 Agent 在说什么 */
+/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟桌面区同一块地方 */
 #overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--deskBottom,300px);padding:24px 60px;
   display:none;z-index:6;transition:bottom .32s var(--ez,var(--ease))}
 #overlay.on{display:block;animation:cardIn var(--d3,.34s) var(--ez,var(--ease))}
@@ -670,56 +668,47 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}
 
-#voice{position:absolute;left:0;right:0;bottom:0;height:var(--voiceH);display:flex;align-items:center;
-  gap:44px;padding:0 80px;border-top:1px solid var(--hairline);transition:height .32s var(--ease);
-  background:linear-gradient(180deg,rgba(238,241,246,0),rgba(238,241,246,.92))}
-#orbBox{width:180px;height:180px;flex:none;position:relative;display:flex;align-items:center;
-  justify-content:center;transition:transform .32s var(--ease),opacity .32s var(--ease)}
-#orb{width:132px;height:132px;border-radius:50%;position:relative;
-  background:radial-gradient(circle at 35% 32%,#8FCBFF,var(--brand) 55%,#1E5FA8);
-  box-shadow:0 0 60px rgba(77,163,255,.5),inset 0 0 30px rgba(255,255,255,.25);
-  display:flex;align-items:center;justify-content:center;gap:7px;transition:.3s var(--ease)}
-#ring{position:absolute;inset:-16px;border-radius:50%;border:3px solid transparent;opacity:0;
-  border-top-color:var(--brand);border-right-color:rgba(77,163,255,.3)}
-.bar{width:9px;height:20px;border-radius:99px;background:rgba(255,255,255,.92);opacity:0}
-[data-s=idle] #orbBox{transform:scale(.62)}
-[data-s=idle] #orb{animation:breathe 3.4s ease-in-out infinite;filter:brightness(.55)}
-@keyframes breathe{0%,100%{transform:scale(.92)}50%{transform:scale(1)}}
-[data-s=wakeup] #orb{animation:pop .5s var(--ease)}
-@keyframes pop{0%{transform:scale(.9)}45%{transform:scale(1.16)}100%{transform:scale(1.04)}}
-[data-s=listening] #orb,[data-s=speaking] #orb{transform:scale(1.04)}
-[data-s=listening] .bar,[data-s=speaking] .bar{opacity:1;animation:wave .85s ease-in-out infinite}
-[data-s=speaking] .bar{animation-duration:.55s}
-.bar:nth-child(2){animation-delay:.12s}.bar:nth-child(3){animation-delay:.24s}
-.bar:nth-child(4){animation-delay:.36s}.bar:nth-child(5){animation-delay:.48s}
-@keyframes wave{0%,100%{height:16px}50%{height:52px}}
-[data-s=thinking] #ring{opacity:1;animation:spin 1.05s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-[data-s=thinking] #orb{filter:brightness(.8)}
-[data-s=executing] #orbBox{transform:scale(.55) translateX(-120px);opacity:.75}
-[data-s=confirming] #orb{animation:pulse 1.1s ease-in-out infinite;
-  background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
-  box-shadow:0 0 60px rgba(255,184,77,.5),inset 0 0 30px rgba(255,255,255,.25)}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
-[data-s=rejected] #orb{background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
-  box-shadow:0 0 50px rgba(255,184,77,.45);transform:scale(.94)}
-#sub{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px}
-#subTag{font-size:26px;color:var(--text-secondary);letter-spacing:2px}
-#subText{font-size:44px;line-height:1.42;font-weight:500;min-height:64px}
-#subText.user{color:var(--text-secondary)}
-.cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
+/* ══════════ 角落蒙层（Avatar 定稿 2026-08-18）══════════
+   满宽语音带退役：星河角标住进状态栏左侧，字幕/微字/活动胶囊/确认按钮
+   全在顶栏一行内排开，桌面卡片零遮挡。激活时一层透明辉光从左上角洇出——
+   蒙层是氛围不是内容，pointer-events 穿透，不挡任何点击 */
+#avatar{display:flex;align-items:center;gap:20px;min-width:0;flex:1}
+#avatar canvas{width:68px;height:68px;flex:none;cursor:pointer}
+#avTag{font-size:24px;color:var(--text-secondary);flex:none;letter-spacing:1px}
+#avText{font-size:30px;color:var(--text-primary);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#avText.user{color:var(--text-secondary)}
+#avChips{display:none;gap:10px;flex:none}
+[data-s=thinking] #avChips,[data-s=executing] #avChips{display:flex}
+#avChips span{font-size:20px;padding:4px 18px;border-radius:999px;white-space:nowrap;
+  background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);
+  color:var(--text-secondary);animation:chipIn .3s var(--ease)}
+@keyframes chipIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#avBtns{display:none;gap:14px;flex:none}
+[data-s=confirming] #avBtns{display:flex}
+#avBtns b{font-size:24px;font-weight:600;padding:8px 34px;border-radius:999px;cursor:pointer;
+  background:var(--brand);color:#fff}
+#avBtns b+b{background:rgba(255,255,255,.55);color:var(--text-secondary);
+  border:1px solid rgba(255,255,255,.6)}
+.cursor{display:inline-block;width:3px;height:28px;background:var(--brand);vertical-align:-4px;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+/* 激活时能力提示胶囊让位给字幕 */
+#stage:not([data-s=idle]) .hintpill{display:none}
+/* 蒙层：盖在卡片之上、横幅覆盖层之下。确认/拒绝转琥珀——颜色变化余光就能捕捉 */
+#veil{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:0;transition:opacity .5s;
+  background:radial-gradient(56% 50% at 0% 0%,rgba(77,163,255,.22),rgba(77,163,255,0) 72%)}
+#stage:not([data-s=idle]) #veil{opacity:1}
+[data-s=confirming] #veil,[data-s=rejected] #veil{
+  background:radial-gradient(56% 50% at 0% 0%,rgba(255,184,77,.28),rgba(255,184,77,0) 72%)}
 /* ══════════ 横幅：第二条通道 ══════════
    一次一条排队，按语义色分色 —— 之前拒绝、条件不满足、系统提示、执行完成
    全是同一个橙色，用户分不出「不让做」和「做完了」。
 
-   位置：紧贴语音区上沿，**跟着 --voiceH 走**。
-   放桌面区顶部试过，它会盖住导航卡的转向条 —— 那是导航的命根子，
-   任何临时提示都不该压它。放这里还有个好处：横幅和语音播报是同一类东西
-   （对某个动作的解释），挨着出现读起来是一句话。
-   原来那版硬编码 bottom:328px，语音区一变高就浮空，用 calc 跟住。 */
-#banner{position:absolute;left:60px;right:60px;bottom:calc(var(--voiceH) + 24px);z-index:5;display:none;
+   位置：桌面下沿的留白带。放桌面区顶部试过，它会盖住导航卡的转向条 ——
+   那是导航的命根子，任何临时提示都不该压它。
+   语音带退场后底部 300px 是横幅的家：贴桌面下沿，不压任何卡。 */
+#banner{position:absolute;left:60px;right:60px;bottom:150px;z-index:5;display:none;
   gap:calc(18px*var(--u,1));align-items:flex-start;
   background:var(--acbg);border:2px solid var(--acbd);border-radius:var(--r-m);
   padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06;
@@ -746,11 +735,15 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 <body>
 <div id="vp"><div id="stage" data-s="idle">
   <div id="statusbar">
-    <span class="clock" id="clock">--:--</span>
+    <div id="avatar">
+      <canvas id="cvav" width="136" height="136"></canvas>
+      <span id="avTag">待机</span><span id="avText"></span>
+      <span id="avChips"></span><span id="avBtns"></span>
+    </div>
     <span class="hintpill">◎ 试试说：<b>"今天天气怎么样"</b></span>
+    <span class="clock" id="clock">--:--</span>
     <span>车外 <b id="tOut">3</b>°C</span>
     <span id="wx">☁ 多云</span>
-    <span class="sp"></span>
     <span class="chip" id="chipTask" style="display:none"><i class="spin">⟳</i> <b id="taskN">0</b><span id="taskCur"></span></span>
     <span class="chip" id="chipSpd">静止 · P 挡</span>
     <span class="chip" id="chipLock" style="display:none">🔒 儿童锁开启</span>
@@ -758,18 +751,12 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
   </div>
 
   <div id="desk"></div>
+  <div id="veil"></div>
   <div id="stagedTab"><span class="dots">⋯</span><b id="stagedN">0</b></div>
   <div id="overlay"></div>
 
   <div id="banner"><div class="bico" id="bnI">!</div>
     <div><div class="tt" id="bnT"></div><div class="ds" id="bnD"></div></div></div>
-
-  <div id="voice" data-s="idle">
-    <div id="orbBox"><div id="ring"></div>
-      <div id="orb"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
-    </div>
-    <div id="sub"><div id="subTag">待机</div><div id="subText"></div></div>
-  </div>
 </div></div>
 <div id="conn">等待控制面板连接…（按 F 全屏）</div>
 <!-- 自动播放解锁。浏览器要求页面被交互过才允许出声，而车机屏是被动弹出的窗口，

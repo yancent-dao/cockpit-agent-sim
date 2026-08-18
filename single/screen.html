@@ -14,7 +14,9 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（2026-08-12）：cursor 回归，屏幕可点选 */
-  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  /* 全局字体（Avatar 定稿 §04）：MiSans 优先零打包，没装就回退系统中文黑体。
+     单一事实来源在 src/design/tokens.ts 的 FONT_STACK——这里是静态壳，改要一起改 */
+  font-family:"MiSans","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   color:var(--text-primary);-webkit-font-smoothing:antialiased}
 /* 真机外壳（风格稿）：细黑边悬浮屏 + 天际线背景——上半是舱外天空，
    下半是仪表台深色，屏幕浮在分界线上 */
@@ -54,13 +56,10 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 #chipTask .spin{display:inline-block;font-style:normal;animation:taskspin 1.6s linear infinite}
 @keyframes taskspin{to{transform:rotate(360deg)}}
 
-/* 3列×2行栅格：上行 Agent 区，下行固定区 */
-/* 语音条待机时缩到 148px，激活长到 300px。但**桌面高度锚死在 300**：
-   之前桌面跟着 --voiceH 走，avatar 一激活桌面被压掉 152px，卡片内容
-   拦腰截断（用户实拍：天气预报只剩半行字）。待机时下方那条壁纸留白
-   是呼吸感，不是浪费——卡片高度可预测比多挤一排像素重要 */
-#stage{--voiceH:300px;--deskBottom:300px}
-#stage[data-s=idle]{--voiceH:148px}
+/* 桌面高度锚死在 300（像素契约：996 从这来，231/486/741/996 一个都不能动）。
+   语音带退场（2026-08-18 角落蒙层定稿）后底部这条留白归横幅与呼吸感——
+   曾想让桌面长高占掉它，那会把全套档位像素、形态阈值、画廊校准一起掀翻 */
+#stage{--deskBottom:300px}
 #desk{position:absolute;top:var(--status-h,96px);left:0;right:0;bottom:var(--deskBottom);
   padding:var(--desk-pad,24px 60px);
   display:grid;grid-template-columns:repeat(var(--grid-cols,12),1fr);
@@ -72,10 +71,16 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
    字号一律 = 字阶 × --u。--u 由档位类（.t-box / .t-stage …）给，
    一个类管住整张卡的排版比例 —— 取代了原来 22 条 .sz-* 硬怼 60 处 font-size。
    加一个档位只需在 tokens.ts 的 TIER_UNITS 里加一行，这里一行不动。 */
-.card{position:relative;border:1px solid rgba(255,255,255,.62);
-  background:rgba(255,255,255,.58);
+/* 玻璃层变量化（2026-08-18 主题解禁）：夜间只换这几个值，玻璃质感不变 */
+:root{--glass-bd:rgba(255,255,255,.62);--glass-bg:rgba(255,255,255,.58);
+  --glass-gloss:rgba(255,255,255,.8);--glass-shadow:rgba(60,68,140,.35)}
+body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
+  --glass-gloss:rgba(255,255,255,.06);--glass-shadow:rgba(0,0,0,.5);
+  --bg-base:#0B0F16;--bg-surface:#131A25;--bg-elevated:#1B2432}
+.card{position:relative;border:1px solid var(--glass-bd);
+  background:var(--glass-bg);
   backdrop-filter:blur(30px) saturate(1.25);-webkit-backdrop-filter:blur(30px) saturate(1.25);
-  border-radius:var(--r-l);box-shadow:0 18px 50px -18px rgba(60,68,140,.35),inset 0 1px 0 rgba(255,255,255,.8);overflow:hidden;
+  border-radius:var(--r-l);box-shadow:0 18px 50px -18px var(--glass-shadow),inset 0 1px 0 var(--glass-gloss);overflow:hidden;
   padding:calc(22px*var(--u)) calc(26px*var(--u));display:flex;flex-direction:column;
   transition:box-shadow .24s var(--ez,var(--ease)),background .24s var(--ez,var(--ease));
   animation:cardIn var(--d3,.32s) var(--ez,var(--ease))}
@@ -165,8 +170,7 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   animation:cdrun linear forwards}
 @keyframes cdrun{from{width:100%}to{width:0}}
 /* critical 走覆盖层：安全告警必须盖住一切，缩在角落等于没显示 */
-/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟着 --voiceH 走，
-   跟桌面区同一块地方 —— 语音区不该被盖住，用户还得听得见 Agent 在说什么 */
+/* 覆盖层：full 档内容卡 + 放不下的 critical 告警。跟桌面区同一块地方 */
 #overlay{position:absolute;top:96px;left:0;right:0;bottom:var(--deskBottom,300px);padding:24px 60px;
   display:none;z-index:6;transition:bottom .32s var(--ez,var(--ease))}
 #overlay.on{display:block;animation:cardIn var(--d3,.34s) var(--ez,var(--ease))}
@@ -203,6 +207,23 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
   background:var(--acbg);border:1px solid var(--acbd);color:var(--ac);letter-spacing:0}
 .cvhost{flex:1;min-height:0;overflow:hidden}
+/* 严重溢出时开滚动：**能滚就别丢**。以前这一档直接剥成纯文字，
+   实拍那份研究报告因此被砍成半份。滚动保住每一个字。
+   行驶中不给（判据在 overflowgate 的纯函数里），所以这个类不会被加上。 */
+.cvscroll .cvhost{overflow-y:auto;overscroll-behavior:contain;
+  /* 底部渐隐：**看不见的能力等于没有能力** —— 不给个信号用户不知道下面还有 */
+  -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 42px),transparent);
+  mask-image:linear-gradient(to bottom,#000 calc(100% - 42px),transparent)}
+/* 滚到底就把渐隐和提示一起撤掉，不然最后一行永远是灰的、
+   提示也一直在催一个已经做完的动作（.cvend 由滚动事件挂） */
+.cvscroll.cvend .cvhost{-webkit-mask-image:none;mask-image:none}
+.cvscroll.cvend::after{opacity:0}
+.cvscroll::after{transition:opacity .2s var(--ez,var(--ease))}
+.cvscroll .cvhost::-webkit-scrollbar{width:calc(6px*var(--u,1))}
+.cvscroll .cvhost::-webkit-scrollbar-thumb{background:var(--n4,#CBD5E1);border-radius:999px}
+.cvscroll::after{content:'⌄ 可上下滑动';position:absolute;right:calc(18px*var(--u,1));
+  bottom:calc(10px*var(--u,1));font-size:calc(var(--t-cap)*var(--u,1)*.8);
+  color:var(--tx-3);pointer-events:none;letter-spacing:.04em}
 
 /* ── 语义身份：八类各四件套 ──
    诊断 5：系统卡描边、提示底色、拒绝横幅全是 warning 橙，用户分不出三者。
@@ -332,10 +353,17 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* ── 天气：今日温差 + 逐时降水条 ── */
 .wxrng{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);margin-left:calc(10px*var(--u))}
 /* 柱高=气温，蓝柱=这个钟点会下雨。"接下来会不会下雨"是车里最想知道的 */
-.hourly{display:flex;align-items:flex-end;gap:calc(6px*var(--u));flex:1;min-height:calc(48px*var(--u));
+.hourly{display:flex;align-items:stretch;gap:calc(6px*var(--u));flex:1;min-height:calc(64px*var(--u));
   margin-top:calc(10px*var(--u))}
-.hourly i{flex:1;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
-.hourly i.wet{background:var(--brand-fg,#1D4ED8)}
+/* 一根柱 = 度数 + 柱体 + 钟点。柱高按当日温差归一化（hourlyView），
+   绝对温度映射那版三根柱差 0.5% 肉眼看不出 —— 柱子必须携带信息 */
+.hcol{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  gap:calc(3px*var(--u));min-width:0}
+.hcol b{font-size:calc(var(--t-cap)*var(--u)*.86);font-weight:600;color:var(--tx-2)}
+.hcol i{width:62%;background:var(--n3,#E2E8F0);border-radius:calc(4px*var(--u));font-style:normal}
+.hcol span{font-size:calc(var(--t-cap)*var(--u)*.78);color:var(--tx-3);white-space:nowrap}
+.hcol.wet i{background:var(--brand-fg,#1D4ED8)}
+.hcol.wet b{color:var(--brand-fg,#1D4ED8)}
 .fc{margin-top:calc(10px*var(--u))}
 
 /* ── 播放器：全套播控 + 音量 + 完整队列 ── */
@@ -409,12 +437,40 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 /* ── 绘本卡「路上的故事」 ── */
 /* 画面铺满、一句话压底。字号极大——孩子在动的车里不该凑近看 */
 .sb{display:flex;flex-direction:column;height:100%;gap:0;margin:calc(-14px*var(--u)) calc(-6px*var(--u)) 0}
-.sbart{flex:1.5;min-height:0;border-radius:calc(18px*var(--u));overflow:hidden;
+/* 图**出血到卡片边缘**（上/左/右），由 .card 的 overflow:hidden + 圆角裁 ——
+   浮在白卡里镶白边的那版被实拍判为"一点都不像一个画册" */
+.sbart{flex:1.5;min-height:0;overflow:hidden;
+  margin:calc(-8px*var(--u)) calc(-20px*var(--u)) 0;
   background:linear-gradient(160deg,#FDE9C0,#C7E0FF)}
 /* Ken Burns：极缓慢的推拉，静态图立刻有动画感。纯 CSS，零成本 */
-.sbart img{width:100%;height:100%;object-fit:cover;display:block;
+/* 窄档是上图下文，方图铺进一条横带必然裁掉上下 ——
+   偏上取景，童书插画的人物基本都在中上部 */
+.sbart img{width:100%;height:100%;object-fit:cover;object-position:center 38%;display:block;
   animation:sbkb 20s ease-in-out infinite alternate}
+/* 生成中的占位：.sbart 不是 flex 容器，`flex:1` 在这里无效会塌成 0 高 */
+.sbart>.sbwait{height:100%}
 @keyframes sbkb{from{transform:scale(1)}to{transform:scale(1.06)}}
+/* 左图右文（够宽的档）。两轮实拍：先是「图片没有显示全」，改成分栏之后
+   又变成「一点都不像一个画册，图片的上下还有留白」。
+   两次都是同一个根因：**图的比例跟它要待的那个框对不上**。
+
+   左栏是满高的一竖条，在默认档上正好是方的 —— 所以画幅改成 1:1，
+   art 用 aspect-ratio:1 跟着卡高走，图**恰好填满**：不裁、不留白。
+   再把 art 的负边距顶到卡片的内边距之外，图就**出血到卡片边缘**，
+   由 .card 的 overflow:hidden + 圆角自己裁 —— 那才是画册，
+   而不是一张浮在白卡里、四周镶着白边的缩略图。 */
+.sb.side{flex-direction:row;gap:calc(26px*var(--u));align-items:stretch}
+/* .card 内边距 22u/26u，.sb 已经吃掉 14u/6u，所以还差 8u（上）/ 20u（左）/ 22u（下） */
+.sb.side .sbart{flex:0 0 auto;aspect-ratio:1;border-radius:0;background:transparent;
+  margin:calc(-8px*var(--u)) 0 calc(-22px*var(--u)) calc(-20px*var(--u))}
+/* 方图进方框，cover 等于原样铺满 —— 一个像素都不裁。Ken Burns 会把边缘推出
+   画面，出血版式下推拉反而显得图在"漂"，所以分栏档取消它 */
+.sb.side .sbart img{object-fit:cover;animation:none}
+.sb.side .sbcap{flex:1;min-width:0;padding:calc(2px*var(--u)) 0 0;
+  justify-content:flex-start;gap:calc(12px*var(--u))}
+/* 正文在图的高度里垂直居中：靠 auto 外边距，不用 flex 容器 ——
+   给 <p> 加 display:flex 会把里面的逐字点亮 <span> 拆成独立 flex item */
+.sb.side .sbline{margin-bottom:auto}
 .sbcap{flex:1;display:flex;flex-direction:column;justify-content:center;gap:calc(10px*var(--u));
   padding:calc(20px*var(--u)) calc(8px*var(--u)) 0}
 .sbch{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);letter-spacing:.04em}
@@ -439,6 +495,13 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 .sbout{flex:1;display:flex;flex-direction:column;gap:calc(10px*var(--u));min-height:0}
 .sbout img{flex:1;min-height:0;width:100%;object-fit:contain;border-radius:calc(18px*var(--u))}
 .sbout p{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2)}
+/* 两个出口：认下来（主）/ 再画一张（次）。定妆是全书唯一要人把关的一步，
+   卡上没有出口，家长就只能看着一个不像的主角讲完整本 */
+.sbpick{display:flex;gap:calc(10px*var(--u));flex:none}
+.sbpick b,.sbpick span{padding:calc(9px*var(--u)) calc(20px*var(--u));border-radius:999px;
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;cursor:pointer;white-space:nowrap}
+.sbpick b{background:var(--ac);color:#fff}
+.sbpick span{background:var(--n2,#F1F5F9);color:var(--tx-2);font-weight:500}
 /* 生成中：模糊到清晰，不用转圈——比 loading 圈高级得多 */
 .sbwait{flex:1;border-radius:calc(18px*var(--u));background:linear-gradient(160deg,#FEF3C7,#FED7AA);
   filter:blur(14px);animation:sbpulse 1.6s ease-in-out infinite alternate}
@@ -605,56 +668,47 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 #carWrap{display:flex;align-items:center;justify-content:center}
 #carWrap svg{height:100%;max-height:400px}
 
-#voice{position:absolute;left:0;right:0;bottom:0;height:var(--voiceH);display:flex;align-items:center;
-  gap:44px;padding:0 80px;border-top:1px solid var(--hairline);transition:height .32s var(--ease);
-  background:linear-gradient(180deg,rgba(238,241,246,0),rgba(238,241,246,.92))}
-#orbBox{width:180px;height:180px;flex:none;position:relative;display:flex;align-items:center;
-  justify-content:center;transition:transform .32s var(--ease),opacity .32s var(--ease)}
-#orb{width:132px;height:132px;border-radius:50%;position:relative;
-  background:radial-gradient(circle at 35% 32%,#8FCBFF,var(--brand) 55%,#1E5FA8);
-  box-shadow:0 0 60px rgba(77,163,255,.5),inset 0 0 30px rgba(255,255,255,.25);
-  display:flex;align-items:center;justify-content:center;gap:7px;transition:.3s var(--ease)}
-#ring{position:absolute;inset:-16px;border-radius:50%;border:3px solid transparent;opacity:0;
-  border-top-color:var(--brand);border-right-color:rgba(77,163,255,.3)}
-.bar{width:9px;height:20px;border-radius:99px;background:rgba(255,255,255,.92);opacity:0}
-[data-s=idle] #orbBox{transform:scale(.62)}
-[data-s=idle] #orb{animation:breathe 3.4s ease-in-out infinite;filter:brightness(.55)}
-@keyframes breathe{0%,100%{transform:scale(.92)}50%{transform:scale(1)}}
-[data-s=wakeup] #orb{animation:pop .5s var(--ease)}
-@keyframes pop{0%{transform:scale(.9)}45%{transform:scale(1.16)}100%{transform:scale(1.04)}}
-[data-s=listening] #orb,[data-s=speaking] #orb{transform:scale(1.04)}
-[data-s=listening] .bar,[data-s=speaking] .bar{opacity:1;animation:wave .85s ease-in-out infinite}
-[data-s=speaking] .bar{animation-duration:.55s}
-.bar:nth-child(2){animation-delay:.12s}.bar:nth-child(3){animation-delay:.24s}
-.bar:nth-child(4){animation-delay:.36s}.bar:nth-child(5){animation-delay:.48s}
-@keyframes wave{0%,100%{height:16px}50%{height:52px}}
-[data-s=thinking] #ring{opacity:1;animation:spin 1.05s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-[data-s=thinking] #orb{filter:brightness(.8)}
-[data-s=executing] #orbBox{transform:scale(.55) translateX(-120px);opacity:.75}
-[data-s=confirming] #orb{animation:pulse 1.1s ease-in-out infinite;
-  background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
-  box-shadow:0 0 60px rgba(255,184,77,.5),inset 0 0 30px rgba(255,255,255,.25)}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
-[data-s=rejected] #orb{background:radial-gradient(circle at 35% 32%,#FFE0AC,var(--warning) 55%,#B87A16);
-  box-shadow:0 0 50px rgba(255,184,77,.45);transform:scale(.94)}
-#sub{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px}
-#subTag{font-size:26px;color:var(--text-secondary);letter-spacing:2px}
-#subText{font-size:44px;line-height:1.42;font-weight:500;min-height:64px}
-#subText.user{color:var(--text-secondary)}
-.cursor{display:inline-block;width:3px;height:40px;background:var(--brand);vertical-align:-6px;
+/* ══════════ 角落蒙层（Avatar 定稿 2026-08-18）══════════
+   满宽语音带退役：星河角标住进状态栏左侧，字幕/微字/活动胶囊/确认按钮
+   全在顶栏一行内排开，桌面卡片零遮挡。激活时一层透明辉光从左上角洇出——
+   蒙层是氛围不是内容，pointer-events 穿透，不挡任何点击 */
+#avatar{display:flex;align-items:center;gap:20px;min-width:0;flex:1}
+#avatar canvas{width:68px;height:68px;flex:none;cursor:pointer}
+#avTag{font-size:24px;color:var(--text-secondary);flex:none;letter-spacing:1px}
+#avText{font-size:30px;color:var(--text-primary);font-weight:500;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#avText.user{color:var(--text-secondary)}
+#avChips{display:none;gap:10px;flex:none}
+[data-s=thinking] #avChips,[data-s=executing] #avChips{display:flex}
+#avChips span{font-size:20px;padding:4px 18px;border-radius:999px;white-space:nowrap;
+  background:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.6);
+  color:var(--text-secondary);animation:chipIn .3s var(--ease)}
+@keyframes chipIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+#avBtns{display:none;gap:14px;flex:none}
+[data-s=confirming] #avBtns{display:flex}
+#avBtns b{font-size:24px;font-weight:600;padding:8px 34px;border-radius:999px;cursor:pointer;
+  background:var(--brand);color:#fff}
+#avBtns b+b{background:rgba(255,255,255,.55);color:var(--text-secondary);
+  border:1px solid rgba(255,255,255,.6)}
+.cursor{display:inline-block;width:3px;height:28px;background:var(--brand);vertical-align:-4px;
   animation:blink .9s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+/* 激活时能力提示胶囊让位给字幕 */
+#stage:not([data-s=idle]) .hintpill{display:none}
+/* 蒙层：盖在卡片之上、横幅覆盖层之下。确认/拒绝转琥珀——颜色变化余光就能捕捉 */
+#veil{position:absolute;inset:0;pointer-events:none;z-index:4;opacity:0;transition:opacity .5s;
+  background:radial-gradient(56% 50% at 0% 0%,rgba(77,163,255,.22),rgba(77,163,255,0) 72%)}
+#stage:not([data-s=idle]) #veil{opacity:1}
+[data-s=confirming] #veil,[data-s=rejected] #veil{
+  background:radial-gradient(56% 50% at 0% 0%,rgba(255,184,77,.28),rgba(255,184,77,0) 72%)}
 /* ══════════ 横幅：第二条通道 ══════════
    一次一条排队，按语义色分色 —— 之前拒绝、条件不满足、系统提示、执行完成
    全是同一个橙色，用户分不出「不让做」和「做完了」。
 
-   位置：紧贴语音区上沿，**跟着 --voiceH 走**。
-   放桌面区顶部试过，它会盖住导航卡的转向条 —— 那是导航的命根子，
-   任何临时提示都不该压它。放这里还有个好处：横幅和语音播报是同一类东西
-   （对某个动作的解释），挨着出现读起来是一句话。
-   原来那版硬编码 bottom:328px，语音区一变高就浮空，用 calc 跟住。 */
-#banner{position:absolute;left:60px;right:60px;bottom:calc(var(--voiceH) + 24px);z-index:5;display:none;
+   位置：桌面下沿的留白带。放桌面区顶部试过，它会盖住导航卡的转向条 ——
+   那是导航的命根子，任何临时提示都不该压它。
+   语音带退场后底部 300px 是横幅的家：贴桌面下沿，不压任何卡。 */
+#banner{position:absolute;left:60px;right:60px;bottom:150px;z-index:5;display:none;
   gap:calc(18px*var(--u,1));align-items:flex-start;
   background:var(--acbg);border:2px solid var(--acbd);border-radius:var(--r-m);
   padding:calc(20px*var(--u,1)) calc(28px*var(--u,1));box-shadow:var(--sh-2);--u:1.06;
@@ -681,11 +735,15 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
 <body>
 <div id="vp"><div id="stage" data-s="idle">
   <div id="statusbar">
-    <span class="clock" id="clock">--:--</span>
+    <div id="avatar">
+      <canvas id="cvav" width="136" height="136"></canvas>
+      <span id="avTag">待机</span><span id="avText"></span>
+      <span id="avChips"></span><span id="avBtns"></span>
+    </div>
     <span class="hintpill">◎ 试试说：<b>"今天天气怎么样"</b></span>
+    <span class="clock" id="clock">--:--</span>
     <span>车外 <b id="tOut">3</b>°C</span>
     <span id="wx">☁ 多云</span>
-    <span class="sp"></span>
     <span class="chip" id="chipTask" style="display:none"><i class="spin">⟳</i> <b id="taskN">0</b><span id="taskCur"></span></span>
     <span class="chip" id="chipSpd">静止 · P 挡</span>
     <span class="chip" id="chipLock" style="display:none">🔒 儿童锁开启</span>
@@ -693,18 +751,12 @@ html,body{height:100%;background:#14171C;overflow:hidden;   /* 触控落地（20
   </div>
 
   <div id="desk"></div>
+  <div id="veil"></div>
   <div id="stagedTab"><span class="dots">⋯</span><b id="stagedN">0</b></div>
   <div id="overlay"></div>
 
   <div id="banner"><div class="bico" id="bnI">!</div>
     <div><div class="tt" id="bnT"></div><div class="ds" id="bnD"></div></div></div>
-
-  <div id="voice" data-s="idle">
-    <div id="orbBox"><div id="ring"></div>
-      <div id="orb"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
-    </div>
-    <div id="sub"><div id="subTag">待机</div><div id="subText"></div></div>
-  </div>
 </div></div>
 <div id="conn">等待控制面板连接…（按 F 全屏）</div>
 <!-- 自动播放解锁。浏览器要求页面被交互过才允许出声，而车机屏是被动弹出的窗口，
@@ -819,9 +871,23 @@ ${tierRules}
   --ac:var(--brand-fg); --acbg:var(--brand-bg); --acbd:var(--brand-bd); --acgr:var(--brand-gr);
 }
 `.trim();
-  function tokensFor(scene) {
+  function tokensFor(scene, mode = "day") {
+    const dark = scene === "director" || mode === "night";
     return `${BASE_CSS}
-${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
+${dark ? DARK_CSS : LIGHT_CSS}`;
+  }
+  var WALLPAPER_PRESETS = {
+    aurora: "linear-gradient(160deg,#0f2027,#203a43 45%,#2c5364)",
+    dusk: "linear-gradient(160deg,#355C7D,#6C5B7B 55%,#C06C84)",
+    forest: "linear-gradient(160deg,#134E5E,#3d7a63 60%,#71B280)"
+  };
+  function wallpaperCss(value, mode, customImg) {
+    const [strong, weak] = mode === "night" ? ["rgba(11,15,22,.78)", "rgba(11,15,22,.32)"] : ["rgba(238,242,247,.72)", "rgba(238,242,247,.22)"];
+    if (!value) return "";
+    const [kind, name] = value.split(":");
+    const img = kind === "preset" ? WALLPAPER_PRESETS[name] : customImg ? `url(${customImg}) center/cover no-repeat` : "";
+    if (!img) return "";
+    return `linear-gradient(180deg, ${strong} 0%, ${weak} 16%, ${weak} 84%, ${strong} 100%), ${img}`;
   }
   function injectTokens(scene, doc = document) {
     const el = doc.createElement("style");
@@ -830,6 +896,25 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     doc.head.insertBefore(el, doc.head.firstChild);
     return el;
   }
+  var CANVAS_KIT_CSS = `
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:calc(12px*var(--u))}
+.hd b{font-size:var(--t-lead);font-weight:700;color:var(--tx-1)}
+.hd i{font-style:normal;font-size:var(--t-cap);color:var(--tx-3)}
+.hero{display:flex;align-items:baseline;gap:14px;margin-bottom:calc(12px*var(--u))}
+.hero b{font-size:var(--t-hero);font-weight:800;line-height:1;color:var(--tx-1)}
+.hero em{font-style:normal;font-size:var(--t-body);font-weight:600}
+.rows{display:flex;flex-direction:column;gap:calc(8px*var(--u))}
+.row{display:flex;align-items:baseline;gap:10px;font-size:var(--t-body);line-height:1.55;color:var(--tx-1)}
+.row .ic{flex:none}
+.row small{color:var(--tx-2);font-size:var(--t-cap)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:calc(10px*var(--u))}
+.cell{background:var(--sf-raised);border-radius:var(--r-blk);padding:calc(12px*var(--u))}
+.pill{display:inline-block;padding:2px 12px;border-radius:var(--r-pill);font-size:var(--t-cap);
+  background:var(--acbg);color:var(--ac)}
+.foot{margin-top:auto;padding-top:calc(10px*var(--u));font-size:var(--t-cap);color:var(--tx-3)}
+.up{color:#DB4045}.down{color:#1B9E68}.good{color:var(--ok-fg)}.bad{color:var(--danger-fg)}
+.warn{color:var(--warn-fg)}.acc{color:var(--ac)}
+`;
 
   // src/bus.ts
   var DEDUPE_CAP = 64;
@@ -887,12 +972,375 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
 
   // src/screen/storyflow.ts
   var ASK_DELAY_MS = 1e3;
+  var WAIT_MAX_MS = 15e3;
+  var IMG_WAIT_MS = 12e3;
+  function beforeRead(s) {
+    if (s.phase !== "telling") return { do: "speak" };
+    if (s.hasImage) return { do: "speak" };
+    if (!(s.pending > 0)) return { do: "speak" };
+    if (s.waited > IMG_WAIT_MS) return { do: "speak" };
+    return { do: "wait" };
+  }
   function afterRead(s) {
     if (s.phase !== "telling" || !s.page || !s.total) return { do: "none" };
     const end = s.chapterEnd || s.total;
     if (s.page >= end) return { do: "ask", delay: ASK_DELAY_MS };
-    if (s.pending > 0) return { do: "wait" };
+    if (s.pending > 0 && (s.waited ?? 0) <= WAIT_MAX_MS) return { do: "wait" };
     return { do: "advance" };
+  }
+
+  // src/screen/speech.ts
+  var PREFERRED_SRC = "google|普通话|tingting|ting-ting|婷婷|siri|微软|xiaoxiao|yunxi";
+  var PREFERRED = new RegExp(PREFERRED_SRC, "i");
+  var FEMALE = /tingting|ting-ting|婷婷|meijia|美嘉|sin-?ji|xiaoxiao|xiaoyi|yaoyao|huihui|flo|sandy|shelley|grandma|普通话|female|女/i;
+  var MALE = /eddy|reed|rocko|grandpa|yunxi|yunyang|kangkang|male|男/i;
+  var femaleOf = (name) => MALE.test(name) ? false : FEMALE.test(name) ? true : void 0;
+  function pickVoice(voices, opts = {}) {
+    const all = voices ?? [];
+    if (opts.name) {
+      const hit = all.find((v) => v.name === opts.name);
+      if (hit) return hit;
+    }
+    const zh = all.filter((v) => String(v?.lang ?? "").toLowerCase().startsWith("zh"));
+    if (!zh.length) return void 0;
+    const score = (v) => {
+      let s = 0;
+      if (/^zh([-_]cn)?$/i.test(v.lang)) s += 40;
+      const f = femaleOf(v.name);
+      if (f === true) s += 30;
+      else if (f === false) s -= 30;
+      if (PREFERRED.test(v.name)) s += 20;
+      if (v.default) s += 2;
+      return s;
+    };
+    return zh.slice().sort((a, b) => score(b) - score(a))[0];
+  }
+  var CPS = 4.2;
+  function estimateMs(text, rate) {
+    const n = (text ?? "").length;
+    if (!n) return 0;
+    const r = Number.isFinite(rate) && rate > 0 ? rate : 1;
+    return n / CPS / r * 1e3;
+  }
+  function litUpto(len, elapsed, totalMs) {
+    if (!Number.isFinite(totalMs) || totalMs <= 0) return len;
+    return Math.max(0, Math.min(len, Math.floor(len * (elapsed / totalMs))));
+  }
+  function voiceAct(m, storyReading2) {
+    if (storyReading2 && m.s !== "confirming") return "ignore";
+    if (m.who === "user") return m.text ? "hush" : "ignore";
+    if (m.who !== "agent" || !m.text) return "ignore";
+    return m.s === "speaking" || m.s === "confirming" || m.s === "rejected" ? "speak" : "ignore";
+  }
+  function queueAct(text, speaking, lastText) {
+    const t = text.trim();
+    if (!t || t === lastText) return "skip";
+    return speaking ? "queue" : "speak";
+  }
+
+  // src/screen/subtitle.ts
+  var MAX_LEN = 20;
+  var MIN_LEN = 5;
+  function splitClauses(text, maxLen = MAX_LEN) {
+    const t = (text ?? "").trim();
+    if (!t) return [];
+    const segs = t.split(/(?<=[，。！？；、…\n])/).map((s) => s.trim()).filter(Boolean);
+    const out = [];
+    let cur2 = "";
+    const flush = () => {
+      const c = cur2.replace(/[，。！？；、…\s]+$/, "");
+      if (c) out.push(c);
+      cur2 = "";
+    };
+    for (const seg of segs) {
+      if (seg.length > maxLen) {
+        flush();
+        let rest = seg.replace(/[，。！？；、…\s]+$/, "");
+        while (rest.length > maxLen) {
+          out.push(rest.slice(0, maxLen));
+          rest = rest.slice(maxLen);
+        }
+        if (rest) cur2 = rest;
+        continue;
+      }
+      if (cur2 && (cur2 + seg).length > maxLen) flush();
+      cur2 += seg;
+      if (cur2.replace(/[，。！？；、…\s]+$/, "").length >= MIN_LEN && segs.indexOf(seg) === segs.length - 1) flush();
+    }
+    flush();
+    if (out.length > 1) {
+      const lastIdx = out.length - 1;
+      if (out[lastIdx].length < MIN_LEN && (out[lastIdx - 1] + out[lastIdx]).length <= maxLen + MIN_LEN) {
+        out[lastIdx - 1] += "，" + out[lastIdx];
+        out.pop();
+      }
+    }
+    return out;
+  }
+  function clauseStarts(clauses, rate) {
+    const starts = [];
+    let acc = 0;
+    for (const c of clauses) {
+      starts.push(acc);
+      acc += estimateMs(c, rate);
+    }
+    return starts;
+  }
+  function clauseAt(starts, elapsed) {
+    if (!starts.length) return -1;
+    let i = 0;
+    while (i + 1 < starts.length && starts[i + 1] <= elapsed) i++;
+    return i;
+  }
+  function pushChip(list, text, max = 2) {
+    const t = (text ?? "").trim();
+    if (!t || list[list.length - 1] === t) return list;
+    return [...list, t].slice(-max);
+  }
+
+  // src/screen/galaxy.ts
+  var P = (speed, alpha, gather = 1, wave = false, amber = false, flash = false) => ({ speed, alpha, gather, wave, amber, flash });
+  var STATES = {
+    idle: P(1, 0.55),
+    wakeup: P(2.5, 0.95),
+    listening: P(2.2, 0.9, 0.8),
+    thinking: P(4.5, 0.95),
+    speaking: P(1.4, 0.95, 1, true),
+    executing: P(1.8, 0.95, 1, false, false, true),
+    confirming: P(0, 1, 1, false, true),
+    rejected: P(0.8, 0.9, 1, false, true)
+  };
+  function galaxyParams(s) {
+    return STATES[s] ?? STATES.idle;
+  }
+  function createGalaxy(canvas, getState) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const W2 = canvas.width, C = W2 / 2;
+    const parts = Array.from({ length: 48 }, () => ({
+      a: Math.random() * Math.PI * 2,
+      r: W2 * 0.07 + Math.pow(Math.random(), 0.7) * W2 * 0.3,
+      sp: 5e-3 + Math.random() * 7e-3,
+      ph: Math.random() * Math.PI * 2,
+      sz: W2 / 88 * (0.6 + Math.random() * 1.1)
+    }));
+    let frame = 0;
+    const draw = (t) => {
+      requestAnimationFrame(draw);
+      const s = getState();
+      const p = galaxyParams(s);
+      frame++;
+      if (p.speed <= 1 && p.alpha < 0.9 && frame % 2) return;
+      ctx.clearRect(0, 0, W2, W2);
+      const flashK = p.flash ? 0.55 + Math.max(0, Math.sin(t / 300)) * 0.45 : 1;
+      const coreR = W2 * 0.15 * flashK;
+      const g = ctx.createRadialGradient(C, C, 0, C, C, coreR);
+      g.addColorStop(0, p.amber ? "rgba(245,158,11,.65)" : "rgba(195,218,255,.6)");
+      g.addColorStop(1, "rgba(195,218,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(C, C, coreR, 0, 7);
+      ctx.fill();
+      for (const pt of parts) {
+        if (p.speed > 0) pt.a += pt.sp * p.speed;
+        let r = pt.r * p.gather;
+        if (p.wave) r += Math.max(0, Math.sin(t / 240 - pt.r / (W2 * 0.08))) * W2 * 0.034;
+        const x = C + Math.cos(pt.a) * r;
+        const y = C + Math.sin(pt.a) * r * 0.42;
+        const hue = p.amber ? 38 : s === "thinking" ? 214 + Math.sin(t / 480 + pt.ph) * 40 : 218;
+        ctx.beginPath();
+        ctx.arc(x, y, pt.sz, 0, 7);
+        ctx.fillStyle = `hsla(${hue},85%,58%,${p.alpha})`;
+        ctx.fill();
+      }
+    };
+    requestAnimationFrame(draw);
+  }
+
+  // src/integrations/xftts.ts
+  var XF_ENDPOINT = "wss://cbm01.cn-huabei-1.xf-yun.com/v1/private/mcd9m97e6";
+  var isCloudVoice = (name) => name.startsWith("xf:");
+  var xfVcn = (name) => name.replace(/^xf:/, "");
+  var xfSpeed = (rate) => Math.max(0, Math.min(100, Math.round(rate * 50)));
+  var signOrigin = (host, date, path) => `host: ${host}
+date: ${date}
+GET ${path} HTTP/1.1`;
+  function authUrl(endpoint, apiKey, sigB64, date) {
+    const u = new URL(endpoint.replace(/^wss:/, "https:"));
+    const auth = btoa(`api_key="${apiKey}", algorithm="hmac-sha256", headers="host date request-line", signature="${sigB64}"`);
+    return `${endpoint}?authorization=${encodeURIComponent(auth)}&date=${encodeURIComponent(date)}&host=${u.host}`;
+  }
+  var utf8b64 = (s) => {
+    const bytes = new TextEncoder().encode(s);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin);
+  };
+  function ttsFrame(appId, vcn, text, rate) {
+    return {
+      header: { app_id: appId, status: 2 },
+      parameter: { tts: {
+        vcn,
+        speed: xfSpeed(rate),
+        volume: 50,
+        pitch: 50,
+        audio: { encoding: "lame", sample_rate: 24e3 }
+      } },
+      payload: { text: { encoding: "utf8", compress: "raw", format: "plain", status: 2, seq: 0, text: utf8b64(text) } }
+    };
+  }
+  function parseFrame(raw) {
+    let m;
+    try {
+      m = JSON.parse(raw);
+    } catch {
+      return { done: true, error: "响应不是合法 JSON" };
+    }
+    const h = m?.header ?? {};
+    if (h.code !== 0) return { done: true, error: `讯飞合成失败（${h.code}）：${h.message ?? "未知错误"}` };
+    const a = m?.payload?.audio;
+    const chunk = a?.audio ? Uint8Array.from(atob(a.audio), (c) => c.charCodeAt(0)) : void 0;
+    return { chunk, done: h.status === 2 };
+  }
+  async function signedUrl(creds) {
+    const u = new URL(XF_ENDPOINT.replace(/^wss:/, "https:"));
+    const date = (/* @__PURE__ */ new Date()).toUTCString();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(creds.apiSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(signOrigin(u.host, date, u.pathname))
+    );
+    return authUrl(XF_ENDPOINT, creds.apiKey, btoa(String.fromCharCode(...new Uint8Array(sig))), date);
+  }
+  function proxiedWsUrl(direct) {
+    const u = new URL(direct.replace(/^wss:/, "https:"));
+    const scheme = location.protocol === "https:" ? "wss" : "ws";
+    return `${scheme}://${location.host}/x/xftts${u.pathname}${u.search}`;
+  }
+  async function connect(url, timeoutMs) {
+    const ws = new WebSocket(url);
+    await new Promise((res, rej) => {
+      const t = setTimeout(() => {
+        ws.close();
+        rej(new Error("讯飞连接超时"));
+      }, timeoutMs);
+      ws.onopen = () => {
+        clearTimeout(t);
+        res();
+      };
+      ws.onerror = () => {
+        clearTimeout(t);
+        rej(new Error("讯飞 WebSocket 连接失败"));
+      };
+    });
+    return ws;
+  }
+  async function openSocket(creds) {
+    const direct = await signedUrl(creds);
+    if (typeof location !== "undefined" && location.protocol.startsWith("http")) {
+      try {
+        return await connect(proxiedWsUrl(direct), 4e3);
+      } catch {
+      }
+    }
+    return connect(direct, 6e3);
+  }
+  var warmSlot = null;
+  function warm(creds) {
+    if (warmSlot) return;
+    const p = openSocket(creds);
+    warmSlot = p;
+    p.then((ws) => {
+      ws.onclose = () => {
+        if (warmSlot === p) warmSlot = null;
+      };
+    }).catch(() => {
+      if (warmSlot === p) warmSlot = null;
+    });
+  }
+  async function takeSocket(creds) {
+    const w = warmSlot;
+    warmSlot = null;
+    if (w) {
+      try {
+        const ws = await w;
+        if (ws.readyState === WebSocket.OPEN) return ws;
+      } catch {
+      }
+    }
+    return openSocket(creds);
+  }
+  function synthesizeStream(creds, vcn, text, rate, onChunk, timeoutMs = 15e3) {
+    let sock = null;
+    let cancelled = false;
+    const done = (async () => {
+      const ws = await takeSocket(creds);
+      if (cancelled) {
+        ws.close();
+        return;
+      }
+      sock = ws;
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          ws.close();
+          reject(new Error("讯飞合成超时"));
+        }, timeoutMs);
+        const fail = (e) => {
+          clearTimeout(timer);
+          ws.close();
+          reject(e);
+        };
+        ws.onerror = () => fail(new Error("讯飞 WebSocket 连接失败"));
+        ws.onclose = () => {
+          if (cancelled) {
+            clearTimeout(timer);
+            resolve();
+          }
+        };
+        ws.onmessage = (ev) => {
+          const f = parseFrame(String(ev.data));
+          if (f.error) return fail(new Error(f.error));
+          if (f.chunk) onChunk(f.chunk);
+          if (f.done) {
+            clearTimeout(timer);
+            ws.close();
+            resolve();
+          }
+        };
+        ws.send(JSON.stringify(ttsFrame(creds.appId, vcn, text, rate)));
+      });
+    })();
+    return { done, cancel: () => {
+      cancelled = true;
+      sock?.close();
+    } };
+  }
+  async function synthesize(creds, vcn, text, rate, timeoutMs = 12e3) {
+    const chunks = [];
+    await synthesizeStream(creds, vcn, text, rate, (c) => chunks.push(c), timeoutMs).done;
+    if (!chunks.length) throw new Error("讯飞没有返回音频");
+    return new Blob(chunks, { type: "audio/mpeg" });
+  }
+
+  // src/screen/mic.ts
+  var PRIORITY = {
+    confirm: 1,
+    turn: 2,
+    story: 3,
+    delivery: 4
+  };
+  function micAct(req, current) {
+    if (!current) return "speak";
+    if (req === "turn" && current === "story") return "drop";
+    if (PRIORITY[req] < PRIORITY[current]) return "interrupt";
+    return "queue";
   }
 
   // src/screen/overflowgate.ts
@@ -904,8 +1352,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     const ky = i.h / i.contentH;
     const k = Math.min(kx, ky);
     if (k >= 1) return { do: "none" };
-    if (k < MIN_SCALE) return { do: "text" };
-    return { do: "scale", scale: k };
+    if (k >= MIN_SCALE) return { do: "scale", scale: k };
+    if (i.canScroll && kx >= MIN_SCALE) return { do: "scroll" };
+    return { do: "text" };
   }
 
   // src/screen/turn.ts
@@ -1049,9 +1498,10 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
   // src/config/cards.ts
   var LIST_SIZES = ["box", "tower", "court"];
   var CANVAS_ALLOWED = ["tile", "box", "frame", "wide", "panel", "hall", "tower", "court", "stage"];
+  var CANVAS_LINE_PX = 38;
   var CANVAS_SIZES = CANVAS_ALLOWED.map((z) => {
     const p = pixelsOf(z);
-    return `${z} ${p.w}×${p.h}`;
+    return `${z} ${p.w}×${p.h}（约 ${Math.max(1, Math.floor(p.h / CANVAS_LINE_PX))} 行）`;
   }).join("，");
   var CARD_TEMPLATES = [
     {
@@ -1283,6 +1733,15 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       fields: { line: { type: "string", required: true } }
     },
     {
+      id: "automation",
+      label: "自动任务卡",
+      defaultSize: "tower",
+      sizes: ["box", "tower", "court"],
+      requireItems: true,
+      desc: "自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停",
+      fields: { items: { type: "array", required: true } }
+    },
+    {
       id: "generic",
       label: "通用卡",
       defaultSize: "box",
@@ -1298,7 +1757,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式卡",
       defaultSize: "wide",
       sizes: [...CANVAS_ALLOWED],
-      desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。画布不能滚动，超出部分直接裁掉，各档位的画布像素：" + CANVAS_SIZES + "。按这个尺寸排版，别指望滚动。",
+      desc: "**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。**动手前先 skill.use 取「生成卡片」设计规范照着排**——不然出来就是文字墙。data: {title, html, text}。text 是纯文字兜底，html 被安全过滤后为空时显示它，必填。只允许排版标签和 SVG，脚本、表单、外链、<style> 会被剥掉（屏幕不可交互，画按钮和输入框是骗用户）。样式只能写在 style 属性里。**按放得下写**——行数是硬预算，超了就得砍内容而不是缩字号。各档位容量：" + CANVAS_SIZES + "。按这个容量排版：写不下就砍内容、拆成两张卡（用不同的 key），别指望缩字号或滚动。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     },
     /**
@@ -1311,7 +1770,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
       label: "生成式小组件",
       defaultSize: "hall",
       sizes: [...CANVAS_ALLOWED],
-      desc: '带交互或动画的临场小组件才用它：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。画布不能滚动，超出会被裁掉，各档位像素：' + CANVAS_SIZES + "。",
+      desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。沙箱里没有网络（CSP 禁外呼），图片只能用 data: 内嵌。可用 cockpit.action("用户选了什么") 把用户在组件里的操作报回来。data: {title, html, text}。text 是纯文字兜底必填。**按放得下写**，行数是硬预算。各档位容量：' + CANVAS_SIZES + "。",
       fields: { html: { type: "string", required: true }, text: { type: "string", required: true } }
     }
   ];
@@ -1397,9 +1856,9 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     };
   };
   var storybookForm = (c, _r) => {
-    const blocks = ["art", "line", "dots"];
-    if (c >= 8) blocks.push("chapter");
-    if (c >= 12) blocks.push("lesson", "ctl");
+    const blocks = ["art", "line", "dots", "ctl"];
+    if (c >= 8) blocks.push("chapter", "side");
+    if (c >= 12) blocks.push("lesson");
     return { blocks };
   };
   var carouselForm = (c, r) => {
@@ -1446,6 +1905,7 @@ ${scene === "screen" ? LIGHT_CSS : DARK_CSS}`;
     // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
     // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
     stagedlist: listForm,
+    automation: listForm,
     info: genericForm,
     media: mediaForm,
     weather: weatherForm,
@@ -1922,6 +2382,28 @@ ${BRIDGE}
     return `<ol class="listcard${opts.cols === 2 ? " c2" : ""}">${shown.map((i, n) => `
     <li data-act="tap:item" data-value="${esc(i.value ?? `第${n + 1}个：${i.label ?? i}`)}"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ""}${i.right ? `<em class="rr">${esc(i.right)}</em>` : ""}</li>`).join("")}</ol>${rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ""}`;
   }
+  var BAR_MIN = 24;
+  var BAR_MAX = 92;
+  var FULL_SPAN = 3;
+  function hourlyView(hrs) {
+    const ok3 = (hrs ?? []).filter((h) => h && Number.isFinite(Number(h.temp)));
+    if (!ok3.length) return [];
+    const temps = ok3.map((h) => Number(h.temp));
+    const lo = Math.min(...temps), hi = Math.max(...temps);
+    const span = hi - lo;
+    const mid = (BAR_MIN + BAR_MAX) / 2;
+    const vis = (BAR_MAX - BAR_MIN) * Math.min(1, span / FULL_SPAN);
+    return ok3.map((h, i) => {
+      const t = Number(h.temp);
+      const pct = span === 0 ? mid : mid - vis / 2 + (t - lo) / span * vis;
+      return {
+        pct: Math.round(pct * 10) / 10,
+        temp: `${Math.round(t)}°`,
+        label: i === 0 ? "现在" : `${Number(String(h.time ?? "").slice(11, 13))}时`,
+        wet: Number(h.pop ?? 0) >= 40
+      };
+    });
+  }
   var tierClass = (size) => `t-${normalizeTier(size)}`;
   var ACCENT = {
     nav: "brand",
@@ -1932,6 +2414,7 @@ ${BRIDGE}
     list: "pick",
     confirm: "pick",
     stagedlist: "pick",
+    automation: "pick",
     feedback: "ok",
     notice: "warn",
     capability: "sys",
@@ -2028,6 +2511,8 @@ ${BRIDGE}
         return listBody(d.items, formOf("list", ...dimsOf(c.size)));
       case "stagedlist":
         return listBody(d.items, formOf("list", ...dimsOf(c.size)));
+      case "automation":
+        return listBody(d.items, formOf("list", ...dimsOf(c.size)));
       case "capability": {
         const items = d.items ?? [];
         const form = capForm(...dimsOf(c.size));
@@ -2051,10 +2536,14 @@ ${BRIDGE}
         if (d.photo) return `<div class="sbcast">
         <div class="sbsrc"><span>你给我的照片</span><img src="${esc(d.photo)}" alt=""></div>
         <div class="sbout">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}
-          <p>${esc(d.line)}</p></div></div>`;
+          <p>${esc(d.line)}</p>
+          <div class="sbpick">
+            <b data-act="tap:item" data-value="就是他，开始讲故事吧">就是他</b>
+            <span data-act="tap:item" data-value="不太像，再画一张">再画一张</span>
+          </div></div></div>`;
         const dots = Array.from({ length: Number(d.total) || 0 }, (_, i) => `<i class="${i + 1 === Number(d.page) ? "on" : ""}"></i>`).join("") + Array.from({ length: Number(d.pending) || 0 }, () => '<i class="pend"></i>').join("");
-        return `<div class="sb">
-        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : ""}</div>
+        return `<div class="sb${has("side") ? " side" : ""}">
+        <div class="sbart">${d.image ? `<img src="${esc(d.image)}" alt="">` : '<div class="sbwait"></div>'}</div>
         <div class="sbcap">
           ${has("chapter") && d.chapter ? `<div class="sbch">${esc(d.title)} · 第 ${esc(d.chapter)} 章</div>` : ""}
           <p class="sbline">${esc(d.line)}</p>
@@ -2135,11 +2624,10 @@ ${BRIDGE}
         const sub = d.now ? [d.now.wind, d.now.humidity !== void 0 ? `湿度${d.now.humidity}%` : ""].filter(Boolean).join(" · ") : "";
         const cast = (d.forecast ?? []).slice(0, w.days ?? 0);
         const rng = d.range ? `<small class="wxrng">${Math.round(d.range.high)}° / ${Math.round(d.range.low)}°</small>` : "";
-        const hrs = (d.hourly ?? []).slice(0, w.hours ?? 0);
-        const hourly = hrs.length ? `<div class="hourly">${hrs.map((h) => {
-          const wet = Number(h.pop) >= 40;
-          return `<i style="height:${Math.max(18, Math.min(100, Number(h.temp) * 2.6))}%"${wet ? ' class="wet"' : ""}></i>`;
-        }).join("")}</div>` : "";
+        const hrs = hourlyView((d.hourly ?? []).slice(0, w.hours ?? 0));
+        const hourly = hrs.length ? `<div class="hourly">${hrs.map(
+          (h) => `<div class="hcol${h.wet ? " wet" : ""}"><b>${h.temp}</b><i style="height:${h.pct}%"></i><span>${esc(h.label)}</span></div>`
+        ).join("")}</div>` : "";
         return `${d.now ? `<div class="wxnow">
           <b>${Math.round(d.now.temperature)}<i>°</i></b>
           <div class="wxmeta"><span>${esc(d.now.weather)}</span>${rng}<small>${esc(sub)}</small></div>
@@ -2209,7 +2697,11 @@ ${BRIDGE}
     if (!dest && !path.length) return false;
     const sig = `${v.originLoc}|${v.destLoc}|${v.waypoints ?? ""}|${path.length}`;
     const existing = live.get(box);
-    if (existing?.sig === sig) return true;
+    if (existing?.sig === sig) {
+      applyView(existing.map, v, path, existing.overlays);
+      applyExtras(existing, v, path);
+      return true;
+    }
     let map = existing?.map;
     if (!map) {
       map = new AMap.Map(box, {
@@ -2256,9 +2748,60 @@ ${BRIDGE}
       overlays.push(pin(w, "#C97A16", 8));
     if (dest) overlays.push(pin(dest, "#DB4045"));
     overlays.forEach((o) => map.add(o));
-    live.set(box, { map, overlays, sig });
-    map.setFitView(overlays, false, [40, 40, 40, 40]);
+    const entry = { map, overlays, sig };
+    live.set(box, entry);
+    applyView(map, v, path, overlays);
+    applyExtras(entry, v, path);
     return true;
+  }
+  function applyExtras(l, v, path) {
+    const AMap = window.AMap;
+    try {
+      if (v.mapStyle === "satellite" && !l.sat) {
+        l.sat = new AMap.TileLayer.Satellite();
+        l.map.add(l.sat);
+      } else if (v.mapStyle !== "satellite" && l.sat) {
+        l.map.remove(l.sat);
+        l.sat = null;
+      }
+      if (v.mapTraffic && !l.traf) {
+        l.traf = new AMap.TileLayer.Traffic({ autoRefresh: true });
+        l.map.add(l.traf);
+      } else if (!v.mapTraffic && l.traf) {
+        l.map.remove(l.traf);
+        l.traf = null;
+      }
+      if (v.cruise && !l.cruising && path.length > 1) {
+        l.cruising = true;
+        AMap.plugin(["AMap.MoveAnimation"], () => {
+          if (!l.cruising) return;
+          if (!l.mover) l.mover = new AMap.Marker({ map: l.map, position: path[0], zIndex: 200, anchor: "center" });
+          l.mover.moveAlong(path, { duration: 300, autoRotation: true });
+        });
+      } else if (!v.cruise && l.cruising) {
+        l.cruising = false;
+        l.mover?.stopMove?.();
+      }
+    } catch {
+    }
+  }
+  function applyView(map, v, path, overlays) {
+    try {
+      if (v.mapView !== "follow") {
+        map.setFitView(overlays?.length ? overlays : void 0, false, [40, 40, 40, 40]);
+      } else {
+        const center = parse(v.originLoc) ?? parse(v.destLoc);
+        if (center) map.setCenter(center);
+        if (typeof v.mapZoom === "number") map.setZoom(v.mapZoom);
+      }
+      map.setPitch?.(v.mapStyle === "3d" ? 55 : 0);
+      if (v.mapHeading === "vehicle" && path.length > 1) {
+        const [x1, y1] = path[0], [x2, y2] = path[Math.min(8, path.length - 1)];
+        const bearing = Math.atan2(x2 - x1, y2 - y1) * 180 / Math.PI;
+        map.setRotation?.(-bearing);
+      } else map.setRotation?.(0);
+    } catch {
+    }
   }
   function disposeRoute(box) {
     const l = live.get(box);
@@ -2325,10 +2868,22 @@ ${BRIDGE}
       audio.load();
       current = "";
     }
-    const setVolume = (v) => {
-      const x = Math.max(0, Math.min(1, v / 100));
+    let baseVol = 1;
+    let ducked = false;
+    const applyVol = () => {
+      const x = baseVol * (ducked ? 0.2 : 1);
       audio.volume = x;
       if (video) video.volume = x;
+    };
+    const setVolume = (v) => {
+      baseVol = Math.max(0, Math.min(1, v / 100));
+      applyVol();
+    };
+    const duck = (on) => {
+      if (ducked !== on) {
+        ducked = on;
+        applyVol();
+      }
     };
     const progress = () => {
       const el = video && !video.paused ? video : audio;
@@ -2340,6 +2895,7 @@ ${BRIDGE}
       pause,
       stop,
       setVolume,
+      duck,
       attachVideo,
       progress,
       get unlocked() {
@@ -2369,6 +2925,8 @@ ${BRIDGE}
     list: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
     stagedlist: [{ on: "tap:item", route: "tool", tool: "card.focus", valueParam: "cardId" }, SWIPE_AWAY, ...RESIZE, CLOSE],
+    // 自动任务：点条目=启停直调（不叫醒模型——开关没有理解成分）
+    automation: [{ on: "tap:item", route: "tool", tool: "automation.toggle", valueParam: "id" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     confirm: [{ on: "tap:item", route: "answer" }, SWIPE_AWAY, ...RESIZE, CLOSE],
     capability: [SWIPE_AWAY, ...RESIZE, CLOSE],
     weather: [SWIPE_AWAY, ...RESIZE, CLOSE],
@@ -2401,6 +2959,8 @@ ${BRIDGE}
     chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
     image: [SWIPE_AWAY, ...RESIZE, CLOSE],
     storybook: [
+      // 定妆卡的「就是他 / 再画一张」——点了等于说了这句话，怎么处置归模型
+      { on: "tap:item", route: "answer" },
       { on: "tap:prev", route: "tool", tool: "story.page", args: { dir: "prev" } },
       { on: "tap:next", route: "tool", tool: "story.page", args: { dir: "next" } },
       { on: "tap:toggle", route: "tool", tool: "story.page", args: { dir: "toggle" } },
@@ -2419,7 +2979,8 @@ ${BRIDGE}
   var routeOf = (template, on) => INTERACTIONS[template]?.find((d) => d.on === on);
 
   // src/screen/main.ts
-  injectTokens("screen");
+  var import_meta2 = {};
+  var themeStyleEl = injectTokens("screen");
   {
     const el = document.createElement("style");
     el.textContent = `:root{--grid-cols:${GRID.cols};--grid-rows:${GRID.rows};--desk-pad:${SCREEN.padY}px ${SCREEN.padX}px;--desk-gap:${SCREEN.gap}px;--status-h:${SCREEN.statusH}px}`;
@@ -2605,8 +3166,8 @@ ${BRIDGE}
     host.__shadow = root;
     const r = sanitize(String(d.html ?? ""));
     if (r.stripped.length) bus.send({ type: "canvasNote", cardId: c.id, stripped: r.stripped });
-    root.innerHTML = `<style>${tokensFor("screen")}
-    :host{display:block;height:100%;overflow:hidden;color:var(--tx-1);
+    root.innerHTML = `<style>${tokensFor("screen", hmiTheme)}${CANVAS_KIT_CSS}
+    :host{display:flex;flex-direction:column;height:100%;overflow:hidden;color:var(--tx-1);
       font-family:inherit;font-size:var(--t-cap)}
     *{box-sizing:border-box;margin:0;max-width:100%}
     table{border-collapse:collapse;width:100%}
@@ -2617,17 +3178,28 @@ ${BRIDGE}
     requestAnimationFrame(() => {
       host.style.transform = "";
       host.style.width = "";
+      node.classList.remove("cvscroll");
       const fit2 = fitScale({
         w: host.clientWidth,
         h: host.clientHeight,
         // +2 的余量留给亚像素舍入 —— 跟 heal.ts 用的是同一个数
         contentW: host.scrollWidth - 2,
-        contentH: host.scrollHeight - 2
+        contentH: host.scrollHeight - 2,
+        // 行驶中不给滚（滚动要眼睛加手）。5km/h 跟 window.set 的升级阈值同一个数
+        canScroll: !(Number(meta.speed) > 5)
       });
       if (fit2.do === "scale") {
         host.style.transformOrigin = "top left";
         host.style.transform = `scale(${fit2.scale})`;
         host.style.width = `${100 / fit2.scale}%`;
+      } else if (fit2.do === "scroll") {
+        node.classList.add("cvscroll");
+        const atEnd = () => node.classList.toggle(
+          "cvend",
+          host.scrollTop + host.clientHeight >= host.scrollHeight - 2
+        );
+        host.onscroll = atEnd;
+        atEnd();
       } else if (fit2.do === "text") {
         root.querySelector(".gen")?.remove();
         host.innerHTML = `<div style="font-size:var(--t-lead);line-height:1.4">${esc(d.text)}</div>
@@ -2928,25 +3500,78 @@ ${BRIDGE}
     idle: "待机",
     wakeup: "唤醒",
     listening: "聆听中",
-    thinking: "思考中 · 等待模型首字",
-    speaking: "播报中",
-    executing: "执行中 · 形象缩小让位",
-    confirming: "待确认",
-    rejected: "已拒绝 · 说明原因与替代方案"
+    thinking: "思考中",
+    speaking: "播报",
+    executing: "执行中",
+    confirming: "等你确认",
+    rejected: "已拒绝"
   };
+  var avState = "idle";
   var setVoice = (s) => {
-    $("voice").dataset.s = s;
+    avState = s;
     $("stage").dataset.s = s;
-    $("subTag").textContent = TAG[s] ?? s;
+    $("avTag").textContent = TAG[s] ?? s;
+    if (s === "listening" || s === "idle") {
+      avChips = [];
+      renderAvChips();
+    }
+    renderAvBtns();
   };
   function setSub(text, who) {
-    const el = $("subText");
+    const el = $("avText");
     if (text === null) {
       el.innerHTML = '<span class="cursor"></span>';
       return;
     }
     el.className = who === "user" ? "user" : "";
     el.textContent = text ?? "";
+  }
+  var avChips = [];
+  function renderAvChips() {
+    const box = $("avChips");
+    box.innerHTML = "";
+    for (const c of avChips) {
+      const s = document.createElement("span");
+      s.textContent = c;
+      box.appendChild(s);
+    }
+  }
+  function renderAvBtns() {
+    const box = $("avBtns");
+    box.innerHTML = "";
+    if (avState !== "confirming") return;
+    const card = deskState.cards.find((c) => c.template === "confirm" && c.data?.options?.length);
+    if (!card) return;
+    card.data.options.slice(0, 2).forEach((o, n) => {
+      const b = document.createElement("b");
+      b.textContent = o;
+      b.onclick = () => bus.send({ type: "userAction", cardId: card.id, act: "tap:item", value: `第${n + 1}个：${o}` });
+      box.appendChild(b);
+    });
+  }
+  var clsTimer = 0;
+  function startClauses(text, gen) {
+    clearInterval(clsTimer);
+    const cls = splitClauses(text);
+    if (cls.length < 2) return;
+    const starts = clauseStarts(cls, sbRate());
+    const t0 = Date.now();
+    let cur2 = -1;
+    const paint = () => {
+      if (gen !== agGen) {
+        clearInterval(clsTimer);
+        return;
+      }
+      const a = agAudio;
+      const elapsed = a && !a.paused && a.currentTime > 0 ? a.currentTime * 1e3 : Date.now() - t0;
+      const i = clauseAt(starts, elapsed);
+      if (i !== cur2) {
+        cur2 = i;
+        setSub(cls[i]);
+      }
+    };
+    paint();
+    clsTimer = window.setInterval(paint, 150);
   }
   function tickProgress() {
     requestAnimationFrame(tickProgress);
@@ -2963,41 +3588,421 @@ ${BRIDGE}
   }
   requestAnimationFrame(tickProgress);
   var sbSpoken = "";
+  var sbVoice;
+  var VOICE_KEY = "cockpit-sim:tts:voice";
+  var refreshVoice = () => {
+    try {
+      sbVoice = pickVoice(
+        speechSynthesis.getVoices(),
+        { name: localStorage.getItem(VOICE_KEY) || void 0 }
+      );
+    } catch {
+    }
+  };
+  if ("speechSynthesis" in window) {
+    refreshVoice();
+    speechSynthesis.addEventListener?.("voiceschanged", refreshVoice);
+    addEventListener("storage", (e) => {
+      if (e.key === VOICE_KEY) refreshVoice();
+    });
+  }
+  var RATE_KEY = "cockpit-sim:tts:rate";
+  var sbRate = () => {
+    const r = Number(localStorage.getItem(RATE_KEY));
+    return Number.isFinite(r) && r >= 0.5 && r <= 1.5 ? r : 0.92;
+  };
+  var SB_SLACK_MS = 2500;
+  var sbGen = 0;
+  var sbWaiting = null;
+  var stopWaiting = () => {
+    if (sbWaiting) clearTimeout(sbWaiting.retry);
+    sbWaiting = null;
+  };
+  function decideNext(c, line) {
+    const d = c?.data ?? {};
+    const next = afterRead({
+      page: Number(d.page) || 0,
+      chapterEnd: Number(d.chapterEnd) || 0,
+      total: Number(d.total) || 0,
+      phase: String(d.phase ?? "telling"),
+      pending: Number(d.pending) || 0,
+      waited: sbWaiting?.line === line ? Date.now() - sbWaiting.since : 0
+    });
+    if (next.do === "wait") {
+      if (sbWaiting?.line === line) return;
+      sbWaiting = { line, since: Date.now(), retry: setTimeout(() => decideNext(c, line), WAIT_MAX_MS + 200) };
+      return;
+    }
+    stopWaiting();
+    if (next.do === "advance")
+      bus.send({ type: "userAction", cardId: c.id, act: "tap:next" });
+    else if (next.do === "ask")
+      setTimeout(() => bus.send({ type: "storyChapterDone", chapter: Number(d.chapter) || 0 }), next.delay);
+  }
+  var sbPending = null;
+  var stopPending = () => {
+    if (sbPending) clearTimeout(sbPending.retry);
+    sbPending = null;
+  };
   function speakStory(node, c) {
     const d = c?.data ?? {};
     const line = String(d.line ?? "");
-    if (!line || line === sbSpoken || !("speechSynthesis" in window)) return;
+    if (!line) return;
+    lastStoryReq = { node, c };
+    if (line === sbSpoken) {
+      if (sbWaiting?.line === line) decideNext(c, line);
+      return;
+    }
+    const ready = beforeRead({
+      hasImage: !!d.image,
+      pending: Number(d.pending) || 0,
+      phase: String(d.phase ?? "telling"),
+      waited: sbPending?.line === line ? Date.now() - sbPending.since : 0
+    });
+    if (ready.do === "wait") {
+      if (sbPending?.line !== line) {
+        stopPending();
+        sbPending = { line, since: Date.now(), retry: setTimeout(() => speakStory(node, c), IMG_WAIT_MS + 200) };
+      }
+      return;
+    }
+    stopPending();
     sbSpoken = line;
+    stopWaiting();
+    const gen = ++sbGen;
+    const el = () => node.querySelector(".sbline");
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      clearTimeout(guard);
+      if (gen !== sbGen) return;
+      storyReading = false;
+      updateDuck();
+      const t = el();
+      if (t) t.textContent = line;
+      decideNext(c, line);
+    };
+    const rate = sbRate();
+    let totalMs = estimateMs(line, rate);
+    const t0 = Date.now();
+    let byBoundary = false;
+    const paintLit = (n) => {
+      const t = el();
+      if (!t) return;
+      t.innerHTML = `<span class="lit">${esc(line.slice(0, n))}</span>${esc(line.slice(n))}`;
+    };
+    const timer = setInterval(() => {
+      if (byBoundary || done) return;
+      paintLit(litUpto(line.length, Date.now() - t0, totalMs));
+    }, 90);
+    let guard = setTimeout(finish, totalMs + SB_SLACK_MS);
+    const speakLocal = () => {
+      if (gen !== sbGen || !("speechSynthesis" in window)) return;
+      try {
+        speechSynthesis.cancel();
+      } catch {
+      }
+      const u = new SpeechSynthesisUtterance(line);
+      u.lang = "zh-CN";
+      u.rate = rate;
+      if (!sbVoice) refreshVoice();
+      if (sbVoice) u.voice = sbVoice;
+      u.onboundary = (ev) => {
+        byBoundary = true;
+        paintLit((ev.charIndex || 0) + (ev.charLength || 1));
+      };
+      u.onend = finish;
+      u.onerror = finish;
+      storyReading = true;
+      updateDuck();
+      speechSynthesis.speak(u);
+    };
+    const chosen = chosenVoice();
+    if (isCloudVoice(chosen) && xfReady()) {
+      storyReading = true;
+      updateDuck();
+      sbAudio?.pause();
+      sbAudio = null;
+      clearTimeout(guard);
+      guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9e3);
+      const rearm = (ms) => {
+        totalMs = ms;
+        clearTimeout(guard);
+        guard = setTimeout(finish, ms + SB_SLACK_MS);
+      };
+      const local = (e) => {
+        if (e) cloudFallbackNote(e);
+        if (gen === sbGen && !done) {
+          rearm(estimateMs(line, rate));
+          speakLocal();
+        }
+      };
+      synthesize(XF_CREDS, xfVcn(chosen), line, rate).then((blob) => {
+        if (gen !== sbGen || done) return;
+        const a = new Audio(URL.createObjectURL(blob));
+        sbAudio = a;
+        a.onloadedmetadata = () => {
+          if (gen === sbGen && Number.isFinite(a.duration) && a.duration > 0) rearm(a.duration * 1e3);
+        };
+        a.onended = () => {
+          URL.revokeObjectURL(a.src);
+          finish();
+        };
+        a.onerror = () => local("音频播放失败");
+        a.play().catch(local);
+      }).catch(local);
+      return;
+    }
+    speakLocal();
+  }
+  var sbAudio = null;
+  var storyReading = false;
+  var agGen = 0;
+  var storyResume = null;
+  var lastStoryReq = null;
+  function interruptStory() {
+    sbGen++;
+    stopPending();
+    sbAudio?.pause();
+    sbAudio = null;
     try {
       speechSynthesis.cancel();
     } catch {
     }
-    const u = new SpeechSynthesisUtterance(line);
+    storyReading = false;
+    sbSpoken = "";
+    const req = lastStoryReq;
+    storyResume = req && req.node.isConnected ? () => speakStory(req.node, req.c) : null;
+  }
+  function updateDuck(speaking = false) {
+    player.duck(speaking || agSpeaking || storyReading);
+  }
+  var XF_CREDS = {
+    appId: String(import_meta2.env?.VITE_XFYUN_APPID ?? ""),
+    apiKey: String(import_meta2.env?.VITE_XFYUN_API_KEY ?? ""),
+    apiSecret: String(import_meta2.env?.VITE_XFYUN_API_SECRET ?? "")
+  };
+  var xfReady = () => !!(XF_CREDS.appId && XF_CREDS.apiKey && XF_CREDS.apiSecret);
+  var chosenVoice = () => localStorage.getItem(VOICE_KEY) || "";
+  var cloudWarned = /* @__PURE__ */ new Set();
+  function cloudFallbackNote(err) {
+    const reason = String(err?.message ?? err ?? "未知原因");
+    if (cloudWarned.has(reason)) return;
+    cloudWarned.add(reason);
+    banners.push({ title: "云端音色不可用，这句用了本机音色", text: reason, tone: "warn", ttl: 8e3 });
+  }
+  var agAudio = null;
+  var agCancel = null;
+  function playStream(gen, onFail) {
+    if (!("MediaSource" in window) || !MediaSource.isTypeSupported("audio/mpeg")) return null;
+    const ms = new MediaSource();
+    const a = new Audio(URL.createObjectURL(ms));
+    agAudio = a;
+    const q = [];
+    let sb = null;
+    let ended = false, started = false;
+    const pump = () => {
+      if (!sb || sb.updating) return;
+      const c = q.shift();
+      if (c) {
+        try {
+          sb.appendBuffer(c);
+        } catch (e) {
+          onFail(e);
+          return;
+        }
+        if (!started) {
+          started = true;
+          a.play().catch(onFail);
+        }
+      } else if (ended && ms.readyState === "open") {
+        try {
+          ms.endOfStream();
+        } catch {
+        }
+      }
+    };
+    ms.addEventListener("sourceopen", () => {
+      sb = ms.addSourceBuffer("audio/mpeg");
+      sb.addEventListener("updateend", pump);
+      pump();
+    });
+    a.onended = () => {
+      if (gen === agGen) agDone();
+      URL.revokeObjectURL(a.src);
+    };
+    return {
+      push: (c) => {
+        q.push(c);
+        pump();
+      },
+      end: () => {
+        ended = true;
+        pump();
+      },
+      stop: () => {
+        try {
+          a.pause();
+        } catch {
+        }
+        URL.revokeObjectURL(a.src);
+      }
+    };
+  }
+  var agQueue = [];
+  var agLastText = "";
+  var agSrc = "turn";
+  function speakAgent(text, confirm = false) {
+    const src = confirm ? "confirm" : "turn";
+    const cur2 = storyReading ? "story" : agSpeaking ? agSrc : null;
+    switch (micAct(src, cur2)) {
+      case "drop":
+        return;
+      case "interrupt":
+        if (storyReading) interruptStory();
+        else {
+          agGen++;
+          agCancel?.();
+          agCancel = null;
+          agAudio?.pause();
+          agAudio = null;
+          try {
+            speechSynthesis.cancel();
+          } catch {
+          }
+        }
+        break;
+      case "queue": {
+        const act = queueAct(text, true, agLastText);
+        if (act === "queue") {
+          if (agQueue.length >= 3) agQueue.shift();
+          agQueue.push(text.trim());
+        }
+        return;
+      }
+    }
+    if (queueAct(text, false, agLastText) === "skip") return;
+    agSrc = src;
+    agLastText = text.trim();
+    speakNow(agLastText);
+  }
+  function agDone() {
+    agSpeaking = false;
+    const next = agQueue.shift();
+    if (next) {
+      agLastText = next;
+      speakNow(next);
+    } else if (storyResume) {
+      const r = storyResume;
+      storyResume = null;
+      r();
+    }
+    updateDuck();
+  }
+  function speakNow(text) {
+    const gen = ++agGen;
+    startClauses(text, gen);
+    updateDuck(true);
+    agCancel?.();
+    agCancel = null;
+    agAudio?.pause();
+    agAudio = null;
+    const chosen = chosenVoice();
+    if (isCloudVoice(chosen) && xfReady()) {
+      agSpeaking = true;
+      const fail = (e) => {
+        if (gen === agGen) {
+          cloudFallbackNote(e);
+          speakAgentLocal(text, gen);
+        }
+      };
+      const player2 = playStream(gen, fail);
+      if (player2) {
+        const s = synthesizeStream(XF_CREDS, xfVcn(chosen), text, sbRate(), (c) => {
+          if (gen === agGen) player2.push(c);
+        });
+        agCancel = () => {
+          s.cancel();
+          player2.stop();
+        };
+        s.done.then(() => {
+          if (gen === agGen) player2.end();
+        }).catch(fail);
+        return;
+      }
+      synthesize(XF_CREDS, xfVcn(chosen), text, sbRate()).then((blob) => {
+        if (gen !== agGen) return;
+        const a = new Audio(URL.createObjectURL(blob));
+        agAudio = a;
+        const done = () => {
+          if (gen === agGen) agDone();
+          URL.revokeObjectURL(a.src);
+        };
+        a.onended = done;
+        a.onerror = () => fail("音频播放失败");
+        a.play().catch(fail);
+      }).catch(fail);
+      return;
+    }
+    speakAgentLocal(text, gen);
+  }
+  function speakAgentLocal(text, gen) {
+    if (gen !== agGen || !("speechSynthesis" in window)) return;
+    try {
+      speechSynthesis.cancel();
+    } catch {
+    }
+    const u = new SpeechSynthesisUtterance(text);
     u.lang = "zh-CN";
-    u.rate = 0.92;
-    const el = () => node.querySelector(".sbline");
-    u.onboundary = (ev) => {
-      const t = el();
-      if (!t) return;
-      const i = ev.charIndex || 0, j = i + (ev.charLength || 2);
-      t.innerHTML = esc(line.slice(0, i)) + '<span class="lit">' + esc(line.slice(i, j)) + "</span>" + esc(line.slice(j));
+    u.rate = sbRate();
+    if (!sbVoice) refreshVoice();
+    if (sbVoice) u.voice = sbVoice;
+    const done = () => {
+      if (gen === agGen) agDone();
     };
-    u.onend = () => {
-      const t = el();
-      if (t) t.textContent = line;
-      const next = afterRead({
-        page: Number(d.page) || 0,
-        chapterEnd: Number(d.chapterEnd) || 0,
-        total: Number(d.total) || 0,
-        phase: String(d.phase ?? "telling"),
-        pending: Number(d.pending) || 0
-      });
-      if (next.do === "advance")
-        bus.send({ type: "userAction", cardId: c.id, act: "tap:next" });
-      else if (next.do === "ask")
-        setTimeout(() => bus.send({ type: "storyChapterDone", chapter: Number(d.chapter) || 0 }), next.delay);
-    };
+    u.onend = done;
+    u.onerror = done;
+    agSpeaking = true;
     speechSynthesis.speak(u);
+  }
+  var agSpeaking = false;
+  function hushAgent() {
+    agQueue.length = 0;
+    agLastText = "";
+    if (!agSpeaking) return;
+    agGen++;
+    agSpeaking = false;
+    agCancel?.();
+    agCancel = null;
+    agAudio?.pause();
+    agAudio = null;
+    try {
+      speechSynthesis.cancel();
+    } catch {
+    }
+    updateDuck();
+  }
+  var hmiTheme = "day";
+  var hmiWall = "";
+  function applyHmi() {
+    const th = tgt["hmi.theme"] === "night" ? "night" : "day";
+    const wp = String(tgt["hmi.wallpaper"] ?? "");
+    if (th !== hmiTheme) {
+      hmiTheme = th;
+      themeStyleEl.textContent = tokensFor("screen", th);
+      document.body.toggleAttribute("data-night", th === "night");
+      renderDesk();
+    }
+    if (wp !== hmiWall) {
+      hmiWall = wp;
+      const custom = wp.startsWith("custom:") ? localStorage.getItem("cockpit-sim:wallpaper") : null;
+      const css = wallpaperCss(wp, hmiTheme, custom);
+      const stage2 = $("stage");
+      if (css) stage2.style.background = css;
+      else stage2.style.background = "";
+    }
   }
   var bus = createBus((m) => {
     connected();
@@ -3006,15 +4011,27 @@ ${BRIDGE}
         Object.assign(tgt, m.target);
         meta = { ...meta, ...m.meta };
         renderStatus();
+        applyHmi();
         break;
       case "cards":
         deskState = m.desk;
         renderDesk();
+        renderAvBtns();
         break;
-      case "voice":
+      case "voice": {
+        if ((m.s === "listening" || m.s === "thinking") && isCloudVoice(chosenVoice()) && xfReady())
+          warm(XF_CREDS);
         if (m.s) setVoice(m.s);
         if ("text" in m) setSub(m.text, m.who);
+        if (m.chip) {
+          avChips = pushChip(avChips, m.chip);
+          renderAvChips();
+        }
+        const act = voiceAct(m, storyReading);
+        if (act === "speak") speakAgent(m.text, m.s === "confirming");
+        else if (act === "hush") hushAgent();
         break;
+      }
       case "highlight":
         hotWindows = m.ids ?? [];
         hotCards = new Set(m.cards ?? []);
@@ -3049,6 +4066,8 @@ ${BRIDGE}
     const d = /* @__PURE__ */ new Date();
     $("clock").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }, 1e3);
+  createGalaxy($("cvav"), () => storyReading ? "speaking" : avState);
+  $("cvav").onclick = () => hushAgent();
   renderStatus();
   renderDesk();
 })();

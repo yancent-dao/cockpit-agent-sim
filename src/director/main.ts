@@ -756,8 +756,14 @@ pipeline.on(e => {
   switch (e.type) {
     case 'thinking':
       bus.send({ type: 'voice', s: 'thinking', text: null }); break
-    case 'executing':
-      bus.send({ type: 'voice', s: 'executing' }); break
+    case 'executing': {
+      // 活动胶囊的数据源（Avatar 定稿 §02）：pipeline 事件本来就带工具名，
+      // 转成 brief（人话）一起上屏——不带的话思考态的"它在干什么"没有任何出口。
+      // chip 与 text 分开：text 会进字幕主行，chip 只进胶囊层
+      const brief = registry.list().find(t => t.name === (e as any).name)?.brief
+      bus.send({ type: 'voice', s: 'executing', chip: brief ?? (e as any).name } as any)
+      break
+    }
     case 'speaking':
       voiceBusy = true
       bus.send({ type: 'voice', s: 'speaking', text: e.text, who: 'agent' }); break

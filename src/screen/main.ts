@@ -2,6 +2,8 @@ import { injectTokens } from '../design/tokens'
 import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto, voiceAct, queueAct } from './speech'
+import { splitClauses, clauseStarts, clauseAt, pushChip } from './subtitle'
+import { createGalaxy } from './galaxy'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
 import { micAct, type MicSource } from './mic'
 import { fitScale } from './overflowgate'
@@ -796,23 +798,83 @@ const loop = (t: number) => {
 }
 requestAnimationFrame(loop)
 
-/* ── 语音层 ── */
+/* ── 语音层（角落蒙层版式，Avatar 定稿 2026-08-18）──
+   满宽语音带退役：微字/字幕/胶囊/确认按钮全在顶栏角标簇一行内。
+   data-s 打在 #stage 上——蒙层颜色、胶囊显隐、提示胶囊让位全靠它 */
 const TAG: Record<string, string> = {
-  idle: '待机', wakeup: '唤醒', listening: '聆听中', thinking: '思考中 · 等待模型首字',
-  speaking: '播报中', executing: '执行中 · 形象缩小让位', confirming: '待确认',
-  rejected: '已拒绝 · 说明原因与替代方案',
+  idle: '待机', wakeup: '唤醒', listening: '聆听中', thinking: '思考中',
+  speaking: '播报', executing: '执行中', confirming: '等你确认', rejected: '已拒绝',
 }
-// data-s 同时打在 #stage 上：待机时桌面要往下长，占掉语音区让出来的高度
+/** 星河当前状态（createGalaxy 每帧来读；绘本朗读时借播报形态） */
+let avState = 'idle'
 const setVoice = (s: string) => {
-  $('voice').dataset.s = s
+  avState = s
   $('stage').dataset.s = s
-  $('subTag').textContent = TAG[s] ?? s
+  $('avTag').textContent = TAG[s] ?? s
+  // 新一轮开口 / 回到待机：上一轮的活动胶囊翻篇
+  if (s === 'listening' || s === 'idle') { avChips = []; renderAvChips() }
+  renderAvBtns()
 }
 function setSub(text: string | null | undefined, who?: string) {
-  const el = $('subText')
+  const el = $('avText')
   if (text === null) { el.innerHTML = '<span class="cursor"></span>'; return }
   el.className = who === 'user' ? 'user' : ''
   el.textContent = text ?? ''
+}
+
+/** 思考/执行态的活动胶囊：最近两条，"它此刻在干什么"（完整轨迹在 trace） */
+let avChips: string[] = []
+function renderAvChips() {
+  const box = $('avChips')
+  box.innerHTML = ''
+  for (const c of avChips) {
+    const s = document.createElement('span')
+    s.textContent = c
+    box.appendChild(s)
+  }
+}
+
+/**
+ * 角落确认按钮 = 确认卡选项的投影。三种确认卡（MRTR/voice.ask/自动化 ask）
+ * 全带 options，点角落按钮走的是**跟点卡片完全相同的 userAction 通道**——
+ * 合成同一句"第 n 个：xx"，零新增路由。卡还没到/已撤时按钮跟着消失。
+ */
+function renderAvBtns() {
+  const box = $('avBtns')
+  box.innerHTML = ''
+  if (avState !== 'confirming') return
+  const card = deskState.cards.find(c => c.template === 'confirm' && c.data?.options?.length)
+  if (!card) return
+  ;(card.data.options as string[]).slice(0, 2).forEach((o, n) => {
+    const b = document.createElement('b')
+    b.textContent = o
+    b.onclick = () => bus.send({ type: 'userAction', cardId: card.id, act: 'tap:item', value: `第${n + 1}个：${o}` } as any)
+    box.appendChild(b)
+  })
+}
+
+/**
+ * 字幕分句窗（定稿 §03）：长播报按标点切句，跟着播放进度逐句换页。
+ * 不跑马灯。有 <audio> 就跟 currentTime（云端 TTS），没有就按字速估算推。
+ * 世代戳挂 agGen——被打断的播报，字幕一起停。
+ */
+let clsTimer = 0
+function startClauses(text: string, gen: number) {
+  clearInterval(clsTimer)
+  const cls = splitClauses(text)
+  if (cls.length < 2) return   // 一行装得下就不折腾
+  const starts = clauseStarts(cls, sbRate())
+  const t0 = Date.now()
+  let cur = -1
+  const paint = () => {
+    if (gen !== agGen) { clearInterval(clsTimer); return }
+    const a = agAudio
+    const elapsed = a && !a.paused && a.currentTime > 0 ? a.currentTime * 1000 : Date.now() - t0
+    const i = clauseAt(starts, elapsed)
+    if (i !== cur) { cur = i; setSub(cls[i]) }
+  }
+  paint()
+  clsTimer = window.setInterval(paint, 150)
 }
 
 
@@ -1185,6 +1247,7 @@ function agDone() {
 }
 function speakNow(text: string) {
   const gen = ++agGen
+  startClauses(text, gen)   // 长播报的字幕跟着这句话走
   updateDuck(true)
   agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
@@ -1269,12 +1332,16 @@ const bus = createBus((m: BusMsg | any) => {
     case 'state':
       Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); applyHmi(); break
     case 'cards':
-      deskState = m.desk; renderDesk(); break
+      deskState = m.desk; renderDesk()
+      renderAvBtns()   // 确认卡常在 confirming 状态之后才到，按钮跟着卡走
+      break
     case 'voice': {
       // 预热讯飞连接：用户开口/模型思考的那几秒正好够建连（实测 1.5-2.2s）
       if ((m.s === 'listening' || m.s === 'thinking') && isCloudVoice(chosenVoice()) && xfReady())
         xfWarm(XF_CREDS)
       if (m.s) setVoice(m.s); if ('text' in m) setSub(m.text, m.who)
+      // 活动胶囊（chip 与 text 分开：text 进字幕主行，chip 只进胶囊层）
+      if ((m as any).chip) { avChips = pushChip(avChips, (m as any).chip); renderAvChips() }
       const act = voiceAct(m, storyReading)
       if (act === 'speak') speakAgent(m.text, m.s === 'confirming')
       else if (act === 'hush') hushAgent()
@@ -1303,4 +1370,10 @@ setInterval(() => {
   // 状态栏时钟。时间是遥测不是状态，屏端本地每秒刷，不过 store 不过 bus
   $('clock').textContent = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }, 1000)
+
+// C3a 星河角标：状态每帧来读；绘本朗读时借播报形态（正文在卡上，角标只表状态）
+createGalaxy($('cvav') as HTMLCanvasElement, () => storyReading ? 'speaking' : avState)
+// 点星河 = 闭嘴（定稿的交互映射第一条：播报中点按立即静音，桌面不动）
+$('cvav').onclick = () => hushAgent()
+
 renderStatus(); renderDesk()

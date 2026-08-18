@@ -168,7 +168,8 @@ export const listCapacity = (c: number, r: number): number => capacityOf(listCol
 export const SCREEN = {
   w: 2560, h: 1440,
   statusH: 96,        // 状态栏
-  voiceH: 300,        // 语音区（待机时收到 148，按大的算才不会撑破）
+  voiceH: 300,        // 底部留白带（横幅+呼吸感）。语音带 2026-08-18 退役进顶栏角标，
+                      // 但这 300 是像素契约的地基（996 由它算出）——名字留着，数值不动
   padX: 60, padY: 24, // #desk 的内边距
   gap: 24,
   /** 卡片自己的内边距（左右各一次，上下各一次），--u 取 1 的基准值 */

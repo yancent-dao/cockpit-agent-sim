@@ -28,6 +28,7 @@ import type { HolidayClient } from '../integrations/holiday'
 import type { PoemClient } from '../integrations/poem'
 import type { PodcastClient } from '../integrations/podcast'
 import { createGenHandlers } from '../integrations/genHandlers'
+import { createAutomationHandlers, type AutomationDeps } from '../integrations/automationHandlers'
 import type { VideoGenClient } from '../integrations/orvideo'
 import type { MusicGenClient } from '../integrations/ormusic'
 
@@ -74,6 +75,8 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
   /** OpenRouter 生成式媒体（与绘本插图同一个 Key 同一个账本） */
   orvideo?: VideoGenClient
   ormusic?: MusicGenClient
+  /** 自动化任务：规则仓 + 装配层执行器（设计 2026-08-18-automation-design.md） */
+  automation?: AutomationDeps
   /** 工具执行超时（默认 60s）。任何 handler 悬挂都在限时内变 failed——一次挂起的
    *  fetch 不许冻住整个任务（实拍：联网搜索几分钟没反应，进展卡永远转圈） */
   toolTimeoutMs?: number }
@@ -237,6 +240,10 @@ export function createRegistry(
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
     ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
     ...createGenHandlers(store, () => deps.orvideo, () => deps.ormusic),
+    ...createAutomationHandlers(() => sizedDesk(), () => deps.automation,
+      n => tools.some(t => t.name === n),
+      p => store.signals.find(sg => sg.alias === p)?.label,
+      clock),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
   }

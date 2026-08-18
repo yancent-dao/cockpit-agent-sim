@@ -117,7 +117,7 @@ export const tierClass = (size: string) => `t-${normalizeTier(size)}`
  */
 const ACCENT: Record<string, string> = {
   nav: 'brand', weather: 'info', control: 'info', vehicle: 'info',
-  media: 'media', list: 'pick', confirm: 'pick', stagedlist: 'pick',
+  media: 'media', list: 'pick', confirm: 'pick', stagedlist: 'pick', automation: 'pick',
   feedback: 'ok', notice: 'warn', capability: 'sys', generic: 'sys', info: 'sys',
   canvas: 'media', 'canvas-app': 'media',   // 紫色——生成式跟固定模板要一眼分得出
 }
@@ -277,6 +277,9 @@ export function cardBody(c: CardView): string {
       return listBody(d.items, formOf('list', ...dimsOf(c.size)))
     case 'stagedlist':
       // 台下清单长得就是列表，只是条目 value 带卡 id（点击直调召回）
+      return listBody(d.items, formOf('list', ...dimsOf(c.size)))
+    case 'automation':
+      // 自动任务清单：●/○ 状态点画在 label 里，点条目直调启停（零模型）
       return listBody(d.items, formOf('list', ...dimsOf(c.size)))
     case 'capability': {
       const items = d.items ?? []

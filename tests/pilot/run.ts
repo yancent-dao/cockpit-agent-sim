@@ -21,6 +21,7 @@ import { createStockClient } from '../../src/integrations/qtstock'
 import { createHolidayClient } from '../../src/integrations/holiday'
 import { createPoemClient } from '../../src/integrations/poem'
 import { createPodcastClient } from '../../src/integrations/podcast'
+import { createAutomationStore } from '../../src/state/automation'
 import { createRadioClient } from '../../src/integrations/radio'
 import { createNewsClient } from '../../src/integrations/news'
 import { createPexelsClient } from '../../src/integrations/pexels'
@@ -211,6 +212,7 @@ async function runScenario(s: Scenario) {
     itunes: createItunesClient(),
     stocks: createStockClient(fetch as any), holiday: createHolidayClient(fetch as any),
     poem: createPoemClient(fetch as any), podcast: createPodcastClient(fetch as any),
+    automation: { store: createAutomationStore({ get: () => null, set: () => {} }) },
     radio: createRadioClient(fetch as any),
     ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),

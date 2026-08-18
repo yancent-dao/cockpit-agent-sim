@@ -22,6 +22,8 @@ import { createStockClient } from '../integrations/qtstock'
 import { createHolidayClient } from '../integrations/holiday'
 import { createPoemClient } from '../integrations/poem'
 import { createPodcastClient } from '../integrations/podcast'
+import { createAutomationStore, type AutomationRule } from '../state/automation'
+import { createAutomationEngine } from '../core/automation'
 import { createVideoGen } from '../integrations/orvideo'
 import { createMusicGen } from '../integrations/ormusic'
 import { createRadioClient } from '../integrations/radio'
@@ -258,6 +260,53 @@ loadHeroFromPublic()
 renderStoryNote()
 const prefs = createPrefs()
 const autoplay = createAutoplay(store, state)
+
+/* ══════════ 自动化任务（设计 2026-08-18-automation-design.md） ══════════
+ *
+ * **后台运行**的落点：引擎常驻这里，5 秒评估一轮（信号沿 + 每天定时），
+ * 与对话世代无关——没在聊天、聊到一半、刚 barge-in 都照常触发。
+ * 规则在 localStorage，刷新/重开还在。零后端边界如实：车机窗口在任务就在，
+ * 关掉浏览器即停（等同真车熄火断电）。
+ *
+ * 动作执行在这层（core 引擎只判定）：tool 直调 registry；prompt 委托
+ * 叫醒慢层；ask 规则先弹确认卡，用户点了"执行"模型再 automation.run。
+ */
+const autoStore = createAutomationStore({
+  get: k => localStorage.getItem(k), set: (k, v) => localStorage.setItem(k, v),
+})
+async function executeAutomation(rule: AutomationRule): Promise<string> {
+  const parts: string[] = []
+  for (const act of rule.do) {
+    if ('prompt' in act && act.prompt) {
+      // 委托类：合成一条带来源的输入叫醒助手——它的产出走正常语音/卡片通道
+      ask(`[自动任务·${rule.name}] ${act.prompt}`)
+      parts.push('已交给助手')
+    } else if ('tool' in act && act.tool) {
+      const r = await registry.invoke(act.tool, act.args ?? {})
+      parts.push(`${act.tool} ${r.status === 'ok' ? '✓' : r.message ?? r.status}`)
+    }
+  }
+  return parts.join('、') || '空任务'
+}
+const onAutoFire = async (rule: AutomationRule) => {
+  if (rule.ask) {
+    // 运行前询问：确认卡的选项自带上下文——点选合成的那句话要让模型看得懂
+    desk.render({
+      key: `auto-ask-${rule.id}`, template: 'confirm', size: 'wide', kind: 'system', ttl: 'untilTaskEnd',
+      data: { title: '自动任务', question: `「${rule.name}」条件满足了，要执行吗？`,
+        options: [`执行自动任务「${rule.name}」`, '这次跳过'] },
+    })
+    log('p', `⚙ 自动任务「${rule.name}」条件满足，等用户确认`)
+    bus.send({ type: 'voice', s: 'confirming', text: `自动任务${rule.name}条件满足了，要执行吗`, who: 'agent' })
+    return
+  }
+  const brief = await executeAutomation(rule)
+  log('p', `⚙ 自动任务「${rule.name}」已执行：${brief}`)
+  bus.send({ type: 'banner', on: true, title: `自动任务 · ${rule.name}`, desc: '已执行', ttl: 6000 })
+}
+const autoEngine = createAutomationEngine(store, autoStore, r => { void onAutoFire(r) })
+setInterval(() => autoEngine.evaluate(), 5000)
+
 const registry = createRegistry(store, TOOLS, Date.now, {
   state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   stocks: createStockClient(fetch.bind(window)), holiday: createHolidayClient(fetch.bind(window)),
@@ -268,6 +317,7 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   pexels: createPexelsClient(fetch.bind(window), () => pexelsKey),
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
   story, image: imageGen,
+  automation: { store: autoStore, execute: executeAutomation },
   // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
   // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
   storage: defaultStorage(),

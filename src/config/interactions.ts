@@ -41,6 +41,8 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   list: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
   /** 台下清单：召回是桌面管理的机械动作，直调不叫醒模型（点一下等 LLM 转一圈是灾难） */
   stagedlist: [{ on: 'tap:item', route: 'tool', tool: 'card.focus', valueParam: 'cardId' }, SWIPE_AWAY, ...RESIZE, CLOSE],
+  // 自动任务：点条目=启停直调（不叫醒模型——开关没有理解成分）
+  automation: [{ on: 'tap:item', route: 'tool', tool: 'automation.toggle', valueParam: 'id' }, SWIPE_AWAY, ...RESIZE, CLOSE],
   confirm: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],
   capability: [SWIPE_AWAY, ...RESIZE, CLOSE],
   weather: [SWIPE_AWAY, ...RESIZE, CLOSE],

@@ -63,7 +63,7 @@ flowchart TB
         state["src/state/ 记忆四级<br/>瞬时 · 会话 · 领域 · 长期"]
     end
     subgraph DATA["src/config/ 数据（越多越好）+ agents/ 实例"]
-        config["109 信号(VSS) · 76 Tool · 约束 · 卡片规则/模板契约"]
+        config["109 信号(VSS) · 81 Tool · 约束 · 卡片规则/模板契约"]
         manifest["manifest + 人设 + 快层微人设 + 技能包"]
     end
     integrations["src/integrations/ 三方适配<br/>高德 · Open-Meteo · iTunes/播客 · Radio Browser · NewsAPI · Pexels · 腾讯行情 · OpenRouter 图像/视频/音乐"]
@@ -105,7 +105,7 @@ flowchart TB
 
 更细的东西都在 docs 里：[需求规格说明书](docs/需求规格说明书_v1.0.md) 讲要做什么，[工程约束](docs/工程约束_v1.1.md) 讲底线，[superpowers/specs/](docs/superpowers/specs/) 是每一轮的设计文档。
 
-## 能力清单（76 Tools）
+## 能力清单（81 Tools）
 
 下面是全部工具，按域分组。权限一栏：彩是直接执行，灰要二次确认，黑永不注册给 Agent；带 ⚡ 的挂在快层，小模型可以先斩后奏。整张清单声明在 `src/config/tools.ts` 里，加工具就是往里加一段数据。
 
@@ -191,6 +191,19 @@ flowchart TB
 |---|---|:-:|:-:|
 | `video.generate` | AI 生成一段视频 | 彩 |  |
 | `music.generate` | AI 写一段音乐 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>自动化任务（替代情景模式）</b>（5 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `automation.create` | 建自动任务（情景模式） | 彩 |  |
+| `automation.list` | 看已有的自动任务 | 彩 |  |
+| `automation.toggle` | 启停自动任务 | 彩 |  |
+| `automation.delete` | 删自动任务 | 彩 |  |
+| `automation.run` | 立即运行一条任务 | 彩 |  |
 
 </details>
 

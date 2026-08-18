@@ -242,6 +242,10 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     desc: '正在讲的绘本，由 story.* 工具自动创建与刷新，不要手动建。' +
       'data: {title, chapter, page, line, image, ideas?, lesson?}',
     fields: { line: { type: 'string', required: true } } },
+  { id: 'automation', label: '自动任务卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
+    requireItems: true,
+    desc: '自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停',
+    fields: { items: { type: 'array', required: true } } },
   { id: 'generic', label: '通用卡', defaultSize: 'box', sizes: ['box', 'wide', 'panel'],
     desc: '兜底模板。没有合适的专用模板时用它。data: {title, text, items?, actions?}' },
   /**

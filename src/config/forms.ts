@@ -344,6 +344,7 @@ export const CARD_FORMS: Record<string, FormFn> = {
   // 台下清单长得就是列表卡——不进这张表的话 summary 按 genericForm 算可见条数、
   // 车机屏按 listForm 画，同一张卡两套账（当前数值恰好相等，纯属侥幸）
   stagedlist: listForm,
+  automation: listForm,
   info: genericForm,
   media: mediaForm,
   weather: weatherForm,

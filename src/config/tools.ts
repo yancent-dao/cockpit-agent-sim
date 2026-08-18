@@ -1007,6 +1007,76 @@ export const TOOLS: ToolDef[] = [
   },
   /* ══════════ 记忆（显式，长期） ══════════ */
   {
+    name: 'automation.create',
+    brief: '建自动任务（情景模式）',
+    desc: '把用户的自动化意愿建成规则："每天下午四点开空调""下雨自动关窗""我说跑晨报就跑晨报"。' +
+      'when 是触发条件（空数组=手动任务，靠说话或点卡片运行）；do 是动作序列——' +
+      '车控查询用 {tool,args}（机制直接执行），需要你临场判断的用 {prompt}（到时会叫醒你处理，' +
+      '如"推荐当天值得关注的股票"）。ask:true 表示执行前先问用户。建好自动上卡，用户能看到你理解成了什么。',
+    permission: '彩',
+    params: {
+      name: { type: 'string', required: true, desc: '任务名，短一点，如"雨天模式"' },
+      when: { type: 'array', desc: '触发条件（全部满足才触发；空=手动任务）',
+        items: { type: 'object', properties: {
+          kind: { type: 'string', enum: ['time', 'signal'] },
+          at: { type: 'string', description: 'kind=time 时的每天时刻，HH:MM' },
+          path: { type: 'string', description: 'kind=signal 时的信号路径，如 vehicle.gear' },
+          op: { type: 'string', enum: ['==', '!=', '>', '<', '>=', '<='] },
+          value: { description: '比较值' },
+        }, required: ['kind'] } },
+      do: { type: 'array', required: true, desc: '动作序列，按顺序执行',
+        items: { type: 'object', properties: {
+          tool: { type: 'string', description: '工具名（车控/查询这类确定动作）' },
+          args: { type: 'object', description: '工具参数' },
+          prompt: { type: 'string', description: '或者：到时叫醒你处理的一句话任务' },
+        } } },
+      ask: { type: 'boolean', desc: '触发时先弹确认，用户点了才执行' },
+    },
+    handler: 'automationCreate',
+  },
+  {
+    name: 'automation.list',
+    brief: '看已有的自动任务',
+    desc: '列出全部自动任务并上卡。data.rules 就是任务码（JSON），用户要"分享/导出"时念给他或建卡展示。',
+    permission: '彩',
+    params: {},
+    handler: 'automationList',
+  },
+  {
+    name: 'automation.toggle',
+    brief: '启停自动任务',
+    desc: '启用/停用一条自动任务。不传 on 就翻转当前状态（卡片上点一下走的就是这条）。',
+    permission: '彩',
+    params: {
+      id: { type: 'string', desc: '任务 id' },
+      name: { type: 'string', desc: '或者用任务名找' },
+      on: { type: 'boolean', desc: '开或关；不传=翻转' },
+    },
+    handler: 'automationToggle',
+  },
+  {
+    name: 'automation.delete',
+    brief: '删自动任务',
+    desc: '删除一条自动任务。',
+    permission: '彩',
+    params: {
+      id: { type: 'string', desc: '任务 id' },
+      name: { type: 'string', desc: '或者用任务名找' },
+    },
+    handler: 'automationDelete',
+  },
+  {
+    name: 'automation.run',
+    brief: '立即运行一条任务',
+    desc: '手动执行一条任务（多用于无条件的手动任务；ask 类任务用户确认后也用它跑）。',
+    permission: '彩',
+    params: {
+      id: { type: 'string', desc: '任务 id' },
+      name: { type: 'string', desc: '或者用任务名找' },
+    },
+    handler: 'automationRun',
+  },
+  {
     name: 'memory.remember',
     brief: '记住用户偏好',
     desc: '用户说"记住…""以后都…"这类长期偏好时调用，存成一条文本。存完要向用户复述确认。' +

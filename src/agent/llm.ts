@@ -1,3 +1,4 @@
+import { api } from '../config/upstream'
 export interface Msg {
   /**
    * system 只用于**跨会话前情摘要**那一条（thread 第 0 位）。
@@ -80,7 +81,7 @@ export const FALLBACK_MODELS: ModelInfo[] = [
  */
 export function createOnlineChat(getKey: () => string, getModel: () => string) {
   return async (system: string, prompt: string): Promise<string> => {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetch(`${api('openrouter')}/api/v1/chat/completions`, {
       method: 'POST',
       // 60s 超时：实测 :online 正常 4-30s；挂起的连接不许冻住任务（实拍几分钟没反应）
       signal: AbortSignal.timeout(60_000),
@@ -98,7 +99,7 @@ export function createOnlineChat(getKey: () => string, getModel: () => string) {
 }
 
 export function createOpenRouter(getKey: () => string, getModel: () => string): LLM {
-  const base = 'https://openrouter.ai/api/v1'
+  const base = `${api('openrouter')}/api/v1`
 
   return {
     async models(): Promise<ModelInfo[]> {

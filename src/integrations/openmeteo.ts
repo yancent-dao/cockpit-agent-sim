@@ -23,8 +23,9 @@
  * 地名解析仍然归高德 geocode（各家干各家最擅长的）。
  */
 import type { Fetcher } from './amap'
+import { api } from '../config/upstream'
 
-const ENDPOINT = 'https://api.open-meteo.com/v1/forecast'
+const ENDPOINT = () => `${api('openmeteo')}/v1/forecast`
 /** per-request 超时。跟 radio(5s)/itunes(4s) 同一个思路：fetch 先抛，副作用走不到 */
 const TIMEOUT_MS = 6000
 /** 逐时取几根。band 档要 12，多取没用 */
@@ -88,7 +89,7 @@ export function createOpenMeteoClient(fetcher: Fetcher, opts: OmOpts = {}) {
     const timeout = new Promise<never>((_, rej) => {
       timer = setTimeout(() => rej(new OmError('天气服务没响应，等太久', 'TIMEOUT')), timeoutMs)
     })
-    const res = await Promise.race([fetcher(`${ENDPOINT}?${qs}`), timeout]).finally(() => clearTimeout(timer))
+    const res = await Promise.race([fetcher(`${ENDPOINT()}?${qs}`), timeout]).finally(() => clearTimeout(timer))
     const json: any = await res.json().catch(() => ({}))
     if (!res.ok) throw new OmError(json?.reason || '天气服务没接受这次请求', 'UPSTREAM')
 

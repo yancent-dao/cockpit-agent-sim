@@ -1,3 +1,4 @@
+import { api } from '../config/upstream'
 /**
  * 高德地图适配层 —— 把高德的原始 REST 响应翻译成我们自己的 Tool 契约。
  * Tool 定义（tools.ts）和 Agent 侧只认这个文件导出的形状，不直接碰高德字段名；
@@ -6,7 +7,7 @@
  * fetch 作为依赖注入，方便测试用假 fetch，不打真实网络。
  */
 
-const BASE = 'https://restapi.amap.com'
+const BASE = () => api('amap')
 
 export class AmapError extends Error {
   constructor(message: string, public code?: string) {
@@ -162,7 +163,7 @@ export function createAmapClient(fetcher: Fetcher, keys: AmapKeys) {
   async function get(path: string, params: Record<string, string | number | boolean | undefined>) {
     const qs = new URLSearchParams({ key: keys.webKey })
     for (const [k, v] of Object.entries(params)) if (v !== undefined) qs.set(k, String(v))
-    const url = `${BASE}${path}?${qs.toString()}`
+    const url = `${BASE()}${path}?${qs.toString()}`
 
     for (let attempt = 1; ; attempt++) {
       const res = await fetcher(url)
@@ -362,7 +363,7 @@ export function createAmapClient(fetcher: Fetcher, keys: AmapKeys) {
       // paths 格式：粗细,颜色,透明度,填充色,填充透明度:坐标串
       if (opts.path) qs.set('paths', `6,0x1E6FD9,1,,:${opts.path}`)
       if (opts.markers) qs.set('markers', opts.markers)
-      return `${BASE}/v3/staticmap?${qs.toString()}`
+      return `${BASE()}/v3/staticmap?${qs.toString()}`
     },
 
     /** 公交路线关键字查询（v3/bus/linename）——city 必填，高德这个接口不接受留空 */

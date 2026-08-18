@@ -11,6 +11,7 @@
  * 本来就小，4K 档只会让首帧更慢。
  */
 import type { Fetcher } from './amap'
+import { api } from '../config/upstream'
 
 export interface Clip {
   id: number
@@ -38,7 +39,7 @@ export function createPexelsClient(fetcher: Fetcher, key: () => string) {
       orientation: 'portrait',   // 竖版更像短视频
       size: 'small',
     })
-    const res = await fetcher(`https://api.pexels.com/videos/search?${p}`, { headers: { Authorization: k } })
+    const res = await fetcher(`${api('pexels')}/videos/search?${p}`, { headers: { Authorization: k } })
     if (!res.ok) throw new PexelsError('短视频服务没响应', 'HTTP_ERROR')
     const json = await res.json()
     return (json.videos ?? []).map((v: any): Clip => {

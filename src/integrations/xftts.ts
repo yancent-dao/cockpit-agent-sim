@@ -86,14 +86,35 @@ async function signedUrl(creds: XfCreds): Promise<string> {
   return authUrl(XF_ENDPOINT, creds.apiKey, btoa(String.fromCharCode(...new Uint8Array(sig))), date)
 }
 
-async function openSocket(creds: XfCreds): Promise<WebSocket> {
-  const ws = new WebSocket(await signedUrl(creds))
+/**
+ * 直连 wss URL → 同源代理 URL（/x/xftts，vite proxy ws:true 转发）。
+ * 签名**仍对上游 host 算**——changeOrigin 会把 Host 改回 cbm01，上游按它验签。
+ * WebSocket 本身没有 CORS，讯飞直连也通；走代理是为了把 ws 通道跑热
+ * （将来豆包这类 header 鉴权的 CP 只有这条路），所以带直连回退，不赌。
+ */
+export function proxiedWsUrl(direct: string): string {
+  const u = new URL(direct.replace(/^wss:/, 'https:'))
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${scheme}://${location.host}/x/xftts${u.pathname}${u.search}`
+}
+
+async function connect(url: string, timeoutMs: number): Promise<WebSocket> {
+  const ws = new WebSocket(url)
   await new Promise<void>((res, rej) => {
-    const t = setTimeout(() => { ws.close(); rej(new Error('讯飞连接超时')) }, 6000)
+    const t = setTimeout(() => { ws.close(); rej(new Error('讯飞连接超时')) }, timeoutMs)
     ws.onopen = () => { clearTimeout(t); res() }
     ws.onerror = () => { clearTimeout(t); rej(new Error('讯飞 WebSocket 连接失败')) }
   })
   return ws
+}
+
+async function openSocket(creds: XfCreds): Promise<WebSocket> {
+  const direct = await signedUrl(creds)
+  // http(s) 页面先试同源代理；代理不在（server 没重启/纯静态托管）回退直连
+  if (typeof location !== 'undefined' && location.protocol.startsWith('http')) {
+    try { return await connect(proxiedWsUrl(direct), 4000) } catch { /* 回退直连 */ }
+  }
+  return connect(direct, 6000)
 }
 
 /**

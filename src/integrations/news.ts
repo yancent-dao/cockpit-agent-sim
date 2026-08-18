@@ -14,6 +14,7 @@
  *    那时候重写这个文件就行，Tool 契约不用动。
  */
 import type { Fetcher } from './amap'
+import { api, UPSTREAM } from '../config/upstream'
 
 export interface Article {
   title: string
@@ -62,7 +63,14 @@ export function createNewsClient(fetcher: Fetcher, key: () => string) {
     const k = key()
     if (!k) throw new NewsError('没配新闻服务的 Key', 'NO_KEY')
     const p = new URLSearchParams({ ...params, apiKey: k, pageSize: params.pageSize ?? '8' })
-    const res = await fetcher(`https://newsapi.org/v2/${path}?${p}`)
+    /**
+     * 代理失败退直连（2026-08-17 实测）：newsapi.org 在 Node 侧被 DNS 污染
+     * （解析到 108.160.169.171 超时），浏览器侧常因系统代理是通的。
+     * 可达性的墙代理不解决——接管道不能把原本能用的弄坏。
+     */
+    let res
+    try { res = await fetcher(`${api('newsapi')}/v2/${path}?${p}`) }
+    catch { res = await fetcher(`${UPSTREAM.newsapi}/v2/${path}?${p}`) }
     const json = await res.json()
     if (json.status !== 'ok')
       throw new NewsError(json.message ?? '新闻服务返回异常', json.code ?? 'NEWS_ERROR')

@@ -23,6 +23,7 @@
  * 归模型管（协议客户端 < 200 行的预算口径就是这么守住的）。
  */
 import type { Fetcher } from './amap'
+import { api } from '../config/upstream'
 
 /** 服务端上限。超了截断而不是整个失败 —— 绘本只用一张定妆照，会超的只有调用方传错 */
 export const REF_CAP = 14
@@ -32,7 +33,7 @@ export const REF_CAP = 14
  * 角色保持最强，约 10 秒一张、$0.04。要更快可传 lite，中文场景可传 Seedream。
  */
 const DEFAULT_MODEL = 'google/gemini-3.1-flash-image'
-const ENDPOINT = 'https://openrouter.ai/api/v1/images'
+const ENDPOINT = () => `${api('openrouter')}/api/v1/images`
 /**
  * per-request 超时。项目「已知待办」里记着工具超时的残留窗口：registry 那层的
  * 总超时只是 `Promise.race`，落败的 handler 收不到取消信号、副作用照样落地。
@@ -89,7 +90,7 @@ export function createImageClient(
       timer = setTimeout(() => rej(new ImageError('画图超时了，等太久', 'TIMEOUT')), timeoutMs)
     })
     const res = await Promise.race([
-      fetcher(ENDPOINT, {
+      fetcher(ENDPOINT(), {
         method: 'POST',
         headers: { Authorization: `Bearer ${k}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

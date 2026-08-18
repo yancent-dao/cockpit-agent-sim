@@ -7,6 +7,7 @@
  * 但一点声音没有，比搜不到更糟。所以这里**只留 HTTPS**。
  */
 import type { Fetcher } from './amap'
+import { api } from '../config/upstream'
 
 export interface Station {
   id: string
@@ -38,12 +39,15 @@ export interface RadioQuery {
  * 而且节点会挂（fi1 当场就连不上）。官方推荐 DNS 查 all.api.radio-browser.info
  * 拿节点列表，但浏览器里做不了 DNS 查询，只能硬编码一组然后失败切换。
  */
-const NODES = [
+const NODES = () => [...new Set([
+  // 浏览器下同源代理排最前：它转发到 de1，但不吃浏览器侧的跨域问题；
+  // node/file:// 下 api() 返回的就是 de1 直连——Set 去重，故障切换不浪费一次重试
+  `${api('radio')}/json`,
   'https://de1.api.radio-browser.info/json',
   'https://de2.api.radio-browser.info/json',
   'https://nl1.api.radio-browser.info/json',
   'https://at1.api.radio-browser.info/json',
-]
+])]
 
 export function createRadioClient(fetcher: Fetcher, opts: { nodeTimeoutMs?: number } = {}) {
   /** 上次成功的节点。大概率还活着，别每次都从头重试 */
@@ -59,7 +63,8 @@ export function createRadioClient(fetcher: Fetcher, opts: { nodeTimeoutMs?: numb
 
   /** 依次试各节点，任一成功即返回；全挂才抛 */
   async function viaNodes<T>(path: string): Promise<T> {
-    const order = [...NODES.slice(preferred), ...NODES.slice(0, preferred)]
+    const nodes = NODES()
+    const order = [...nodes.slice(preferred), ...nodes.slice(0, preferred)]
     let last: unknown
     for (const base of order) {
       try {
@@ -69,12 +74,12 @@ export function createRadioClient(fetcher: Fetcher, opts: { nodeTimeoutMs?: numb
         })
         const res = await Promise.race([fetcher(base + path), timeout]).finally(() => clearTimeout(timer))
         if (!res.ok) { last = new RadioError('节点没响应'); continue }
-        preferred = NODES.indexOf(base)
+        preferred = nodes.indexOf(base)
         return await res.json()
       } catch (e) { last = e }
     }
     throw new RadioError(
-      `电台服务连不上了（试了 ${NODES.length} 个节点）：${last instanceof Error ? last.message : ''}`,
+      `电台服务连不上了（试了 ${NODES().length} 个节点）：${last instanceof Error ? last.message : ''}`,
       'ALL_NODES_DOWN',
     )
   }

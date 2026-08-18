@@ -299,8 +299,15 @@ export function createPipeline(deps: PipelineDeps) {
     const sig = bad.length === results.length && bad.length
       ? bad.map(({ c, result }) => `${registry.canonicalName(c.name)}|${result.code ?? ''}`).sort().join(',')
       : ''
+    /**
+     * 元工具轮不清洗撞墙计数（2026-08-19 实拍）：create 拒 2 次 →
+     * tools.load 成功 → 又拒 2 次——计数在"成功轮"清零永远凑不满 3，
+     * 模型同一堵墙撞了 7 次烧光轮次。load/skill 是准备动作不是进展，
+     * 只有**业务调用**的成功才算走出了墙。
+     */
+    const metaOnly = results.every(({ c }) => Object.keys(interceptors).find(k => isMeta(c.name, k)))
     if (sig && sig === lastFailSig) failStreak++
-    else { lastFailSig = sig; failStreak = sig ? 1 : 0 }
+    else if (!metaOnly) { lastFailSig = sig; failStreak = sig ? 1 : 0 }
     return results.map(({ c, result }) => ({
       role: 'tool' as const, tool_call_id: c.id, content: JSON.stringify(result),
     }))

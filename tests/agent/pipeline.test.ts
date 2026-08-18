@@ -801,3 +801,30 @@ describe('屏端合成的回答直达慢层', () => {
     expect((slow as any).seen.length).toBe(1)
   })
 })
+
+/**
+ * 撞墙计数不被元工具轮清洗（2026-08-19 实拍）：create 被拒 2 次 →
+ * tools.load（成功）→ 又拒 2 次——计数在"成功轮"清零，永远凑不满 3，
+ * 模型在同一堵墙上撞了 7 次烧光轮次。元工具轮是准备动作不是进展，
+ * 不该重置"在打转"的判定。
+ */
+describe('撞墙计数与元工具轮', () => {
+  it('失败→load→失败→失败 照样触发熔断跳最后一轮', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent_handoff', { say: '', suggestedTools: [] })] }))
+    const badCreate = () => ({ text: '', toolCalls: [call('automation.create', { name: 'x', when: { item: { time: 'bad' } }, do: [] })] })
+    const slow = fakeLLM(
+      badCreate,
+      badCreate,
+      () => ({ text: '', toolCalls: [call('tools.load', { names: ['climate.set'] })] }),
+      badCreate,        // 第 3 次同签名失败——中间隔了一个元工具轮
+      () => ({ text: '没建成，我换个方式再试' }),
+      () => ({ text: '不该到这轮' }),
+    )
+    const { p } = mk(fast, slow)
+    const r = await p.run('建个任务')
+    // 熔断生效的铁证：第 3 次失败后的下一轮是"撤工具逼话术"的最后一轮
+    const rounds = (slow as any).seen
+    expect(rounds[4].tools.length, '熔断后最后一轮必须撤工具').toBe(0)
+    expect(r.reply).toContain('没建成')
+  })
+})

@@ -25,6 +25,7 @@ export function createAutomationHandlers(
   desk: () => Desk | undefined,
   deps: () => AutomationDeps | undefined,
   toolExists: (name: string) => boolean,
+  validateArgs: (name: string, args: Record<string, unknown>) => string | null,
   signalLabel: (path: string) => string | undefined,
   clock: () => number,
 ) {
@@ -76,6 +77,11 @@ export function createAutomationHandlers(
         else {
           if (!toolExists(String(d.tool)))
             return { status: 'rejected', code: 'INVALID_PARAMS', message: `没有 ${d.tool} 这个工具` }
+          // 动作参数现在就干验证——写进任务的错参是定时哑弹，
+          // 触发时才炸远比现在拒掉贵（实拍 climate.set {"on":"true"} 就这么埋进去过）
+          const err = validateArgs(String(d.tool), d.args ?? {})
+          if (err) return { status: 'rejected', code: 'INVALID_PARAMS',
+            message: `「${d.tool}」的参数不对：${err}`, suggestion: '对照工具目录里的参数改一下' }
           actions.push({ tool: String(d.tool), args: d.args ?? {} })
         }
       }

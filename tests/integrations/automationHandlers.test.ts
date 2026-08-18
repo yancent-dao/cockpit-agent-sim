@@ -74,7 +74,7 @@ describe('list / toggle / delete / run', () => {
   const seed = async (reg: ReturnType<typeof mk>) => {
     await reg.invoke('automation.create', { name: '雨天模式',
       when: [{ kind: 'signal', path: 'env.weather', op: '==', value: 'rain' }],
-      do: [{ tool: 'wiper.set', args: { mode: 'low' } }] })
+      do: [{ tool: 'wiper.set', args: { mode: 'slow' } }] })
     await reg.invoke('automation.create', { name: '手动晨报', when: [], do: [{ prompt: '来段晨报' }] })
   }
 
@@ -109,5 +109,29 @@ describe('list / toggle / delete / run', () => {
     expect(auto.list()).toHaveLength(1)
     const card = desk.layout().cards.find(c => c.template === 'automation')
     expect(card!.data.items).toHaveLength(1)
+  })
+})
+
+/**
+ * ══════════ 实拍三修（2026-08-19 日志）══════════
+ */
+describe('实拍修复', () => {
+  it('{item:单对象} 的数组退化也要收——第三次撞见这个形状了', async () => {
+    const r = await mk().invoke('automation.create', {
+      name: '下午三点开空调',
+      when: { item: { kind: 'time', at: '15:00' } },
+      do: { item: { tool: 'climate.set', args: { power: true } } },
+    })
+    expect(r.status, '单对象包 item 应被展平成单元素数组').toBe('ok')
+    expect(auto.list()[0].when).toEqual([['time', '15:00']])
+  })
+
+  it('动作参数在 create 时干验证——三点才发现参数错是定时哑弹', async () => {
+    const r = await mk().invoke('automation.create', {
+      name: 'x', when: [{ kind: 'time', at: '15:00' }],
+      do: [{ tool: 'climate.set', args: { on: 'true' } }],   // climate.set 没有 on 这个参数形态
+    })
+    expect(r.status).toBe('rejected')
+    expect(r.message).toContain('climate.set')
   })
 })

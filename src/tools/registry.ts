@@ -272,6 +272,7 @@ export function createRegistry(
     ...createGenHandlers(store, () => deps.orvideo, () => deps.ormusic),
     ...createAutomationHandlers(() => sizedDesk(), () => deps.automation,
       n => tools.some(t => t.name === n),
+      validateArgs,
       p => store.signals.find(sg => sg.alias === p)?.label,
       clock),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
@@ -416,9 +417,31 @@ export function createRegistry(
       }
       if (def.type === 'enum' && !def.values?.includes(v)) return `${key} 不支持取值 ${v}`
       if (def.type === 'boolean' && typeof v !== 'boolean') return `${key} 需要布尔值`
-      if (def.type === 'array' && !Array.isArray(v)) return `${key} 需要数组`
+      if (def.type === 'array' && !Array.isArray(v)) {
+        // 宽容单元素退化（{item:单对象} 经 unwrapItem 剥壳后就是这个形状，
+        // 实拍第三次撞见）：期望数组收到单个对象 → 包成单元素数组。
+        // 跟 "24"→24 同族：协议适配不是意图分支，判据只看数据形状
+        if (v && typeof v === 'object') { args[key] = [v] }
+        else return `${key} 需要数组`
+      }
     }
     return null
+  }
+
+  /**
+   * 干验证（2026-08-19，自动化的 create 用）：只校验不执行。
+   * 比运行时校验**更严**——多查未知参数名：运行时对模型多塞的键宽容
+   * （拒了要多等一轮往返），但写进自动任务的错参是定时哑弹，
+   * 三点一到才炸远比现在拒掉贵。
+   */
+  function validateArgs(name: string, args: Record<string, any> = {}): string | null {
+    const t = resolve(name)
+    if (!t) return `没有 ${name} 这个工具`
+    const copy = unwrapItem({ ...args })
+    for (const k of Object.keys(copy))
+      if (!(k in t.params)) return `没有 ${k} 这个参数（可用：${Object.keys(t.params).join('/')}）`
+    applyDefaults(t, copy)
+    return validate(t, copy)
   }
 
   /**

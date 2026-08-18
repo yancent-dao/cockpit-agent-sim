@@ -73,7 +73,9 @@ describe('skill 全是数据', () => {
   it('「生成卡片」是场景无关的设计规范：配色/图标/图表/代码规范/输出格式全齐', () => {
     const g = SKILLS.find(s => s.name === '生成卡片')!
     expect(g.tools).toContain('card.show')
-    for (const kw of ['#DB4045', 'svg', 'emoji', 'text', 'flex'])
+    // 2026-08-18 方案三：规范从"文字条款"改成"现成 HMI 类 + 填空骨架"——
+    // 断言跟着换：类清单、骨架、负面清单、svg、兜底文字都得在
+    for (const kw of ['.hd', '.hero', '.rows', '骨架', '负面清单', '#DB4045', 'svg', 'emoji', 'text'])
       expect(g.inject, `规范缺 ${kw}`).toContain(kw)
     // 场景词不许出现——出现就是又在偷偷绑场景
     for (const banned of ['股价', '调研', '报告', '天气', '新闻'])

@@ -133,3 +133,29 @@ export function injectTokens(scene: Scene, doc: Document = document): HTMLStyleE
   doc.head.insertBefore(el, doc.head.firstChild)
   return el
 }
+
+/**
+ * 生成式卡的 HMI 工具类（2026-08-18，方案三）。
+ * 排版规范从"文字条款"变成"现成的类"——小模型挑类填空，比让它手写
+ * style 稳一个数量级。注入 canvas 的 Shadow DOM，跟 token 一起生效。
+ * 类名短且语义化：模型 token 花得少，写错的面也小。
+ */
+export const CANVAS_KIT_CSS = `
+.hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:calc(12px*var(--u))}
+.hd b{font-size:var(--t-lead);font-weight:700;color:var(--tx-1)}
+.hd i{font-style:normal;font-size:var(--t-cap);color:var(--tx-3)}
+.hero{display:flex;align-items:baseline;gap:14px;margin-bottom:calc(12px*var(--u))}
+.hero b{font-size:var(--t-hero);font-weight:800;line-height:1;color:var(--tx-1)}
+.hero em{font-style:normal;font-size:var(--t-body);font-weight:600}
+.rows{display:flex;flex-direction:column;gap:calc(8px*var(--u))}
+.row{display:flex;align-items:baseline;gap:10px;font-size:var(--t-body);line-height:1.55;color:var(--tx-1)}
+.row .ic{flex:none}
+.row small{color:var(--tx-2);font-size:var(--t-cap)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:calc(10px*var(--u))}
+.cell{background:var(--sf-raised);border-radius:var(--r-blk);padding:calc(12px*var(--u))}
+.pill{display:inline-block;padding:2px 12px;border-radius:var(--r-pill);font-size:var(--t-cap);
+  background:var(--acbg);color:var(--ac)}
+.foot{margin-top:auto;padding-top:calc(10px*var(--u));font-size:var(--t-cap);color:var(--tx-3)}
+.up{color:#DB4045}.down{color:#1B9E68}.good{color:var(--ok-fg)}.bad{color:var(--danger-fg)}
+.warn{color:var(--warn-fg)}.acc{color:var(--ac)}
+`

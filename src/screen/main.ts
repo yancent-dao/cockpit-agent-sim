@@ -12,7 +12,7 @@ import { posKey, isNoop, commitMoves, type Move } from './flip'
 import { classifyGesture } from './gestures'
 import { sanitize } from './sanitize'
 import { SANDBOX, buildSrcdoc, validateBridgeMsg } from './canvasApp'
-import { tokensFor } from '../design/tokens'
+import { tokensFor , CANVAS_KIT_CSS } from '../design/tokens'
 import { dimsOf, GRID, TIERS, SCREEN } from '../config/grid'
 import { cardBody, tierClass, accentClass, fmtTime, progressPct,
   NAV_SKELETON, NAV_SLOTS, PLAYER_SKELETON, PLAYER_SLOTS } from './render'
@@ -307,8 +307,8 @@ function renderCanvasCard(node: HTMLDivElement, c: CardView) {
   const r = sanitize(String(d.html ?? ''))
   // 剥了什么要上报 —— 不说出来的话没人知道模型哪里写错了
   if (r.stripped.length) bus.send({ type: 'canvasNote', cardId: c.id, stripped: r.stripped } as any)
-  root.innerHTML = `<style>${tokensFor('screen')}
-    :host{display:block;height:100%;overflow:hidden;color:var(--tx-1);
+  root.innerHTML = `<style>${tokensFor('screen')}${CANVAS_KIT_CSS}
+    :host{display:flex;flex-direction:column;height:100%;overflow:hidden;color:var(--tx-1);
       font-family:inherit;font-size:var(--t-cap)}
     *{box-sizing:border-box;margin:0;max-width:100%}
     table{border-collapse:collapse;width:100%}

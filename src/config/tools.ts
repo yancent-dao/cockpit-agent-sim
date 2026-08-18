@@ -678,9 +678,13 @@ export const TOOLS: ToolDef[] = [
     name: 'media.control',
     brief: '播放暂停上下曲',
     fast: true,
-    desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+    desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。jump 跳到队列第 index 首（0 起）；speed 设倍速（播客常用，配 speed 参数 0.5-3）。',
     permission: '彩',
-    params: { action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev', 'toggle'], required: true, desc: '动作。toggle 是播放/暂停切换（屏幕按钮用它）' } },
+    params: {
+      action: { type: 'enum', values: ['play', 'pause', 'stop', 'next', 'prev', 'toggle', 'jump', 'speed'], required: true, desc: '动作。toggle 是播放/暂停切换（屏幕按钮用它）' },
+      index: { type: 'number', range: [0, 999], desc: 'jump 用：队列下标（0 起）' },
+      speed: { type: 'number', range: [0.5, 3], desc: 'speed 用：倍速，1 为原速' },
+    },
     handler: 'mediaControl',
   },
   {

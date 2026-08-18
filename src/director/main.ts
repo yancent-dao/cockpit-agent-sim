@@ -26,6 +26,8 @@ import { createAutomationStore, type AutomationRule } from '../state/automation'
 import { createAutomationEngine } from '../core/automation'
 import { createVideoGen } from '../integrations/orvideo'
 import { createMusicGen } from '../integrations/ormusic'
+import { createLrclibClient } from '../integrations/lrclib'
+import { api } from '../config/upstream'
 import { createRadioClient } from '../integrations/radio'
 import { createNewsClient } from '../integrations/news'
 import { createPexelsClient } from '../integrations/pexels'
@@ -309,6 +311,7 @@ setInterval(() => autoEngine.evaluate(), 5000)
 
 const registry = createRegistry(store, TOOLS, Date.now, {
   state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
+  lyrics: createLrclibClient(fetch.bind(window), api('lrclib')).search,
   stocks: createStockClient(fetch.bind(window)), holiday: createHolidayClient(fetch.bind(window)),
   poem: createPoemClient(fetch.bind(window)), podcast: createPodcastClient(fetch.bind(window)),
   orvideo: createVideoGen(fetch.bind(window), () => apiKey),

@@ -192,22 +192,35 @@ export const NAV_SLOTS: Record<string, string> = {
   map: '.mapbox', then: '.navthen', eta: '.navfoot',
 }
 
+/**
+ * 播放器骨架（重设计 v2，2026-08-19）：三段式——
+ * 顶行元信息带 plhead / 主区 plmain（封面+信息栈）/ 底带 plfoot（进度+控制行+队列）。
+ * 分源差异（弥散色/徽标/进度形态/主控语义）由 SOURCE_STYLE 查表，骨架只有一套。
+ */
 export const PLAYER_SKELETON = `<div class="plwrap">
-  <div class="plart"></div>
-  <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
-    <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
-      <span class="pltime"></span></div>
-    <div class="plmix"></div>
-    <div class="plvol"></div>
-    <div class="pl-next"></div>
-    <div class="plctl"></div>
-    <div class="pl-hint"></div>
-    <div class="plqueue"></div></div>
+  <div class="plhead"><span class="plbadge"></span><span class="pltags"></span>
+    <span class="plsp"></span><span class="plpos"></span></div>
+  <div class="plmain">
+    <div class="plart"></div>
+    <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+      <div class="plaux"></div><div class="pl-next"></div></div>
+  </div>
+  <div class="plfoot">
+    <div class="plbar"><span class="pltime pt0"></span>
+      <div class="pltrk" data-act="tap:seek"><div class="plfl"></div><div class="plknob"></div></div>
+      <span class="pltime pt1"></span></div>
+    <div class="plrow">
+      <div class="plxtra plxl"></div>
+      <div class="plctl"></div>
+      <div class="plxtra plxr"></div>
+    </div>
+    <div class="plqueue"></div>
+  </div>
 </div>`
 export const PLAYER_SLOTS: Record<string, string> = {
-  art: '.plart', title: '.pltrack', sub: '.plartist', bar: '.plbar',
-  mix: '.plmix', vol: '.plvol', next: '.pl-next', toggle: '.plctl',
-  hint: '.pl-hint', queue: '.plqueue',
+  meta: '.plhead', art: '.plart', title: '.pltrack', sub: '.plartist',
+  aux: '.plaux', next: '.pl-next', bar: '.plbar', ctl: '.plctl',
+  extras: '.plxtra', queue: '.plqueue',
 }
 
 export function cardBody(c: CardView): string {

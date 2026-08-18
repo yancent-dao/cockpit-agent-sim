@@ -105,7 +105,7 @@ export const CARD_RULES: CardRule[] = [
     // **暂停是状态不是退场理由**——有内容加载着卡就在场（显示 ▶ 等继续），
     // stop 清掉内容（source=none）才退场。watch 带 playing 让暂停态刷进卡片
     when: [['media.source', '!=', 'none'], ['media.source', '!=', 'video']],
-    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode', 'media.playing'],
+    watch: ['media.track', 'media.artist', 'media.artwork', 'media.source', 'media.mode', 'media.playing', 'media.lyricsRev', 'media.speed'],
     card: { key: 'player', template: 'media', evictable: true, urgency: 'ambient', data: 'playerCard' },
   },
   {
@@ -205,6 +205,11 @@ export const DATA_BUILDERS: Record<string, (d: BuilderDeps) => any> = {
       playing: store.get('media.playing'),
       streamUrl: store.get('media.streamUrl'),
       volume: store.get('media.volume'),
+      speed: store.get('media.speed'),
+      // 歌词文本在域仓（信号只有版本戳）；队列全量给 court 档的可点列表
+      lyrics: state?.lyrics.for(String(store.get('media.track'))) ?? null,
+      queue: state?.queue.list().map(t => ({ track: t.track, artist: t.artist })) ?? [],
+      queueAt: state ? state.queue.list().findIndex(t => t.track === store.get('media.track')) : -1,
     }
   },
 

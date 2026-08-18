@@ -1466,7 +1466,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       desc: '查询某个地点的天气，同时返回实况与未来几天预报。查询成功后天气卡会自动显示在屏幕上，你只负责口头播报重点，不要再建卡。查不到这个地点时会得到 unavailable。**注意**：这是气象服务的城市级数据，跟车上传感器（车外温度、当前天况）测的"此刻这里"不是一回事，两者对不上很正常，别当成矛盾去质问用户——车里冷不冷、雨大不大以传感器为准。',
       permission: "彩",
       params: {
-        location: { type: "string", required: true, desc: '地点名称如"北京"、"望京"；也可以直接传"经度,纬度"坐标，查当前位置天气就传 vehicle.location 的值' }
+        location: { type: "string", required: true, desc: '真实地名（"北京"、"望京"）或"经度,纬度"数字坐标。查当前位置的天气：把车辆状态里"当前位置(经度,纬度)"的数字原样抄进来（形如 104.065861,30.657401）。绝不要传 "LOCATION"、"vehicle.location"、"当前位置" 这类字样——会查到错误城市' }
       },
       handler: "weatherQuery"
     },
@@ -1562,9 +1562,13 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       name: "media.control",
       brief: "播放暂停上下曲",
       fast: true,
-      desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。',
+      desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。jump 跳到队列第 index 首（0 起）；speed 设倍速（播客常用，配 speed 参数 0.5-3）。',
       permission: "彩",
-      params: { action: { type: "enum", values: ["play", "pause", "stop", "next", "prev", "toggle"], required: true, desc: "动作。toggle 是播放/暂停切换（屏幕按钮用它）" } },
+      params: {
+        action: { type: "enum", values: ["play", "pause", "stop", "next", "prev", "toggle", "jump", "speed"], required: true, desc: "动作。toggle 是播放/暂停切换（屏幕按钮用它）" },
+        index: { type: "number", range: [0, 999], desc: "jump 用：队列下标（0 起）" },
+        speed: { type: "number", range: [0.5, 3], desc: "speed 用：倍速，1 为原速" }
+      },
       handler: "mediaControl"
     },
     {
@@ -2176,13 +2180,8 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
   };
   var mediaForm = (c, r) => {
     const a = area(c, r);
-    const blocks = ["art", "title"];
-    if (a >= 16) blocks.push("sub");
-    if (c >= 6 || a >= 16) blocks.push("bar");
-    blocks.push("toggle");
-    if (a >= 36) blocks.push("mix", "vol");
-    if (a >= 36) blocks.push("next");
-    if (a >= 24) blocks.push("hint");
+    const blocks = ["art", "title", "sub", "bar", "ctl"];
+    if (a >= 36) blocks.push("meta", "aux", "next", "extras");
     if (r >= 8) blocks.push("queue");
     return { blocks };
   };
@@ -2337,7 +2336,9 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     /** 节假日/调休（个人维护项目，高频会封；对无 UA 请求 403） */
     timor: "https://timor.tech",
     /** 今日诗词 v1，无 token */
-    jinrishici: "https://v1.jinrishici.com"
+    jinrishici: "https://v1.jinrishici.com",
+    /** lrclib 歌词：零 Key 零注册、官方 ACAO:*（file:// 直连也通）。CF 站点，走代理更稳 */
+    lrclib: "https://lrclib.net"
   };
   function api(name, protocol = typeof location === "undefined" ? "file:" : location.protocol) {
     return protocol.startsWith("http") ? PROXY_PREFIX + name : UPSTREAM[name];
@@ -2422,11 +2423,13 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         const p = (json.pois ?? [])[0];
         return p ? toPoi(p) : null;
       },
-      /** 地理编码：地址 → 坐标（v3/geocode/geo）—— 用于 setDestination 传 address、weather.query 转 adcode */
+      /** 地理编码：地址 → 坐标（v3/geocode/geo）—— 用于 setDestination 传 address、weather.query 转 adcode。
+       *  level 是高德的匹配粒度（国家/省/市/区县/道路/兴趣点…），
+       *  调用方拿它判断"要不要带当前城市重查一次"（细粒度=本地小地名） */
       async geocode(address, city) {
         const json = await get("/v3/geocode/geo", { address, city });
         const g = (json.geocodes ?? [])[0];
-        return g ? { location: g.location, formattedAddress: g.formatted_address, adcode: g.adcode } : null;
+        return g ? { location: g.location, formattedAddress: g.formatted_address, adcode: g.adcode, level: g.level } : null;
       },
       /** 驾车路径规划 2.0（v5/direction/driving） */
       /** 单条最优路线 */
@@ -2815,6 +2818,42 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
             st.history.push(qt);
             return { status: "ok", data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` };
           }
+          /* ── 重设计 v2（2026-08-19）：屏幕点播与倍速，扩参不扩 Tool ── */
+          case "jump": {
+            if (cur.source === "radio") return radioNo("点播队列");
+            const st = deps.state;
+            if (!st || !st.queue.size()) return {
+              status: "unavailable",
+              code: "NO_QUEUE",
+              message: "还没有播放列表"
+            };
+            const qt = st.queue.jump(Number(args.index));
+            if (!qt) return {
+              status: "rejected",
+              code: "INVALID_PARAMS",
+              message: `队列里没有第 ${Number(args.index) + 1} 首`
+            };
+            playQueueTrack(store2, qt);
+            st.history.push(qt);
+            return { status: "ok", data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` };
+          }
+          case "speed": {
+            const v = Number(args.speed);
+            if (!Number.isFinite(v) || v < 0.5 || v > 3)
+              return {
+                status: "rejected",
+                code: "INVALID_PARAMS",
+                message: "倍速要在 0.5 到 3 之间",
+                suggestion: "播客常用 1.25 或 1.5"
+              };
+            store2.set("media.speed", v);
+            return {
+              status: "ok",
+              data: { speed: v },
+              changed: ["media.speed"],
+              message: v === 1 ? "恢复原速" : `${v} 倍速`
+            };
+          }
           default:
             return { status: "rejected", code: "INVALID_PARAMS", message: `不认识的动作 ${args.action}` };
         }
@@ -2897,6 +2936,15 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           })), lastResults.indexOf(track), "search");
           deps.state?.history.push({ source: "music", track: track.name, artist: track.artist, streamUrl: track.preview });
           dismissKey(CANDIDATES);
+          if (deps.lyrics && deps.state) {
+            const name = track.name;
+            deps.lyrics(track.artist, name, track.duration || void 0).then((lrc) => {
+              if (!lrc || String(store2.get("media.track")) !== name) return;
+              deps.state.lyrics.set(name, lrc);
+              store2.set("media.lyricsRev", Number(store2.get("media.lyricsRev") ?? 0) + 1);
+            }).catch(() => {
+            });
+          }
           return {
             status: "ok",
             data: { playing: brief2(track) },
@@ -3573,8 +3621,18 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       weatherQuery: async (args) => {
         const amap2 = needAmap();
         try {
+          if (/^(vehicle\.location|location|当前位置|current[_ ]?location|here)$/i.test(String(args.location ?? "").trim()))
+            args = { ...args, location: store2.get("vehicle.location") };
           const isCoord = /^\s*-?\d{1,3}(\.\d+)?\s*,\s*-?\d{1,2}(\.\d+)?\s*$/.test(String(args.location));
-          const geo = isCoord ? null : await amap2.geocode(args.location);
+          let geo = isCoord ? null : await amap2.geocode(args.location);
+          const COARSE = /* @__PURE__ */ new Set(["国家", "省", "市", "区县"]);
+          if (geo?.level && !COARSE.has(geo.level)) {
+            const city = await amap2.cityOf(store2.get("vehicle.location")).catch(() => null);
+            if (city) {
+              const local = await amap2.geocode(args.location, city).catch(() => null);
+              if (local) geo = local;
+            }
+          }
           const area2 = isCoord ? await amap2.areaOf(String(args.location).trim()) : geo && { adcode: geo.adcode, name: geo.formattedAddress };
           const g = area2?.adcode ? { adcode: area2.adcode, formattedAddress: area2.name } : null;
           if (!g?.adcode)
@@ -4302,7 +4360,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         clock
       ),
       ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
-      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), podcast: () => needCp("podcast"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state })
+      ...createMediaHandlers(store2, () => sizedDesk(), { itunes: () => needCp("itunes"), radio: () => needCp("radio"), podcast: () => needCp("podcast"), news: () => needCp("news"), pexels: () => needCp("pexels"), websearch: () => needCp("websearch"), state: deps.state, lyrics: deps.lyrics })
     };
     const sizedDesk = () => {
       const d = deps.desk;
@@ -4659,6 +4717,13 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         qCursor = i;
         return qItems[i];
       },
+      /** 屏幕点播：跳到第 i 首（0 起）。越界回 null，调用方给人话 */
+      jump(i) {
+        const j = clampNext(Math.trunc(i));
+        if (j < 0) return null;
+        qCursor = j;
+        return qItems[j];
+      },
       /**
        * 自动续播（ended 触发）：这里才看模式——
        * repeatOne 重放当前；shuffle 随机挑一首别的；sequential 顺序前进，到尾停。
@@ -4706,7 +4771,15 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       },
       list: () => [...favs]
     };
-    return { queue, history, queries, favorites };
+    const lyricMap = /* @__PURE__ */ new Map();
+    const lyrics = {
+      set(track, lrc) {
+        lyricMap.set(track, lrc);
+        while (lyricMap.size > 8) lyricMap.delete(lyricMap.keys().next().value);
+      },
+      for: (track) => lyricMap.get(track) ?? null
+    };
+    return { queue, history, queries, favorites, lyrics };
   }
 
   // src/state/prefs.ts
@@ -5314,6 +5387,18 @@ GET ${path} HTTP/1.1`;
       { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
       { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "toggle" } },
       { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
+      /* ── 重设计 v2（2026-08-19）：四个"装饰"全部变真按钮，直调不叫醒模型 ──
+         seek/vol 的 value 由屏端按点击位置折算（barRatio/seekSeconds 纯函数）；
+         mode 的 value 由屏端按当前模式给下一个（顺序→随机→单曲循环轮转） */
+      { on: "tap:seek", route: "tool", tool: "media.seek", valueParam: "position" },
+      { on: "tap:vol", route: "tool", tool: "media.volume", valueParam: "level" },
+      { on: "tap:mode", route: "tool", tool: "media.mode", valueParam: "mode" },
+      { on: "tap:fav", route: "tool", tool: "media.favorite" },
+      { on: "tap:speed", route: "tool", tool: "media.control", args: { action: "speed" }, valueParam: "speed" },
+      { on: "tap:back15", route: "tool", tool: "media.seek", args: { delta: -15 } },
+      { on: "tap:fwd30", route: "tool", tool: "media.seek", args: { delta: 30 } },
+      // 队列点播：点第 n 首直接播它（value = 队列下标）
+      { on: "tap:item", route: "tool", tool: "media.control", args: { action: "jump" }, valueParam: "index" },
       SWIPE_AWAY,
       ...RESIZE,
       CLOSE
@@ -5809,6 +5894,30 @@ GET ${path} HTTP/1.1`;
       return new Blob(bytes, { type: "audio/wav" });
     };
     return { generate };
+  }
+
+  // src/integrations/lrclib.ts
+  function pickLyrics(results, duration) {
+    const synced = results.filter((r) => r.syncedLyrics);
+    if (!synced.length) return null;
+    if (!Number.isFinite(duration)) return synced[0].syncedLyrics;
+    return synced.slice().sort((a, b) => Math.abs(a.duration - duration) - Math.abs(b.duration - duration))[0].syncedLyrics;
+  }
+  function createLrclibClient(fetcher, base) {
+    return {
+      /** "歌手 歌名" 拼 q 搜索，返回挑中的 LRC 文本；任何失败回 null——歌词不许拖垮播放 */
+      async search(artist, track, durationSec) {
+        try {
+          const q = encodeURIComponent(`${artist} ${track}`.trim());
+          const res = await fetcher(`${base}/api/search?q=${q}`, { signal: AbortSignal.timeout(6e3) });
+          if (!res.ok) return null;
+          const list = await res.json();
+          return Array.isArray(list) ? pickLyrics(list, durationSec) : null;
+        } catch {
+          return null;
+        }
+      }
+    };
   }
 
   // src/integrations/radio.ts
@@ -6776,6 +6885,18 @@ ${text}` });
   }
 
   // src/agent/llm.ts
+  function llmErrorText(status, body) {
+    if (status === 401) return "模型没连上：API Key 不对或过期了，在控制面板里重新填一下";
+    if (status === 402) return "模型没连上：账户额度用完了，去 OpenRouter 充值或换个免费模型";
+    if (status === 403) {
+      if (/region|country|location/i.test(body))
+        return "这个模型在当前网络出口所在的地区不可用——换一个不锁区的模型，或检查代理（浏览器走 VPN 不等于 dev server 也走：它只认启动终端里的 HTTPS_PROXY）";
+      return "模型拒绝了这次请求（403）——换个模型试试";
+    }
+    if (status === 429) return "模型限流了：请求太频繁，稍等几秒再说一次";
+    if (status >= 500) return "模型服务临时故障，稍后再试；总失败就换个模型";
+    return `模型没连上（${status}）——换个模型试试，或看浏览器控制台的完整响应`;
+  }
   var FAST_NAME = /flash|mini|haiku|lite|turbo|small|nano|instant|fast/i;
   var SLOW_VARIANT = /:(batch|free|thinking|extended)\b/;
   function pickFastModels(models) {
@@ -6849,7 +6970,7 @@ ${text}` });
             provider: { sort: "latency" }
           })
         });
-        if (!res.ok) throw new Error(`模型调用失败 ${res.status}: ${await res.text()}`);
+        if (!res.ok) throw new Error(llmErrorText(res.status, await res.text()));
         const json = await res.json();
         const m = json.choices?.[0]?.message;
         if (!m) throw new Error("模型返回为空");
@@ -8814,6 +8935,30 @@ ${text}` });
       permission: "彩",
       initial: 40
     },
+    /* 歌词版本戳（重设计 v2）：歌词文本在域仓，信号只放戳触发规则重评——壁纸同款先例 */
+    {
+      alias: "media.lyricsRev",
+      vssPath: "Vehicle.X-Ext.Media.LyricsRev",
+      type: "number",
+      range: [0, 1e9],
+      label: "歌词版本戳",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 0
+    },
+    /* 倍速（重设计 v2）：播客的三大件之一。状态低频进信号，屏端 player 读它设 playbackRate */
+    {
+      alias: "media.speed",
+      vssPath: "Vehicle.X-Ext.Media.PlaybackRate",
+      type: "number",
+      range: [0.5, 3],
+      label: "播放倍速",
+      access: "READ_WRITE",
+      changeMode: "ONCHANGE",
+      permission: "彩",
+      initial: 1
+    },
     {
       alias: "media.mode",
       vssPath: "Vehicle.X-Ext.Media.PlayMode",
@@ -8909,7 +9054,7 @@ ${text}` });
       // **暂停是状态不是退场理由**——有内容加载着卡就在场（显示 ▶ 等继续），
       // stop 清掉内容（source=none）才退场。watch 带 playing 让暂停态刷进卡片
       when: [["media.source", "!=", "none"], ["media.source", "!=", "video"]],
-      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode", "media.playing"],
+      watch: ["media.track", "media.artist", "media.artwork", "media.source", "media.mode", "media.playing", "media.lyricsRev", "media.speed"],
       card: { key: "player", template: "media", evictable: true, urgency: "ambient", data: "playerCard" }
     },
     {
@@ -9074,7 +9219,12 @@ ${text}` });
         mode: store2.get("media.mode"),
         playing: store2.get("media.playing"),
         streamUrl: store2.get("media.streamUrl"),
-        volume: store2.get("media.volume")
+        volume: store2.get("media.volume"),
+        speed: store2.get("media.speed"),
+        // 歌词文本在域仓（信号只有版本戳）；队列全量给 court 档的可点列表
+        lyrics: state2?.lyrics.for(String(store2.get("media.track"))) ?? null,
+        queue: state2?.queue.list().map((t) => ({ track: t.track, artist: t.artist })) ?? [],
+        queueAt: state2 ? state2.queue.list().findIndex((t) => t.track === store2.get("media.track")) : -1
       };
     },
     windowCard: ({ store: store2 }) => ({
@@ -9719,6 +9869,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     amap,
     itunes: createItunesClient(),
     radio: createRadioClient(fetch.bind(window)),
+    lyrics: createLrclibClient(fetch.bind(window), api("lrclib")).search,
     stocks: createStockClient(fetch.bind(window)),
     holiday: createHolidayClient(fetch.bind(window)),
     poem: createPoemClient(fetch.bind(window)),

@@ -88,3 +88,18 @@ describe('历史：环形缓冲', () => {
     expect(d.queries.recent(1)[0].brief).toContain('31')
   })
 })
+
+/**
+ * 歌词槽（媒体卡重设计 v2）：会话级缓存，跟队列一个道理不持久化——
+ * 歌词跟着播放态走，刷新后悬空的歌词只会配错歌。
+ */
+describe('lyrics 槽', () => {
+  it('按曲名存取，上限淘汰最老', () => {
+    const d = createDomainState(fakeStorage())
+    d.lyrics.set('光亮', '[00:12.00]也许')
+    expect(d.lyrics.for('光亮')).toBe('[00:12.00]也许')
+    expect(d.lyrics.for('没这首')).toBeNull()
+    for (let i = 0; i < 10; i++) d.lyrics.set('歌' + i, 'l' + i)
+    expect(d.lyrics.for('光亮'), '超上限最老的被淘汰').toBeNull()
+  })
+})

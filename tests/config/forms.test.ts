@@ -212,11 +212,11 @@ describe('天气卡：主角是逐小时不是多日', () => {
   })
 })
 
-/* ══════════════ 播放器 ══════════════ */
+/* ══════════════ 播放器（2026-08-19 重设计 v2：blocks 改版）══════════════ */
 describe('播放器卡：封面/歌名/播控任何档位都在', () => {
-  it('封面和播控是命根子，三档都有', () => {
+  it('封面/标题/进度/主控是命根子，三档都有', () => {
     for (const s of poolOf('media'))
-      for (const b of ['art', 'title', 'toggle'])
+      for (const b of ['art', 'title', 'bar', 'ctl'])
         expect(has(mediaForm, s, b), `${s}.${b}`).toBe(true)
   })
 
@@ -230,9 +230,12 @@ describe('播放器卡：封面/歌名/播控任何档位都在', () => {
    * 现在每档都有独占的块。
    */
   it('中档多出全套播控与队列预告，最大档再多出完整队列', () => {
-    expect(has(mediaForm, 'box', 'mix'), 'box 不该有随机/循环').toBe(false)
-    expect(has(mediaForm, 'hall', 'mix'), 'hall 该有全套播控').toBe(true)
-    expect(has(mediaForm, 'hall', 'next'), 'hall 该有队列预告').toBe(true)
+    expect(has(mediaForm, 'box', 'extras'), 'box 不该有次控排').toBe(false)
+    expect(has(mediaForm, 'box', 'meta'), 'box 不该有元信息带').toBe(false)
+    expect(has(mediaForm, 'hall', 'extras'), 'hall 该有次控排').toBe(true)
+    expect(has(mediaForm, 'hall', 'meta'), 'hall 该有元信息带').toBe(true)
+    expect(has(mediaForm, 'hall', 'aux'), 'hall 该有辅助内容区（歌词/shownotes/电平）').toBe(true)
+    expect(has(mediaForm, 'hall', 'next'), 'hall 该有接下来预告').toBe(true)
     expect(has(mediaForm, 'hall', 'queue'), 'hall 放不下完整队列').toBe(false)
     expect(has(mediaForm, 'court', 'queue'), 'court 该有完整队列').toBe(true)
   })

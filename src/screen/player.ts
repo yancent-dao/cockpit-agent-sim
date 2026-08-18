@@ -112,7 +112,14 @@ export function createPlayer({ report }: PlayerDeps) {
     return { current: el.currentTime, duration: el.duration }
   }
 
-  return { unlock, play, pause, stop, setVolume, duck, attachVideo, progress,
+  /** 倍速（重设计 v2）：media.speed 信号 → playbackRate。音频视频都吃 */
+  const setSpeed = (v: number) => {
+    const r = Number.isFinite(v) && v >= 0.5 && v <= 3 ? v : 1
+    audio.playbackRate = r
+    if (video) video.playbackRate = r
+  }
+
+  return { unlock, play, pause, stop, setVolume, duck, attachVideo, progress, setSpeed,
     get unlocked() { return unlocked },
     get playingUrl() { return current } }
 }

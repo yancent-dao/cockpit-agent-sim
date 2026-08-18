@@ -56,7 +56,7 @@ export interface InvokeCtx {
 
 const CONFIRM_TTL = 60_000
 
-export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs; story?: StoryStore; image?: ImageGen
+export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesClient; radio?: RadioClient; news?: NewsClient; pexels?: PexelsClient; websearch?: WebSearchClient; state?: DomainState; prefs?: Prefs; story?: StoryStore; image?: ImageGen; lyrics?: (artist: string, track: string, durationSec?: number) => Promise<string | null>
   /** 常用地址等小件的持久化口。浏览器传 localStorage，测试传假的 */
   storage?: { get(k: string): string | null; set(k: string, v: string): void }
   /**
@@ -276,7 +276,7 @@ export function createRegistry(
       p => store.signals.find(sg => sg.alias === p)?.label,
       clock),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
-    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state }),
+    ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state, lyrics: deps.lyrics }),
   }
 
   /**

@@ -58,3 +58,10 @@ export function weatherIcon(condition: string | undefined): string {
   if (/阴|云/.test(c)) return W.cloud
   return W.sun
 }
+
+/* ── 媒体次控线性图标（重设计 v2）：统一 fill 风格，激活态只换色 ── */
+export const ICON_SHUFFLE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 4h4v4h-2V6.4l-4.2 4.2-1.4-1.4L17.6 6H17V4zM3 6h5.2l9.4 12H21v2h-4.8L6.8 8H3V6zm12.6 8.6 1.4 1.4-1.6 1.6H21v2h-4v1.6l-2.8-2.8 1.4-3.8z"/></svg>'
+export const ICON_REPEAT = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>'
+export const ICON_REPEAT1 = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/><text x="12" y="15" font-size="8" text-anchor="middle" fill="currentColor">1</text></svg>'
+export const ICON_HEART = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-9.6-9.2C.9 8.6 3 5 6.4 5c2 0 3.5 1.1 4.3 2.6h2.6C14.1 6.1 15.6 5 17.6 5 21 5 23.1 8.6 21.6 11.8 19.5 16.1 12 21 12 21z"/></svg>'
+export const ICON_VOL = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>'

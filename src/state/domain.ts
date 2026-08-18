@@ -85,6 +85,13 @@ export function createDomainState(storage: DomainStorage = defaultStorage(),
       qCursor = i
       return qItems[i]
     },
+    /** 屏幕点播：跳到第 i 首（0 起）。越界回 null，调用方给人话 */
+    jump(i: number): QueueTrack | null {
+      const j = clampNext(Math.trunc(i))
+      if (j < 0) return null
+      qCursor = j
+      return qItems[j]
+    },
     /**
      * 自动续播（ended 触发）：这里才看模式——
      * repeatOne 重放当前；shuffle 随机挑一首别的；sequential 顺序前进，到尾停。
@@ -139,7 +146,18 @@ export function createDomainState(storage: DomainStorage = defaultStorage(),
     list: () => [...favs],
   }
 
-  return { queue, history, queries, favorites }
+  /* ── 歌词（会话级，不持久化——跟队列一个道理：刷新后悬空的歌词只会配错歌） ── */
+  const lyricMap = new Map<string, string>()
+  const lyrics = {
+    set(track: string, lrc: string) {
+      lyricMap.set(track, lrc)
+      // 上限 8：一路开下来听不了几首，缓存是给"上一曲切回来"用的
+      while (lyricMap.size > 8) lyricMap.delete(lyricMap.keys().next().value!)
+    },
+    for: (track: string): string | null => lyricMap.get(track) ?? null,
+  }
+
+  return { queue, history, queries, favorites, lyrics }
 }
 
 export type DomainState = ReturnType<typeof createDomainState>

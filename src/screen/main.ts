@@ -3,6 +3,9 @@ import { createBus, type BusMsg } from '../bus'
 import { afterRead, beforeRead, WAIT_MAX_MS, IMG_WAIT_MS } from './storyflow'
 import { pickVoice, estimateMs, litUpto, voiceAct, queueAct } from './speech'
 import { splitClauses, clauseStarts, clauseAt, pushChip } from './subtitle'
+import { sourceStyle } from '../config/mediaStyle'
+import { barRatio, seekSeconds, dominantColor } from './mediaMath'
+import { parseLrc, lyricAt, type LrcLine } from './lyric'
 import { createGalaxy } from './galaxy'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
 import { micAct, type MicSource } from './mic'
@@ -21,7 +24,7 @@ import { cardBody, tierClass, accentClass, fmtTime, progressPct,
 import { showRoute, disposeRoute, resizeRoute } from './mapView'
 import { createPlayer } from './player'
 import { esc } from '../text'
-import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT, weatherIcon } from './icons'
+import { TPL_ICONS, ICON_PREV, ICON_PLAY, ICON_PAUSE, ICON_NEXT, ICON_SHUFFLE, ICON_REPEAT, ICON_REPEAT1, ICON_HEART, ICON_VOL, weatherIcon } from './icons'
 import { routeOf } from '../config/interactions'
 
 // Token 必须运行时注入：build-single 只替换 <script>，外部 .css 在单文件版会整个丢失
@@ -189,7 +192,20 @@ addEventListener('pointerup', e => {
   if (g === 'tap') {
     const hit = s0.target?.closest?.('[data-act]') as HTMLElement | null
     if (!hit || !s0.card.contains(hit)) return
-    bus.send({ type: 'userAction', cardId, act: hit.dataset.act!, value: hit.dataset.value } as any)
+    let value = hit.dataset.value
+    // 进度/音量的点按定位：value 按点击位置现算（barRatio/seekSeconds 纯函数）。
+    // 行驶中不做拖拽，点按本来就是降级后的形态
+    if (hit.dataset.act === 'tap:seek' || hit.dataset.act === 'tap:vol') {
+      const r = hit.getBoundingClientRect()
+      const ratio = barRatio(e.clientX, r.left, r.width)
+      if (hit.dataset.act === 'tap:vol') value = String(Math.round(ratio * 100))
+      else {
+        const sec = seekSeconds(ratio, player.progress().duration)
+        if (sec === null) return   // 直播/未加载：没有可跳的进度
+        value = String(sec)
+      }
+    }
+    bus.send({ type: 'userAction', cardId, act: hit.dataset.act!, value } as any)
   } else if (g === 'swipe-x') {
     bus.send({ type: 'userAction', cardId, act: 'swipe:away' } as any)
   }
@@ -203,91 +219,155 @@ addEventListener('pointerup', e => {
 function renderPlayerCard(node: HTMLDivElement, c: CardView) {
   const d = c.data ?? {}
   const isVideo = d.source === 'video'
+  const st = sourceStyle(String(d.source ?? 'music'))
   const form = mediaForm(...dimsOf(c.size))
-  if (!node.querySelector('.plwrap')) {
-    node.innerHTML = PLAYER_SKELETON
-    ;(node.querySelector('.plctl') as HTMLElement).innerHTML =
-      `<span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>`
-    // 全套播控与音量：hall 起才有。是**状态指示**不是按钮，语音才是主通道
-    ;(node.querySelector('.plmix') as HTMLElement).innerHTML =
-      `<span>🔀 随机</span><span>🔁 循环</span><span>♥ 收藏</span>`
-    ;(node.querySelector('.plvol') as HTMLElement).innerHTML =
-      `<span>🔈</span><div class="pltrk"><div class="plfl" style="width:60%"></div></div><span>🔊</span>`
-  }
-  /**
-   * 按**槽位表**统一显隐。以前每个块手写一行 `form.blocks.includes('x')`，
-   * 加一个块要记得同时改形态函数和这里 —— 漏一边就是"声明了却从不显示"
-   * （车身图那次就是这么死的，图画好了从没在屏幕上出现过）。
-   */
-  const slot = (name: string) => node.querySelector(PLAYER_SLOTS[name]) as HTMLElement | null
-  for (const [name, sel] of Object.entries(PLAYER_SLOTS)) {
-    const el = node.querySelector(sel) as HTMLElement | null
-    if (el) el.style.display = form.blocks.includes(name) ? '' : 'none'
-  }
-  // 完整队列：court 起。跟"接下来"预告分开——一个是一行预告，一个是列表
-  const q = slot('queue')
-  if (q && form.blocks.includes('queue')) {
-    const list: any[] = d.queue ?? []
-    q.innerHTML = list.slice(0, 4).map(t =>
-      `<div class="qi">${esc(t.track ?? t)}</div>`).join('')
-  }
-  // 竖排只给竖条卡（tower）：宽度不够封面和文字并排。以前用"没有 sub"判断，
-  // 封面改成任何档位都在之后，chip/strip 会被误判成竖排——一行高的卡竖着摞必然溢出
-  const [pc, pr] = dimsOf(c.size)
-  node.classList.toggle('narrow', pr >= 4 && pc <= 4)
-  // 控制条是**状态指示不是按钮**——屏幕不可交互，画成图标就有诱导点击的风险。
-  // 这行字把它标回语音能力，顺带填了「能力曝光度」的一半
-  const barEl = node.querySelector('.plbar') as HTMLElement
+  if (!node.querySelector('.plwrap')) node.innerHTML = PLAYER_SKELETON
+  node.classList.toggle('is-video', isVideo)
+  node.style.setProperty('--plac', st.accent)
+
+  // 槽位表统一显隐（extras 有左右两个容器，qsa 全选）
+  for (const [name, sel] of Object.entries(PLAYER_SLOTS))
+    node.querySelectorAll<HTMLElement>(sel).forEach(el => {
+      el.style.display = form.blocks.includes(name) ? '' : 'none'
+    })
+
+  /* ── 顶行元信息带：徽标 + 真实标签 + 队列位置 ── */
+  const badge = node.querySelector('.plbadge') as HTMLElement
+  badge.textContent = st.badge
+  badge.style.background = st.accent
+  const tags = node.querySelector('.pltags') as HTMLElement
+  // 标签只放真数据：iTunes 恒 30 秒试听、电台恒直播——别写 HQ 骗人
+  tags.innerHTML = d.source === 'music' ? '<i>试听 30s</i>'
+    : d.source === 'radio' ? '<i class="livetag">● LIVE</i>' : ''
+  const pos = node.querySelector('.plpos') as HTMLElement
+  const qlist: any[] = d.queue ?? []
+  pos.textContent = qlist.length > 1 && d.queueAt >= 0
+    ? `队列 ${qlist.length} 首 · 第 ${d.queueAt + 1} 首` : ''
+
+  /* ── 封面 + 主色弥散（取色失败退源色，跨域污染同理） ── */
   const art = node.querySelector('.plart') as HTMLElement
-  // 控制条从"状态指示"变成真按钮（触控落地，§10 的约定反转）。
-  // 电台没有上下曲，藏掉两端只留播放/暂停
-  const ctl = node.querySelector('.plctl') as HTMLElement
-  // 中键随状态换脸：播放中显 ⏸，暂停显 ▶。只在状态变化时重写——
-  // hello 心跳每 4 秒全量重推，无脑重写 SVG 会闪
-  const mid = ctl.children[1] as HTMLElement
-  if (mid.dataset.st !== String(!!d.playing)) {
-    mid.dataset.st = String(!!d.playing)
-    mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY
+  const applyGlow = (rgb: string | null) => {
+    const g = rgb ? `rgba(${rgb},.13)` : st.glow
+    node.style.backgroundImage =
+      `radial-gradient(80% 80% at 12% 15%, ${g}, transparent 55%)`
   }
-  // 两级控制条：bar 档三键；小到 card 档留播放/暂停单键（实拍缺口：
-  // 卡被挤到 1/6 时完全没按钮，想停都停不了）
-  const full = form.blocks.includes('bar')
-  const single = !full && form.blocks.includes('toggle')
-  if (!(full || single)) ctl.style.display = 'none'
-  for (const el of Array.from(ctl.children) as HTMLElement[]) {
-    const isMid = el.dataset.act === 'tap:toggle'
-    el.style.display = (single && !isMid) || (d.source === 'radio' && !isMid) ? 'none' : ''
-  }
-  // 直播与否是**音源**的属性，不是"这一刻 duration 是多少"能猜的
-  barEl.classList.toggle('live', d.source === 'radio')
-  const nxt = node.querySelector('.pl-next') as HTMLElement
-  const upcoming: string[] = d.nextUp ?? []
-  if (!upcoming.length) nxt.style.display = 'none'
-  nxt.textContent = upcoming.length ? `接下来：${upcoming.join(' · ')}` : ''
-  const hint = node.querySelector('.pl-hint') as HTMLElement
-  hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`
   if (isVideo) {
     player.attachVideo(art)
+    applyGlow(null)
   } else {
     const url = String(d.artwork ?? '')
     const img = art.querySelector('img') as HTMLImageElement | null
     if (url) {
-      if (img) { if (img.src !== url) img.src = url }
-      else art.innerHTML = `<img src="${esc(url)}" alt="">`
-    } else if (!img) {
-      // 没封面就给个音源图标，别留个空洞
-      // 没封面给渐变底 + 音源图标，别留灰洞
-      art.innerHTML = `<div class="plicon">${TPL_ICONS.media}</div>`
+      if (img) { if (!img.src.endsWith(url)) { img.src = url; glowFromImage(img, applyGlow) } else applyGlow(glowCache.get(url) ?? null) }
+      else {
+        art.innerHTML = `<img src="${esc(url)}" alt="" crossorigin="anonymous">`
+        glowFromImage(art.querySelector('img')!, applyGlow)
+      }
+    } else {
+      if (!img) art.innerHTML = `<div class="plicon">${TPL_ICONS.media}</div>`
+      applyGlow(null)
     }
   }
+  art.classList.toggle('round', d.source === 'radio')   // 电台圆形台标
+
   node.querySelector('.pltrack')!.textContent = String(d.track ?? '')
   node.querySelector('.plartist')!.textContent = String(d.artist ?? '')
-  node.classList.toggle('is-video', isVideo)
 
-  // 播放由卡片数据驱动——车机屏依然只是输出设备，不做任何"该播什么"的判断。
-  // play() 内部对同一个地址是幂等的，重复渲染不会打断播放
+  /* ── 辅助内容区：音乐歌词两句 / 电台电平（tickProgress 每帧刷歌词行） ── */
+  const aux = node.querySelector('.plaux') as HTMLElement
+  if (form.blocks.includes('aux')) {
+    if (d.source === 'radio') {
+      if (!aux.querySelector('.pleq'))
+        aux.innerHTML = `<span class="pleq"><i></i><i></i><i></i><i></i><i></i></span>`
+    } else if (d.lyrics) {
+      aux.dataset.lyrics = '1'   // tickProgress 认这个标记来刷
+      if (!aux.querySelector('.plly')) aux.innerHTML = `<div class="plly cur"></div><div class="plly nxt"></div>`
+      const prev = (node as any).__lrc
+      if (!prev || prev.raw !== d.lyrics)
+        (node as any).__lrc = { raw: d.lyrics, lines: parseLrc(String(d.lyrics)) }
+    } else { aux.dataset.lyrics = ''; aux.innerHTML = ''; (node as any).__lrc = undefined }
+  }
+
+  const nxt = node.querySelector('.pl-next') as HTMLElement
+  const upcoming: string[] = d.nextUp ?? []
+  nxt.textContent = upcoming.length ? `接下来 · ${upcoming.join(' · ')}` : ''
+  if (!upcoming.length) nxt.style.display = 'none'
+
+  /* ── 进度带：bar 可点定位 / live 电台无进度（tickProgress 填数字） ── */
+  const barEl = node.querySelector('.plbar') as HTMLElement
+  barEl.classList.toggle('live', st.progress === 'live')
+
+  /* ── 主控：按源换语义（tracks / ±15s / 单键），全部真按钮 ── */
+  const ctl = node.querySelector('.plctl') as HTMLElement
+  const kind = st.ctl
+  if (ctl.dataset.kind !== kind) {
+    ctl.dataset.kind = kind
+    ctl.innerHTML = kind === 'skip'
+      ? `<span class="pskip" data-act="tap:back15">−15s</span>
+         <span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>
+         <span class="pskip" data-act="tap:fwd30">+30s</span>`
+      : kind === 'single'
+        ? `<span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>`
+        : `<span class="pside" data-act="tap:prev">${ICON_PREV}</span>
+           <span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>
+           <span class="pside" data-act="tap:next">${ICON_NEXT}</span>`
+  }
+  const mid = ctl.querySelector('.pmain') as HTMLElement
+  if (mid && mid.dataset.st !== String(!!d.playing)) {
+    mid.dataset.st = String(!!d.playing)
+    mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY
+  }
+
+  /* ── 次控排：模式（轮转）· 倍速（播客）｜ 收藏 · 音量条 ── */
+  const xl = node.querySelector('.plxl') as HTMLElement
+  const xr = node.querySelector('.plxr') as HTMLElement
+  if (form.blocks.includes('extras')) {
+    const mode = String(d.mode ?? 'sequential')
+    // 点一下切到"下一个"模式——按钮的 value 每次重画按当前态预填
+    const nextMode = mode === 'sequential' ? 'shuffle' : mode === 'shuffle' ? 'repeatOne' : 'sequential'
+    const modeIcon = mode === 'shuffle' ? ICON_SHUFFLE : mode === 'repeatOne' ? ICON_REPEAT1 : ICON_REPEAT
+    const speed = Number(d.speed ?? 1)
+    const nextSpeed = speed === 1 ? 1.25 : speed === 1.25 ? 1.5 : 1
+    xl.innerHTML = d.source === 'radio' ? '' :
+      `<span class="pxi ${mode !== 'sequential' ? 'on' : ''}" data-act="tap:mode" data-value="${nextMode}">${modeIcon}</span>` +
+      (d.source === 'podcast'
+        ? `<span class="pspeed" data-act="tap:speed" data-value="${nextSpeed}">${speed}×</span>` : '')
+    xr.innerHTML =
+      `<span class="pxi pfav" data-act="tap:fav">${ICON_HEART}</span>` +
+      `<span class="pxi pvic">${ICON_VOL}</span>` +
+      `<span class="pvol"><span class="pltrk" data-act="tap:vol"><span class="plfl" style="width:${Number(d.volume ?? 40)}%"></span></span></span>`
+  }
+
+  /* ── 队列（court 起）：序号+可点播，当前行高亮 ── */
+  const q = node.querySelector('.plqueue') as HTMLElement
+  if (q && form.blocks.includes('queue')) {
+    q.innerHTML = qlist.slice(0, 6).map((t: any, i: number) =>
+      `<div class="qi ${i === d.queueAt ? 'now' : ''}" data-act="tap:item" data-value="${i}">
+        <em>${i === d.queueAt ? '▶' : i + 1}</em><b>${esc(t.track ?? t)}</b><small>${esc(t.artist ?? '')}</small></div>`).join('')
+  }
+
   if (d.playing && d.streamUrl) player.play({ url: String(d.streamUrl), source: d.source, volume: Number(d.volume ?? 40) })
   else if (!d.playing) player.pause()
+}
+
+/** 封面主色缓存：同一张图只取一次色；跨域污染/失败缓存 null 退源色 */
+const glowCache = new Map<string, string | null>()
+function glowFromImage(img: HTMLImageElement, apply: (rgb: string | null) => void) {
+  const url = img.src
+  if (glowCache.has(url)) { apply(glowCache.get(url)!); return }
+  const go = () => {
+    try {
+      const cv = document.createElement('canvas')
+      cv.width = cv.height = 24   // 缩到 24×24 采样，够取主色
+      const cx = cv.getContext('2d')!
+      cx.drawImage(img, 0, 0, 24, 24)
+      const c = dominantColor(cx.getImageData(0, 0, 24, 24).data)
+      const rgb = c ? c.join(',') : null
+      glowCache.set(url, rgb); apply(rgb)
+    } catch { glowCache.set(url, null); apply(null) }   // 跨域污染退源色
+  }
+  if (img.complete && img.naturalWidth) go()
+  else { img.onload = go; img.onerror = () => { glowCache.set(url, null); apply(null) } }
 }
 
 /**
@@ -891,16 +971,37 @@ function tickProgress() {
   for (const meta of Array.from(document.querySelectorAll<HTMLElement>('.tpl-media .plbar'))) {
     if (meta.style.display === 'none') continue
     const fl = meta.querySelector('.plfl') as HTMLElement
-    const t = meta.querySelector('.pltime') as HTMLElement
+    const knob = meta.querySelector('.plknob') as HTMLElement | null
+    const t0 = meta.querySelector('.pt0') as HTMLElement
+    const t1 = meta.querySelector('.pt1') as HTMLElement
     /**
      * 是不是直播由**音源**定（renderPlayerCard 挂的 .live），不由 duration 猜。
      * 用 duration 猜的话，音乐卡在还没开始播时 duration 是 NaN，
      * 屏上就写出「● 直播中」——一首歌被说成直播是硬错。
      */
     const live = meta.classList.contains('live')
-    fl.style.width = live ? '100%' : `${pct ?? 0}%`
-    t.textContent = live ? `● 直播中 · 已收听 ${fmtTime(current)}`
-      : pct === null ? '' : `${fmtTime(current)} / ${fmtTime(duration)}`
+    if (live) {
+      fl.style.width = '0'
+      t0.textContent = '直播 · 无进度'
+      t1.textContent = `已收听 ${fmtTime(current)}`
+    } else {
+      fl.style.width = `${pct ?? 0}%`
+      if (knob) knob.style.left = `${pct ?? 0}%`
+      t0.textContent = pct === null ? '' : fmtTime(current)
+      // 剩余时间比总时长有用（重设计 v2）
+      t1.textContent = pct === null ? '' : `-${fmtTime(Math.max(0, duration - current))}`
+    }
+  }
+  // 歌词两句：当前句深、下一句淡。只换句不滚动（行驶纪律）
+  for (const aux of Array.from(document.querySelectorAll<HTMLElement>('.tpl-media .plaux[data-lyrics="1"]'))) {
+    const cardNode = aux.closest('.tpl-media') as HTMLElement
+    const lrcRaw = (cardNode as any).__lrc as { raw: string; lines: LrcLine[] } | undefined
+    const cur = aux.querySelector('.plly.cur') as HTMLElement
+    const nxt2 = aux.querySelector('.plly.nxt') as HTMLElement
+    if (!lrcRaw || !cur) continue
+    const at = lyricAt(lrcRaw.lines, current)
+    if (cur.textContent !== at.cur) cur.textContent = at.cur
+    if (nxt2.textContent !== at.next) nxt2.textContent = at.next
   }
 }
 requestAnimationFrame(tickProgress)
@@ -1330,7 +1431,9 @@ const bus = createBus((m: BusMsg | any) => {
   connected()
   switch (m.type) {
     case 'state':
-      Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); applyHmi(); break
+      Object.assign(tgt, m.target); meta = { ...meta, ...m.meta }; renderStatus(); applyHmi()
+      player.setSpeed(Number((tgt as any)['media.speed'] ?? 1))
+      break
     case 'cards':
       deskState = m.desk; renderDesk()
       renderAvBtns()   // 确认卡常在 confirming 状态之后才到，按钮跟着卡走

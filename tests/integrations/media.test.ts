@@ -171,3 +171,61 @@ describe('候选列表一次只有一张', () => {
     expect(lists[0].data.title).toContain('歌')
   })
 })
+
+/**
+ * ══════════ 媒体卡重设计 v2（2026-08-19）：队列点播与倍速 ══════════
+ * 都是扩已有工具的参数（加能力=加数据），零新增 Tool。
+ */
+describe('media.control 扩参：jump 与 speed', () => {
+  const mem = () => { const m = new Map<string, string>(); return { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } }
+  const withQueue = async () => {
+    const { createDomainState } = await import('../../src/state/domain')
+    const state = createDomainState(mem())
+    const r2 = createRegistry(store, TOOLS, Date.now, { desk, state } as any)
+    state.queue.set([
+      { track: '歌1', artist: '人1', source: 'music', streamUrl: 'u1', artwork: '' },
+      { track: '歌2', artist: '人2', source: 'music', streamUrl: 'u2', artwork: '' },
+      { track: '歌3', artist: '人3', source: 'music', streamUrl: 'u3', artwork: '' },
+    ] as any, 0, '测试')
+    playing()
+    return r2
+  }
+  it('jump：点队列第 n 首（0 起）直接播它——屏幕点播通道，不叫醒模型', async () => {
+    const r2 = await withQueue()
+    const r = await r2.invoke('media.control', { action: 'jump', index: 2 })
+    expect(r.status).toBe('ok')
+    expect(store.get('media.track')).toBe('歌3')
+  })
+  it('jump 越界给人话不炸', async () => {
+    const r2 = await withQueue()
+    const r = await r2.invoke('media.control', { action: 'jump', index: 99 })
+    expect(r.status).toBe('rejected')
+    expect(String(r.message)).not.toContain('undefined')
+  })
+  it('speed：倍速落信号，屏端照着设 playbackRate；范围外拒', async () => {
+    const r2 = await withQueue()
+    const r = await r2.invoke('media.control', { action: 'speed', speed: 1.25 })
+    expect(r.status).toBe('ok')
+    expect(store.get('media.speed')).toBe(1.25)
+    const bad = await r2.invoke('media.control', { action: 'speed', speed: 9 })
+    expect(bad.status).toBe('rejected')
+  })
+})
+
+describe('musicPlay 挂歌词（异步锦上添花，不拖播放）', () => {
+  it('播放成功后歌词落域仓、版本戳信号自增；拿不到歌词一切照常', async () => {
+    const { createDomainState } = await import('../../src/state/domain')
+    const mem = () => { const m = new Map<string, string>(); return { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } }
+    const state = createDomainState(mem())
+    const itunes = {
+      search: async () => [{ name: '光亮', artist: '周深', album: 'x', artwork: 'a', preview: 'p', durationMs: 289000 }],
+    }
+    const lyrics = async () => '[00:12.00]也许世间所有的路'
+    const r2 = createRegistry(store, TOOLS, Date.now, { desk, state, itunes, lyrics } as any)
+    const r = await r2.invoke('music.play', { query: '光亮' })
+    expect(r.status).toBe('ok')
+    await new Promise(res => setTimeout(res, 0))   // 歌词是异步挂载
+    expect(state.lyrics.for('光亮')).toContain('[00:12.00]')
+    expect(Number(store.get('media.lyricsRev'))).toBeGreaterThan(0)
+  })
+})

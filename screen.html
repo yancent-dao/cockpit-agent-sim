@@ -143,13 +143,18 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 /* 可点目标的按压反馈。车规命中目标 ≥96px（stage 像素） */
 [data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
 [data-act]:active{transform:scale(.94);opacity:.75}
-.plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
-/* 风格稿：细线幽灵键，命中区照旧 ≥96px（透明的也算数） */
-.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:var(--r-pill,999px);
-  display:flex;align-items:center;justify-content:center;color:var(--tx-1);background:transparent;border:none}
-.plctl span svg{width:calc(30px*var(--u));height:calc(30px*var(--u));stroke-width:1.7}
-.plctl span:nth-child(2){background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.8);
-  box-shadow:0 6px 20px -8px rgba(60,68,140,.5)}
+/* 主控（重设计 v2）：三键去底色纯图标，只有一个深色主键（实屏 75px 指尖标准）。
+   pskip 是播客的 ±15s/+30s 文字键。命中区靠 padding 保 ≥72px */
+.plctl{display:flex;align-items:center;justify-content:center;gap:calc(34px*var(--u))}
+.plctl .pside,.plctl .pskip{min-width:calc(72px*var(--u));height:calc(64px*var(--u));
+  display:flex;align-items:center;justify-content:center;color:var(--tx-2)}
+.plctl .pside svg{width:calc(28px*var(--u));height:calc(28px*var(--u))}
+.plctl .pskip{font-size:calc(var(--t-cap)*var(--u)*.92);font-variant-numeric:tabular-nums}
+.plctl .pmain{width:calc(75px*var(--u));height:calc(75px*var(--u));border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex:none;
+  background:var(--plac,#111C30);color:#fff;
+  box-shadow:0 8px 22px -8px var(--plac,#111C30)}
+.plctl .pmain svg{width:calc(30px*var(--u));height:calc(30px*var(--u))}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -366,15 +371,50 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .hcol.wet b{color:var(--brand-fg,#1D4ED8)}
 .fc{margin-top:calc(10px*var(--u))}
 
-/* ── 播放器：全套播控 + 音量 + 完整队列 ── */
-.plmix{display:flex;gap:calc(16px*var(--u));font-size:calc(var(--t-cap)*var(--u));
-  color:var(--tx-2);margin-top:calc(6px*var(--u))}
-.plvol{display:flex;align-items:center;gap:calc(10px*var(--u));margin-top:calc(6px*var(--u));
-  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
-.plvol .pltrk{flex:1}
-.plqueue{margin-top:calc(10px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
-.plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
+/* ── 播放器（重设计 v2）：顶行元信息带 / 辅助内容 / 次控排 / 队列 ── */
+.plhead{display:flex;align-items:center;gap:calc(14px*var(--u));min-height:calc(40px*var(--u))}
+.plbadge{font-size:calc(var(--t-cap)*var(--u)*.82);font-weight:600;color:#fff;
+  padding:calc(3px*var(--u)) calc(16px*var(--u));border-radius:999px;letter-spacing:.5px}
+.pltags i{font-style:normal;font-size:calc(var(--t-cap)*var(--u)*.78);color:var(--tx-3);
+  border:1px solid var(--hairline);border-radius:calc(5px*var(--u));
+  padding:calc(1px*var(--u)) calc(8px*var(--u));margin-right:calc(8px*var(--u))}
+.pltags .livetag{color:#C0392B;border-color:rgba(192,57,43,.4)}
+.plsp{flex:1}
+.plpos{font-size:calc(var(--t-cap)*var(--u)*.82);color:var(--tx-3);font-variant-numeric:tabular-nums}
+.plaux{min-height:calc(30px*var(--u))}
+.plly{font-size:calc(var(--t-cap)*var(--u));line-height:1.7;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plly.cur{color:var(--tx-1);font-weight:500}
+.plly.nxt{color:var(--tx-3);opacity:.8}
+.pleq{display:inline-flex;gap:calc(4px*var(--u));align-items:flex-end;height:calc(30px*var(--u))}
+.pleq i{width:calc(5px*var(--u));border-radius:3px;background:var(--plac,#C05A14);
+  height:40%;animation:pleq .9s ease-in-out infinite}
+.pleq i:nth-child(2){height:90%;animation-delay:.15s}.pleq i:nth-child(3){height:60%;animation-delay:.3s}
+.pleq i:nth-child(4){height:80%;animation-delay:.45s}.pleq i:nth-child(5){height:50%;animation-delay:.6s}
+@keyframes pleq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+.plrow{display:flex;align-items:center;margin-top:calc(10px*var(--u))}
+.plxtra{display:flex;align-items:center;gap:calc(20px*var(--u));width:calc(200px*var(--u))}
+.plxtra.plxr{justify-content:flex-end}
+.plxtra .pxi{display:inline-flex;color:var(--tx-3)}
+.plxtra .pxi svg{width:calc(24px*var(--u));height:calc(24px*var(--u))}
+.plxtra .pxi.on{color:var(--plac,var(--brand-fg))}
+.plxtra .pfav{color:#C74B5F}
+.pspeed{font-size:calc(var(--t-cap)*var(--u)*.9);font-weight:700;color:var(--plac);
+  border:1px solid var(--hairline);border-radius:999px;padding:calc(2px*var(--u)) calc(12px*var(--u))}
+.pvol .pltrk{width:calc(96px*var(--u));height:calc(5px*var(--u))}
+.plctl:has(+ .plxtra){flex:1}
+.plrow .plctl{flex:1}
+.plqueue{margin-top:calc(10px*var(--u));border-top:1px solid var(--hairline);
+  padding-top:calc(8px*var(--u));display:flex;flex-direction:column;gap:calc(2px*var(--u));
+  overflow:hidden;min-height:0}
+.plqueue .qi{display:flex;align-items:center;gap:calc(12px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);padding:calc(4px*var(--u)) 0;
+  overflow:hidden;white-space:nowrap}
+.plqueue .qi em{font-style:normal;width:calc(24px*var(--u));color:var(--tx-3);flex:none;
+  font-variant-numeric:tabular-nums}
+.plqueue .qi b{font-weight:500;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.plqueue .qi small{color:var(--tx-3);flex:none}
+.plqueue .qi.now,.plqueue .qi.now em{color:var(--plac,var(--brand-fg))}
 
 /* ── 最小档不要标题行（2026-08-14 设计纪律） ── */
 /* 一行灰色标题吃掉三分之一高度还说不出什么。chip 只有 335×187 的画布，
@@ -576,44 +616,50 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 /* ══════════ 播放器卡 ══════════
    控制条是**状态指示不是按钮** —— 屏幕不可交互，画成图标就有诱导点击的风险。
    底下那行「说『换一台』就行」把它标回语音能力。 */
-.plwrap{display:flex;align-items:center;gap:calc(20px*var(--u));height:100%;min-height:0}
-.tpl-media.narrow .plwrap{flex-direction:column;align-items:flex-start;justify-content:center}
-.plart{flex:none;width:calc(132px*var(--u));height:calc(132px*var(--u));
-  border-radius:calc(20px*var(--u));overflow:hidden;
+/* ── 三段式（重设计 v2）：plhead 元信息带 / plmain 主区 / plfoot 底带 ──
+   字阶收敛：标题 33px 实屏（--t-title 级）+ 次行 23px + 注脚 19px——
+   量产的高级感不靠大字，靠层级准、密度足、控件收着 */
+.plwrap{display:flex;flex-direction:column;height:100%;min-height:0;gap:calc(6px*var(--u))}
+.plmain{flex:1;display:flex;align-items:center;gap:calc(26px*var(--u));min-height:0}
+.plart{flex:none;width:calc(190px*var(--u));height:calc(190px*var(--u));
+  border-radius:calc(16px*var(--u));overflow:hidden;
   background:var(--media-gr,linear-gradient(145deg,#8B5CF6,#6D28D9));
-  box-shadow:0 8px 22px -8px var(--media-fg,#6D28D9);
+  box-shadow:0 8px 20px -6px rgba(10,30,80,.35),0 1px 3px rgba(10,30,80,.25);
   display:flex;align-items:center;justify-content:center}
+.plart.round{border-radius:50%}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
-/* 一行的小档：封面收小、按钮收小，一行里排得开 */
-.t-chip .plart,.t-strip .plart,.t-bar .plart{width:calc(96px*var(--u));height:calc(96px*var(--u));
-  border-radius:calc(14px*var(--u))}
-.t-chip .plwrap,.t-strip .plwrap,.t-bar .plwrap{gap:calc(14px*var(--u))}
-.t-chip .plctl span,.t-strip .plctl span{min-width:calc(72px*var(--u));height:calc(56px*var(--u))}
-/* 两行以上的卡封面放大——132px 的小封面挂在 786×470 的卡里就是大片空白（实拍） */
-.t-tile .plart,.t-box .plart,.t-wide .plart,.t-panel .plart,.t-band .plart{
-  width:calc(220px*var(--u));height:calc(220px*var(--u));border-radius:calc(24px*var(--u))}
-.t-frame .plart,.t-hall .plart,.t-tower .plart,.t-court .plart,.t-stage .plart,.t-full .plart{
-  width:calc(300px*var(--u));height:calc(300px*var(--u));border-radius:calc(28px*var(--u))}
-/* 大卡歌名升一阶，别让 38px 的字撑 470px 的卡 */
-.t-panel .plmeta b,.t-band .plmeta b,.t-hall .plmeta b,.t-court .plmeta b,
-.t-stage .plmeta b,.t-full .plmeta b{
-  font-size:calc(var(--t-num)*var(--u))}
+/* 小档：封面收小、头尾块自然被 forms 藏掉 */
+.t-chip .plart,.t-strip .plart,.t-bar .plart,.t-tile .plart,.t-box .plart{
+  width:calc(130px*var(--u));height:calc(130px*var(--u));border-radius:calc(12px*var(--u))}
+/* 大档封面上限 260——封面不是主角，信息才是（v2 修订原则②） */
+.t-court .plart,.t-stage .plart,.t-full .plart{
+  width:calc(230px*var(--u));height:calc(230px*var(--u))}
 .plicon{width:46%;height:46%;color:rgba(255,255,255,.9)}
 .plicon svg{width:100%;height:100%;stroke-width:1.6}
-.plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
-.plmeta b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;
+.plmeta{display:flex;flex-direction:column;gap:calc(5px*var(--u));min-width:0;flex:1}
+.plmeta b{font-size:calc(var(--t-title)*var(--u)*1.38);font-weight:600;letter-spacing:.2px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
-.plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+.plmeta > span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.plbar{display:flex;align-items:center;gap:calc(12px*var(--u));margin-top:calc(4px*var(--u))}
-.pltrk{flex:1;height:calc(6px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));overflow:hidden}
-.plfl{height:100%;border-radius:99px;background:var(--acgr)}
-/* 直播流没有进度可言，轨道降成一条静态底纹，别假装在走 */
-.plbar.live .plfl{opacity:.28}
+.plfoot{flex:none;display:flex;flex-direction:column;min-height:0}
+.plbar{display:flex;align-items:center;gap:calc(14px*var(--u))}
+.pltrk{flex:1;height:calc(5px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));
+  position:relative;cursor:pointer}
+.plfl{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--tx-2,#334155)}
+.plknob{position:absolute;top:50%;width:calc(16px*var(--u));height:calc(16px*var(--u));
+  border-radius:50%;background:#fff;border:calc(3px*var(--u)) solid var(--tx-2,#334155);
+  transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.25);left:0}
+.plbar.live .pltrk{background:transparent;cursor:default}
+.plbar.live .plknob{display:none}
 .pltime{flex:none;font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
-  font-variant-numeric:tabular-nums}
-.pl-next{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
+  font-variant-numeric:tabular-nums;min-width:calc(60px*var(--u))}
+.pltime.pt1{text-align:right}
+.pl-next{font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 视频：画面就是主角——plmain 整个让给画面，控件行沉底 */
+.is-video .plmain{align-items:stretch}
+.is-video .plart{flex:1;width:auto;height:auto;border-radius:calc(12px*var(--u))}
+.is-video .plmeta{display:none}
 .pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 .pl-hint b{font-weight:500;color:var(--ac)}

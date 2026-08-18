@@ -180,18 +180,18 @@ const genericForm: FormFn = (c, r) => {
  * 而高度翻倍，一半是空的（2026-08-14 代码审查）。现在每档都有独占的块：
  * `bar` 进度 · `mix` 随机/循环/收藏 · `vol` 音量 · `next` 队列预告 · `queue` 完整队列。
  */
+/**
+ * 播放器卡三档（重设计 v2，2026-08-19）：三段式骨架——
+ * 顶行元信息带（meta）/ 主区（art+title+sub+aux+next）/ 底带（bar+ctl+extras）。
+ * aux 是辅助内容区：音乐放歌词两句、播客放 shownotes、电台放电平动画——
+ * 装什么由 SOURCE_STYLE 查表，形态只管"这一档有没有这个槽"。
+ */
 export const mediaForm: FormFn = (c, r) => {
   const a = area(c, r)
-  const blocks = ['art', 'title']
-  if (a >= 16) blocks.push('sub')
-  // 4×4 的卡实际有 745×442px，三键+进度绰绰有余——只给单键就是大片空白
-  if (c >= 6 || a >= 16) blocks.push('bar')
-  blocks.push('toggle')
-  if (a >= 36) blocks.push('mix', 'vol')   // hall 起：全套播控
-  if (a >= 36) blocks.push('next')          // "接下来：A · B"
-  // 「说『换一首』『大点声』都可以」——把播控标回语音能力，能力曝光度的一半
-  if (a >= 24) blocks.push('hint')
-  if (r >= 8) blocks.push('queue')          // court 起：完整队列列表
+  // 命根子四件：封面 / 标题 / 进度 / 主控，最小档也全有
+  const blocks = ['art', 'title', 'sub', 'bar', 'ctl']
+  if (a >= 36) blocks.push('meta', 'aux', 'next', 'extras')   // hall 起：元信息带+辅助区+预告+次控
+  if (r >= 8) blocks.push('queue')   // court 起：完整队列——变大只加不减（形状变大不掉块）
   return { blocks }
 }
 

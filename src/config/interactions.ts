@@ -36,6 +36,18 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
     { on: 'tap:prev', route: 'tool', tool: 'media.control', args: { action: 'prev' } },
     { on: 'tap:toggle', route: 'tool', tool: 'media.control', args: { action: 'toggle' } },
     { on: 'tap:next', route: 'tool', tool: 'media.control', args: { action: 'next' } },
+    /* ── 重设计 v2（2026-08-19）：四个"装饰"全部变真按钮，直调不叫醒模型 ──
+       seek/vol 的 value 由屏端按点击位置折算（barRatio/seekSeconds 纯函数）；
+       mode 的 value 由屏端按当前模式给下一个（顺序→随机→单曲循环轮转） */
+    { on: 'tap:seek', route: 'tool', tool: 'media.seek', valueParam: 'position' },
+    { on: 'tap:vol', route: 'tool', tool: 'media.volume', valueParam: 'level' },
+    { on: 'tap:mode', route: 'tool', tool: 'media.mode', valueParam: 'mode' },
+    { on: 'tap:fav', route: 'tool', tool: 'media.favorite' },
+    { on: 'tap:speed', route: 'tool', tool: 'media.control', args: { action: 'speed' }, valueParam: 'speed' },
+    { on: 'tap:back15', route: 'tool', tool: 'media.seek', args: { delta: -15 } },
+    { on: 'tap:fwd30', route: 'tool', tool: 'media.seek', args: { delta: 30 } },
+    // 队列点播：点第 n 首直接播它（value = 队列下标）
+    { on: 'tap:item', route: 'tool', tool: 'media.control', args: { action: 'jump' }, valueParam: 'index' },
     SWIPE_AWAY, ...RESIZE, CLOSE,
   ],
   list: [{ on: 'tap:item', route: 'answer' }, SWIPE_AWAY, ...RESIZE, CLOSE],

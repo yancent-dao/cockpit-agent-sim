@@ -52,6 +52,8 @@ export interface MediaDeps {
   /** 领域状态仓：队列/历史/收藏。不传则收藏退化为内存数组（老测试兼容），队列功能不可用 */
   state?: DomainState
   podcast?: () => PodcastClient
+  /** 歌词（lrclib）：异步锦上添花，拿不到一切照常——绝不拖垮播放 */
+  lyrics?: (artist: string, track: string, durationSec?: number) => Promise<string | null>
 }
 
 /** 把一条队列内容写进 media.* 信号组开播。续播和 next/prev 共用这一条路 */
@@ -252,6 +254,31 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           st.history.push(qt)
           return { status: 'ok', data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` }
         }
+        /* ── 重设计 v2（2026-08-19）：屏幕点播与倍速，扩参不扩 Tool ── */
+        case 'jump': {
+          if (cur.source === 'radio') return radioNo('点播队列')
+          const st = deps.state
+          if (!st || !st.queue.size()) return {
+            status: 'unavailable', code: 'NO_QUEUE', message: '还没有播放列表',
+          }
+          const qt = st.queue.jump(Number(args.index))
+          if (!qt) return {
+            status: 'rejected', code: 'INVALID_PARAMS',
+            message: `队列里没有第 ${Number(args.index) + 1} 首`,
+          }
+          playQueueTrack(store, qt)
+          st.history.push(qt)
+          return { status: 'ok', data: { playing: qt }, message: `切到${qt.track}（${qt.artist}）` }
+        }
+        case 'speed': {
+          const v = Number(args.speed)
+          if (!Number.isFinite(v) || v < 0.5 || v > 3)
+            return { status: 'rejected', code: 'INVALID_PARAMS',
+              message: '倍速要在 0.5 到 3 之间', suggestion: '播客常用 1.25 或 1.5' }
+          store.set('media.speed', v)
+          return { status: 'ok', data: { speed: v }, changed: ['media.speed'],
+            message: v === 1 ? '恢复原速' : `${v} 倍速` }
+        }
         default:
           return { status: 'rejected', code: 'INVALID_PARAMS', message: `不认识的动作 ${args.action}` }
       }
@@ -339,6 +366,16 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         })), lastResults.indexOf(track), 'search')
         deps.state?.history.push({ source: 'music', track: track.name, artist: track.artist, streamUrl: track.preview })
         dismissKey(CANDIDATES)   // 选完了，候选就翻篇了
+        // 歌词异步挂载：文本进域仓、信号只走版本戳（壁纸同款先例）——
+        // 戳一变规则重评，playerCard 从域仓把歌词带上卡。失败静默，播放照常
+        if (deps.lyrics && deps.state) {
+          const name = track.name
+          deps.lyrics(track.artist, name, track.duration || undefined).then(lrc => {
+            if (!lrc || String(store.get('media.track')) !== name) return   // 已切歌，作废
+            deps.state!.lyrics.set(name, lrc)
+            store.set('media.lyricsRev', Number(store.get('media.lyricsRev') ?? 0) + 1)
+          }).catch(() => { /* 锦上添花，不吭声 */ })
+        }
         return {
           status: 'ok',
           data: { playing: brief(track) },

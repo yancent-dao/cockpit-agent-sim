@@ -40,6 +40,8 @@ export const UPSTREAM = {
   timor: 'https://timor.tech',
   /** 今日诗词 v1，无 token */
   jinrishici: 'https://v1.jinrishici.com',
+  /** lrclib 歌词：零 Key 零注册、官方 ACAO:*（file:// 直连也通）。CF 站点，走代理更稳 */
+  lrclib: 'https://lrclib.net',
 } as const
 
 export type Upstream = keyof typeof UPSTREAM
@@ -50,7 +52,7 @@ export type Upstream = keyof typeof UPSTREAM
  * 高德 IP 定位会定到代理节点头上（实拍：设置成都，定位杭州滨江=VPN 落地的
  * 阿里云），延迟还绕地球。itunes 苹果国内有 CDN，直连更快。
  */
-export const ABROAD = new Set<Upstream>(['openrouter', 'newsapi', 'pexels', 'radio', 'openmeteo'])
+export const ABROAD = new Set<Upstream>(['openrouter', 'newsapi', 'pexels', 'radio', 'openmeteo', 'lrclib'])
 
 /** Vite 的 server.proxy / preview.proxy 配置。纯转发，一行业务逻辑都没有 */
 export function proxyTable() {

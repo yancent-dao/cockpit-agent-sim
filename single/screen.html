@@ -143,13 +143,18 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 /* 可点目标的按压反馈。车规命中目标 ≥96px（stage 像素） */
 [data-act]{cursor:pointer;transition:transform .12s var(--ez,ease),opacity .12s}
 [data-act]:active{transform:scale(.94);opacity:.75}
-.plctl{display:flex;align-items:center;gap:calc(20px*var(--u));margin-top:calc(6px*var(--u))}
-/* 风格稿：细线幽灵键，命中区照旧 ≥96px（透明的也算数） */
-.plctl span{min-width:calc(96px*var(--u));height:calc(72px*var(--u));border-radius:var(--r-pill,999px);
-  display:flex;align-items:center;justify-content:center;color:var(--tx-1);background:transparent;border:none}
-.plctl span svg{width:calc(30px*var(--u));height:calc(30px*var(--u));stroke-width:1.7}
-.plctl span:nth-child(2){background:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.8);
-  box-shadow:0 6px 20px -8px rgba(60,68,140,.5)}
+/* 主控（重设计 v2）：三键去底色纯图标，只有一个深色主键（实屏 75px 指尖标准）。
+   pskip 是播客的 ±15s/+30s 文字键。命中区靠 padding 保 ≥72px */
+.plctl{display:flex;align-items:center;justify-content:center;gap:calc(34px*var(--u))}
+.plctl .pside,.plctl .pskip{min-width:calc(72px*var(--u));height:calc(64px*var(--u));
+  display:flex;align-items:center;justify-content:center;color:var(--tx-2)}
+.plctl .pside svg{width:calc(28px*var(--u));height:calc(28px*var(--u))}
+.plctl .pskip{font-size:calc(var(--t-cap)*var(--u)*.92);font-variant-numeric:tabular-nums}
+.plctl .pmain{width:calc(75px*var(--u));height:calc(75px*var(--u));border-radius:50%;
+  display:flex;align-items:center;justify-content:center;flex:none;
+  background:var(--plac,#111C30);color:#fff;
+  box-shadow:0 8px 22px -8px var(--plac,#111C30)}
+.plctl .pmain svg{width:calc(30px*var(--u));height:calc(30px*var(--u))}
 /* 「贴底」只对**主数值**成立。列表、能力目录、块阵这类多条目内容必须自己认领
    全部高度从上往下排 —— 否则它们被整块推到底，上半张脸照样空着，
    只是把「缩在左上角」换成了「缩在左下角」 */
@@ -366,15 +371,50 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .hcol.wet b{color:var(--brand-fg,#1D4ED8)}
 .fc{margin-top:calc(10px*var(--u))}
 
-/* ── 播放器：全套播控 + 音量 + 完整队列 ── */
-.plmix{display:flex;gap:calc(16px*var(--u));font-size:calc(var(--t-cap)*var(--u));
-  color:var(--tx-2);margin-top:calc(6px*var(--u))}
-.plvol{display:flex;align-items:center;gap:calc(10px*var(--u));margin-top:calc(6px*var(--u));
-  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
-.plvol .pltrk{flex:1}
-.plqueue{margin-top:calc(10px*var(--u));display:flex;flex-direction:column;gap:calc(4px*var(--u))}
-.plqueue .qi{font-size:calc(var(--t-body)*var(--u));color:var(--tx-2);
+/* ── 播放器（重设计 v2）：顶行元信息带 / 辅助内容 / 次控排 / 队列 ── */
+.plhead{display:flex;align-items:center;gap:calc(14px*var(--u));min-height:calc(40px*var(--u))}
+.plbadge{font-size:calc(var(--t-cap)*var(--u)*.82);font-weight:600;color:#fff;
+  padding:calc(3px*var(--u)) calc(16px*var(--u));border-radius:999px;letter-spacing:.5px}
+.pltags i{font-style:normal;font-size:calc(var(--t-cap)*var(--u)*.78);color:var(--tx-3);
+  border:1px solid var(--hairline);border-radius:calc(5px*var(--u));
+  padding:calc(1px*var(--u)) calc(8px*var(--u));margin-right:calc(8px*var(--u))}
+.pltags .livetag{color:#C0392B;border-color:rgba(192,57,43,.4)}
+.plsp{flex:1}
+.plpos{font-size:calc(var(--t-cap)*var(--u)*.82);color:var(--tx-3);font-variant-numeric:tabular-nums}
+.plaux{min-height:calc(30px*var(--u))}
+.plly{font-size:calc(var(--t-cap)*var(--u));line-height:1.7;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plly.cur{color:var(--tx-1);font-weight:500}
+.plly.nxt{color:var(--tx-3);opacity:.8}
+.pleq{display:inline-flex;gap:calc(4px*var(--u));align-items:flex-end;height:calc(30px*var(--u))}
+.pleq i{width:calc(5px*var(--u));border-radius:3px;background:var(--plac,#C05A14);
+  height:40%;animation:pleq .9s ease-in-out infinite}
+.pleq i:nth-child(2){height:90%;animation-delay:.15s}.pleq i:nth-child(3){height:60%;animation-delay:.3s}
+.pleq i:nth-child(4){height:80%;animation-delay:.45s}.pleq i:nth-child(5){height:50%;animation-delay:.6s}
+@keyframes pleq{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+.plrow{display:flex;align-items:center;margin-top:calc(10px*var(--u))}
+.plxtra{display:flex;align-items:center;gap:calc(20px*var(--u));width:calc(200px*var(--u))}
+.plxtra.plxr{justify-content:flex-end}
+.plxtra .pxi{display:inline-flex;color:var(--tx-3)}
+.plxtra .pxi svg{width:calc(24px*var(--u));height:calc(24px*var(--u))}
+.plxtra .pxi.on{color:var(--plac,var(--brand-fg))}
+.plxtra .pfav{color:#C74B5F}
+.pspeed{font-size:calc(var(--t-cap)*var(--u)*.9);font-weight:700;color:var(--plac);
+  border:1px solid var(--hairline);border-radius:999px;padding:calc(2px*var(--u)) calc(12px*var(--u))}
+.pvol .pltrk{width:calc(96px*var(--u));height:calc(5px*var(--u))}
+.plctl:has(+ .plxtra){flex:1}
+.plrow .plctl{flex:1}
+.plqueue{margin-top:calc(10px*var(--u));border-top:1px solid var(--hairline);
+  padding-top:calc(8px*var(--u));display:flex;flex-direction:column;gap:calc(2px*var(--u));
+  overflow:hidden;min-height:0}
+.plqueue .qi{display:flex;align-items:center;gap:calc(12px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);padding:calc(4px*var(--u)) 0;
+  overflow:hidden;white-space:nowrap}
+.plqueue .qi em{font-style:normal;width:calc(24px*var(--u));color:var(--tx-3);flex:none;
+  font-variant-numeric:tabular-nums}
+.plqueue .qi b{font-weight:500;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.plqueue .qi small{color:var(--tx-3);flex:none}
+.plqueue .qi.now,.plqueue .qi.now em{color:var(--plac,var(--brand-fg))}
 
 /* ── 最小档不要标题行（2026-08-14 设计纪律） ── */
 /* 一行灰色标题吃掉三分之一高度还说不出什么。chip 只有 335×187 的画布，
@@ -576,44 +616,50 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 /* ══════════ 播放器卡 ══════════
    控制条是**状态指示不是按钮** —— 屏幕不可交互，画成图标就有诱导点击的风险。
    底下那行「说『换一台』就行」把它标回语音能力。 */
-.plwrap{display:flex;align-items:center;gap:calc(20px*var(--u));height:100%;min-height:0}
-.tpl-media.narrow .plwrap{flex-direction:column;align-items:flex-start;justify-content:center}
-.plart{flex:none;width:calc(132px*var(--u));height:calc(132px*var(--u));
-  border-radius:calc(20px*var(--u));overflow:hidden;
+/* ── 三段式（重设计 v2）：plhead 元信息带 / plmain 主区 / plfoot 底带 ──
+   字阶收敛：标题 33px 实屏（--t-title 级）+ 次行 23px + 注脚 19px——
+   量产的高级感不靠大字，靠层级准、密度足、控件收着 */
+.plwrap{display:flex;flex-direction:column;height:100%;min-height:0;gap:calc(6px*var(--u))}
+.plmain{flex:1;display:flex;align-items:center;gap:calc(26px*var(--u));min-height:0}
+.plart{flex:none;width:calc(190px*var(--u));height:calc(190px*var(--u));
+  border-radius:calc(16px*var(--u));overflow:hidden;
   background:var(--media-gr,linear-gradient(145deg,#8B5CF6,#6D28D9));
-  box-shadow:0 8px 22px -8px var(--media-fg,#6D28D9);
+  box-shadow:0 8px 20px -6px rgba(10,30,80,.35),0 1px 3px rgba(10,30,80,.25);
   display:flex;align-items:center;justify-content:center}
+.plart.round{border-radius:50%}
 .plart img,.plart .videoel{width:100%;height:100%;object-fit:cover;display:block}
-/* 一行的小档：封面收小、按钮收小，一行里排得开 */
-.t-chip .plart,.t-strip .plart,.t-bar .plart{width:calc(96px*var(--u));height:calc(96px*var(--u));
-  border-radius:calc(14px*var(--u))}
-.t-chip .plwrap,.t-strip .plwrap,.t-bar .plwrap{gap:calc(14px*var(--u))}
-.t-chip .plctl span,.t-strip .plctl span{min-width:calc(72px*var(--u));height:calc(56px*var(--u))}
-/* 两行以上的卡封面放大——132px 的小封面挂在 786×470 的卡里就是大片空白（实拍） */
-.t-tile .plart,.t-box .plart,.t-wide .plart,.t-panel .plart,.t-band .plart{
-  width:calc(220px*var(--u));height:calc(220px*var(--u));border-radius:calc(24px*var(--u))}
-.t-frame .plart,.t-hall .plart,.t-tower .plart,.t-court .plart,.t-stage .plart,.t-full .plart{
-  width:calc(300px*var(--u));height:calc(300px*var(--u));border-radius:calc(28px*var(--u))}
-/* 大卡歌名升一阶，别让 38px 的字撑 470px 的卡 */
-.t-panel .plmeta b,.t-band .plmeta b,.t-hall .plmeta b,.t-court .plmeta b,
-.t-stage .plmeta b,.t-full .plmeta b{
-  font-size:calc(var(--t-num)*var(--u))}
+/* 小档：封面收小、头尾块自然被 forms 藏掉 */
+.t-chip .plart,.t-strip .plart,.t-bar .plart,.t-tile .plart,.t-box .plart{
+  width:calc(130px*var(--u));height:calc(130px*var(--u));border-radius:calc(12px*var(--u))}
+/* 大档封面上限 260——封面不是主角，信息才是（v2 修订原则②） */
+.t-court .plart,.t-stage .plart,.t-full .plart{
+  width:calc(230px*var(--u));height:calc(230px*var(--u))}
 .plicon{width:46%;height:46%;color:rgba(255,255,255,.9)}
 .plicon svg{width:100%;height:100%;stroke-width:1.6}
-.plmeta{display:flex;flex-direction:column;gap:calc(6px*var(--u));min-width:0;flex:1}
-.plmeta b{font-size:calc(var(--t-lead)*var(--u));font-weight:600;
+.plmeta{display:flex;flex-direction:column;gap:calc(5px*var(--u));min-width:0;flex:1}
+.plmeta b{font-size:calc(var(--t-title)*var(--u)*1.38);font-weight:600;letter-spacing:.2px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-1,var(--text-primary))}
-.plmeta span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+.plmeta > span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.plbar{display:flex;align-items:center;gap:calc(12px*var(--u));margin-top:calc(4px*var(--u))}
-.pltrk{flex:1;height:calc(6px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));overflow:hidden}
-.plfl{height:100%;border-radius:99px;background:var(--acgr)}
-/* 直播流没有进度可言，轨道降成一条静态底纹，别假装在走 */
-.plbar.live .plfl{opacity:.28}
+.plfoot{flex:none;display:flex;flex-direction:column;min-height:0}
+.plbar{display:flex;align-items:center;gap:calc(14px*var(--u))}
+.pltrk{flex:1;height:calc(5px*var(--u));border-radius:99px;background:var(--n3,var(--bg-elevated));
+  position:relative;cursor:pointer}
+.plfl{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--tx-2,#334155)}
+.plknob{position:absolute;top:50%;width:calc(16px*var(--u));height:calc(16px*var(--u));
+  border-radius:50%;background:#fff;border:calc(3px*var(--u)) solid var(--tx-2,#334155);
+  transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,.25);left:0}
+.plbar.live .pltrk{background:transparent;cursor:default}
+.plbar.live .plknob{display:none}
 .pltime{flex:none;font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
-  font-variant-numeric:tabular-nums}
-.pl-next{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
+  font-variant-numeric:tabular-nums;min-width:calc(60px*var(--u))}
+.pltime.pt1{text-align:right}
+.pl-next{font-size:calc(var(--t-cap)*var(--u)*.86);color:var(--tx-3,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 视频：画面就是主角——plmain 整个让给画面，控件行沉底 */
+.is-video .plmain{align-items:stretch}
+.is-video .plart{flex:1;width:auto;height:auto;border-radius:calc(12px*var(--u))}
+.is-video .plmeta{display:none}
 .pl-hint{display:flex;align-items:center;gap:calc(8px*var(--u));
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary))}
 .pl-hint b{font-weight:500;color:var(--ac)}
@@ -1097,6 +1143,62 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     const t = (text ?? "").trim();
     if (!t || list[list.length - 1] === t) return list;
     return [...list, t].slice(-max);
+  }
+
+  // src/config/mediaStyle.ts
+  var SOURCE_STYLE = {
+    music: { badge: "♫ 音乐", accent: "#1D4ED8", glow: "rgba(36,86,201,.13)", progress: "bar", ctl: "tracks" },
+    radio: { badge: "📻 电台", accent: "#C05A14", glow: "rgba(224,122,42,.12)", progress: "live", ctl: "single" },
+    podcast: { badge: "🎙 播客", accent: "#6D28D9", glow: "rgba(124,58,237,.10)", progress: "bar", ctl: "skip" },
+    news: { badge: "📰 新闻播报", accent: "#1E40AF", glow: "rgba(30,64,175,.10)", progress: "bar", ctl: "tracks" },
+    video: { badge: "🎬 视频", accent: "#0B0F16", glow: "rgba(11,15,22,.10)", progress: "overlay", ctl: "tracks" }
+  };
+  var sourceStyle = (s) => SOURCE_STYLE[s] ?? SOURCE_STYLE.music;
+
+  // src/screen/mediaMath.ts
+  function barRatio(clientX, left, width) {
+    if (!width) return 0;
+    return Math.max(0, Math.min(1, (clientX - left) / width));
+  }
+  function seekSeconds(ratio, duration) {
+    if (!Number.isFinite(duration) || duration <= 0) return null;
+    return Math.round(ratio * duration);
+  }
+  function dominantColor(px) {
+    if (px.length < 4) return null;
+    let R = 0, G = 0, B = 0, W2 = 0;
+    for (let i = 0; i + 3 < px.length; i += 4) {
+      const r = px[i], g = px[i + 1], b = px[i + 2];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const w = 1 + (mx - mn) * 3 / 255 * 4;
+      R += r * w;
+      G += g * w;
+      B += b * w;
+      W2 += w;
+    }
+    return [Math.round(R / W2), Math.round(G / W2), Math.round(B / W2)];
+  }
+
+  // src/screen/lyric.ts
+  function parseLrc(raw) {
+    const out = [];
+    for (const line of String(raw ?? "").split("\n")) {
+      const stamps = [...line.matchAll(/\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]/g)];
+      if (!stamps.length) continue;
+      const text = line.replace(/\[[^\]]*\]/g, "").trim();
+      if (!text) continue;
+      for (const m of stamps) {
+        const t = Number(m[1]) * 60 + Number(m[2]) + Number(`0.${m[3] ?? "0"}`);
+        out.push({ t, text });
+      }
+    }
+    return out.sort((a, b) => a.t - b.t);
+  }
+  function lyricAt(lines, sec) {
+    if (!lines.length) return { cur: "", next: "" };
+    let i = -1;
+    while (i + 1 < lines.length && lines[i + 1].t <= sec) i++;
+    return { cur: i >= 0 ? lines[i].text : "", next: lines[i + 1]?.text ?? "" };
   }
 
   // src/screen/galaxy.ts
@@ -1825,13 +1927,8 @@ GET ${path} HTTP/1.1`;
   };
   var mediaForm = (c, r) => {
     const a = area(c, r);
-    const blocks = ["art", "title"];
-    if (a >= 16) blocks.push("sub");
-    if (c >= 6 || a >= 16) blocks.push("bar");
-    blocks.push("toggle");
-    if (a >= 36) blocks.push("mix", "vol");
-    if (a >= 36) blocks.push("next");
-    if (a >= 24) blocks.push("hint");
+    const blocks = ["art", "title", "sub", "bar", "ctl"];
+    if (a >= 36) blocks.push("meta", "aux", "next", "extras");
     if (r >= 8) blocks.push("queue");
     return { blocks };
   };
@@ -2375,6 +2472,11 @@ ${BRIDGE}
     if (/阴|云/.test(c)) return W.cloud;
     return W.sun;
   }
+  var ICON_SHUFFLE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 4h4v4h-2V6.4l-4.2 4.2-1.4-1.4L17.6 6H17V4zM3 6h5.2l9.4 12H21v2h-4.8L6.8 8H3V6zm12.6 8.6 1.4 1.4-1.6 1.6H21v2h-4v1.6l-2.8-2.8 1.4-3.8z"/></svg>';
+  var ICON_REPEAT = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>';
+  var ICON_REPEAT1 = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/><text x="12" y="15" font-size="8" text-anchor="middle" fill="currentColor">1</text></svg>';
+  var ICON_HEART = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-9.6-9.2C.9 8.6 3 5 6.4 5c2 0 3.5 1.1 4.3 2.6h2.6C14.1 6.1 15.6 5 17.6 5 21 5 23.1 8.6 21.6 11.8 19.5 16.1 12 21 12 21z"/></svg>';
+  var ICON_VOL = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>';
 
   // src/screen/render.ts
   function truncate(items, max) {
@@ -2466,27 +2568,35 @@ ${BRIDGE}
     eta: ".navfoot"
   };
   var PLAYER_SKELETON = `<div class="plwrap">
-  <div class="plart"></div>
-  <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
-    <div class="plbar"><div class="pltrk"><div class="plfl"></div></div>
-      <span class="pltime"></span></div>
-    <div class="plmix"></div>
-    <div class="plvol"></div>
-    <div class="pl-next"></div>
-    <div class="plctl"></div>
-    <div class="pl-hint"></div>
-    <div class="plqueue"></div></div>
+  <div class="plhead"><span class="plbadge"></span><span class="pltags"></span>
+    <span class="plsp"></span><span class="plpos"></span></div>
+  <div class="plmain">
+    <div class="plart"></div>
+    <div class="plmeta"><b class="pltrack"></b><span class="plartist"></span>
+      <div class="plaux"></div><div class="pl-next"></div></div>
+  </div>
+  <div class="plfoot">
+    <div class="plbar"><span class="pltime pt0"></span>
+      <div class="pltrk" data-act="tap:seek"><div class="plfl"></div><div class="plknob"></div></div>
+      <span class="pltime pt1"></span></div>
+    <div class="plrow">
+      <div class="plxtra plxl"></div>
+      <div class="plctl"></div>
+      <div class="plxtra plxr"></div>
+    </div>
+    <div class="plqueue"></div>
+  </div>
 </div>`;
   var PLAYER_SLOTS = {
+    meta: ".plhead",
     art: ".plart",
     title: ".pltrack",
     sub: ".plartist",
-    bar: ".plbar",
-    mix: ".plmix",
-    vol: ".plvol",
+    aux: ".plaux",
     next: ".pl-next",
-    toggle: ".plctl",
-    hint: ".pl-hint",
+    bar: ".plbar",
+    ctl: ".plctl",
+    extras: ".plxtra",
     queue: ".plqueue"
   };
   function cardBody(c) {
@@ -2899,6 +3009,11 @@ ${BRIDGE}
       const el = video && !video.paused ? video : audio;
       return { current: el.currentTime, duration: el.duration };
     };
+    const setSpeed = (v) => {
+      const r = Number.isFinite(v) && v >= 0.5 && v <= 3 ? v : 1;
+      audio.playbackRate = r;
+      if (video) video.playbackRate = r;
+    };
     return {
       unlock,
       play,
@@ -2908,6 +3023,7 @@ ${BRIDGE}
       duck,
       attachVideo,
       progress,
+      setSpeed,
       get unlocked() {
         return unlocked;
       },
@@ -2928,6 +3044,18 @@ ${BRIDGE}
       { on: "tap:prev", route: "tool", tool: "media.control", args: { action: "prev" } },
       { on: "tap:toggle", route: "tool", tool: "media.control", args: { action: "toggle" } },
       { on: "tap:next", route: "tool", tool: "media.control", args: { action: "next" } },
+      /* ── 重设计 v2（2026-08-19）：四个"装饰"全部变真按钮，直调不叫醒模型 ──
+         seek/vol 的 value 由屏端按点击位置折算（barRatio/seekSeconds 纯函数）；
+         mode 的 value 由屏端按当前模式给下一个（顺序→随机→单曲循环轮转） */
+      { on: "tap:seek", route: "tool", tool: "media.seek", valueParam: "position" },
+      { on: "tap:vol", route: "tool", tool: "media.volume", valueParam: "level" },
+      { on: "tap:mode", route: "tool", tool: "media.mode", valueParam: "mode" },
+      { on: "tap:fav", route: "tool", tool: "media.favorite" },
+      { on: "tap:speed", route: "tool", tool: "media.control", args: { action: "speed" }, valueParam: "speed" },
+      { on: "tap:back15", route: "tool", tool: "media.seek", args: { delta: -15 } },
+      { on: "tap:fwd30", route: "tool", tool: "media.seek", args: { delta: 30 } },
+      // 队列点播：点第 n 首直接播它（value = 队列下标）
+      { on: "tap:item", route: "tool", tool: "media.control", args: { action: "jump" }, valueParam: "index" },
       SWIPE_AWAY,
       ...RESIZE,
       CLOSE
@@ -3100,7 +3228,18 @@ ${BRIDGE}
     if (g === "tap") {
       const hit = s0.target?.closest?.("[data-act]");
       if (!hit || !s0.card.contains(hit)) return;
-      bus.send({ type: "userAction", cardId, act: hit.dataset.act, value: hit.dataset.value });
+      let value = hit.dataset.value;
+      if (hit.dataset.act === "tap:seek" || hit.dataset.act === "tap:vol") {
+        const r = hit.getBoundingClientRect();
+        const ratio = barRatio(e.clientX, r.left, r.width);
+        if (hit.dataset.act === "tap:vol") value = String(Math.round(ratio * 100));
+        else {
+          const sec = seekSeconds(ratio, player.progress().duration);
+          if (sec === null) return;
+          value = String(sec);
+        }
+      }
+      bus.send({ type: "userAction", cardId, act: hit.dataset.act, value });
     } else if (g === "swipe-x") {
       bus.send({ type: "userAction", cardId, act: "swipe:away" });
     }
@@ -3108,65 +3247,139 @@ ${BRIDGE}
   function renderPlayerCard(node, c) {
     const d = c.data ?? {};
     const isVideo = d.source === "video";
+    const st = sourceStyle(String(d.source ?? "music"));
     const form = mediaForm(...dimsOf(c.size));
-    if (!node.querySelector(".plwrap")) {
-      node.innerHTML = PLAYER_SKELETON;
-      node.querySelector(".plctl").innerHTML = `<span data-act="tap:prev">${ICON_PREV}</span><span data-act="tap:toggle">${ICON_PLAY}</span><span data-act="tap:next">${ICON_NEXT}</span>`;
-      node.querySelector(".plmix").innerHTML = `<span>🔀 随机</span><span>🔁 循环</span><span>♥ 收藏</span>`;
-      node.querySelector(".plvol").innerHTML = `<span>🔈</span><div class="pltrk"><div class="plfl" style="width:60%"></div></div><span>🔊</span>`;
-    }
-    const slot = (name) => node.querySelector(PLAYER_SLOTS[name]);
-    for (const [name, sel] of Object.entries(PLAYER_SLOTS)) {
-      const el = node.querySelector(sel);
-      if (el) el.style.display = form.blocks.includes(name) ? "" : "none";
-    }
-    const q = slot("queue");
-    if (q && form.blocks.includes("queue")) {
-      const list = d.queue ?? [];
-      q.innerHTML = list.slice(0, 4).map((t) => `<div class="qi">${esc(t.track ?? t)}</div>`).join("");
-    }
-    const [pc, pr] = dimsOf(c.size);
-    node.classList.toggle("narrow", pr >= 4 && pc <= 4);
-    const barEl = node.querySelector(".plbar");
+    if (!node.querySelector(".plwrap")) node.innerHTML = PLAYER_SKELETON;
+    node.classList.toggle("is-video", isVideo);
+    node.style.setProperty("--plac", st.accent);
+    for (const [name, sel] of Object.entries(PLAYER_SLOTS))
+      node.querySelectorAll(sel).forEach((el) => {
+        el.style.display = form.blocks.includes(name) ? "" : "none";
+      });
+    const badge = node.querySelector(".plbadge");
+    badge.textContent = st.badge;
+    badge.style.background = st.accent;
+    const tags = node.querySelector(".pltags");
+    tags.innerHTML = d.source === "music" ? "<i>试听 30s</i>" : d.source === "radio" ? '<i class="livetag">● LIVE</i>' : "";
+    const pos = node.querySelector(".plpos");
+    const qlist = d.queue ?? [];
+    pos.textContent = qlist.length > 1 && d.queueAt >= 0 ? `队列 ${qlist.length} 首 · 第 ${d.queueAt + 1} 首` : "";
     const art = node.querySelector(".plart");
-    const ctl = node.querySelector(".plctl");
-    const mid = ctl.children[1];
-    if (mid.dataset.st !== String(!!d.playing)) {
-      mid.dataset.st = String(!!d.playing);
-      mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY;
-    }
-    const full = form.blocks.includes("bar");
-    const single = !full && form.blocks.includes("toggle");
-    if (!(full || single)) ctl.style.display = "none";
-    for (const el of Array.from(ctl.children)) {
-      const isMid = el.dataset.act === "tap:toggle";
-      el.style.display = single && !isMid || d.source === "radio" && !isMid ? "none" : "";
-    }
-    barEl.classList.toggle("live", d.source === "radio");
-    const nxt = node.querySelector(".pl-next");
-    const upcoming = d.nextUp ?? [];
-    if (!upcoming.length) nxt.style.display = "none";
-    nxt.textContent = upcoming.length ? `接下来：${upcoming.join(" · ")}` : "";
-    const hint = node.querySelector(".pl-hint");
-    hint.innerHTML = `◎ 说<b>「换一首」</b><b>「大点声」</b>都可以`;
+    const applyGlow = (rgb) => {
+      const g = rgb ? `rgba(${rgb},.13)` : st.glow;
+      node.style.backgroundImage = `radial-gradient(80% 80% at 12% 15%, ${g}, transparent 55%)`;
+    };
     if (isVideo) {
       player.attachVideo(art);
+      applyGlow(null);
     } else {
       const url = String(d.artwork ?? "");
       const img = art.querySelector("img");
       if (url) {
         if (img) {
-          if (img.src !== url) img.src = url;
-        } else art.innerHTML = `<img src="${esc(url)}" alt="">`;
-      } else if (!img) {
-        art.innerHTML = `<div class="plicon">${TPL_ICONS.media}</div>`;
+          if (!img.src.endsWith(url)) {
+            img.src = url;
+            glowFromImage(img, applyGlow);
+          } else applyGlow(glowCache.get(url) ?? null);
+        } else {
+          art.innerHTML = `<img src="${esc(url)}" alt="" crossorigin="anonymous">`;
+          glowFromImage(art.querySelector("img"), applyGlow);
+        }
+      } else {
+        if (!img) art.innerHTML = `<div class="plicon">${TPL_ICONS.media}</div>`;
+        applyGlow(null);
       }
     }
+    art.classList.toggle("round", d.source === "radio");
     node.querySelector(".pltrack").textContent = String(d.track ?? "");
     node.querySelector(".plartist").textContent = String(d.artist ?? "");
-    node.classList.toggle("is-video", isVideo);
+    const aux = node.querySelector(".plaux");
+    if (form.blocks.includes("aux")) {
+      if (d.source === "radio") {
+        if (!aux.querySelector(".pleq"))
+          aux.innerHTML = `<span class="pleq"><i></i><i></i><i></i><i></i><i></i></span>`;
+      } else if (d.lyrics) {
+        aux.dataset.lyrics = "1";
+        if (!aux.querySelector(".plly")) aux.innerHTML = `<div class="plly cur"></div><div class="plly nxt"></div>`;
+        const prev = node.__lrc;
+        if (!prev || prev.raw !== d.lyrics)
+          node.__lrc = { raw: d.lyrics, lines: parseLrc(String(d.lyrics)) };
+      } else {
+        aux.dataset.lyrics = "";
+        aux.innerHTML = "";
+        node.__lrc = void 0;
+      }
+    }
+    const nxt = node.querySelector(".pl-next");
+    const upcoming = d.nextUp ?? [];
+    nxt.textContent = upcoming.length ? `接下来 · ${upcoming.join(" · ")}` : "";
+    if (!upcoming.length) nxt.style.display = "none";
+    const barEl = node.querySelector(".plbar");
+    barEl.classList.toggle("live", st.progress === "live");
+    const ctl = node.querySelector(".plctl");
+    const kind = st.ctl;
+    if (ctl.dataset.kind !== kind) {
+      ctl.dataset.kind = kind;
+      ctl.innerHTML = kind === "skip" ? `<span class="pskip" data-act="tap:back15">−15s</span>
+         <span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>
+         <span class="pskip" data-act="tap:fwd30">+30s</span>` : kind === "single" ? `<span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>` : `<span class="pside" data-act="tap:prev">${ICON_PREV}</span>
+           <span class="pmain" data-act="tap:toggle">${ICON_PLAY}</span>
+           <span class="pside" data-act="tap:next">${ICON_NEXT}</span>`;
+    }
+    const mid = ctl.querySelector(".pmain");
+    if (mid && mid.dataset.st !== String(!!d.playing)) {
+      mid.dataset.st = String(!!d.playing);
+      mid.innerHTML = d.playing ? ICON_PAUSE : ICON_PLAY;
+    }
+    const xl = node.querySelector(".plxl");
+    const xr = node.querySelector(".plxr");
+    if (form.blocks.includes("extras")) {
+      const mode = String(d.mode ?? "sequential");
+      const nextMode = mode === "sequential" ? "shuffle" : mode === "shuffle" ? "repeatOne" : "sequential";
+      const modeIcon = mode === "shuffle" ? ICON_SHUFFLE : mode === "repeatOne" ? ICON_REPEAT1 : ICON_REPEAT;
+      const speed = Number(d.speed ?? 1);
+      const nextSpeed = speed === 1 ? 1.25 : speed === 1.25 ? 1.5 : 1;
+      xl.innerHTML = d.source === "radio" ? "" : `<span class="pxi ${mode !== "sequential" ? "on" : ""}" data-act="tap:mode" data-value="${nextMode}">${modeIcon}</span>` + (d.source === "podcast" ? `<span class="pspeed" data-act="tap:speed" data-value="${nextSpeed}">${speed}×</span>` : "");
+      xr.innerHTML = `<span class="pxi pfav" data-act="tap:fav">${ICON_HEART}</span><span class="pxi pvic">${ICON_VOL}</span><span class="pvol"><span class="pltrk" data-act="tap:vol"><span class="plfl" style="width:${Number(d.volume ?? 40)}%"></span></span></span>`;
+    }
+    const q = node.querySelector(".plqueue");
+    if (q && form.blocks.includes("queue")) {
+      q.innerHTML = qlist.slice(0, 6).map((t, i) => `<div class="qi ${i === d.queueAt ? "now" : ""}" data-act="tap:item" data-value="${i}">
+        <em>${i === d.queueAt ? "▶" : i + 1}</em><b>${esc(t.track ?? t)}</b><small>${esc(t.artist ?? "")}</small></div>`).join("");
+    }
     if (d.playing && d.streamUrl) player.play({ url: String(d.streamUrl), source: d.source, volume: Number(d.volume ?? 40) });
     else if (!d.playing) player.pause();
+  }
+  var glowCache = /* @__PURE__ */ new Map();
+  function glowFromImage(img, apply) {
+    const url = img.src;
+    if (glowCache.has(url)) {
+      apply(glowCache.get(url));
+      return;
+    }
+    const go = () => {
+      try {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 24;
+        const cx = cv.getContext("2d");
+        cx.drawImage(img, 0, 0, 24, 24);
+        const c = dominantColor(cx.getImageData(0, 0, 24, 24).data);
+        const rgb = c ? c.join(",") : null;
+        glowCache.set(url, rgb);
+        apply(rgb);
+      } catch {
+        glowCache.set(url, null);
+        apply(null);
+      }
+    };
+    if (img.complete && img.naturalWidth) go();
+    else {
+      img.onload = go;
+      img.onerror = () => {
+        glowCache.set(url, null);
+        apply(null);
+      };
+    }
   }
   function renderCanvasCard(node, c) {
     const d = c.data ?? {};
@@ -3590,10 +3803,30 @@ ${BRIDGE}
     for (const meta2 of Array.from(document.querySelectorAll(".tpl-media .plbar"))) {
       if (meta2.style.display === "none") continue;
       const fl = meta2.querySelector(".plfl");
-      const t = meta2.querySelector(".pltime");
+      const knob = meta2.querySelector(".plknob");
+      const t0 = meta2.querySelector(".pt0");
+      const t1 = meta2.querySelector(".pt1");
       const live2 = meta2.classList.contains("live");
-      fl.style.width = live2 ? "100%" : `${pct ?? 0}%`;
-      t.textContent = live2 ? `● 直播中 · 已收听 ${fmtTime(current)}` : pct === null ? "" : `${fmtTime(current)} / ${fmtTime(duration)}`;
+      if (live2) {
+        fl.style.width = "0";
+        t0.textContent = "直播 · 无进度";
+        t1.textContent = `已收听 ${fmtTime(current)}`;
+      } else {
+        fl.style.width = `${pct ?? 0}%`;
+        if (knob) knob.style.left = `${pct ?? 0}%`;
+        t0.textContent = pct === null ? "" : fmtTime(current);
+        t1.textContent = pct === null ? "" : `-${fmtTime(Math.max(0, duration - current))}`;
+      }
+    }
+    for (const aux of Array.from(document.querySelectorAll('.tpl-media .plaux[data-lyrics="1"]'))) {
+      const cardNode = aux.closest(".tpl-media");
+      const lrcRaw = cardNode.__lrc;
+      const cur2 = aux.querySelector(".plly.cur");
+      const nxt2 = aux.querySelector(".plly.nxt");
+      if (!lrcRaw || !cur2) continue;
+      const at = lyricAt(lrcRaw.lines, current);
+      if (cur2.textContent !== at.cur) cur2.textContent = at.cur;
+      if (nxt2.textContent !== at.next) nxt2.textContent = at.next;
     }
   }
   requestAnimationFrame(tickProgress);
@@ -4022,6 +4255,7 @@ ${BRIDGE}
         meta = { ...meta, ...m.meta };
         renderStatus();
         applyHmi();
+        player.setSpeed(Number(tgt["media.speed"] ?? 1));
         break;
       case "cards":
         deskState = m.desk;

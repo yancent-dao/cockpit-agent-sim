@@ -126,9 +126,10 @@ describe('固定骨架的模板：声明过的块必须有槽位', () => {
     for (const s of t.sizes!) for (const b of CARD_FORMS[id](...dimsOf(s)).blocks) declared.add(b)
     for (const b of declared) {
       expect(slots[b], `${id} 声明了块 ${b} 却没有对应槽位 —— 它永远不会显示`).toBeTruthy()
-      // 槽位选择器必须真的能在骨架里找到，否则查询返回 null 同样什么都不显示
+      // 槽位选择器必须真的能在骨架里找到，否则查询返回 null 同样什么都不显示。
+      // 匹配按"类名出现在 class 属性里"——槽位元素可以带多个类（.plxtra plxl）
       const cls = slots[b].replace('.', '')
-      expect(skeleton, `${id} 的槽位 ${slots[b]} 不在骨架里`).toContain(`class="${cls}"`)
+      expect(skeleton, `${id} 的槽位 ${slots[b]} 不在骨架里`).toMatch(new RegExp(`class="[^"]*\\b${cls}\\b`))
     }
   }
 
@@ -136,7 +137,7 @@ describe('固定骨架的模板：声明过的块必须有槽位', () => {
     cover('nav', NAV_SKELETON, NAV_SLOTS)
   })
 
-  it('播放器卡：art / title / sub / bar / mix / vol / next / toggle / hint / queue 全都有地方画', () => {
+  it('播放器卡：meta / art / title / sub / aux / next / bar / ctl / extras / queue 全都有地方画', () => {
     cover('media', PLAYER_SKELETON, PLAYER_SLOTS)
   })
 

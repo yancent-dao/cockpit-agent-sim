@@ -495,6 +495,16 @@ export const SIGNALS: Signal[] = [
     type: 'number', range: [0, 100], unit: '%', label: '媒体音量',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 40 },
 
+  /* 歌词版本戳（重设计 v2）：歌词文本在域仓，信号只放戳触发规则重评——壁纸同款先例 */
+  { alias: 'media.lyricsRev', vssPath: 'Vehicle.X-Ext.Media.LyricsRev',
+    type: 'number', range: [0, 1e9], label: '歌词版本戳',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
+
+  /* 倍速（重设计 v2）：播客的三大件之一。状态低频进信号，屏端 player 读它设 playbackRate */
+  { alias: 'media.speed', vssPath: 'Vehicle.X-Ext.Media.PlaybackRate',
+    type: 'number', range: [0.5, 3], label: '播放倍速',
+    access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 1 },
+
   { alias: 'media.mode', vssPath: 'Vehicle.X-Ext.Media.PlayMode',
     type: 'enum', values: ['sequential', 'shuffle', 'repeatOne'], label: '播放模式',
     valueLabels: { sequential: '顺序播放', shuffle: '随机播放', repeatOne: '单曲循环' },

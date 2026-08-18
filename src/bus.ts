@@ -1,7 +1,8 @@
 /** 跨窗口消息总线：postMessage 与 BroadcastChannel 双通道，file:// 下也能工作 */
 export type BusMsg =
   | { type: 'hello' }
-  | { type: 'state'; target: Record<string, number>; meta: Record<string, any> }
+  // target 值放宽到 string：hmi.theme/hmi.wallpaper 这类枚举/戳也走这条道（2026-08-19）
+  | { type: 'state'; target: Record<string, number | string>; meta: Record<string, any> }
   | { type: 'voice'; s?: string; text?: string | null; who?: 'user' | 'agent' }
   /**
    * 横幅通道（第二条显示通道）。拒绝原因、约束不满足、能力缺失、

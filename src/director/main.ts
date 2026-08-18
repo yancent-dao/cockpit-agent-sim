@@ -609,8 +609,15 @@ $('openScreen').onclick = () => {
 
 function push() {
   if (muted) return
-  const target: Record<string, number> = {}
+  const target: Record<string, number | string> = {}
   for (const k of POS) target[k] = store.getTarget(`cabin.window.${k}.position`) as number
+  /**
+   * 主题与壁纸也要上车（2026-08-19 实拍修）：target 原来只装四扇车窗，
+   * hmi.* 信号从来没发给过车机屏——工具全成功、屏上永远没反应，
+   * 应用逻辑是好的，信号没上车。push 每 200ms 一趟，屏端按变化应用。
+   */
+  target['hmi.theme'] = store.get('hmi.theme') as string
+  target['hmi.wallpaper'] = store.get('hmi.wallpaper') as string
   bus.send({
     type: 'state', target,
     meta: {

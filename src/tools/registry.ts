@@ -424,8 +424,26 @@ export function createRegistry(
         // 宽容单元素退化（{item:单对象} 经 unwrapItem 剥壳后就是这个形状，
         // 实拍第三次撞见）：期望数组收到单个对象 → 包成单元素数组。
         // 跟 "24"→24 同族：协议适配不是意图分支，判据只看数据形状
-        if (v && typeof v === 'object') { args[key] = [v] }
+        if (v && typeof v === 'object') { args[key] = [v]; v = args[key] }
         else return `${key} 需要数组`
+      }
+      if (def.type === 'array' && Array.isArray(v)) {
+        // 双层数组退化 [[...]]（实拍：pages:{item:{item:[[…]]}}，unwrapItem
+        // 剥完两层 {item} 剩这个形状）——单元素且元素也是数组就剥一层
+        while (v.length === 1 && Array.isArray(v[0])) { v = v[0]; args[key] = v }
+        /**
+         * 元素必填字段校验（2026-08-19 实拍）：items 里声明了 required
+         * 却从没执行——模型用 {text,image} 替 {line,scene} 静默入仓，
+         * 正文空白上屏、朗读没词可念。报出收到的键，模型才知道怎么改。
+         */
+        const req: string[] = (def.items as any)?.required ?? []
+        if (req.length) for (let i = 0; i < v.length; i++) {
+          const el = v[i]
+          if (!el || typeof el !== 'object') return `${key}[${i}] 需要对象`
+          const miss = req.filter(k2 => el[k2] === undefined || el[k2] === null)
+          if (miss.length)
+            return `${key}[${i}] 缺少字段 ${miss.join('、')}（收到的键：${Object.keys(el).join('、') || '无'}）`
+        }
       }
     }
     return null

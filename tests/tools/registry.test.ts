@@ -1972,3 +1972,41 @@ describe('必填参数缺失一次报全', () => {
     expect(r.message).toContain('pages')
   })
 })
+
+/**
+ * 数组的两种深层退化（2026-08-19 实拍：pages:{item:{item:[[{text,image}…]]}}
+ * 三重退化居然 ok 通过——正文空白上屏、朗读没词可念）：
+ * ① 双层数组 [[...]] 剥一层（unwrapItem 剥完两层 {item} 后剩下的形状）；
+ * ② items 声明了 required 的元素字段从没被校验——错字段名静默入仓。
+ */
+describe('数组元素形状校验', () => {
+  it('三重退化 {item:{item:[[正确元素]]}} 剥到底后正常入仓', async () => {
+    const store2 = createStore(SIGNALS, CONSTRAINTS)
+    const m = new Map<string, string>()
+    const storyStore = (await import('../../src/state/story')).createStoryStore(
+      { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } as any)
+    storyStore.saveCast('data:image/png;base64,CAST')   // begin 的前置：定妆照已就位
+    const reg2 = createRegistry(store2, TOOLS, Date.now, {
+      desk: createDeskForTest(), story: storyStore,
+      image: { generate: async () => ({ dataUrl: 'data:image/png;base64,PAGE', cost: 1 }) },
+    } as any)
+    const pages = [{ line: '第一页', scene: '森林' }, { line: '第二页', scene: '小屋' }, { line: '第三页', scene: '床铺' }]
+    const r = await reg2.invoke('story.begin', { title: '测试', pages: { item: { item: [pages] } } })
+    expect(r.status).toBe('ok')
+    expect((r.data as any).pages, '三页都要入仓——剥壳剥到底').toBe(3)
+  })
+
+  it('元素字段名错了要拒，并报出缺什么、收到了什么', async () => {
+    const store2 = createStore(SIGNALS, CONSTRAINTS)
+    const reg2 = createRegistry(store2, TOOLS, Date.now, {
+      desk: createDeskForTest(),
+      story: (await import('../../src/state/story')).createStoryStore(
+        { get: () => null, set: () => {} } as any),
+    } as any)
+    const r = await reg2.invoke('story.begin', { title: '测试',
+      pages: [{ text: '妞妞在森林里', image: '小女孩' }, { text: 'b', image: 'c' }, { text: 'd', image: 'e' }] })
+    expect(r.status).toBe('rejected')
+    expect(r.message).toContain('line')
+    expect(r.message).toContain('text')   // 报出收到的键，模型才知道怎么改
+  })
+})

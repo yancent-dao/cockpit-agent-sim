@@ -4501,7 +4501,22 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         if (def.type === "array" && !Array.isArray(v)) {
           if (v && typeof v === "object") {
             args[key] = [v];
+            v = args[key];
           } else return `${key} 需要数组`;
+        }
+        if (def.type === "array" && Array.isArray(v)) {
+          while (v.length === 1 && Array.isArray(v[0])) {
+            v = v[0];
+            args[key] = v;
+          }
+          const req = def.items?.required ?? [];
+          if (req.length) for (let i = 0; i < v.length; i++) {
+            const el = v[i];
+            if (!el || typeof el !== "object") return `${key}[${i}] 需要对象`;
+            const miss = req.filter((k2) => el[k2] === void 0 || el[k2] === null);
+            if (miss.length)
+              return `${key}[${i}] 缺少字段 ${miss.join("、")}（收到的键：${Object.keys(el).join("、") || "无"}）`;
+          }
         }
       }
       return null;

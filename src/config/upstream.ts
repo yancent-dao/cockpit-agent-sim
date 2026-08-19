@@ -42,6 +42,8 @@ export const UPSTREAM = {
   jinrishici: 'https://v1.jinrishici.com',
   /** lrclib 歌词：零 Key 零注册、官方 ACAO:*（file:// 直连也通）。CF 站点，走代理更稳 */
   lrclib: 'https://lrclib.net',
+  /** 豆包（火山）TTS：鉴权在 WS header，浏览器带不了——Key 由 vite 代理注入（藏 Key/改 header）。国内直连 */
+  volctts: 'wss://openspeech.bytedance.com',
 } as const
 
 export type Upstream = keyof typeof UPSTREAM

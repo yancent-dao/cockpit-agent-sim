@@ -1447,6 +1447,142 @@ GET ${path} HTTP/1.1`;
     return new Blob(chunks, { type: "audio/mpeg" });
   }
 
+  // src/config/upstream.ts
+  var PROXY_PREFIX = "/x/";
+  var UPSTREAM = {
+    itunes: "https://itunes.apple.com",
+    amap: "https://restapi.amap.com",
+    openmeteo: "https://api.open-meteo.com",
+    newsapi: "https://newsapi.org",
+    pexels: "https://api.pexels.com",
+    openrouter: "https://openrouter.ai",
+    radio: "https://de1.api.radio-browser.info",
+    /** 讯飞 TTS 是 WebSocket —— proxy 的 ws:true 一并转发，未来接 header 鉴权的 CP 靠它 */
+    xftts: "wss://cbm01.cn-huabei-1.xf-yun.com",
+    /** 腾讯行情：qt 带 ACAO:* 可直连（单文件版也通）；smartbox 搜索无 CORS 只能走代理 */
+    qtstock: "https://qt.gtimg.cn",
+    qtsmart: "https://smartbox.gtimg.cn",
+    /** 节假日/调休（个人维护项目，高频会封；对无 UA 请求 403） */
+    timor: "https://timor.tech",
+    /** 今日诗词 v1，无 token */
+    jinrishici: "https://v1.jinrishici.com",
+    /** lrclib 歌词：零 Key 零注册、官方 ACAO:*（file:// 直连也通）。CF 站点，走代理更稳 */
+    lrclib: "https://lrclib.net",
+    /** 豆包（火山）TTS：鉴权在 WS header，浏览器带不了——Key 由 vite 代理注入（藏 Key/改 header）。国内直连 */
+    volctts: "wss://openspeech.bytedance.com"
+  };
+  function api(name, protocol = typeof location === "undefined" ? "file:" : location.protocol) {
+    return protocol.startsWith("http") ? PROXY_PREFIX + name : UPSTREAM[name];
+  }
+
+  // src/integrations/volctts.ts
+  function volcFrame(json) {
+    const p = new TextEncoder().encode(JSON.stringify(json));
+    const out = new Uint8Array(8 + p.length);
+    out.set([17, 16, 16, 0]);
+    new DataView(out.buffer).setUint32(4, p.length);
+    out.set(p, 8);
+    return out;
+  }
+  function parseVolcFrame(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const headerSize = (buf[0] & 15) * 4;
+    const type = buf[1] >> 4;
+    const flags = buf[1] & 15;
+    let o = headerSize;
+    let event = null, session = "", code = null;
+    if (type === 15) {
+      code = dv.getUint32(o);
+      o += 4;
+    }
+    if (flags & 4) {
+      event = dv.getInt32(o);
+      o += 4;
+      if (![1, 2, 50, 51, 52].includes(event)) {
+        const sl = dv.getUint32(o);
+        o += 4;
+        session = new TextDecoder().decode(buf.subarray(o, o + sl));
+        o += sl;
+      }
+    }
+    const pl = dv.getUint32(o);
+    o += 4;
+    return { type, event, session, code, payload: buf.subarray(o, o + pl) };
+  }
+  var V = (speaker, label, res) => ({ value: `volc:${speaker}`, label, speaker, resourceId: res });
+  var VOLC_VOICES = [
+    V("zh_female_gaolengyujie_uranus_bigtts", "豆包2.0 · 高冷御姐", "seed-tts-2.0"),
+    V("zh_female_shuangkuaisisi_moon_bigtts", "豆包 · 爽快思思", "volc.service_type.10029"),
+    V("zh_male_yangguangqingnian_moon_bigtts", "豆包 · 阳光青年", "volc.service_type.10029"),
+    V("zh_female_wanwanxiaohe_moon_bigtts", "豆包 · 湾湾小何", "volc.service_type.10029")
+  ];
+  var isVolcVoice = (v) => v.startsWith("volc:");
+  var volcSpeaker = (v) => VOLC_VOICES.find((x) => x.value === v);
+  function volcStream(voice, text, rate, onChunk, timeoutMs = 12e3) {
+    let ws = null;
+    let cancelled = false;
+    const done = (async () => {
+      const base = api("volctts");
+      const scheme = location.protocol === "https:" ? "wss" : "ws";
+      const url = base.startsWith("/") ? `${scheme}://${location.host}${base}/api/v3/tts/unidirectional/stream?rid=${encodeURIComponent(voice.resourceId)}` : `${base}/api/v3/tts/unidirectional/stream`;
+      ws = new WebSocket(url);
+      ws.binaryType = "arraybuffer";
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => {
+          ws?.close();
+          rej(new Error("豆包连接超时"));
+        }, 5e3);
+        ws.onopen = () => {
+          clearTimeout(t);
+          res();
+        };
+        ws.onerror = () => {
+          clearTimeout(t);
+          rej(new Error("豆包 WebSocket 连接失败（file:// 单文件版不支持豆包音色）"));
+        };
+      });
+      const speechRate = Math.round(Math.max(-50, Math.min(100, (rate - 1) * 100)));
+      ws.send(volcFrame({ req_params: {
+        speaker: voice.speaker,
+        text,
+        audio_params: { format: "mp3", sample_rate: 24e3, speech_rate: speechRate }
+      } }));
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("豆包合成超时")), timeoutMs);
+        ws.onmessage = (e) => {
+          const m = parseVolcFrame(new Uint8Array(e.data));
+          if (m.type === 11 && m.payload.length) onChunk(m.payload);
+          else if (m.type === 15) {
+            clearTimeout(t);
+            rej(new Error(`豆包合成失败(${m.code})：${new TextDecoder().decode(m.payload).slice(0, 120)}`));
+          } else if (m.event === 152) {
+            clearTimeout(t);
+            res();
+          }
+        };
+        ws.onerror = () => {
+          clearTimeout(t);
+          rej(new Error("豆包连接中断"));
+        };
+        ws.onclose = () => {
+          clearTimeout(t);
+          cancelled ? res() : res();
+        };
+      });
+      ws.close();
+    })();
+    return {
+      done,
+      cancel: () => {
+        cancelled = true;
+        try {
+          ws?.close();
+        } catch {
+        }
+      }
+    };
+  }
+
   // src/screen/mic.ts
   var PRIORITY = {
     confirm: 1,
@@ -4011,6 +4147,43 @@ ${BRIDGE}
       speechSynthesis.speak(u);
     };
     const chosen = chosenVoice();
+    if (isVolcVoice(chosen) && volcSpeaker(chosen)) {
+      const vv = volcSpeaker(chosen);
+      storyReading = true;
+      updateDuck();
+      sbAudio?.pause();
+      sbAudio = null;
+      clearTimeout(guard);
+      guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9e3);
+      const rearmV = (ms) => {
+        totalMs = ms;
+        clearTimeout(guard);
+        guard = setTimeout(finish, ms + SB_SLACK_MS);
+      };
+      const localV = (e) => {
+        if (e) cloudFallbackNote(e);
+        if (gen === sbGen && !done) {
+          rearmV(estimateMs(line, rate));
+          speakLocal();
+        }
+      };
+      const chunks = [];
+      volcStream(vv, line, rate, (c2) => chunks.push(c2)).done.then(() => {
+        if (gen !== sbGen || done) return;
+        const a = new Audio(URL.createObjectURL(new Blob(chunks, { type: "audio/mpeg" })));
+        sbAudio = a;
+        a.onloadedmetadata = () => {
+          if (gen === sbGen && Number.isFinite(a.duration) && a.duration > 0) rearmV(a.duration * 1e3);
+        };
+        a.onended = () => {
+          URL.revokeObjectURL(a.src);
+          finish();
+        };
+        a.onerror = () => localV("音频播放失败");
+        a.play().catch(localV);
+      }).catch(localV);
+      return;
+    }
     if (isCloudVoice(chosen) && xfReady()) {
       storyReading = true;
       updateDuck();
@@ -4201,6 +4374,32 @@ ${BRIDGE}
     agAudio?.pause();
     agAudio = null;
     const chosen = chosenVoice();
+    if (isVolcVoice(chosen)) {
+      const vv = volcSpeaker(chosen);
+      if (vv) {
+        agSpeaking = true;
+        const fail = (e) => {
+          if (gen === agGen) {
+            cloudFallbackNote(e);
+            speakAgentLocal(text, gen);
+          }
+        };
+        const player2 = playStream(gen, fail);
+        if (player2) {
+          const s = volcStream(vv, text, sbRate(), (c) => {
+            if (gen === agGen) player2.push(c);
+          });
+          agCancel = () => {
+            s.cancel();
+            player2.stop();
+          };
+          s.done.then(() => {
+            if (gen === agGen) player2.end();
+          }).catch(fail);
+          return;
+        }
+      }
+    }
     if (isCloudVoice(chosen) && xfReady()) {
       agSpeaking = true;
       const fail = (e) => {

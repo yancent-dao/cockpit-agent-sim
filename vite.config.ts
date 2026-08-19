@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { resolve } from 'path'
 import { proxyTable, ABROAD, PROXY_PREFIX } from './src/config/upstream'
 // @ts-expect-error 纯 node 的 .mjs 帮手，不进浏览器 bundle
@@ -21,6 +21,22 @@ const proxy: Record<string, any> = proxyTable()
 const agent = envProxyAgent()
 if (agent) for (const k of Object.keys(proxy))
   if (ABROAD.has(k.slice(PROXY_PREFIX.length) as any)) proxy[k].agent = agent
+
+/**
+ * 豆包 TTS 的 header 注入（转发层三件事之二：改 header、藏 Key）：
+ * 鉴权在 WS header，浏览器带不了——X-Api-Key 从 env 注入（Key 只在 node 侧，
+ * 前端 bundle 一个字节不沾）；资源号由客户端经 query 声明（?rid=...），
+ * 代理只做 query→header 的技术搬运，不做任何内容判断。
+ */
+const volcKey = process.env.VITE_VOLC_TTS_KEY || loadEnv('development', __dirname, 'VITE_').VITE_VOLC_TTS_KEY || ''
+if (proxy[PROXY_PREFIX + 'volctts']) proxy[PROXY_PREFIX + 'volctts'].configure = (p: any) => {
+  p.on('proxyReqWs', (preq: any, req: any) => {
+    const rid = new URL(req.url ?? '', 'http://x').searchParams.get('rid') || 'seed-tts-2.0'
+    preq.setHeader('X-Api-Key', volcKey)
+    preq.setHeader('X-Api-Resource-Id', rid)
+    preq.setHeader('X-Api-Request-Id', Math.random().toString(36).slice(2) + Date.now().toString(36))
+  })
+}
 
 export default defineConfig({
   build: { rollupOptions: { input: {

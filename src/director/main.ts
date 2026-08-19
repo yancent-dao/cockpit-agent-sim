@@ -10,6 +10,7 @@ import { buildBookHtml, bookFileName } from '../integrations/h5book'
 import { planShrink, withShrink, WEBP_Q } from '../integrations/shrink'
 import { pickVoice, zhVoices } from '../screen/speech'
 import { XF_VOICES, isCloudVoice, xfVcn, synthesize as xfSynthesize } from '../integrations/xftts'
+import { VOLC_VOICES } from '../integrations/volctts'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -185,6 +186,10 @@ function renderVoices() {
   // 云端组永远列出来：没配 Key 就在标签上说清（看不见的能力等于没有能力）
   const cloud = `<optgroup label="云端超拟人 · 讯飞${xfOk ? '' : '（未配 Key，选了也走本机）'}">` +
     XF_VOICES.map(v => `<option value="${v.value}"${v.value === saved ? ' selected' : ''}>${v.label}</option>`).join('') +
+    '</optgroup>' +
+    // 豆包：Key 在 vite 代理侧注入（前端零凭据），要 dev/preview server 在跑
+    `<optgroup label="云端 · 豆包（经代理，需 npm run dev）">` +
+    VOLC_VOICES.map(v => `<option value="${v.value}"${v.value === saved ? ' selected' : ''}>${v.label}</option>`).join('') +
     '</optgroup>'
   const local = list.length
     ? `<optgroup label="本机音色">` + list.map(v => {

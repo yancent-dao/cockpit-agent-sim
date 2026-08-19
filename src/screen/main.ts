@@ -8,6 +8,7 @@ import { barRatio, seekSeconds, dominantColor } from './mediaMath'
 import { parseLrc, lyricAt, type LrcLine } from './lyric'
 import { createGalaxy } from './galaxy'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
+import { isVolcVoice, volcSpeaker, volcStream } from '../integrations/volctts'
 import { micAct, type MicSource } from './mic'
 import { fitScale } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
@@ -1206,6 +1207,33 @@ function speakStory(node: HTMLElement, c: any) {
    * 合成本身要等一会儿，guard 先放宽；任何一步失败回退本地音色。
    */
   const chosen = chosenVoice()
+  if (isVolcVoice(chosen) && volcSpeaker(chosen)) {
+    const vv = volcSpeaker(chosen)!
+    storyReading = true
+    updateDuck()
+    sbAudio?.pause(); sbAudio = null
+    clearTimeout(guard); guard = setTimeout(finish, totalMs + SB_SLACK_MS + 9000)
+    const rearmV = (ms: number) => { totalMs = ms; clearTimeout(guard); guard = setTimeout(finish, ms + SB_SLACK_MS) }
+    const localV = (e?: unknown) => {
+      if (e) cloudFallbackNote(e)
+      if (gen === sbGen && !done) { rearmV(estimateMs(line, rate)); speakLocal() }
+    }
+    const chunks: Uint8Array[] = []
+    volcStream(vv, line, rate, c => chunks.push(c)).done
+      .then(() => {
+        if (gen !== sbGen || done) return
+        const a = new Audio(URL.createObjectURL(new Blob(chunks as BlobPart[], { type: 'audio/mpeg' })))
+        sbAudio = a
+        a.onloadedmetadata = () => {
+          if (gen === sbGen && Number.isFinite(a.duration) && a.duration > 0) rearmV(a.duration * 1000)
+        }
+        a.onended = () => { URL.revokeObjectURL(a.src); finish() }
+        a.onerror = () => localV('音频播放失败')
+        a.play().catch(localV)
+      })
+      .catch(localV)
+    return
+  }
   if (isCloudVoice(chosen) && xfReady()) {
     storyReading = true
     updateDuck()
@@ -1366,6 +1394,21 @@ function speakNow(text: string) {
   agCancel?.(); agCancel = null
   agAudio?.pause(); agAudio = null
   const chosen = chosenVoice()
+  // 豆包（火山）：Key 在代理侧，屏端零凭据——连上就能流（file:// 单文件版无代理会失败回退本地）
+  if (isVolcVoice(chosen)) {
+    const vv = volcSpeaker(chosen)
+    if (vv) {
+      agSpeaking = true
+      const fail = (e: unknown) => { if (gen === agGen) { cloudFallbackNote(e); speakAgentLocal(text, gen) } }
+      const player = playStream(gen, fail)
+      if (player) {
+        const s = volcStream(vv, text, sbRate(), c => { if (gen === agGen) player.push(c) })
+        agCancel = () => { s.cancel(); player.stop() }
+        s.done.then(() => { if (gen === agGen) player.end() }).catch(fail)
+        return
+      }
+    }
+  }
   if (isCloudVoice(chosen) && xfReady()) {
     agSpeaking = true
     const fail = (e: unknown) => { if (gen === agGen) { cloudFallbackNote(e); speakAgentLocal(text, gen) } }

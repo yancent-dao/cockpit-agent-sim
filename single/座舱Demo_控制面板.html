@@ -2357,7 +2357,9 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     /** 今日诗词 v1，无 token */
     jinrishici: "https://v1.jinrishici.com",
     /** lrclib 歌词：零 Key 零注册、官方 ACAO:*（file:// 直连也通）。CF 站点，走代理更稳 */
-    lrclib: "https://lrclib.net"
+    lrclib: "https://lrclib.net",
+    /** 豆包（火山）TTS：鉴权在 WS header，浏览器带不了——Key 由 vite 代理注入（藏 Key/改 header）。国内直连 */
+    volctts: "wss://openspeech.bytedance.com"
   };
   function api(name, protocol = typeof location === "undefined" ? "file:" : location.protocol) {
     return protocol.startsWith("http") ? PROXY_PREFIX + name : UPSTREAM[name];
@@ -5396,6 +5398,15 @@ GET ${path} HTTP/1.1`;
     if (!chunks.length) throw new Error("讯飞没有返回音频");
     return new Blob(chunks, { type: "audio/mpeg" });
   }
+
+  // src/integrations/volctts.ts
+  var V = (speaker, label, res) => ({ value: `volc:${speaker}`, label, speaker, resourceId: res });
+  var VOLC_VOICES = [
+    V("zh_female_gaolengyujie_uranus_bigtts", "豆包2.0 · 高冷御姐", "seed-tts-2.0"),
+    V("zh_female_shuangkuaisisi_moon_bigtts", "豆包 · 爽快思思", "volc.service_type.10029"),
+    V("zh_male_yangguangqingnian_moon_bigtts", "豆包 · 阳光青年", "volc.service_type.10029"),
+    V("zh_female_wanwanxiaohe_moon_bigtts", "豆包 · 湾湾小何", "volc.service_type.10029")
+  ];
 
   // src/state/session.ts
   function recentSummary(d) {
@@ -9827,7 +9838,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     if (!sel) return;
     const list = zhVoices(speechSynthesis?.getVoices?.() ?? []);
     const saved = localStorage.getItem(VOICE_KEY) || pickVoice(list)?.name || "";
-    const cloud = `<optgroup label="云端超拟人 · 讯飞${xfOk ? "" : "（未配 Key，选了也走本机）"}">` + XF_VOICES.map((v) => `<option value="${v.value}"${v.value === saved ? " selected" : ""}>${v.label}</option>`).join("") + "</optgroup>";
+    const cloud = `<optgroup label="云端超拟人 · 讯飞${xfOk ? "" : "（未配 Key，选了也走本机）"}">` + XF_VOICES.map((v) => `<option value="${v.value}"${v.value === saved ? " selected" : ""}>${v.label}</option>`).join("") + `</optgroup><optgroup label="云端 · 豆包（经代理，需 npm run dev）">` + VOLC_VOICES.map((v) => `<option value="${v.value}"${v.value === saved ? " selected" : ""}>${v.label}</option>`).join("") + "</optgroup>";
     const local = list.length ? `<optgroup label="本机音色">` + list.map((v) => {
       const tag = v.female === true ? "女声" : v.female === false ? "男声" : "—";
       return `<option value="${v.name.replace(/"/g, "&quot;")}"${v.name === saved ? " selected" : ""}>${v.name}（${tag}·${v.lang}）</option>`;

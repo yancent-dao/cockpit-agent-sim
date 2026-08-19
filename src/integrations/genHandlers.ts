@@ -17,12 +17,15 @@ export function createGenHandlers(
 ) {
   /** 一次写齐播放态（跟 mediaHandlers.playTrack 同责）。gate=约束闸的结果 */
   const play = (source: string, track: string, url: string, artwork = '') => {
-    store.set('media.source', source)
-    store.set('media.track', track)
-    store.set('media.artist', 'AI 生成')
-    store.set('media.artwork', artwork)
-    store.set('media.streamUrl', url)
-    store.set('media.playing', true)
+    // setMany：一次通知，不漏中间态（同 mediaHandlers.playTrack）
+    store.setMany([
+      ['media.source', source],
+      ['media.track', track],
+      ['media.artist', 'AI 生成'],
+      ['media.artwork', artwork],
+      ['media.streamUrl', url],
+      ['media.playing', true],
+    ])
   }
 
   return {

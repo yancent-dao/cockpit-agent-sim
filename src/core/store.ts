@@ -100,6 +100,32 @@ export function createStore(
     return outcome
   }
 
+  /**
+   * 批量原子写（2026-08-19 实拍）：播放态六连写逐条 set 会把中间态
+   * （source 已是 video、streamUrl 还是音乐）泄漏给订阅者——车机屏拿着
+   * 音乐 URL 开了视频。**先全验（无部分提交）、再全写、最后才通知**：
+   * 订阅者第一个回调里读到的已是完整终态。值没变的键不通知。
+   */
+  function setMany(entries: Array<[string, Value]>): SetOutcome {
+    const outcomes: Array<{ path: string; applied: Value }> = []
+    for (const [path, value] of entries) {
+      const o = canSet(path, value)
+      if (o.status !== 'ok') return o
+      outcomes.push({ path, applied: o.applied as Value })
+    }
+    const dirty: Array<[string, Value]> = []
+    for (const { path, applied } of outcomes) {
+      const cell = cells.get(path)!
+      if (cell.target !== applied) {
+        cell.target = applied
+        if (!cell.sig.transition) cell.current = applied
+        dirty.push([path, cell.current])
+      }
+    }
+    for (const [path, v] of dirty) notify(path, v)
+    return { status: 'ok' }
+  }
+
   /** 仿真通道：绕过 access 与约束，供控制面板与场景预设使用 */
   function setDirect(path: string, value: Value) {
     const cell = cells.get(path)
@@ -143,7 +169,7 @@ export function createStore(
   const checkInvariants = (): string[] =>
     invariants.map(inv => inv.check(get)).filter((x): x is string => x !== null)
 
-  return { get, getTarget, canSet, set, setDirect, subscribe, tick, snapshot, checkInvariants, signals }
+  return { get, getTarget, canSet, set, setMany, setDirect, subscribe, tick, snapshot, checkInvariants, signals }
 }
 
 export type Store = ReturnType<typeof createStore>

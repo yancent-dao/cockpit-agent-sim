@@ -543,6 +543,25 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       if (changedTarget) notify(path, cell.current);
       return outcome;
     }
+    function setMany(entries) {
+      const outcomes = [];
+      for (const [path, value] of entries) {
+        const o = canSet(path, value);
+        if (o.status !== "ok") return o;
+        outcomes.push({ path, applied: o.applied });
+      }
+      const dirty = [];
+      for (const { path, applied } of outcomes) {
+        const cell = cells.get(path);
+        if (cell.target !== applied) {
+          cell.target = applied;
+          if (!cell.sig.transition) cell.current = applied;
+          dirty.push([path, cell.current]);
+        }
+      }
+      for (const [path, v] of dirty) notify(path, v);
+      return { status: "ok" };
+    }
     function setDirect(path, value) {
       const cell = cells.get(path);
       if (!cell) return;
@@ -578,7 +597,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       return out;
     };
     const checkInvariants = () => invariants.map((inv) => inv.check(get)).filter((x) => x !== null);
-    return { get, getTarget, canSet, set, setDirect, subscribe, tick, snapshot, checkInvariants, signals };
+    return { get, getTarget, canSet, set, setMany, setDirect, subscribe, tick, snapshot, checkInvariants, signals };
   }
 
   // src/config/grid.ts
@@ -2641,13 +2660,15 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     suggestion: "想换台的话说个台名，或者让我给你放歌"
   });
   function playQueueTrack(store2, qt) {
-    store2.set("media.source", qt.source);
-    store2.set("media.track", qt.track);
-    store2.set("media.artist", qt.artist);
-    store2.set("media.artwork", qt.artwork ?? "");
-    store2.set("media.streamUrl", qt.streamUrl);
-    store2.set("media.videoActive", qt.videoActive ?? false);
-    store2.set("media.playing", true);
+    store2.setMany([
+      ["media.source", qt.source],
+      ["media.track", qt.track],
+      ["media.artist", qt.artist],
+      ["media.artwork", qt.artwork ?? ""],
+      ["media.streamUrl", qt.streamUrl],
+      ["media.videoActive", qt.videoActive ?? false],
+      ["media.playing", true]
+    ]);
   }
   function createAutoplay(store2, state2, clock = Date.now) {
     let lastAdvance = 0;
@@ -2755,12 +2776,14 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       });
     };
     const playTrack = (t) => {
-      store2.set("media.source", "music");
-      store2.set("media.track", t.name);
-      store2.set("media.artist", t.artist);
-      store2.set("media.artwork", t.artwork);
-      store2.set("media.streamUrl", t.preview);
-      store2.set("media.playing", true);
+      store2.setMany([
+        ["media.source", "music"],
+        ["media.track", t.name],
+        ["media.artist", t.artist],
+        ["media.artwork", t.artwork],
+        ["media.streamUrl", t.preview],
+        ["media.playing", true]
+      ]);
     };
     const nowPlaying = () => store2.get("media.source") === "none" || !store2.get("media.track") ? null : {
       source: String(store2.get("media.source")),
@@ -2786,7 +2809,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
             store2.set("media.playing", false);
             return { status: "ok", data: { playing: false }, changed: ["media.playing"] };
           case "stop":
-            for (const [k, v] of [
+            store2.setMany([
               ["media.playing", false],
               ["media.source", "none"],
               ["media.streamUrl", ""],
@@ -2794,8 +2817,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
               ["media.artist", ""],
               ["media.artwork", ""],
               ["media.videoActive", false]
-            ])
-              store2.set(k, v);
+            ]);
             return { status: "ok", data: { stopped: true } };
           case "next":
           case "prev": {
@@ -2992,12 +3014,14 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           const eps = await need("podcast").episodes(show.feedUrl);
           const idx = Math.min(Math.max(Number(args.episode ?? 1) - 1, 0), eps.length - 1);
           const ep = eps[idx];
-          store2.set("media.source", "podcast");
-          store2.set("media.track", ep.title);
-          store2.set("media.artist", show.name);
-          store2.set("media.artwork", show.artwork);
-          store2.set("media.streamUrl", ep.url);
-          store2.set("media.playing", true);
+          store2.setMany([
+            ["media.source", "podcast"],
+            ["media.track", ep.title],
+            ["media.artist", show.name],
+            ["media.artwork", show.artwork],
+            ["media.streamUrl", ep.url],
+            ["media.playing", true]
+          ]);
           deps.state?.queue.set(eps.map((e) => ({
             source: "podcast",
             track: e.title,
@@ -3055,12 +3079,15 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
             lastStations = found;
             st = found[0];
           }
-          store2.set("media.source", "radio");
-          store2.set("media.track", st.name);
-          store2.set("media.artist", stationSub(st));
-          store2.set("media.artwork", st.favicon);
-          store2.set("media.streamUrl", st.url);
-          store2.set("media.playing", true);
+          store2.setMany([
+            ["media.source", "radio"],
+            ["media.track", st.name],
+            // 电台没有"艺人"，放地区和分类比留空有用
+            ["media.artist", stationSub(st)],
+            ["media.artwork", st.favicon],
+            ["media.streamUrl", st.url],
+            ["media.playing", true]
+          ]);
           dismissKey(CANDIDATES);
           return { status: "ok", data: { playing: sBrief(st) }, message: `在放 ${st.name}` };
         } catch (e) {
@@ -3158,12 +3185,14 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
               message: gate.message ?? "车在动，视频画面不能开",
               suggestion: gate.suggestion
             };
-          store2.set("media.source", "video");
-          store2.set("media.track", clip.title);
-          store2.set("media.artist", clip.author);
-          store2.set("media.artwork", clip.cover);
-          store2.set("media.streamUrl", clip.url);
-          store2.set("media.playing", true);
+          store2.setMany([
+            ["media.source", "video"],
+            ["media.track", clip.title],
+            ["media.artist", clip.author],
+            ["media.artwork", clip.cover],
+            ["media.streamUrl", clip.url],
+            ["media.playing", true]
+          ]);
           dismissKey(CANDIDATES);
           return { status: "ok", data: { playing: cBrief(clip) }, message: `在放${clip.title}` };
         } catch (e) {
@@ -3989,12 +4018,14 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
   // src/integrations/genHandlers.ts
   function createGenHandlers(store2, orvideo, ormusic) {
     const play = (source, track, url, artwork = "") => {
-      store2.set("media.source", source);
-      store2.set("media.track", track);
-      store2.set("media.artist", "AI 生成");
-      store2.set("media.artwork", artwork);
-      store2.set("media.streamUrl", url);
-      store2.set("media.playing", true);
+      store2.setMany([
+        ["media.source", source],
+        ["media.track", track],
+        ["media.artist", "AI 生成"],
+        ["media.artwork", artwork],
+        ["media.streamUrl", url],
+        ["media.playing", true]
+      ]);
     };
     return {
       videoGenerate: async (args) => {

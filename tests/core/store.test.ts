@@ -236,3 +236,51 @@ describe('快照', () => {
     expect(sig.changeMode).toBe('CONTINUOUS')
   })
 })
+
+/**
+ * ══════════ setMany：播放态六连写的事务通知（2026-08-19 实拍）══════════
+ * 音乐→视频：videoPlay 六条信号逐条 set，第一条 source='video' 落下时
+ * streamUrl 还是音乐的——这个中间态快照被推到车机屏，视频卡拿着音乐 URL
+ * 开播了一段。修法：**先全写后通知**——订阅者收到第一个通知时，
+ * 读到的已是完整终态。部分非法则全不写（"部分提交"是被测试抓过的老 bug）。
+ */
+describe('setMany', () => {
+  it('订阅者在第一个通知回调里读到的就是终态——没有中间态窗口', () => {
+    const s = createStore(SIGNALS, CONSTRAINTS)
+    s.setDirect('media.source', 'music')
+    s.setDirect('media.streamUrl', 'https://old/music.mp3')
+    const seen: Array<{ source: unknown; url: unknown }> = []
+    s.subscribe('media.*', () => seen.push({ source: s.get('media.source'), url: s.get('media.streamUrl') }))
+    const r = s.setMany([
+      ['media.source', 'video'],
+      ['media.streamUrl', 'https://new/video.mp4'],
+      ['media.playing', true],
+    ])
+    expect(r.status).toBe('ok')
+    expect(seen.length).toBeGreaterThan(0)
+    for (const snap of seen) {
+      expect(snap.source, '任何一次通知里都不许出现旧 source').toBe('video')
+      expect(snap.url, '任何一次通知里都不许出现旧 url').toBe('https://new/video.mp4')
+    }
+  })
+
+  it('任何一条非法则全不写（先验后写，无部分提交）', () => {
+    const s = createStore(SIGNALS, CONSTRAINTS)
+    s.setDirect('media.source', 'music')
+    const r = s.setMany([
+      ['media.source', 'video'],
+      ['media.volume', 9999],   // 超范围
+    ])
+    expect(r.status).not.toBe('ok')
+    expect(s.get('media.source'), '第一条也不许落地').toBe('music')
+  })
+
+  it('值没变的键不通知（有净变化才通知）', () => {
+    const s = createStore(SIGNALS, CONSTRAINTS)
+    s.setDirect('media.source', 'music')
+    let n = 0
+    s.subscribe('media.source', () => n++)
+    s.setMany([['media.source', 'music']])
+    expect(n).toBe(0)
+  })
+})

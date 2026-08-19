@@ -58,13 +58,17 @@ export interface MediaDeps {
 
 /** 把一条队列内容写进 media.* 信号组开播。续播和 next/prev 共用这一条路 */
 export function playQueueTrack(store: Store, qt: QueueTrack) {
-  store.set('media.source', qt.source)
-  store.set('media.track', qt.track)
-  store.set('media.artist', qt.artist)
-  store.set('media.artwork', qt.artwork ?? '')
-  store.set('media.streamUrl', qt.streamUrl)
-  store.set('media.videoActive', qt.videoActive ?? false)
-  store.set('media.playing', true)
+  // setMany：六连写一次通知（实拍：逐条 set 的中间态被推上屏，
+  // 视频卡拿着上一首音乐的 URL 开播了一段）
+  store.setMany([
+    ['media.source', qt.source],
+    ['media.track', qt.track],
+    ['media.artist', qt.artist],
+    ['media.artwork', qt.artwork ?? ''],
+    ['media.streamUrl', qt.streamUrl],
+    ['media.videoActive', qt.videoActive ?? false],
+    ['media.playing', true],
+  ])
 }
 
 /**
@@ -190,12 +194,14 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
 
   /** 一次写齐播放状态。少写一个字段，播放器卡就缺一块 */
   const playTrack = (t: Track) => {
-    store.set('media.source', 'music')
-    store.set('media.track', t.name)
-    store.set('media.artist', t.artist)
-    store.set('media.artwork', t.artwork)
-    store.set('media.streamUrl', t.preview)
-    store.set('media.playing', true)
+    store.setMany([
+      ['media.source', 'music'],
+      ['media.track', t.name],
+      ['media.artist', t.artist],
+      ['media.artwork', t.artwork],
+      ['media.streamUrl', t.preview],
+      ['media.playing', true],
+    ])
   }
 
   const nowPlaying = (): Favorite | null =>
@@ -229,10 +235,9 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           return { status: 'ok', data: { playing: false }, changed: ['media.playing'] }
         case 'stop':
           // 停止不是暂停：把正在播的内容整个清掉，播放器卡也跟着退场
-          for (const [k, v] of [['media.playing', false], ['media.source', 'none'],
+          store.setMany([['media.playing', false], ['media.source', 'none'],
             ['media.streamUrl', ''], ['media.track', ''], ['media.artist', ''], ['media.artwork', ''],
-            ['media.videoActive', false]] as const)
-            store.set(k as string, v as any)
+            ['media.videoActive', false]] as any)
           return { status: 'ok', data: { stopped: true } }
         case 'next':
         case 'prev': {
@@ -416,12 +421,14 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         // RSS 按新到旧排，第 1 集 = 最新
         const idx = Math.min(Math.max(Number(args.episode ?? 1) - 1, 0), eps.length - 1)
         const ep = eps[idx]
-        store.set('media.source', 'podcast')
-        store.set('media.track', ep.title)
-        store.set('media.artist', show.name)
-        store.set('media.artwork', show.artwork)
-        store.set('media.streamUrl', ep.url)
-        store.set('media.playing', true)
+        store.setMany([
+          ['media.source', 'podcast'],
+          ['media.track', ep.title],
+          ['media.artist', show.name],
+          ['media.artwork', show.artwork],
+          ['media.streamUrl', ep.url],
+          ['media.playing', true],
+        ])
         deps.state?.queue.set(eps.map(e => ({
           source: 'podcast', track: e.title, artist: show!.name, artwork: show!.artwork, streamUrl: e.url,
         })), idx, 'search')
@@ -464,13 +471,15 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           lastStations = found
           st = found[0]
         }
-        store.set('media.source', 'radio')
-        store.set('media.track', st.name)
-        // 电台没有"艺人"，放地区和分类比留空有用
-        store.set('media.artist', stationSub(st))
-        store.set('media.artwork', st.favicon)
-        store.set('media.streamUrl', st.url)
-        store.set('media.playing', true)
+        store.setMany([
+          ['media.source', 'radio'],
+          ['media.track', st.name],
+          // 电台没有"艺人"，放地区和分类比留空有用
+          ['media.artist', stationSub(st)],
+          ['media.artwork', st.favicon],
+          ['media.streamUrl', st.url],
+          ['media.playing', true],
+        ])
         dismissKey(CANDIDATES)
         return { status: 'ok', data: { playing: sBrief(st) }, message: `在放 ${st.name}` }
       } catch (e) { return cpFail(e, '电台播放') }
@@ -561,12 +570,14 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
           return { status: 'rejected', code: gate.code ?? 'VIDEO_WHILE_DRIVING',
             message: gate.message ?? '车在动，视频画面不能开', suggestion: gate.suggestion }
 
-        store.set('media.source', 'video')
-        store.set('media.track', clip.title)
-        store.set('media.artist', clip.author)
-        store.set('media.artwork', clip.cover)
-        store.set('media.streamUrl', clip.url)
-        store.set('media.playing', true)
+        store.setMany([
+          ['media.source', 'video'],
+          ['media.track', clip.title],
+          ['media.artist', clip.author],
+          ['media.artwork', clip.cover],
+          ['media.streamUrl', clip.url],
+          ['media.playing', true],
+        ])
         dismissKey(CANDIDATES)
         return { status: 'ok', data: { playing: cBrief(clip) }, message: `在放${clip.title}` }
       } catch (e) { return cpFail(e, '短视频播放') }

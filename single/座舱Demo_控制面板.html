@@ -1543,8 +1543,8 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     {
       name: "voice.speak",
       brief: "主动播报一句话",
-      desc: "通过车内音响向用户播报一段话。用于解释、确认、反馈。",
-      mic: true,
+      desc: "通过车内音响向用户播报一段话。用于解释、确认、反馈。**只用于说新信息**——前面的对话里已经对用户说过的内容一个字都别再念。",
+      mic: "say",
       permission: "彩",
       params: {
         text: { type: "string", required: true, desc: "要播报的内容，口语化、简短" },
@@ -1556,7 +1556,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       name: "voice.ask",
       brief: "向用户提问出选择卡",
       desc: '向用户提问并给出候选项，用于消歧或征求选择——不是二次确认（二次确认走返回的 confirmToken，不用这个）。问题和选项会自动显示成屏上的选择卡（带序号），你不用建卡。**它只管上屏，不会替你说话**——问题必须由你在这一轮的回复里亲口问出来。**用户是开车的人，只能用说的回答，不能点屏幕**——所以话术里要说"你说第几个就行/告诉我要哪个"，绝不能说"点一下""你选一个点击"。用户的回答会在下一轮对话里出现。',
-      mic: true,
+      mic: "ask",
       permission: "彩",
       params: {
         question: { type: "string", required: true, desc: "问题内容，口语化" },
@@ -6412,7 +6412,8 @@ ${extras.desktop}`);
     "SYSTEM_TEMPLATE",
     "LAST_STOP",
     "REPEAT_CALL",
-    "STALE_TURN"
+    "STALE_TURN",
+    "ECHO_FAST"
   ]);
   var SUM_MARK = "【前情摘要】";
   var KEEP_ROUNDS = 4;
@@ -6455,6 +6456,7 @@ ${extras.desktop}`);
       }
     };
     const MIC = new Set(registry2.list().filter((t) => t.mic).map((t) => t.name));
+    const MIC_SAY = new Set(registry2.list().filter((t) => t.mic === "say").map((t) => t.name));
     const prevOk = /* @__PURE__ */ new Map();
     async function execRound(g, calls, allow, trace, interceptors, opts = {}) {
       const audible = () => !opts.background && !stale(g);
@@ -6470,6 +6472,10 @@ ${extras.desktop}`);
           status: "rejected",
           code: "STALE_TURN",
           message: "用户已经继续别的话题了，这轮的问题/播报已过期——收尾即可，别再输出"
+        } : MIC_SAY.has(name) && opts.canSpeak && !opts.canSpeak() ? {
+          status: "rejected",
+          code: "ECHO_FAST",
+          message: "刚才那句用户已经听到了，不用再念——没有新增就直接收尾（回空即可）"
         } : opts.lane && prevOk.get(opts.lane)?.has(sig2) ? {
           status: "rejected",
           code: "REPEAT_CALL",
@@ -6726,6 +6732,7 @@ ${extras.desktop}`);
     };
     async function runSlow(g, suggested, trace, handover = [], fastReported = false, fastSpoke = false) {
       let slowActed = false;
+      const canSpeak = () => !fastReported || slowActed;
       let turnOk = 0;
       const sm = deps.slowManifest;
       const loaded = /* @__PURE__ */ new Set([...sm.resident ?? [], ...suggested.map((n) => registry2.canonicalName(n))]);
@@ -6781,7 +6788,7 @@ ${extras.desktop}`);
           const text = reply.text ?? "";
           if (text) commit(g, { role: "assistant", content: text });
           trace.push({ type: "reply", at: clock(), text, layer: "slow" });
-          const echo = fastReported && !slowActed;
+          const echo = !canSpeak();
           if (!text && !echo && !fastSpoke && !stale(g)) {
             const fb = turnOk > 0 ? "办好了，结果在屏幕上" : "这件事我没弄成，换个说法我再试试";
             emit({ type: "speaking", text: fb, layer: "slow" });
@@ -6821,7 +6828,7 @@ ${extras.desktop}`);
             cancelTask(t.id);
             return { status: "ok", message: `已取消：${t.label}` };
           }
-        }, { lane: "slow" });
+        }, { lane: "slow", canSpeak });
         commit(g, ...toolMsgs);
         view.push(...toolMsgs);
         if (bizCalls > 0) slowActed = true;

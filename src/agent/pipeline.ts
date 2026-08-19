@@ -139,7 +139,7 @@ const isMeta = (name: string, meta: string) => name === meta || name === meta.re
 const SELF_FIX_CODES = new Set([
   'INVALID_PARAMS', 'DATA_SHAPE_MISMATCH', 'TTL_REQUIRED', 'SIZE_NOT_SUPPORTED',
   'UNKNOWN_TOOL', 'UNKNOWN_SKILL', 'EMPTY_CARD', 'TASK_NOT_FOUND', 'SYSTEM_TEMPLATE',
-  'LAST_STOP', 'REPEAT_CALL', 'STALE_TURN',
+  'LAST_STOP', 'REPEAT_CALL', 'STALE_TURN', 'ECHO_FAST',
 ])
 
 /** epoch 摘要消息的识别标 */
@@ -213,6 +213,8 @@ export function createPipeline(deps: PipelineDeps) {
 
   /** mic 类工具名单（声明在 ToolDef.mic）。stale 轮里说话/提问都算抢麦 */
   const MIC = new Set(registry.list().filter((t: any) => t.mic).map((t: any) => t.name))
+  /** 纯播报类（mic:'say'）：额外受"出声权"闸管——判据是声明，pipeline 不点名工具 */
+  const MIC_SAY = new Set(registry.list().filter((t: any) => t.mic === 'say').map((t: any) => t.name))
   /**
    * 成功型打转熔断（语音链路设计 §3）：按 lane（fast/slow）记上一轮 ok 的
    * 调用签名。撞墙检测只看失败，实拍同文 voice.speak 连 ok 6 轮烧光轮次——
@@ -226,7 +228,7 @@ export function createPipeline(deps: PipelineDeps) {
     g: number, calls: NonNullable<Awaited<ReturnType<LLM['chat']>>['toolCalls']>,
     allow: string[], trace: TraceStep[],
     interceptors: Record<string, (args: any) => ToolResult | Promise<ToolResult>>,
-    opts: { quietRejects?: boolean; background?: boolean; lane?: string } = {},
+    opts: { quietRejects?: boolean; background?: boolean; lane?: string; canSpeak?: () => boolean } = {},
   ): Promise<Msg[]> {
     /**
      * 这一轮的事件该不该露面。以前 emit 既不看世代也不看来源（g 参数在函数体里
@@ -249,6 +251,17 @@ export function createPipeline(deps: PipelineDeps) {
         : MIC.has(name) && stale(g) && !discarded(g)
           ? { status: 'rejected', code: 'STALE_TURN',
               message: '用户已经继续别的话题了，这轮的问题/播报已过期——收尾即可，别再输出' }
+          /**
+           * 复述静音的工具侧堵口（2026-08-19 实拍：快层报完空调偏好，慢层
+           * voice.speak 又念一遍——静音只挡了 reply 文本通道，工具通道裸奔；
+           * 屏端同文去重也救不了，两句差一个"档"字）。
+           * 出声权（canSpeak）是 turn 状态，reply 的 echo 判定与这里共用同一个
+           * 谓词；受不受它管由工具自己声明（mic:'say'），pipeline 不点名工具——
+           * voice.ask 是 'ask'：问题本身就是新信息，不受此闸。
+           */
+          : MIC_SAY.has(name) && opts.canSpeak && !opts.canSpeak()
+            ? { status: 'rejected', code: 'ECHO_FAST',
+                message: '刚才那句用户已经听到了，不用再念——没有新增就直接收尾（回空即可）' }
           : opts.lane && prevOk.get(opts.lane)?.has(sig)
             ? { status: 'rejected', code: 'REPEAT_CALL',
                 message: '这个调用上一轮刚成功过，重复只会原地打转——直接收尾' }
@@ -598,6 +611,8 @@ export function createPipeline(deps: PipelineDeps) {
      * 文本仍落 thread（上下文）、仍进 trace（排查）。干了活照说不误。
      */
     let slowActed = false
+    /** 出声权：快层没替系统说过话，或慢层干了新活（新信息该说）。单一决策点 */
+    const canSpeak = () => !fastReported || slowActed
     let turnOk = 0   // 本 turn 业务成功数——空收场兜底的措辞靠它分"办成没说"和"没办成"
     const sm = deps.slowManifest
     const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n))])
@@ -664,7 +679,7 @@ export function createPipeline(deps: PipelineDeps) {
         const text = reply.text ?? ''
         if (text) commit(g, { role: 'assistant', content: text })
         trace.push({ type: 'reply', at: clock(), text, layer: 'slow' })
-        const echo = fastReported && !slowActed   // 快层报过、慢层没干活 → 复述
+        const echo = !canSpeak()   // 快层报过、慢层没干活 → 复述（与工具闸同一谓词）
         /**
          * 空话术收场的兜底（2026-08-19 实拍）：automation 撞墙跳到最后一轮后
          * 模型交了白卷——整个 turn 没人对用户说过一个字，静默结束，用户干等
@@ -710,7 +725,7 @@ export function createPipeline(deps: PipelineDeps) {
           cancelTask(t.id)
           return { status: 'ok', message: `已取消：${t.label}` }
         },
-      }, { lane: 'slow' })
+      }, { lane: 'slow', canSpeak })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
       if (bizCalls > 0) slowActed = true   // 动过业务工具（含被拒——解释失败是新信息）
       turnOk += bizOk

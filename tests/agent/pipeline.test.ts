@@ -870,3 +870,50 @@ describe('voice.ask 之后的下一句直达慢层（实拍：绘本 ask 挂着�
     expect(fast.seen.length, 'ask 挂着时新输入不该进快层').toBe(fastCallsBefore)
   })
 })
+
+describe('voice.speak 绕过复述静音的堵口（实拍：快层报完偏好，慢层 voice.speak 又念一遍）', () => {
+  it('快层已报结果、慢层没干新活 → voice.speak 拒，整 turn 只出声一次', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '我看看', toolCalls: [call('vehicle.getState', { paths: ['cabin.climate.targetTemp'] })] }),
+      () => ({ text: '空调22度', toolCalls: [call('agent.handoff', { say: '空调22度' })] }),
+    )
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('voice.speak', { text: '您的空调偏好是22度。' })] }),
+      () => ({ text: '' }),
+    )
+    const { p, events } = mk(fast, slow)
+    const r = await p.run('我的空调偏好是什么')
+    // 慢层零出声：reply 通道被 echo 静音，工具通道被 ECHO_FAST 闸住
+    expect(events.filter(e => e.type === 'speaking' && e.layer === 'slow')).toHaveLength(0)
+    const speakResult = r.trace.find(t => t.type === 'toolResult' && t.name === 'voice.speak') as any
+    expect(speakResult?.result?.code, '复述性 voice.speak 要被出声权闸拒掉').toBe('ECHO_FAST')
+  })
+
+  it('快层没报过时 voice.speak 正常放行', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent.handoff', {})] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('voice.speak', { text: '查好了，今天晴。' })] }),
+      () => ({ text: '' }),
+    )
+    const { p } = mk(fast, slow)
+    const r = await p.run('今天天气怎么样')
+    const speakResult = r.trace.find(t => t.type === 'toolResult' && t.name === 'voice.speak') as any
+    expect(speakResult?.result?.status, '快层没报过时 voice.speak 放行').toBe('ok')
+  })
+
+  it('慢层先干了新活再 voice.speak → 放行（新信息该说）', async () => {
+    const fast = fakeLLM(
+      () => ({ text: '窗开了', toolCalls: [call('window.set', { window: 'driver', position: 50 })] }),
+      () => ({ text: '', toolCalls: [call('agent.handoff', { say: '窗开了' })] }),
+    )
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('climate.set', { targetTemp: 24 })] }),
+      () => ({ text: '', toolCalls: [call('voice.speak', { text: '空调也顺手开到24度了。' })] }),
+      () => ({ text: '' }),
+    )
+    const { p } = mk(fast, slow)
+    const r = await p.run('有点热开点窗')
+    const speakResult = r.trace.find(t => t.type === 'toolResult' && t.name === 'voice.speak') as any
+    expect(speakResult?.result?.status, '慢层干了新活之后 voice.speak 放行').toBe('ok')
+  })
+})

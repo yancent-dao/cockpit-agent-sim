@@ -917,3 +917,18 @@ describe('voice.speak 绕过复述静音的堵口（实拍：快层报完偏好�
     expect(speakResult?.result?.status, '慢层干了新活之后 voice.speak 放行').toBe('ok')
   })
 })
+
+describe('REPEAT_CALL 不许隔轮穿透（实拍：story.begin 同参重放，拦一轮后第三轮就过了，故事被开讲两次）', () => {
+  it('同一签名连试三轮，第二三轮都被拦', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent.handoff', {})] }))
+    const sameCall = () => ({ text: '', toolCalls: [call('window.set', { window: 'driver', position: 50 })] })
+    const slow = fakeLLM(sameCall, sameCall, sameCall, () => ({ text: '开好了' }))
+    const { p } = mk(fast, slow)
+    const r = await p.run('开窗')
+    const results = r.trace.filter(t => t.type === 'toolResult' && t.name === 'window.set') as any[]
+    expect(results.length).toBe(3)
+    expect(results[0].result.status).toBe('ok')
+    expect(results[1].result.code).toBe('REPEAT_CALL')
+    expect(results[2].result.code, '隔轮重放也要拦——执念要换参数才放行').toBe('REPEAT_CALL')
+  })
+})

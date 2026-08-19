@@ -578,7 +578,7 @@ const bus = createBus(m => {
     // 叫醒了它就按章法接着问、接着写，讲完的书又活了
     if (!store.get('story.active')) return
     store.set('story.phase', 'asking')
-    pipeline.run('[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展')
+    pipeline.run('[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主')
     return
   }
   if (m.type === 'userAction') {
@@ -600,6 +600,14 @@ const bus = createBus(m => {
       } else {
         desk.dismiss(m.cardId, { byUser: true })
         log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
+        // 关掉绘本卡 = 不想看了 = 故事就此收场（2026-08-19 实拍：关了卡
+        // 翻页/迟到 run 一 paint 又弹回来）。状态一落，续写闸/章末闸/
+        // 自动朗读全部按既有判据停——一处写状态，处处生效
+        if (card.template === 'storybook' && store.get('story.active')) {
+          store.set('story.phase', 'done')
+          store.set('story.active', false)
+          log('p', '⛔ 用户关掉了绘本卡，故事就此收场')
+        }
       }
     } else if (decl.route === 'tool') {
       log('u', `[屏幕] ${m.act} → ${decl.tool}`)

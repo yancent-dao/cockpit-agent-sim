@@ -3732,6 +3732,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     };
     const reject = (code, message) => ({ status: "rejected", code, message });
     const paint = (extra = {}) => {
+      if (!store2.get("story.active") && !extra.done) return;
       const page = store2.get("story.page");
       const p = draft?.pages[page - 1];
       desk2()?.render({
@@ -3856,7 +3857,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
             status: "rejected",
             code: "STORY_ENDED",
             message: "这本已经讲完收尾了，别再往上加页",
-            suggestion: "想再听就重新开一本（story.begin）"
+            suggestion: '直接收尾别再动故事工具——只有孩子亲口说"再讲一个"才重新开书'
           };
         if (a?.idea) draft.ideas.push(String(a.idea));
         await addChapter(a?.pages ?? []);
@@ -6628,7 +6629,7 @@ ${extras.desktop}`);
       denied = results.filter(({ result }) => result.code === "NOT_AUTHORIZED").map(({ c }) => registry2.canonicalName(c.name));
       allDenied = denied.length > 0 && denied.length === results.length;
       if (opts.lane)
-        prevOk.set(opts.lane, new Set(results.filter(({ c, result }) => result.status === "ok" && !Object.keys(interceptors).find((k) => isMeta(c.name, k))).map(({ c }) => `${registry2.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)));
+        prevOk.set(opts.lane, new Set(results.filter(({ c, result }) => (result.status === "ok" || result.code === "REPEAT_CALL") && !Object.keys(interceptors).find((k) => isMeta(c.name, k))).map(({ c }) => `${registry2.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)));
       const biz = results.filter(({ c }) => !Object.keys(interceptors).find((k) => isMeta(c.name, k)));
       bizCalls = biz.length;
       bizOk = biz.filter(({ result }) => result.status === "ok").length;
@@ -9607,7 +9608,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
    "换成播客"答"已为您切换"、"记住24度"答"已记录"，全都一个调用没发。空口报成
    比说做不了更糟：用户以为办好了，其实什么都没变。这轮真调了工具才能报结果，
    没调就只说衔接语。
-6. 别复述指令、别提模型和公司。`
+6. 别复述指令、别提模型和公司。**工具名（story.finish 这类带点号的英文）绝不能
+   出现在话术里**——实拍真把 "story.finish" 当话念给了用户。`
   };
 
   // agents/main-agent/skills/nav.ts
@@ -9741,7 +9743,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 【收尾】**"结束/不讲了/够了/别讲了"= 调 story.finish（带 ending），没有第二种理解**——
 它不是续写选项，更不是要你再问一个问题（实拍：用户说"结束"，故事又被续了一章
 还反问"想怎么对付大灰狼"）。孩子说不想听了、或快到站了（导航剩余少于两分钟），
-就 story.finish 给个像样的结局，别硬停。默认讲到第三章之后问一句「就到这里好不好？」，
+就 story.finish 给个像样的结局，别硬停。**finish 完就收——说一句结束语就沉默，
+不要追问"接下来想做什么""要不要再来一个"（实拍：用户说了结束还被反问，很烦）。**默认讲到第三章之后问一句「就到这里好不好？」，
 他说继续就接着写，没有上限。
 
 【安全】只讲温暖的、寓教于乐的内容。不碰暴力、恐怖、成人话题；主角遇到困难
@@ -10299,7 +10302,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     if (m.type === "storyChapterDone") {
       if (!store.get("story.active")) return;
       store.set("story.phase", "asking");
-      pipeline.run("[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展");
+      pipeline.run("[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主");
       return;
     }
     if (m.type === "userAction") {
@@ -10322,6 +10325,11 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         } else {
           desk.dismiss(m.cardId, { byUser: true });
           log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
+          if (card.template === "storybook" && store.get("story.active")) {
+            store.set("story.phase", "done");
+            store.set("story.active", false);
+            log("p", "⛔ 用户关掉了绘本卡，故事就此收场");
+          }
         }
       } else if (decl.route === "tool") {
         log("u", `[屏幕] ${m.act} → ${decl.tool}`);

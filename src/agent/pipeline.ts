@@ -300,8 +300,12 @@ export function createPipeline(deps: PipelineDeps) {
       .map(({ c }) => registry.canonicalName(c.name))
     allDenied = denied.length > 0 && denied.length === results.length
     if (opts.lane)
+      // 本轮 ok 的签名 + 本轮被 REPEAT_CALL 拦下的签名都记住——
+      // 只记 ok 的话熔断只挡一轮：拦截轮没有 ok，表被清空，第三轮同参重放
+      // 就穿了（实拍：story.begin 同参连发，故事被开讲两次）。执念要换参数才放行
       prevOk.set(opts.lane, new Set(results
-        .filter(({ c, result }) => result.status === 'ok' && !Object.keys(interceptors).find(k => isMeta(c.name, k)))
+        .filter(({ c, result }) => (result.status === 'ok' || result.code === 'REPEAT_CALL')
+          && !Object.keys(interceptors).find(k => isMeta(c.name, k)))
         .map(({ c }) => `${registry.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)))
     const biz = results.filter(({ c }) => !Object.keys(interceptors).find(k => isMeta(c.name, k)))
     bizCalls = biz.length

@@ -73,6 +73,9 @@ export function createStoryHandlers(
 
   /** 当前页的内容推给卡片。一张卡换版式，不是四张卡 */
   const paint = (extra: Record<string, unknown> = {}) => {
+    // 故事已收场（含用户关卡收场）就不再画——在途的插图落地回调不许把
+    // 用户刚关掉的卡弹回来。finish 自己的收尾 paint 带 done 标记放行
+    if (!store.get('story.active') && !extra.done) return
     const page = store.get('story.page') as number
     const p = draft?.pages[page - 1]
     desk()?.render({
@@ -241,7 +244,7 @@ export function createStoryHandlers(
       if (!store.get('story.active'))
         return { status: 'rejected', code: 'STORY_ENDED',
           message: '这本已经讲完收尾了，别再往上加页',
-          suggestion: '想再听就重新开一本（story.begin）' }
+          suggestion: '直接收尾别再动故事工具——只有孩子亲口说"再讲一个"才重新开书' }
       // 孩子说的话是**书的一等字段**，不是从正文里事后猜的——封底要单列出来
       if (a?.idea) draft.ideas.push(String(a.idea))
       await addChapter(a?.pages ?? [])

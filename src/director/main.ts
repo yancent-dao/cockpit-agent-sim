@@ -35,6 +35,7 @@ import { createPexelsClient } from '../integrations/pexels'
 import { createWebSearch } from '../integrations/websearch'
 import { createOpenMeteoClient } from '../integrations/openmeteo'
 import { createPipeline } from '../agent/pipeline'
+import { createScheduler } from '../agent/scheduler'
 import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
 import { createDesk } from '../cards/desk'
@@ -318,8 +319,10 @@ async function executeAutomation(rule: AutomationRule): Promise<string> {
   const parts: string[] = []
   for (const act of rule.do) {
     if ('prompt' in act && act.prompt) {
-      // 委托类：合成一条带来源的输入叫醒助手——它的产出走正常语音/卡片通道
-      ask(`[自动任务·${rule.name}] ${act.prompt}`)
+      // 委托类：合成一条带来源的输入叫醒助手——它的产出走正常语音/卡片通道。
+      // source:'automation' 让它经 Scheduler 排队等用户回合结束，不抢麦
+      // （R-2 修复：以前这里没打 source，默认落 'voice'，能在用户说话时插队）
+      ask(`[自动任务·${rule.name}] ${act.prompt}`, { source: 'automation' })
       parts.push('已交给助手')
     } else if ('tool' in act && act.tool) {
       const r = await registry.invoke(act.tool, act.args ?? {})
@@ -397,6 +400,16 @@ const pipeline = createPipeline({
   onTurnStart: () => desk.endTask(),
   memory: { load: () => localStorage.getItem(LASTTIME_KEY), save: t => localStorage.setItem(LASTTIME_KEY, t) },
 })
+/**
+ * run() 的唯一准入入口（R-2，调度与呈现重构方案 §03）。以前 automation
+ * 触发的调用没打 source（默认落 'voice'）、storyChapterDone 甚至裸调
+ * pipeline.run() 绕开 ask()——两条路径都能在用户正说话时抢着调 pipeline.run，
+ * 而 pipeline 每次 run() 都会 ++gen 让上一个还没跑完的 run 立刻变 stale，
+ * 系统事件因此能打断一个真实用户的对话。这里把 pipeline.run 包一层：
+ * 语音/点选立即执行（barge-in 语义不变，pipeline 内部继续管），
+ * 系统事件/自动化排队等用户回合结束。
+ */
+const scheduler = createScheduler((text, opts) => pipeline.run(text, opts))
 
 /* ══════════ 桌面 → 车机屏：位置由 desk 统一计算，车机屏只管画 ══════════ */
 const brief = (c: any) => ({ id: c.id, template: c.template, size: c.size, kind: c.kind, urgency: c.urgency,
@@ -594,7 +607,9 @@ const bus = createBus(m => {
     // 叫醒了它就按章法接着问、接着写，讲完的书又活了
     if (!store.get('story.active')) return
     store.set('story.phase', 'asking')
-    pipeline.run('[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主', { source: 'system:chapterDone' })
+    // 经 Scheduler（R-2）而不是裸调 pipeline.run：以前这里绕开一切并发保护，
+    // 章末唤醒能在用户正说着别的话题时抢着 ++gen，把用户那一轮判成 stale
+    scheduler.submit('[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主', { source: 'system:chapterDone' })
     return
   }
   if (m.type === 'userAction') {
@@ -892,7 +907,7 @@ async function ask(text: string, opts: { answer?: boolean; source?: string } = {
   log('u', `\n▸ ${text}`)
 
   const t0 = performance.now()
-  const r = await pipeline.run(text, opts)
+  const r = await scheduler.submit(text, opts)
 
   let rn = 0
   for (const s of r.trace) {

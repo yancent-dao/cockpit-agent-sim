@@ -1985,11 +1985,12 @@ describe('数组元素形状校验', () => {
     const m = new Map<string, string>()
     const storyStore = (await import('../../src/state/story')).createStoryStore(
       { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } as any)
-    storyStore.saveCast('data:image/png;base64,CAST')   // begin 的前置：定妆照已就位
+    storyStore.savePhoto('p'); storyStore.consent()
     const reg2 = createRegistry(store2, TOOLS, Date.now, {
       desk: createDeskForTest(), story: storyStore,
       image: { generate: async () => ({ dataUrl: 'data:image/png;base64,PAGE', cost: 1 }) },
     } as any)
+    await reg2.invoke('story.cast', { look: 'x' })   // 状态机要求每本书都过定妆流程
     const pages = [{ line: '第一页', scene: '森林' }, { line: '第二页', scene: '小屋' }, { line: '第三页', scene: '床铺' }]
     const r = await reg2.invoke('story.begin', { title: '测试', pages: { item: { item: [pages] } } })
     expect(r.status).toBe('ok')

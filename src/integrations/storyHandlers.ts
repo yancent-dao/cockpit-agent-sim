@@ -17,6 +17,7 @@ import type { Store } from '../core/store'
 import type { Desk } from '../cards/desk'
 import type { StoryStore, Book, BookPage } from '../state/story'
 import type { ToolResult } from '../tools/registry'
+import { createFlow } from '../core/flow'
 
 /** 模型给的一页：念的话 + 画什么 */
 interface PageSpec { line: string; scene: string }
@@ -70,6 +71,43 @@ export function createStoryHandlers(
 
   const reject = (code: string, message: string): ToolResult =>
     ({ status: 'rejected', code, message })
+
+  /**
+   * 状态机（交互总设计 R2）：每个状态只放行白名单内的工具，其余拒绝并
+   * 告诉模型现在处在哪。把 STORY_ENDED/章末闸这类散点锁门升级为契约。
+   */
+  const flow = createFlow({
+    id: 'story', initial: 'idle',
+    states: {
+      idle: { tools: ['story.profile', 'story.cast'], deny: '还没开书。先 story.cast 给主角定妆，家长认可后才 begin' },
+      casting: { tools: ['story.profile', 'story.cast', 'story.begin'], deny: '定妆照在等家长认可——除了重画（cast）什么都别做' },
+      telling: { tools: ['story.profile', 'story.continue', 'story.finish', 'story.page'], deny: '正在讲这本书，不能重新 begin/cast。想收尾用 story.finish' },
+      done: { tools: ['story.profile', 'story.cast', 'story.export'], deny: '这本已经讲完收场了。只有孩子亲口说"再讲一个"才重新 cast 开新书' },
+    },
+  })
+  /**
+   * 工具入口闸。先把 flow 对齐到共享信号（director 的关卡收场只写信号，
+   * 不进这个闭包——信号是跨模块的唯一事实，flow 跟它走，消除双源漂移），
+   * 再按状态白名单判定。
+   */
+  const gate = (tool: string): ToolResult | null => {
+    // 只对 telling 态对齐：casting 态 active 本来就是 false（还没开书），
+    // 误判成"已收场"会把 begin 拒在门外
+    if (flow.state === 'telling' && !store.get('story.active')) flow.to('done')
+    const why = flow.allow(tool)
+    return why ? reject('WRONG_PHASE', why) : null
+  }
+
+  /**
+   * **唯一的翻篇出口**（六个入口全走这：语音 finish / 划走 / ✕ / 关窗口 /
+   * 模型 card.dismiss / 将来导航到站）。任何一条路都不可能只收一半。
+   */
+  const endStory = () => {
+    flow.to('done')
+    store.set('story.phase', 'done')
+    store.set('story.active', false)
+    store.set('story.pending', 0)
+  }
 
   /** 当前页的内容推给卡片。一张卡换版式，不是四张卡 */
   const paint = (extra: Record<string, unknown> = {}) => {
@@ -198,6 +236,7 @@ export function createStoryHandlers(
      * 任何一条通往"把照片发出去"的路径都得过同一个闸。
      */
     storyCast: async (a: any): Promise<ToolResult> => {
+      const g = gate('story.cast'); if (g) return g
       const s = story()
       if (!s.consented())
         return reject('NEED_CONSENT', '照片要发给画图的模型才能生成主角，得先请家长在控制面板上点头同意')
@@ -224,19 +263,23 @@ export function createStoryHandlers(
         key: CARD, template: 'storybook', kind: 'system', urgency: 'urgent', ttl: 'untilDismissed',
         data: { title: '这是故事里的主角', line: '像吗？不像的话我再画一张', photo, image: url, page: 0, total: 0 },
       })
+      flow.to('casting')
       return { status: 'ok', message: '主角画好了，给家长看看像不像', data: { cost: spent } }
     },
 
     storyBegin: async (a: any): Promise<ToolResult> => {
+      const g = gate('story.begin'); if (g) return g
       if (!story().cast()) return reject('NO_CAST', '还没给主角定妆，先调 story.cast 画一张')
       const specs: PageSpec[] = a?.pages ?? []
       draft = { title: String(a?.title ?? '我们的故事'), pages: [], ideas: [], chapter: 0, chapterEnd: 0 }
       store.set('story.active', true)
+      flow.to('telling')
       await addChapter(specs)
       return { status: 'ok', message: `《${draft.title}》开讲了`, data: { pages: specs.length, cost: spent } }
     },
 
     storyContinue: async (a: any): Promise<ToolResult> => {
+      const g = gate('story.continue'); if (g) return g
       if (!draft) return reject('NO_STORY', '还没有正在讲的故事，先调 story.begin 开一本')
       // 收场要锁门（2026-08-19 实拍：说了"结束"finish 也 ok 了，迟到的 continue
       // 还能进来——addChapter 会把 phase 写回 telling，自动朗读链全面复活，
@@ -252,6 +295,7 @@ export function createStoryHandlers(
     },
 
     storyFinish: async (a: any): Promise<ToolResult> => {
+      const g = gate('story.finish'); if (g) return g
       if (!draft) return reject('NO_STORY', '还没有正在讲的故事')
       const end = String(a?.ending ?? '')
       if (end) {
@@ -274,15 +318,14 @@ export function createStoryHandlers(
       finished = book
       const note = kept === 'text' ? '，不过手机存不下这么多图，只留住了文字'
         : kept === 'failed' ? '，不过这本没能存下来，想留着就现在导出' : ''
-      store.set('story.phase', 'done')
-      store.set('story.active', false)
-      store.set('story.pending', 0)
+      endStory()
       paint({ done: true })
       return { status: 'ok', message: `《${book.title}》讲完了，${book.pages.length} 页${note}`, data: { cost: spent } }
     },
 
     /** 翻页：屏幕按钮直调，不叫醒模型。翻到头停住，不绕回也不报错 */
     storyPage: async (a: any): Promise<ToolResult> => {
+      const g = gate('story.page'); if (g) return g
       if (!draft) return reject('NO_STORY', '现在没有在讲的故事')
       const cur = store.get('story.page') as number
       const dir = String(a?.dir ?? 'next')

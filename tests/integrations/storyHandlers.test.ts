@@ -111,7 +111,7 @@ describe('开篇', () => {
     await h.storyFinish({ ending: '完' })
     expect(story.books()[0].pages, '3 页正文 + 1 页结尾').toHaveLength(4)
     boot()
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('a', 'b') })
     await h.storyFinish({ ending: '完' })
     expect(story.books()[0].pages, '给 2 页就是 2 页 —— 没有任何按章节号的硬编码').toHaveLength(3)
@@ -147,13 +147,18 @@ describe('开篇', () => {
    */
   it('开篇立刻返回，不等图 —— pending 还大于 0 就已经能讲了', async () => {
     boot()
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     // 卡住画图，模拟真实的 11 秒/张
     let release!: () => void
     const gate = new Promise<void>(r => { release = r })
+    let first = true   // 重建 handlers 后 flow 回 idle（=刷新语义），先补一次定妆
     h = createStoryHandlers(store, () => desk, () => story, () => ({
-      async generate(o: any) { drawn.push(o.prompt); await gate; return { dataUrl: 'data:image/png;base64,X', cost: 0 } },
+      async generate(o: any) {
+        if (first) { first = false; return { dataUrl: 'data:image/png;base64,CAST', cost: 0 } }
+        drawn.push(o.prompt); await gate; return { dataUrl: 'data:image/png;base64,X', cost: 0 }
+      },
     }) as any)
+    await h.storyCast({ look: 'x' })
     const r = await h.storyBegin({ title: 'T', pages: pages('第一句', '第二句') })
     expect(r.status).toBe('ok')
     expect(store.get('story.pending'), '图还在画').toBeGreaterThan(0)
@@ -173,18 +178,21 @@ describe('开篇', () => {
    */
   it('一章的图并发画 —— 三张同时在飞，不是排队', async () => {
     boot()
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     let live = 0, peak = 0
     let release!: () => void
     const gate = new Promise<void>(r => { release = r })
+    let first = true
     h = createStoryHandlers(store, () => desk, () => story, () => ({
       async generate() {
+        if (first) { first = false; return { dataUrl: 'data:image/png;base64,CAST', cost: 0 } }
         live++; peak = Math.max(peak, live)
         await gate
         live--
         return { dataUrl: 'data:image/png;base64,X', cost: 0 }
       },
     }) as any)
+    await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('一', '二', '三') })
     await Promise.resolve()
     expect(peak, '三张该同时在画').toBe(3)
@@ -194,16 +202,18 @@ describe('开篇', () => {
   /** 并发之后先画完的先落位 —— 图必须落到自己那一页，不能按完成顺序错位 */
   it('乱序返回时每张图仍落在自己那一页', async () => {
     boot()
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     const gates: Array<() => void> = []
-    let n = 0
+    let n = 0, first = true
     h = createStoryHandlers(store, () => desk, () => story, () => ({
       async generate() {
+        if (first) { first = false; return { dataUrl: 'CAST', cost: 0 } }
         const i = n++
         await new Promise<void>(r => gates.push(r))
         return { dataUrl: 'IMG' + i, cost: 0 }
       },
     }) as any)
+    await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('一', '二', '三') })
     await new Promise(r => setTimeout(r, 0))
     // 倒着放行：第三张先画完
@@ -221,10 +231,10 @@ describe('开篇', () => {
     expect(store.get('story.phase')).toBe('telling')
   })
 
-  it('没定妆就开篇 → 明说要先定妆', async () => {
+  it('没定妆就开篇 → 状态机拦下，明说要先定妆', async () => {
     const r = await h.storyBegin({ title: 'T', pages: pages('a') })
     expect(r.status).toBe('rejected')
-    expect(r.code).toBe('NO_CAST')
+    expect(String(r.message)).toContain('定妆')
   })
 
   /**
@@ -232,8 +242,16 @@ describe('开篇', () => {
    * **文字全文先落本地**，图缺就缺，纯语音继续讲。
    */
   it('画图失败时故事照常开讲，不整个失败', async () => {
-    boot({ fail: true })
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    boot()
+    story.savePhoto('p'); story.consent()
+    let first = true   // 定妆成功、正文全失败——测的是"讲述期断网/没额度"
+    h = createStoryHandlers(store, () => desk, () => story, () => ({
+      async generate() {
+        if (first) { first = false; return { dataUrl: 'CAST', cost: 0 } }
+        throw Object.assign(new Error('画不出来'), { code: 'NO_IMAGE' })
+      },
+    }) as any)
+    await h.storyCast({ look: 'x' })
     const r = await h.storyBegin({ title: 'T', pages: pages('从前有座桥') })
     expect(r.status).toBe('ok')
     expect(desk.layout().cards.find(c => c.template === 'storybook')!.data.line).toContain('从前有座桥')
@@ -242,7 +260,7 @@ describe('开篇', () => {
 
 describe('续章：一起写', () => {
   const upTo = async () => {
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('a', 'b', 'c') })
   }
 
@@ -260,16 +278,16 @@ describe('续章：一起写', () => {
     expect(store.get('story.chapter')).toBe(2)
   })
 
-  it('还没开篇就续章 → 拒绝，说清要先开篇', async () => {
+  it('还没开篇就续章 → 状态机拦下，说清现在该干嘛', async () => {
     const r = await h.storyContinue({ idea: 'x', pages: pages('a') })
     expect(r.status).toBe('rejected')
-    expect(r.code).toBe('NO_STORY')
+    expect(String(r.message)).toContain('还没开书')
   })
 })
 
 describe('收尾成书', () => {
   const full = async () => {
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: '妞妞和小熊的雨天', pages: pages('a', 'b', 'c') })
     await h.storyContinue({ idea: '会飞的自行车', pages: pages('d', 'e') })
     return h.storyFinish({ ending: '他们回到了外婆家' })
@@ -294,7 +312,7 @@ describe('收尾成书', () => {
     h = createStoryHandlers(store, () => desk, () => fake as any, () => ({
       async generate() { return { dataUrl: 'IMG', cost: 0 } },
     }) as any)
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('a') })
     const r = await h.storyFinish({ ending: '完' })
     expect(r.status).toBe('ok')
@@ -307,7 +325,7 @@ describe('收尾成书', () => {
     h = createStoryHandlers(store, () => desk, () => fake as any, () => ({
       async generate() { return { dataUrl: 'IMG', cost: 0 } },
     }) as any)
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('a') })
     const r = await h.storyFinish({ ending: '完' })
     expect(r.message, '得说没存下').toMatch(/存不下|没存|没能存/)
@@ -335,7 +353,7 @@ describe('收尾成书', () => {
 
 describe('翻页：屏幕按钮直调，不叫醒模型', () => {
   const three = async () => {
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('一', '二', '三') })
   }
 
@@ -427,15 +445,16 @@ describe('讲起来之后定妆照要退场', () => {
 describe('正文用方形画幅', () => {
   it('每一页都按 1:1 画 —— 左栏是方的，方图才填得满', async () => {
     boot()
-    story.savePhoto('p'); story.consent(); story.saveCast('c')
+    story.savePhoto('p'); story.consent(); await h.storyCast({ look: 'x' })
     const seen: string[] = []
     h = createStoryHandlers(store, () => desk, () => story, () => ({
       async generate(o: any) { seen.push(o.aspect); return { dataUrl: 'IMG', cost: 0 } },
     }) as any)
+    await h.storyCast({ look: 'x' })
     await h.storyBegin({ title: 'T', pages: pages('一', '二') })
     await new Promise(r => setTimeout(r, 0))
-    expect(seen.length).toBeGreaterThan(0)
-    for (const a of seen) expect(a, '正文页画幅').toBe('1:1')
+    expect(seen.length).toBeGreaterThan(1)
+    for (const a of seen.slice(1)) expect(a, '正文页画幅').toBe('1:1')
   })
 })
 
@@ -460,9 +479,12 @@ describe('finish 之后故事就锁门了', () => {
     expect(store.get('story.phase'), 'phase 不许被写回 telling').toBe('done')
   })
 
-  it('finish 后重新 begin 开新书不受影响', async () => {
+  it('finish 后开新书：先重新 cast（每本书都过家长把关）再 begin', async () => {
     await open()
     await h.storyFinish({ ending: '完。' })
+    const direct = await h.storyBegin({ title: '第二本', pages: pages('d') })
+    expect(direct.status, '跳过定妆直接 begin 要被状态机拦').toBe('rejected')
+    await h.storyCast({ look: 'y' })
     const r = await h.storyBegin({ title: '第二本', pages: pages('d', 'e', 'f') })
     expect(r.status).toBe('ok')
     expect(store.get('story.active')).toBe(true)

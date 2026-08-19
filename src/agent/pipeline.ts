@@ -5,7 +5,7 @@ import type { AgentManifest } from '../../agents/main-agent/manifest'
 import { buildSystemPrompt } from './context'
 
 export type TraceStep =
-  | { type: 'userInput'; at: number; text: string }
+  | { type: 'userInput'; at: number; text: string; runId?: string; source?: string }
   | { type: 'prompt'; at: number; system: string; toolCount: number; layer?: 'fast' | 'slow'; llmMs?: number
       /** 调试全量：这一轮送进模型的消息视图与模型原始返回（产品点名要能逐轮看） */
       view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> } }
@@ -298,7 +298,10 @@ export function createPipeline(deps: PipelineDeps) {
     denied = results
       .filter(({ result }) => result.code === 'NOT_AUTHORIZED')
       .map(({ c }) => registry.canonicalName(c.name))
-    allDenied = denied.length > 0 && denied.length === results.length
+    // "整轮越权"按**业务调用**算——快层惯常"越权调用+handoff 同轮"，
+    // 把 meta 算进分母的话这个判定永远不成立，接力棒递不出去（TDD 抓到）
+    const bizN = results.filter(({ c }) => !Object.keys(interceptors).find(k => isMeta(c.name, k))).length
+    allDenied = denied.length > 0 && denied.length === bizN
     if (opts.lane)
       // 本轮 ok 的签名 + 本轮被 REPEAT_CALL 拦下的签名都记住——
       // 只记 ok 的话熔断只挡一轮：拦截轮没有 ok，表被清空，第三轮同参重放
@@ -309,6 +312,7 @@ export function createPipeline(deps: PipelineDeps) {
         .map(({ c }) => `${registry.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)))
     const biz = results.filter(({ c }) => !Object.keys(interceptors).find(k => isMeta(c.name, k)))
     bizCalls = biz.length
+    if (biz.length) actedGens.add(g)   // 这个 run 有副作用了——不再可被吞并
     bizOk = biz.filter(({ result }) => result.status === 'ok').length
     // 快层的拒绝是常态（越权 → 转交），不算撞墙，别污染计数
     const bad = opts.quietRejects ? []
@@ -606,7 +610,8 @@ export function createPipeline(deps: PipelineDeps) {
 
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
   async function runSlow(g: number, suggested: string[], trace: TraceStep[],
-                         handover: string[] = [], fastReported = false, fastSpoke = false): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
+                         handover: string[] = [], fastReported = false, fastSpoke = false,
+                         fastSaid = ''): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
     /**
      * 慢层复述静音（2026-08-17 实拍）。屏端同文去重逮不住换说法的复述
      * （「车窗已打开」→「窗户也打开了」），persona 的"说过的不许再说"
@@ -629,6 +634,13 @@ export function createPipeline(deps: PipelineDeps) {
      * trace 照旧真实——这只改模型看到的，不改人排查看到的。
      */
     const view = thread.slice().map(m => {
+      /**
+       * 快层话术的读者视角注释（交互总设计 R3-①，实拍："导航得同事来搞"
+       * 进了 thread，慢层信了真有第三方，导航一个没调还说"同事在搞了"）。
+       * 原文不动（thread/trace 是历史），只在慢层的视图里点破。
+       */
+      if (m.role === 'assistant' && fastSaid && m.content === fastSaid)
+        return { ...m, content: `【你的快手分身刚对用户说】"${fastSaid}"（它口中的"同事/转交"都是指你自己，没有别人；它没办完的事由你办完再收尾）` }
       if (m.role !== 'tool' || !String(m.content).includes('NOT_AUTHORIZED')) return m
       try {
         const r = JSON.parse(String(m.content))
@@ -638,6 +650,10 @@ export function createPipeline(deps: PipelineDeps) {
           message: `这条是权限受限的快层分身被拒后转交的——你有权限${tool ? `，直接调 ${tool} 继续` : '，直接调同名工具继续'}` }) }
       } catch { return m }
     })
+    // 接力清单显式化（R3-②）：快层没办完、点名由你办的工具，一行摆在眼前——
+    // 收场时它还在视野里，"没下文"的概率大降
+    if (handover.length)
+      view.push({ role: 'system', content: `快层没办完、点名由你办的：${handover.join('、')}——办完（或说明办不了）再收尾` })
     /**
      * **接力棒必须看得见**（2026-08-17 实拍回归）。「整轮越权立刻转交」把
      * 快层第二轮省掉之后，thread 的最后一幕是「调工具 → NOT_AUTHORIZED」——
@@ -756,17 +772,38 @@ export function createPipeline(deps: PipelineDeps) {
     return { said: fallback, rounds, stop: 'maxRounds' }
   }
 
-  async function run(text: string, runOpts: { answer?: boolean } = {}): Promise<TurnResult> {
+  let runSeq = 0
+  /** 在飞的 run：文本 + 是否已产生副作用（首个业务调用时置真）。R1-① 吞并判据 */
+  let inflight: { gen: number; text: string; userMsg: Msg } | null = null
+  const actedGens = new Set<number>()
+  async function run(text: string, runOpts: { answer?: boolean; source?: string } = {}): Promise<TurnResult> {
     const trace: TraceStep[] = []
+    // run 可观测（交互总设计 R1-②）：每个 run 有唯一 id 与来源标签——
+    // double-run、幽灵 run 从"疑似"变"看得见"
+    const runId = `r${++runSeq}`
+    const source = runOpts.source ?? (runOpts.answer ? 'tap-answer' : 'voice')
     // 空输入直接返回：送进模型它会凭空发挥（实测会无端开窗）
     if (!text.trim()) return { reply: '', trace, rounds: 0, stopReason: 'empty' }
+    /**
+     * 未起飞输入合并（交互总设计 R1-①，实拍两次整轮蒸发：讲故事第一句、
+     * 24点游戏+美股）：前句 run 还没产生任何副作用就来了新句 → 吞并——
+     * 旧孤立 user 消息撤掉，两句合并成一条明示"连说两句"。
+     * 已在执行的仍按既有 stale 规则（活干完、不抢麦）。
+     */
+    if (inflight && !actedGens.has(inflight.gen)
+        && thread[thread.length - 1] === inflight.userMsg) {
+      thread.pop()
+      text = `${inflight.text}（用户紧接着又说）${text}`
+    }
     const g = ++gen
     resetWall()          // 新一轮从零开始数，别把上一轮的墙带过来
     prevOk.clear()       // 打转熔断同理：跨 turn 的重复是新意愿，不拦
     deps.onTurnStart?.()
-    trace.push({ type: 'userInput', at: clock(), text })
+    trace.push({ type: 'userInput', at: clock(), text, runId, source } as any)
     boundary = thread.length
-    thread.push({ role: 'user', content: text })
+    const userMsg: Msg = { role: 'user', content: text }
+    thread.push(userMsg)
+    inflight = { gen: g, text, userMsg }
     emit({ type: 'thinking' })
 
     // pending 确认直达慢层（§4.2）：快层不知道有确认挂着，接了必错。
@@ -807,7 +844,7 @@ export function createPipeline(deps: PipelineDeps) {
       } else if (pending) fast.suggested = [pending.tool]
       // askJump（无 pending）：不预载，慢层自己看上下文接答案
 
-      const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said)
+      const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said, fast.said)
       // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
       if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
       return {

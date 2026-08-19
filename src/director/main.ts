@@ -65,6 +65,8 @@ const pexelsKey: string = (import.meta as any).env?.VITE_PEXELS_KEY || ''
 const amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : undefined
 if (!amapWebKey) console.warn('未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable')
 // iTunes 不需要 Key，直接装配。它走 JSONP（不支持 CORS），载入器默认用 <script> 标签
+/** 屏幕点选的等价触发去重窗口（R1-③） */
+let lastAnswer = { said: '', at: 0 }
 /** 本面板的写者身份。多面板并存时新开的接管，旧的让位（election.ts） */
 const ME: Writer = { src: Math.random().toString(36).slice(2, 10), boot: Date.now() }
 let muted = false
@@ -434,6 +436,20 @@ function renderStagedList(openIt = false) {
     urgency: 'urgent', ttl: 'untilTaskEnd', data: { title: '还在后台的内容', items } })
 }
 desk.subscribe(() => renderStagedList())
+/**
+ * 翻篇统一出口的 director 半边（交互总设计 R2）：绘本卡从桌面**彻底消失**
+ * （findByKey 台上台下都查——被挤下台不算消失）且故事还活着 → 收场。
+ * 状态一落，storyHandlers 的状态机对齐 + 各闸全部生效；覆盖模型
+ * card.dismiss 这类不走 userAction 的撤卡路径（实拍：模型关卡后故事还活着）。
+ */
+desk.subscribe(() => {
+  if (!store.get('story.active')) return
+  if (desk.findByKey('storybook')) return
+  store.set('story.phase', 'done')
+  store.set('story.active', false)
+  store.set('story.pending', 0)
+  log('p', '⛔ 绘本卡不在桌面了，故事就此收场')
+})
 /** 生成式卡的自检结果。车机屏那边量的（Node 里没有 DOM 量不了），这里只做记录 */
 const canvasNotes = new Map<string, { stripped?: string[]; overflow?: boolean; bumps?: number }>()
 
@@ -578,7 +594,7 @@ const bus = createBus(m => {
     // 叫醒了它就按章法接着问、接着写，讲完的书又活了
     if (!store.get('story.active')) return
     store.set('story.phase', 'asking')
-    pipeline.run('[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主')
+    pipeline.run('[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主', { source: 'system:chapterDone' })
     return
   }
   if (m.type === 'userAction') {
@@ -600,14 +616,6 @@ const bus = createBus(m => {
       } else {
         desk.dismiss(m.cardId, { byUser: true })
         log('u', `[屏幕] 划走了「${card.data?.title ?? card.template}」`)
-        // 关掉绘本卡 = 不想看了 = 故事就此收场（2026-08-19 实拍：关了卡
-        // 翻页/迟到 run 一 paint 又弹回来）。状态一落，续写闸/章末闸/
-        // 自动朗读全部按既有判据停——一处写状态，处处生效
-        if (card.template === 'storybook' && store.get('story.active')) {
-          store.set('story.phase', 'done')
-          store.set('story.active', false)
-          log('p', '⛔ 用户关掉了绘本卡，故事就此收场')
-        }
       }
     } else if (decl.route === 'tool') {
       log('u', `[屏幕] ${m.act} → ${decl.tool}`)
@@ -618,8 +626,18 @@ const bus = createBus(m => {
       })
     } else {
       const said = `（用户在屏幕上点选）${m.value ?? m.act}`
+      /**
+       * 等价触发去重（交互总设计 R1-③）：同一按钮 3 秒内点两下（第一下没看到
+       * 反馈再点是人的本能，双通道漏网也走这兜底）→ 第二下忽略。
+       * 实拍：点一次"就是他"起了两条 run，第二条把定妆→确认→开书重走一遍。
+       */
+      if (said === lastAnswer.said && Date.now() - lastAnswer.at < 3000) {
+        log('p', '（重复点选，已忽略）')
+        return
+      }
+      lastAnswer = { said, at: Date.now() }
       log('u', `[屏幕] ${said}`)
-      ask(said, { answer: true })   // 屏端回答直达慢层——快层对"第4个"无事可做
+      ask(said, { answer: true, source: 'tap-answer' })   // 屏端回答直达慢层——快层对"第4个"无事可做
     }
     return
   }
@@ -862,7 +880,7 @@ pipeline.on(e => {
 })
 
 /* ══════════ 发起一轮对话 ══════════ */
-async function ask(text: string, opts: { answer?: boolean } = {}) {
+async function ask(text: string, opts: { answer?: boolean; source?: string } = {}) {
   // 夺回写权：用户在这个面板开口 = 要用它
   if (muted) { muted = false; ME.boot = Date.now(); log('p', '本面板已接管写屏'); pushDesk(); push() }
   // 不设 busy 闸：barge-in 是常态，世代戳在 pipeline 里管（§4.1）
@@ -878,6 +896,9 @@ async function ask(text: string, opts: { answer?: boolean } = {}) {
 
   let rn = 0
   for (const s of r.trace) {
+    // run 可观测：来源与 runId 打头——double-run/幽灵 run 一眼即辨
+    if (s.type === 'userInput' && (s as any).runId)
+      log('p', `  ⟪${(s as any).runId} · ${(s as any).source}⟫`)
     // 分层流水：⚡快层 / 🐢慢层，每轮标 LLM 耗时——一个需求的流转一眼可读。
     // 完整 Prompt / 消息视图 / 模型原始返回打进浏览器控制台（面板放不下也不该放）
     if (s.type === 'prompt') {

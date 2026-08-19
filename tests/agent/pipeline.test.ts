@@ -932,3 +932,56 @@ describe('REPEAT_CALL 不许隔轮穿透（实拍：story.begin 同参重放，�
     expect(results[2].result.code, '隔轮重放也要拦——执念要换参数才放行').toBe('REPEAT_CALL')
   })
 })
+
+/**
+ * ══════════ 交互总设计 P1（2026-08-19）══════════
+ */
+describe('R1-① 未起飞输入合并：前句零副作用就吞并，不丢弃', () => {
+  it('前句 run 还没调过工具，新句进来 → 两句合并进同一个 run', async () => {
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+    // 前句的快层挂 80ms 才回——期间新句进来
+    const fast = fakeLLM(
+      async () => { await sleep(80); return { text: '' } },
+      () => ({ text: '' }),
+    )
+    const slow = fakeLLM(() => ({ text: '好' }), () => ({ text: '好' }))
+    const { p } = mk(fast, slow)
+    const a = p.run('来个24点小游戏')
+    await sleep(10)
+    const b = p.run('再查下美股')
+    await Promise.all([a, b])
+    const lastReq = slow.seen[slow.seen.length - 1]
+    const users = lastReq.messages.filter((m: any) => m.role === 'user').map((m: any) => m.content)
+    // 合并的本质：两句在**同一条** user 消息里（明示"连说两句"），旧孤立消息被撤
+    expect(users, '吞并后只有一条 user 消息').toHaveLength(1)
+    expect(users[0]).toContain('24点')
+    expect(users[0]).toContain('美股')
+  })
+})
+
+describe('R3 快层话术的读者视角注释', () => {
+  it('慢层视图里快层的话带注释——"同事"就是它自己', async () => {
+    const fast = fakeLLM(() => ({ text: '导航得同事来搞，我先放歌',
+      toolCalls: [call('music.play', { query: '周杰伦' })] }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路，放周杰伦')
+    const req = slow.seen[0]
+    const flat = JSON.stringify(req.messages)
+    expect(flat).toContain('快手分身')
+    expect(flat, '注释要点破"同事"就是读者自己').toContain('指你自己')
+  })
+})
+
+describe('R3 接力清单显式化', () => {
+  it('快层越权的工具以任务清单形式出现在慢层视图里', async () => {
+    const fast = fakeLLM(() => ({ text: '',
+      toolCalls: [call('navigation.setDestination', { destination: '春熙路' }), call('agent.handoff', {})] }))
+    const slow = fakeLLM(() => ({ text: '' }), () => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('导航去春熙路')
+    const flat = JSON.stringify(slow.seen[0].messages) + (slow.seen[0].system ?? '')
+    expect(flat, '接力清单点名未办的工具').toContain('navigation.setDestination')
+    expect(flat).toMatch(/没办完|由你办/)
+  })
+})

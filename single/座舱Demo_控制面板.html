@@ -3716,6 +3716,30 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     };
   }
 
+  // src/core/flow.ts
+  function createFlow(decl) {
+    let current = decl.initial;
+    const managed = new Set(Object.values(decl.states).flatMap((s) => s.tools));
+    return {
+      get state() {
+        return current;
+      },
+      /** 转移。未知状态直接抛——声明写错要炸在开发期，不要在运行期静默吞 */
+      to(next) {
+        if (!decl.states[next]) throw new Error(`flow ${decl.id}：没有状态 ${next}`);
+        current = next;
+      },
+      /**
+       * 这个工具现在能不能调。null = 放行；字符串 = 拒绝理由（给模型的人话）。
+       * 不归本流程管的工具一律放行——状态机只管自家流程。
+       */
+      allow(tool) {
+        if (!managed.has(tool)) return null;
+        return decl.states[current].tools.includes(tool) ? null : decl.states[current].deny;
+      }
+    };
+  }
+
   // src/integrations/storyHandlers.ts
   var CARD = "storybook";
   var DEFAULT_STYLE = "扁平矢量童书插画，柔和暖色，干净背景";
@@ -3731,6 +3755,27 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       store2.set("story.cents", Math.round(spent * 100));
     };
     const reject = (code, message) => ({ status: "rejected", code, message });
+    const flow = createFlow({
+      id: "story",
+      initial: "idle",
+      states: {
+        idle: { tools: ["story.profile", "story.cast"], deny: "还没开书。先 story.cast 给主角定妆，家长认可后才 begin" },
+        casting: { tools: ["story.profile", "story.cast", "story.begin"], deny: "定妆照在等家长认可——除了重画（cast）什么都别做" },
+        telling: { tools: ["story.profile", "story.continue", "story.finish", "story.page"], deny: "正在讲这本书，不能重新 begin/cast。想收尾用 story.finish" },
+        done: { tools: ["story.profile", "story.cast", "story.export"], deny: '这本已经讲完收场了。只有孩子亲口说"再讲一个"才重新 cast 开新书' }
+      }
+    });
+    const gate = (tool) => {
+      if (flow.state === "telling" && !store2.get("story.active")) flow.to("done");
+      const why = flow.allow(tool);
+      return why ? reject("WRONG_PHASE", why) : null;
+    };
+    const endStory = () => {
+      flow.to("done");
+      store2.set("story.phase", "done");
+      store2.set("story.active", false);
+      store2.set("story.pending", 0);
+    };
     const paint = (extra = {}) => {
       if (!store2.get("story.active") && !extra.done) return;
       const page = store2.get("story.page");
@@ -3810,6 +3855,8 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
        * 任何一条通往"把照片发出去"的路径都得过同一个闸。
        */
       storyCast: async (a) => {
+        const g = gate("story.cast");
+        if (g) return g;
         const s = story2();
         if (!s.consented())
           return reject("NEED_CONSENT", "照片要发给画图的模型才能生成主角，得先请家长在控制面板上点头同意");
@@ -3840,17 +3887,23 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           ttl: "untilDismissed",
           data: { title: "这是故事里的主角", line: "像吗？不像的话我再画一张", photo, image: url, page: 0, total: 0 }
         });
+        flow.to("casting");
         return { status: "ok", message: "主角画好了，给家长看看像不像", data: { cost: spent } };
       },
       storyBegin: async (a) => {
+        const g = gate("story.begin");
+        if (g) return g;
         if (!story2().cast()) return reject("NO_CAST", "还没给主角定妆，先调 story.cast 画一张");
         const specs = a?.pages ?? [];
         draft = { title: String(a?.title ?? "我们的故事"), pages: [], ideas: [], chapter: 0, chapterEnd: 0 };
         store2.set("story.active", true);
+        flow.to("telling");
         await addChapter(specs);
         return { status: "ok", message: `《${draft.title}》开讲了`, data: { pages: specs.length, cost: spent } };
       },
       storyContinue: async (a) => {
+        const g = gate("story.continue");
+        if (g) return g;
         if (!draft) return reject("NO_STORY", "还没有正在讲的故事，先调 story.begin 开一本");
         if (!store2.get("story.active"))
           return {
@@ -3864,6 +3917,8 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         return { status: "ok", message: "接着往下讲了", data: { cost: spent } };
       },
       storyFinish: async (a) => {
+        const g = gate("story.finish");
+        if (g) return g;
         if (!draft) return reject("NO_STORY", "还没有正在讲的故事");
         const end = String(a?.ending ?? "");
         if (end) {
@@ -3881,14 +3936,14 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
         const kept = story2().saveBook(book);
         finished = book;
         const note = kept === "text" ? "，不过手机存不下这么多图，只留住了文字" : kept === "failed" ? "，不过这本没能存下来，想留着就现在导出" : "";
-        store2.set("story.phase", "done");
-        store2.set("story.active", false);
-        store2.set("story.pending", 0);
+        endStory();
         paint({ done: true });
         return { status: "ok", message: `《${book.title}》讲完了，${book.pages.length} 页${note}`, data: { cost: spent } };
       },
       /** 翻页：屏幕按钮直调，不叫醒模型。翻到头停住，不绕回也不报错 */
       storyPage: async (a) => {
+        const g = gate("story.page");
+        if (g) return g;
         if (!draft) return reject("NO_STORY", "现在没有在讲的故事");
         const cur = store2.get("story.page");
         const dir = String(a?.dir ?? "next");
@@ -6627,11 +6682,13 @@ ${extras.desktop}`);
         return { c, result };
       }));
       denied = results.filter(({ result }) => result.code === "NOT_AUTHORIZED").map(({ c }) => registry2.canonicalName(c.name));
-      allDenied = denied.length > 0 && denied.length === results.length;
+      const bizN = results.filter(({ c }) => !Object.keys(interceptors).find((k) => isMeta(c.name, k))).length;
+      allDenied = denied.length > 0 && denied.length === bizN;
       if (opts.lane)
         prevOk.set(opts.lane, new Set(results.filter(({ c, result }) => (result.status === "ok" || result.code === "REPEAT_CALL") && !Object.keys(interceptors).find((k) => isMeta(c.name, k))).map(({ c }) => `${registry2.canonicalName(c.name)}|${JSON.stringify(c.args ?? {})}`)));
       const biz = results.filter(({ c }) => !Object.keys(interceptors).find((k) => isMeta(c.name, k)));
       bizCalls = biz.length;
+      if (biz.length) actedGens.add(g);
       bizOk = biz.filter(({ result }) => result.status === "ok").length;
       const bad = opts.quietRejects ? [] : results.filter(({ result }) => result.status === "rejected" || result.status === "unavailable");
       const sig = bad.length === results.length && bad.length ? bad.map(({ c, result }) => `${registry2.canonicalName(c.name)}|${result.code ?? ""}`).sort().join(",") : "";
@@ -6869,13 +6926,15 @@ ${extras.desktop}`);
       const unknown = names.filter((n) => !known.includes(n));
       return known.length ? { status: "ok", message: `已装载：${known.join("、")}${unknown.length ? `；没有这些工具：${unknown.join("、")}` : ""}` } : { status: "rejected", code: "UNKNOWN_TOOL", message: `目录里没有：${names.join("、")}`, suggestion: "对照工具目录里的名字再试" };
     };
-    async function runSlow(g, suggested, trace, handover = [], fastReported = false, fastSpoke = false) {
+    async function runSlow(g, suggested, trace, handover = [], fastReported = false, fastSpoke = false, fastSaid = "") {
       let slowActed = false;
       const canSpeak = () => !fastReported || slowActed;
       let turnOk = 0;
       const sm = deps.slowManifest;
       const loaded = /* @__PURE__ */ new Set([...sm.resident ?? [], ...suggested.map((n) => registry2.canonicalName(n))]);
       const view = thread.slice().map((m) => {
+        if (m.role === "assistant" && fastSaid && m.content === fastSaid)
+          return { ...m, content: `【你的快手分身刚对用户说】"${fastSaid}"（它口中的"同事/转交"都是指你自己，没有别人；它没办完的事由你办完再收尾）` };
         if (m.role !== "tool" || !String(m.content).includes("NOT_AUTHORIZED")) return m;
         try {
           const r = JSON.parse(String(m.content));
@@ -6889,6 +6948,8 @@ ${extras.desktop}`);
           return m;
         }
       });
+      if (handover.length)
+        view.push({ role: "system", content: `快层没办完、点名由你办的：${handover.join("、")}——办完（或说明办不了）再收尾` });
       if (handover.length)
         view.push({ role: "system", content: `刚才的 NOT_AUTHORIZED 是权限受限的快层同事被拒，不是你——**你有权限**，工具已装进你手边：${handover.join("、")}。直接调它把事办完，转交到你为止，不用再转给任何人。` });
       let rounds = 0;
@@ -6983,16 +7044,27 @@ ${extras.desktop}`);
       }
       return { said: fallback, rounds, stop: "maxRounds" };
     }
+    let runSeq = 0;
+    let inflight = null;
+    const actedGens = /* @__PURE__ */ new Set();
     async function run(text, runOpts = {}) {
       const trace = [];
+      const runId = `r${++runSeq}`;
+      const source = runOpts.source ?? (runOpts.answer ? "tap-answer" : "voice");
       if (!text.trim()) return { reply: "", trace, rounds: 0, stopReason: "empty" };
+      if (inflight && !actedGens.has(inflight.gen) && thread[thread.length - 1] === inflight.userMsg) {
+        thread.pop();
+        text = `${inflight.text}（用户紧接着又说）${text}`;
+      }
       const g = ++gen;
       resetWall();
       prevOk.clear();
       deps.onTurnStart?.();
-      trace.push({ type: "userInput", at: clock(), text });
+      trace.push({ type: "userInput", at: clock(), text, runId, source });
       boundary = thread.length;
-      thread.push({ role: "user", content: text });
+      const userMsg = { role: "user", content: text };
+      thread.push(userMsg);
+      inflight = { gen: g, text, userMsg };
       emit({ type: "thinking" });
       const pending = registry2.pendingConfirm();
       const askJump = askPending;
@@ -7007,7 +7079,7 @@ ${extras.desktop}`);
           handover = allDenied ? [...denied] : [];
           fastReported = !!fast.said && fast.did > 0;
         } else if (pending) fast.suggested = [pending.tool];
-        const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said);
+        const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said, fast.said);
         if (!stale(g)) compaction = doCompact(g).catch(() => {
         });
         return {
@@ -9859,6 +9931,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   var pexelsKey = import_meta.env?.VITE_PEXELS_KEY || "";
   var amap = amapWebKey ? createAmapClient(fetch.bind(window), { webKey: amapWebKey }) : void 0;
   if (!amapWebKey) console.warn("未配置 VITE_AMAP_WEB_KEY，navigation.*/weather.query 会报 unavailable");
+  var lastAnswer = { said: "", at: 0 };
   var ME = { src: Math.random().toString(36).slice(2, 10), boot: Date.now() };
   var muted = false;
   var state = createDomainState();
@@ -10199,6 +10272,14 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     });
   }
   desk.subscribe(() => renderStagedList());
+  desk.subscribe(() => {
+    if (!store.get("story.active")) return;
+    if (desk.findByKey("storybook")) return;
+    store.set("story.phase", "done");
+    store.set("story.active", false);
+    store.set("story.pending", 0);
+    log("p", "⛔ 绘本卡不在桌面了，故事就此收场");
+  });
   var canvasNotes = /* @__PURE__ */ new Map();
   function renderInspector() {
     const l = desk.layout();
@@ -10302,7 +10383,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     if (m.type === "storyChapterDone") {
       if (!store.get("story.active")) return;
       store.set("story.phase", "asking");
-      pipeline.run("[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主");
+      pipeline.run("[系统] 这一章的页读完了。你只做一件事：用 voice.ask 问孩子接下来想怎么发展（开放问题，不给选项）。不要调 story.begin，也不要调 story.continue——孩子还没说想法，写什么都是替他做主", { source: "system:chapterDone" });
       return;
     }
     if (m.type === "userAction") {
@@ -10325,11 +10406,6 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         } else {
           desk.dismiss(m.cardId, { byUser: true });
           log("u", `[屏幕] 划走了「${card.data?.title ?? card.template}」`);
-          if (card.template === "storybook" && store.get("story.active")) {
-            store.set("story.phase", "done");
-            store.set("story.active", false);
-            log("p", "⛔ 用户关掉了绘本卡，故事就此收场");
-          }
         }
       } else if (decl.route === "tool") {
         log("u", `[屏幕] ${m.act} → ${decl.tool}`);
@@ -10339,8 +10415,13 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
         });
       } else {
         const said = `（用户在屏幕上点选）${m.value ?? m.act}`;
+        if (said === lastAnswer.said && Date.now() - lastAnswer.at < 3e3) {
+          log("p", "（重复点选，已忽略）");
+          return;
+        }
+        lastAnswer = { said, at: Date.now() };
         log("u", `[屏幕] ${said}`);
-        ask(said, { answer: true });
+        ask(said, { answer: true, source: "tap-answer" });
       }
       return;
     }
@@ -10598,6 +10679,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
     const r = await pipeline.run(text, opts);
     let rn = 0;
     for (const s of r.trace) {
+      if (s.type === "userInput" && s.runId)
+        log("p", `  ⟪${s.runId} · ${s.source}⟫`);
       if (s.type === "prompt") {
         rn++;
         log("p", `  ${s.layer === "fast" ? "⚡快层" : "🐢慢层"} · LLM ${s.llmMs != null ? (s.llmMs / 1e3).toFixed(1) + "s" : "?"} · 注入 ${s.system.length} 字 / ${s.toolCount} 工具`);

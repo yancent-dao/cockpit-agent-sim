@@ -262,6 +262,18 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
      * 落回默认关键词，模型拿到"成功"但结果全是充电站，连撞几轮才发现。
      */
     navSearchAlong: async (args: any): Promise<ToolResult> => {
+      /**
+       * 没传 query 但塞了别的未声明键——大概率又是同一种参数名撞车（撞过
+       * keyword，改名 query 之后模型换了个新猜法 category），照样会静默
+       * 落回默认关键词、返回"成功"但结果全不对，模型拿着假成功继续往下走，
+       * 连撞几轮才发现。判据纯是数据形状（有没有声明外的键），不猜是哪个词、
+       * 不做意图分支——跟 {item} 展平同一条纪律。
+       */
+      const unknown = Object.keys(args ?? {}).filter(k => !['query', 'near', 'radius'].includes(k))
+      if (!args.query && unknown.length)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: `没有 query 参数（收到了：${unknown.join('、')}）`,
+          suggestion: '要搜的关键词请传 query 参数，不是别的名字' }
       const amap = needAmap()
       const carType = store.get('vehicle.carType') as CarType
       const keyword = args.query || (carType === 'fuel' ? '加油站' : '充电站')

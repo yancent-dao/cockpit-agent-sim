@@ -1312,6 +1312,32 @@ describe('navigation.searchAlong —— 沿途/周边搜索', () => {
     expect(decodeURIComponent(seenUrl)).not.toContain('充电站')
   })
 
+  it('传了未声明的键但没传 query——拒掉而不是静默落回默认关键词（实拍：改名 query 之后模型换了个新猜法 category，照样撞见同一种沉默失败：拿到"成功"但结果全是充电站，连撞 4 轮才发现）', async () => {
+    let called = false
+    const amap = createAmapClient((async () => {
+      called = true
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('navigation.searchAlong', { category: '饺子馆' })
+    expect(res.status).toBe('rejected')
+    expect(res.code).toBe('INVALID_PARAMS')
+    expect(res.message).toContain('query')
+    expect(called).toBe(false)   // 没静默兜底去搜默认关键词
+  })
+
+  it('传了 query 时，旁边混进未声明的键不影响——用真正的 query，不是过度拒绝', async () => {
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    const res = await r.invoke('navigation.searchAlong', { query: '饺子', category: '饺子馆' })
+    expect(res.status).toBe('ok')
+    expect(decodeURIComponent(seenUrl)).toContain('饺子')
+  })
+
   it('结果自动上屏，带距离', async () => {
     const desk = createDeskForTest()
     const r = createRegistry(store, TOOLS, () => now, { desk, amap: poiAmap() })

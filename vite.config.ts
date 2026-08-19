@@ -43,6 +43,12 @@ export default defineConfig({
     main: resolve(__dirname, 'index.html'),
     screen: resolve(__dirname, 'screen.html'),
   } } },
-  server: { proxy },
-  preview: { proxy },
+  /**
+   * strictPort（2026-08-19 用户点名"确保都在一个端口，避免遗留"）：
+   * vite 默认端口被占会静默 +1 漂移（5173→5174→…），旧进程越积越多
+   * 还不容易发现。锁死后被占直接报错——先杀旧的再起新的。
+   * dev 恒 5173、preview 恒 4173。
+   */
+  server: { proxy, strictPort: true },
+  preview: { proxy, strictPort: true },
 })

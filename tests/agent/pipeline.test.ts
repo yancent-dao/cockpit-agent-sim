@@ -316,6 +316,36 @@ describe('barge-in：turn 世代戳', () => {
   })
 })
 
+describe('stale turn 的慢层 LLM 报错不该冒泡到当前对话（实拍：120s 超时挂起的旧 turn 被 barge-in 后才 reject，"出错了：TimeoutError"弹到用户正在问的新一句上）', () => {
+  it('旧 turn 的慢层 LLM 报错，此时已被新一句插话判 stale——不该 emit error', async () => {
+    let rejectFn!: (e: any) => void
+    const gate = new Promise<LLMReply>((_, rej) => { rejectFn = rej })
+    const fast = fakeLLM(() => ({ text: '好' }), () => ({ text: '好' }))
+    const slow = fakeLLM(
+      () => gate,                 // turn1 慢层挂起（模拟 120s 超时）
+      () => ({ text: '' }),       // turn2 慢层
+    )
+    const { p, events } = mk(fast, slow)
+    const t1 = p.run('第一句')
+    await new Promise(r => setTimeout(r, 0))
+    const t2 = p.run('第二句')    // barge-in，turn1 变 stale
+    rejectFn(new Error('TimeoutError: signal timed out'))
+    await Promise.all([t1, t2])
+    const errors = events.filter(e => e.type === 'error')
+    expect(errors, 'stale 的 LLM 报错不该冒泡成当前对话的错误').toHaveLength(0)
+  })
+
+  it('但没被 barge-in 的正常报错，还是要照常告诉用户', async () => {
+    const fast = fakeLLM(() => ({ text: '好' }))
+    const slow = fakeLLM(() => { throw new Error('网络挂了') })
+    const { p, events } = mk(fast, slow)
+    await p.run('第一句')
+    const errors = events.filter(e => e.type === 'error')
+    expect(errors).toHaveLength(1)
+    expect((errors[0] as any).message).toContain('网络挂了')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

@@ -691,7 +691,15 @@ export function createPipeline(deps: PipelineDeps) {
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
       catch (e) {
         trace.push({ type: 'error', at: clock(), message: `慢层：${e}` })
-        emit({ type: 'error', message: String(e) })
+        /**
+         * 已被 barge-in 判 stale 的错误不冒泡（四条纪律第 3 条：已经作废的
+         * 工作，副作用不该照样落地）。实拍：120s LLM 超时挂起在旧 turn 上，
+         * 用户已经追问了下一句，等超时终于 reject 时把"出错了：TimeoutError"
+         * 弹到了用户正在问的新一轮对话上——这条 catch 以前是全函数里唯一
+         * 一处不看 stale(g) 就直接 emit 的地方，跟同一文件里其它收尾分支
+         * （lateNote、空话术兜底）的纪律不一致。trace 仍然记录，供排查。
+         */
+        if (!stale(g)) emit({ type: 'error', message: String(e) })
         return { said: '', rounds, stop: 'error' }
       }
 

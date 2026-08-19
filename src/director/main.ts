@@ -146,6 +146,25 @@ $s('heroOk')?.addEventListener('change', (e: any) => {
 $s('heroForget')?.addEventListener('click', () => { story.revoke(); renderStoryNote() })
 
 /**
+ * 清空全部记录（2026-08-19 用户点名：重启/刷新都删不掉定时任务这类持久化数据）。
+ * 清**记录类**：自动任务、偏好、播放历史/收藏、绘本（照片/授权/成书）、
+ * 上回摘要、壁纸。**保留配置类**：模型选择、TTS 音色语速、当前城市——
+ * 那些是设置不是记录，清了用户还得重挑一遍。
+ * 删完整页刷新：域仓/自动化引擎都在启动时装配，热清一半会留内存残影。
+ */
+$s('wipeAll')?.addEventListener('click', () => {
+  const RECORD_KEYS = [
+    'cockpit-sim:automations', 'cockpit-sim:lastTime', 'cockpit-sim:wallpaper',
+    'cockpit.prefs', 'cockpit.history', 'cockpit.favorites', 'cockpit.queries',
+    'cockpit-sim:story:books', 'cockpit-sim:story:cast', 'cockpit-sim:story:consent',
+    'cockpit-sim:story:photo', 'cockpit-sim:story:profile',
+  ]
+  if (!confirm('清空全部记录？\n\n包括：自动任务、偏好、播放历史与收藏、绘本（照片/成书）、上回对话摘要、壁纸。\n模型选择、音色、城市这些设置会保留。\n\n清完页面会刷新。')) return
+  for (const k of RECORD_KEYS) localStorage.removeItem(k)
+  location.reload()
+})
+
+/**
  * ── 朗读音色：家长自己挑，默认女声 ──
  *
  * 音色是**系统装的**，每台机器不一样（这台 mac 上有 18 个中文音色），

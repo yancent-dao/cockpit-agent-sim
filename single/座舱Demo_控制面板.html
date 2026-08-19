@@ -129,7 +129,7 @@ input::placeholder{color:#4A5462}
   <section>
     <h2>全链路追踪 <span class="n" id="toolCount">—</span></h2>
     <div id="trace"></div>
-    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button><button id="forgetMem">忘掉上回</button></div>
+    <div class="row" style="margin-top:9px"><button id="clr">清空</button><button id="resetSess">重置会话</button><button id="forgetMem">忘掉上回</button><button id="wipeAll" style="color:#e66">清空全部记录</button></div>
     <!-- 跨会话记忆的可见化：不显示的话用户根本不知道自己带着上回的上下文
          （实拍：开机第一句问车窗空调，Agent 接着上个会话问"你要去哪个充电站"） -->
     <div id="memNote" class="hint" style="display:none;margin-top:6px"></div>
@@ -9775,6 +9775,25 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   $s("heroForget")?.addEventListener("click", () => {
     story.revoke();
     renderStoryNote();
+  });
+  $s("wipeAll")?.addEventListener("click", () => {
+    const RECORD_KEYS = [
+      "cockpit-sim:automations",
+      "cockpit-sim:lastTime",
+      "cockpit-sim:wallpaper",
+      "cockpit.prefs",
+      "cockpit.history",
+      "cockpit.favorites",
+      "cockpit.queries",
+      "cockpit-sim:story:books",
+      "cockpit-sim:story:cast",
+      "cockpit-sim:story:consent",
+      "cockpit-sim:story:photo",
+      "cockpit-sim:story:profile"
+    ];
+    if (!confirm("清空全部记录？\n\n包括：自动任务、偏好、播放历史与收藏、绘本（照片/成书）、上回对话摘要、壁纸。\n模型选择、音色、城市这些设置会保留。\n\n清完页面会刷新。")) return;
+    for (const k of RECORD_KEYS) localStorage.removeItem(k);
+    location.reload();
   });
   var VOICE_KEY = "cockpit-sim:tts:voice";
   var XF = {

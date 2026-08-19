@@ -3979,6 +3979,10 @@ ${BRIDGE}
       t.innerHTML = `<span class="lit">${esc(line.slice(0, n))}</span>${esc(line.slice(n))}`;
     };
     const timer = setInterval(() => {
+      if (gen !== sbGen) {
+        clearInterval(timer);
+        return;
+      }
       if (byBoundary || done) return;
       paintLit(litUpto(line.length, Date.now() - t0, totalMs));
     }, 90);

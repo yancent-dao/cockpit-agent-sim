@@ -1161,6 +1161,14 @@ function speakStory(node: HTMLElement, c: any) {
     t.innerHTML = `<span class="lit">${esc(line.slice(0, n))}</span>${esc(line.slice(n))}`
   }
   const timer = setInterval(() => {
+    /**
+     * 每跳自查世代（2026-08-19 实拍：点翻页后文字疯狂闪烁）。
+     * 旧定时器的清理原本依赖 cancel 触发的 onend——中文上它经常不来，
+     * guard 兜底又要等好几秒，这几秒里新旧定时器拿着各自的文本
+     * 交替重写同一个 .sbline；连点几次翻页就是 N 个定时器轮番打架。
+     * 过时的定时器不等任何回调，下一跳直接自杀。
+     */
+    if (gen !== sbGen) { clearInterval(timer); return }
     if (byBoundary || done) return
     paintLit(litUpto(line.length, Date.now() - t0, totalMs))
   }, 90)

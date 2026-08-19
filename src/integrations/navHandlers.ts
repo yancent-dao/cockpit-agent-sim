@@ -343,6 +343,10 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
             suggestion: args.alias ? '可以先用 places.save 存一个，或者直接说具体地址' : '换个更具体的地址或名称试试',
           }
 
+        // 导航进行中被无 waypoints 覆盖：合法（用户可能真想换目的地），
+        // 但这个状态事实必须进返回——实拍"途径饺子店"被换成"去饺子店"，
+        // 模型自己都不知道覆盖了春熙路，话术还说"导航还在跑春熙路"
+        const prevDest = store.get('navigation.active') ? String(store.get('navigation.destination') || '') : ''
         const origin = store.get('vehicle.location') as string
         const mode = args.mode ?? 'driving'
         const route = mode === 'driving'
@@ -369,8 +373,13 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         // 静态地图：车机屏没法访问高德 Key，图片 URL 得在这里（有 Key 的地方）拼好整个给它
         const mapUrl = buildMapUrl(amap, origin, resolved.location, route.polyline, args.waypoints)
 
+        const overrode = prevDest && prevDest !== resolved.name && !(args.waypoints?.length)
         return {
           status: 'ok',
+          ...(overrode && {
+            message: `注意：目的地已从「${prevDest}」换成「${resolved.name}」。用户若是要"顺路/途经"，` +
+              `应该保留原目的地、把这里的 location 作为 waypoints 传——现在重新调一次还来得及`,
+          }),
           data: {
             destination: resolved.name, eta, distance,
             tolls: route.tolls, tollDistance: route.tollDistance,

@@ -89,3 +89,37 @@ describe('当前位置引用的字面量退化', () => {
     expect(geocodeCalls.length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * 导航中换目的地要说出来（2026-08-19 实拍：用户说"途径一个饺子店"，
+ * 模型点选后调了裸 setDestination(poiId=饺子馆)——春熙路的导航被静默
+ * 覆盖，模型自己都不知道，话术还说"导航还在跑春熙路"。
+ * 覆盖是合法操作（用户真想换目的地），但**这个状态事实必须进返回**，
+ * 模型看到才可能自纠为 waypoints——同"卡上已是全量"先例。
+ */
+describe('导航中换目的地：返回里带状态事实', () => {
+  const navAmap = {
+    ...fakeAmap,
+    geocode: async (address: string) =>
+      ({ location: '104.06,30.65', formattedAddress: address, adcode: '510104', level: '兴趣点' }),
+    driving: async () => ({ duration: 600, distance: 2300, steps: [], polyline: '', tolls: 0 }),
+    staticMapUrl: () => 'https://map/x.png',
+  }
+  const mkNav = () => createRegistry(store, TOOLS, Date.now, { desk, amap: navAmap } as any)
+
+  it('无 waypoints 覆盖进行中的导航 → message 提醒"换掉了原目的地，顺路该用 waypoints"', async () => {
+    store.setDirect('navigation.active', true)
+    store.setDirect('navigation.destination', '春熙路')
+    const r = await mkNav().invoke('navigation.setDestination', { address: '牛牛家饺子馆' })
+    expect(r.status).toBe('ok')
+    expect(String(r.message)).toContain('春熙路')
+    expect(String(r.message)).toMatch(/换|覆盖/)
+    expect(String(r.message)).toContain('waypoints')
+  })
+
+  it('带 waypoints 或首次设目的地：不打扰', async () => {
+    const r = await mkNav().invoke('navigation.setDestination', { address: '牛牛家饺子馆' })
+    expect(r.status).toBe('ok')
+    expect(String(r.message ?? '')).not.toContain('waypoints')
+  })
+})

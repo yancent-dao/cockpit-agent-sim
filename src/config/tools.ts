@@ -425,7 +425,9 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'navigation.setDestination',
     brief: '设目的地开始导航',
-    desc: '设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。',
+    desc: '设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。'
+      + '**用户说"顺路/途经/路过 X"：目的地不变**，把 X 的 location 加进 waypoints 重新调一次——'
+      + '不要把目的地改成 X（实拍：导航去春熙路途中"途径一个饺子店"，被改成了去饺子店，春熙路丢了）。',
     permission: '彩',
     params: {
       alias: { type: 'string', desc: '常用地址别名，如"家""公司"。用户说"回家"时优先用这个，不用再搜' },

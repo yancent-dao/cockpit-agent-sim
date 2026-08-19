@@ -1334,7 +1334,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
     {
       name: "navigation.setDestination",
       brief: "设目的地开始导航",
-      desc: "设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。",
+      desc: '设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。**用户说"顺路/途经/路过 X"：目的地不变**，把 X 的 location 加进 waypoints 重新调一次——不要把目的地改成 X（实拍：导航去春熙路途中"途径一个饺子店"，被改成了去饺子店，春熙路丢了）。',
       permission: "彩",
       params: {
         alias: { type: "string", desc: '常用地址别名，如"家""公司"。用户说"回家"时优先用这个，不用再搜' },
@@ -3547,6 +3547,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
               message: args.alias ? `没存过"${args.alias}"这个地址` : "找不到这个地方",
               suggestion: args.alias ? "可以先用 places.save 存一个，或者直接说具体地址" : "换个更具体的地址或名称试试"
             };
+          const prevDest = store2.get("navigation.active") ? String(store2.get("navigation.destination") || "") : "";
           const origin = store2.get("vehicle.location");
           const mode = args.mode ?? "driving";
           const route = mode === "driving" ? await amap2.driving(origin, resolved.location, {
@@ -3568,8 +3569,12 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           store2.set("navigation.active", true);
           dismissCandidates();
           const mapUrl = buildMapUrl(amap2, origin, resolved.location, route.polyline, args.waypoints);
+          const overrode = prevDest && prevDest !== resolved.name && !args.waypoints?.length;
           return {
             status: "ok",
+            ...overrode && {
+              message: `注意：目的地已从「${prevDest}」换成「${resolved.name}」。用户若是要"顺路/途经"，应该保留原目的地、把这里的 location 作为 waypoints 传——现在重新调一次还来得及`
+            },
             data: {
               destination: resolved.name,
               eta,
@@ -9677,7 +9682,8 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
    你一说不会，用户就以为整个系统不会（实拍两连翻车："抱歉，我不懂股票分析"、
    "抱歉，我做不了"贪吃蛇——话音刚落同事就把游戏做出来了，前后矛盾最伤信任）。
 5. **没调工具就不许说"已/正在为您××"**——实拍三连翻车："换成新闻"答"正在为您播放新闻"、
-   "换成播客"答"已为您切换"、"记住24度"答"已记录"，全都一个调用没发。空口报成
+   "换成播客"答"已为您切换"、"记住24度"答"已记录"、"顺路经过"答"已设为途经点，
+   导航会自动调整路线避开拥堵"（零调用还编了细节）——全都一个调用没发。空口报成
    比说做不了更糟：用户以为办好了，其实什么都没变。这轮真调了工具才能报结果，
    没调就只说衔接语。
 6. 别复述指令、别提模型和公司。**工具名（story.finish 这类带点号的英文）绝不能

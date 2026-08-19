@@ -60,11 +60,13 @@ export function parseVolcFrame(buf: Uint8Array): VolcMsg {
 export interface VolcVoice { value: string; label: string; speaker: string; resourceId: string }
 const V = (speaker: string, label: string, res: string): VolcVoice =>
   ({ value: `volc:${speaker}`, label, speaker, resourceId: res })
+/** 2026-08-19 真调实测（探针逐个打通）：本账号开通的是 seed-tts-2.0，五个音色全验证过出声 */
 export const VOLC_VOICES: VolcVoice[] = [
-  V('zh_female_gaolengyujie_uranus_bigtts', '豆包2.0 · 高冷御姐', 'seed-tts-2.0'),
-  V('zh_female_shuangkuaisisi_moon_bigtts', '豆包 · 爽快思思', 'volc.service_type.10029'),
-  V('zh_male_yangguangqingnian_moon_bigtts', '豆包 · 阳光青年', 'volc.service_type.10029'),
-  V('zh_female_wanwanxiaohe_moon_bigtts', '豆包 · 湾湾小何', 'volc.service_type.10029'),
+  V('zh_female_shuangkuaisisi_uranus_bigtts', '豆包 · 爽快思思', 'seed-tts-2.0'),
+  V('zh_female_tianmeitaozi_uranus_bigtts', '豆包 · 甜美桃子', 'seed-tts-2.0'),
+  V('zh_female_gaolengyujie_uranus_bigtts', '豆包 · 高冷御姐', 'seed-tts-2.0'),
+  V('zh_male_yangguangqingnian_uranus_bigtts', '豆包 · 阳光青年', 'seed-tts-2.0'),
+  V('zh_male_wennuanahu_uranus_bigtts', '豆包 · 温暖阿虎', 'seed-tts-2.0'),
 ]
 
 export const isVolcVoice = (v: string) => v.startsWith('volc:')

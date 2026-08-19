@@ -10,7 +10,7 @@ import { buildBookHtml, bookFileName } from '../integrations/h5book'
 import { planShrink, withShrink, WEBP_Q } from '../integrations/shrink'
 import { pickVoice, zhVoices } from '../screen/speech'
 import { XF_VOICES, isCloudVoice, xfVcn, synthesize as xfSynthesize } from '../integrations/xftts'
-import { VOLC_VOICES } from '../integrations/volctts'
+import { VOLC_VOICES, isVolcVoice, volcSpeaker, volcStream } from '../integrations/volctts'
 import { recentSummary } from '../state/session'
 import { createAutoplay } from '../integrations/mediaHandlers'
 import { healStep } from '../cards/heal'
@@ -208,6 +208,18 @@ $s('ttsVoice')?.addEventListener('change', (e: any) => {
 $s('ttsTry')?.addEventListener('click', () => {
   const name = $s('ttsVoice')?.value ?? ''
   const demo = '小雨点打在桥上，妞妞把伞举得高高的。'
+  // 豆包：Key 在代理侧，面板零凭据直接连（实拍：没这分支时选豆包落进本机
+  // 兜底，试听出来是系统默认音色）
+  if (isVolcVoice(name)) {
+    const vv = volcSpeaker(name)
+    if (vv) {
+      const chunks: Uint8Array[] = []
+      volcStream(vv, demo, .92, c => chunks.push(c)).done
+        .then(() => new Audio(URL.createObjectURL(new Blob(chunks as BlobPart[], { type: 'audio/mpeg' }))).play())
+        .catch(e => log('r', `豆包试听失败：${e?.message ?? e}`))
+      return
+    }
+  }
   if (isCloudVoice(name) && xfOk) {
     xfSynthesize(XF, xfVcn(name), demo, .92)
       .then(b => new Audio(URL.createObjectURL(b)).play())

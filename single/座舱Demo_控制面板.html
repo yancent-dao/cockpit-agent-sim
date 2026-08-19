@@ -5400,13 +5400,113 @@ GET ${path} HTTP/1.1`;
   }
 
   // src/integrations/volctts.ts
+  function volcFrame(json) {
+    const p = new TextEncoder().encode(JSON.stringify(json));
+    const out = new Uint8Array(8 + p.length);
+    out.set([17, 16, 16, 0]);
+    new DataView(out.buffer).setUint32(4, p.length);
+    out.set(p, 8);
+    return out;
+  }
+  function parseVolcFrame(buf) {
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const headerSize = (buf[0] & 15) * 4;
+    const type = buf[1] >> 4;
+    const flags = buf[1] & 15;
+    let o = headerSize;
+    let event = null, session = "", code = null;
+    if (type === 15) {
+      code = dv.getUint32(o);
+      o += 4;
+    }
+    if (flags & 4) {
+      event = dv.getInt32(o);
+      o += 4;
+      if (![1, 2, 50, 51, 52].includes(event)) {
+        const sl = dv.getUint32(o);
+        o += 4;
+        session = new TextDecoder().decode(buf.subarray(o, o + sl));
+        o += sl;
+      }
+    }
+    const pl = dv.getUint32(o);
+    o += 4;
+    return { type, event, session, code, payload: buf.subarray(o, o + pl) };
+  }
   var V = (speaker, label, res) => ({ value: `volc:${speaker}`, label, speaker, resourceId: res });
   var VOLC_VOICES = [
-    V("zh_female_gaolengyujie_uranus_bigtts", "豆包2.0 · 高冷御姐", "seed-tts-2.0"),
-    V("zh_female_shuangkuaisisi_moon_bigtts", "豆包 · 爽快思思", "volc.service_type.10029"),
-    V("zh_male_yangguangqingnian_moon_bigtts", "豆包 · 阳光青年", "volc.service_type.10029"),
-    V("zh_female_wanwanxiaohe_moon_bigtts", "豆包 · 湾湾小何", "volc.service_type.10029")
+    V("zh_female_shuangkuaisisi_uranus_bigtts", "豆包 · 爽快思思", "seed-tts-2.0"),
+    V("zh_female_tianmeitaozi_uranus_bigtts", "豆包 · 甜美桃子", "seed-tts-2.0"),
+    V("zh_female_gaolengyujie_uranus_bigtts", "豆包 · 高冷御姐", "seed-tts-2.0"),
+    V("zh_male_yangguangqingnian_uranus_bigtts", "豆包 · 阳光青年", "seed-tts-2.0"),
+    V("zh_male_wennuanahu_uranus_bigtts", "豆包 · 温暖阿虎", "seed-tts-2.0")
   ];
+  var isVolcVoice = (v) => v.startsWith("volc:");
+  var volcSpeaker = (v) => VOLC_VOICES.find((x) => x.value === v);
+  function volcStream(voice, text, rate, onChunk, timeoutMs = 12e3) {
+    let ws = null;
+    let cancelled = false;
+    const done = (async () => {
+      const base = api("volctts");
+      const scheme = location.protocol === "https:" ? "wss" : "ws";
+      const url = base.startsWith("/") ? `${scheme}://${location.host}${base}/api/v3/tts/unidirectional/stream?rid=${encodeURIComponent(voice.resourceId)}` : `${base}/api/v3/tts/unidirectional/stream`;
+      ws = new WebSocket(url);
+      ws.binaryType = "arraybuffer";
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => {
+          ws?.close();
+          rej(new Error("豆包连接超时"));
+        }, 5e3);
+        ws.onopen = () => {
+          clearTimeout(t);
+          res();
+        };
+        ws.onerror = () => {
+          clearTimeout(t);
+          rej(new Error("豆包 WebSocket 连接失败（file:// 单文件版不支持豆包音色）"));
+        };
+      });
+      const speechRate = Math.round(Math.max(-50, Math.min(100, (rate - 1) * 100)));
+      ws.send(volcFrame({ req_params: {
+        speaker: voice.speaker,
+        text,
+        audio_params: { format: "mp3", sample_rate: 24e3, speech_rate: speechRate }
+      } }));
+      await new Promise((res, rej) => {
+        const t = setTimeout(() => rej(new Error("豆包合成超时")), timeoutMs);
+        ws.onmessage = (e) => {
+          const m = parseVolcFrame(new Uint8Array(e.data));
+          if (m.type === 11 && m.payload.length) onChunk(m.payload);
+          else if (m.type === 15) {
+            clearTimeout(t);
+            rej(new Error(`豆包合成失败(${m.code})：${new TextDecoder().decode(m.payload).slice(0, 120)}`));
+          } else if (m.event === 152) {
+            clearTimeout(t);
+            res();
+          }
+        };
+        ws.onerror = () => {
+          clearTimeout(t);
+          rej(new Error("豆包连接中断"));
+        };
+        ws.onclose = () => {
+          clearTimeout(t);
+          cancelled ? res() : res();
+        };
+      });
+      ws.close();
+    })();
+    return {
+      done,
+      cancel: () => {
+        cancelled = true;
+        try {
+          ws?.close();
+        } catch {
+        }
+      }
+    };
+  }
 
   // src/state/session.ts
   function recentSummary(d) {
@@ -9851,6 +9951,14 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
   $s("ttsTry")?.addEventListener("click", () => {
     const name = $s("ttsVoice")?.value ?? "";
     const demo = "小雨点打在桥上，妞妞把伞举得高高的。";
+    if (isVolcVoice(name)) {
+      const vv = volcSpeaker(name);
+      if (vv) {
+        const chunks = [];
+        volcStream(vv, demo, 0.92, (c) => chunks.push(c)).done.then(() => new Audio(URL.createObjectURL(new Blob(chunks, { type: "audio/mpeg" }))).play()).catch((e) => log("r", `豆包试听失败：${e?.message ?? e}`));
+        return;
+      }
+    }
     if (isCloudVoice(name) && xfOk) {
       synthesize(XF, xfVcn(name), demo, 0.92).then((b) => new Audio(URL.createObjectURL(b)).play()).catch((e) => log("r", `讯飞试听失败：${e?.message ?? e}`));
       return;

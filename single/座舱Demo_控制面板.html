@@ -3851,6 +3851,13 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       },
       storyContinue: async (a) => {
         if (!draft) return reject("NO_STORY", "还没有正在讲的故事，先调 story.begin 开一本");
+        if (!store2.get("story.active"))
+          return {
+            status: "rejected",
+            code: "STORY_ENDED",
+            message: "这本已经讲完收尾了，别再往上加页",
+            suggestion: "想再听就重新开一本（story.begin）"
+          };
         if (a?.idea) draft.ideas.push(String(a.idea));
         await addChapter(a?.pages ?? []);
         return { status: "ok", message: "接着往下讲了", data: { cost: spent } };
@@ -10290,6 +10297,7 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
       return;
     }
     if (m.type === "storyChapterDone") {
+      if (!store.get("story.active")) return;
       store.set("story.phase", "asking");
       pipeline.run("[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展");
       return;

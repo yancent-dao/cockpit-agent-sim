@@ -235,6 +235,13 @@ export function createStoryHandlers(
 
     storyContinue: async (a: any): Promise<ToolResult> => {
       if (!draft) return reject('NO_STORY', '还没有正在讲的故事，先调 story.begin 开一本')
+      // 收场要锁门（2026-08-19 实拍：说了"结束"finish 也 ok 了，迟到的 continue
+      // 还能进来——addChapter 会把 phase 写回 telling，自动朗读链全面复活，
+      // 无限加页。判据是状态（active），不是话的内容
+      if (!store.get('story.active'))
+        return { status: 'rejected', code: 'STORY_ENDED',
+          message: '这本已经讲完收尾了，别再往上加页',
+          suggestion: '想再听就重新开一本（story.begin）' }
       // 孩子说的话是**书的一等字段**，不是从正文里事后猜的——封底要单列出来
       if (a?.idea) draft.ideas.push(String(a.idea))
       await addChapter(a?.pages ?? [])

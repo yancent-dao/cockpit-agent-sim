@@ -438,3 +438,33 @@ describe('正文用方形画幅', () => {
     for (const a of seen) expect(a, '正文页画幅').toBe('1:1')
   })
 })
+
+/**
+ * 收场要锁门（2026-08-19 实拍：说了"结束"、finish 也 ok 了，故事还在
+ * 一直新增页一直朗读）。finish 不清 draft，迟到/幽灵 run 的 continue
+ * 照样过闸——而 addChapter 会把 phase 写回 telling，自动朗读链全面复活：
+ * 念完→章末→叫醒模型→再续→无限加页。判据是状态（story.active），不是意图。
+ */
+describe('finish 之后故事就锁门了', () => {
+  const open = async () => {
+    story.savePhoto('p'); story.consent()
+    await h.storyCast({ look: 'x' })
+    await h.storyBegin({ title: '测试', pages: pages('a', 'b', 'c') })
+  }
+  it('finish 后 continue 被拒，说清"已经收尾"——迟到的续写不许复活故事', async () => {
+    await open()
+    await h.storyFinish({ ending: '大家开心地回家了。' })
+    const r = await h.storyContinue({ idea: '又来了一只狼', pages: pages('x', 'y') })
+    expect(r.status).toBe('rejected')
+    expect(String(r.message)).toMatch(/讲完|收尾|结束/)
+    expect(store.get('story.phase'), 'phase 不许被写回 telling').toBe('done')
+  })
+
+  it('finish 后重新 begin 开新书不受影响', async () => {
+    await open()
+    await h.storyFinish({ ending: '完。' })
+    const r = await h.storyBegin({ title: '第二本', pages: pages('d', 'e', 'f') })
+    expect(r.status).toBe('ok')
+    expect(store.get('story.active')).toBe(true)
+  })
+})

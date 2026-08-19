@@ -574,6 +574,9 @@ const bus = createBus(m => {
    * 而且孩子每次听到的都是同一句。
    */
   if (m.type === 'storyChapterDone') {
+    // 双保险（同 storyContinue 的锁门）：故事已收场时迟到的章末上报不叫醒模型——
+    // 叫醒了它就按章法接着问、接着写，讲完的书又活了
+    if (!store.get('story.active')) return
     store.set('story.phase', 'asking')
     pipeline.run('[系统] 这一章讲完了，按讲故事的章法问问孩子接下来想怎么发展')
     return

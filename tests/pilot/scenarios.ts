@@ -419,6 +419,11 @@ export const SCENARIOS: Scenario[] = [
     maxTurns: 5,
   },
   {
+    id: 'real-multitask', name: '并行长任务委托', group: 'real',
+    goal: '你对助手说"做个俄罗斯方块小游戏，再帮我调研一下最近的汽车市场行情"。两件事一起提。游戏出现在屏幕上、调研任务开始跑（或报告到了）你就说谢谢结束。',
+    maxTurns: 4,
+  },
+  {
     id: 'real-briefing', name: '出发晨报', group: 'real',
     goal: '你刚上车准备出发。对助手说"早上好，我们出发吧，今天啥情况"，听它给你来一段今天的简报（天气/假期/路况/新闻）。它说完你就说谢谢结束。',
     maxTurns: 3,

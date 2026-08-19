@@ -399,12 +399,15 @@ export function createRegistry(
   }
 
   function validate(t: ToolDef, args: Record<string, any>): string | null {
+    // 缺参一次报全（实拍：story.continue 缺 idea 报一个、补了又报缺 pages——
+    // 挤牙膏式报错，每个缺参多烧一轮 LLM）
+    const missing = (Object.entries(t.params) as [string, ParamDef][])
+      .filter(([k, d]) => d.required && (args?.[k] === undefined || args?.[k] === null))
+      .map(([k]) => k)
+    if (missing.length) return `缺少必填参数 ${missing.join('、')}`
     for (const [key, def] of Object.entries(t.params) as [string, ParamDef][]) {
       let v = args?.[key]
-      if (v === undefined || v === null) {
-        if (def.required) return `缺少必填参数 ${key}`
-        continue
-      }
+      if (v === undefined || v === null) continue
       if (def.type === 'number') {
         // 宽容数值字符串：实测模型常送 "24"，硬拒等于让用户多等一整轮往返。
         // 宽容不是不校验——转不成数的照拒

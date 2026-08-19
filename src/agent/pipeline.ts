@@ -312,6 +312,11 @@ export function createPipeline(deps: PipelineDeps) {
       role: 'tool' as const, tool_call_id: c.id, content: JSON.stringify(result),
     }))
   }
+  /**
+   * voice.ask 问出去还没人答（2026-08-19 实拍：绘本 ask 挂着，"结束"被
+   * 快层接走当成故事内选项乱答）。跟 pending MRTR 确认同族：下一句直达慢层。
+   */
+  let askPending = false
   /** 上一轮 execRound 里被判越权的工具名，以及"整轮都越权"这个事实 */
   let denied: string[] = []
   let allDenied = false
@@ -584,7 +589,7 @@ export function createPipeline(deps: PipelineDeps) {
 
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
   async function runSlow(g: number, suggested: string[], trace: TraceStep[],
-                         handover: string[] = [], fastReported = false): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
+                         handover: string[] = [], fastReported = false, fastSpoke = false): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
     /**
      * 慢层复述静音（2026-08-17 实拍）。屏端同文去重逮不住换说法的复述
      * （「车窗已打开」→「窗户也打开了」），persona 的"说过的不许再说"
@@ -593,6 +598,7 @@ export function createPipeline(deps: PipelineDeps) {
      * 文本仍落 thread（上下文）、仍进 trace（排查）。干了活照说不误。
      */
     let slowActed = false
+    let turnOk = 0   // 本 turn 业务成功数——空收场兜底的措辞靠它分"办成没说"和"没办成"
     const sm = deps.slowManifest
     const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n))])
     /**
@@ -659,6 +665,17 @@ export function createPipeline(deps: PipelineDeps) {
         if (text) commit(g, { role: 'assistant', content: text })
         trace.push({ type: 'reply', at: clock(), text, layer: 'slow' })
         const echo = fastReported && !slowActed   // 快层报过、慢层没干活 → 复述
+        /**
+         * 空话术收场的兜底（2026-08-19 实拍）：automation 撞墙跳到最后一轮后
+         * 模型交了白卷——整个 turn 没人对用户说过一个字，静默结束，用户干等
+         * 2 分钟。快层说过话（闲聊/已报结果）时空收场是合法静默，不兜。
+         */
+        if (!text && !echo && !fastSpoke && !stale(g)) {
+          const fb = turnOk > 0 ? '办好了，结果在屏幕上' : '这件事我没弄成，换个说法我再试试'
+          emit({ type: 'speaking', text: fb, layer: 'slow' })
+          emit({ type: 'done' })
+          return { said: fb, rounds, stop: 'reply' }
+        }
         if (stale(g)) {
           // 迟到的话术不抢麦：降级为横幅素材（§4.1）。活已经干完，成果都在
           if (text && !echo) emit({ type: 'lateNote', text })
@@ -696,6 +713,10 @@ export function createPipeline(deps: PipelineDeps) {
       }, { lane: 'slow' })
       commit(g, ...toolMsgs); view.push(...toolMsgs)
       if (bizCalls > 0) slowActed = true   // 动过业务工具（含被拒——解释失败是新信息）
+      turnOk += bizOk
+      // voice.ask 成功 = 问题挂出去了：下一句输入是答案，直达慢层（状态分支不是意图分支）
+      if (reply.toolCalls.some((c: any) => registry.canonicalName(c.name) === 'voice.ask') && bizOk > 0)
+        askPending = true
       // 撞墙了：直接跳到最后一轮 —— 那一轮撤工具，模型只能说话。
       // 复用既有机制而不是新开一条"熔断"路径，收场仍然是一句人话
       if (hitWall() && rounds < sm.maxRounds - 1) rounds = sm.maxRounds - 1
@@ -732,6 +753,10 @@ export function createPipeline(deps: PipelineDeps) {
     // pending 确认直达慢层（§4.2）：快层不知道有确认挂着，接了必错。
     // 状态分支不是意图分支——看的是系统状态，不是话的内容
     const pending = registry.pendingConfirm()
+    // voice.ask 挂着时同理：这句就是答案（或对问题的回避），快层无事可做。
+    // 消费即清——答了或岔开都算翻篇，别让它劫持后面每一句
+    const askJump = askPending
+    askPending = false
     let fast = { suggested: [] as string[], said: '', rounds: 0, did: 0 }
     /**
      * 这一轮结束后，上一轮悬着的确认就该作废——用户已经说了别的。
@@ -755,14 +780,15 @@ export function createPipeline(deps: PipelineDeps) {
          * "第4个"无事可做——实拍它编造 placeId 去调无权工具白烧 3.6 秒。
          * 跟「pending 确认直达慢层」同族：输入来源是系统状态，不是意图。
          */
-      } else if (!pending) {
+      } else if (!pending && !askJump) {
         fast = await runFast(g, trace)
         // denied 是 execRound 写的共享变量，慢层自己跑起来会覆盖 —— 先拷贝
         handover = allDenied ? [...denied] : []
         fastReported = !!fast.said && fast.did > 0
-      } else fast.suggested = [pending.tool]
+      } else if (pending) fast.suggested = [pending.tool]
+      // askJump（无 pending）：不预载，慢层自己看上下文接答案
 
-      const slow = await runSlow(g, fast.suggested, trace, handover, fastReported)
+      const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said)
       // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
       if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
       return {

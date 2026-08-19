@@ -828,3 +828,45 @@ describe('撞墙计数与元工具轮', () => {
     expect(r.reply).toContain('没建成')
   })
 })
+
+/**
+ * ══════════ 2026-08-19 实拍长日志六修 ══════════
+ */
+describe('空话术收场的兜底（实拍：automation 撞墙 9 轮后静默结束，用户干等 2 分钟）', () => {
+  it('慢层空文本收场且快层也没报过 → 兜一句诚实的，不许静默', async () => {
+    // 快层无话转交；慢层第一轮调工具失败，第二轮直接回空文本收场
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent.handoff', {})] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('automation.create', { name: 'x', when: [], do: [] })] }),
+      () => ({ text: '' }),   // 空收场——实拍就是这里静默了
+    )
+    const { p, events } = mk(fast, slow)
+    await p.run('以后下雨自动关窗')
+    const speaks = events.filter(e => e.type === 'speaking')
+    expect(speaks.length, '必须有一句收场话').toBeGreaterThan(0)
+  })
+
+  it('快层已报过结果时，慢层空收场仍然合法静默（不重复打扰）', async () => {
+    const fast = fakeLLM(() => ({ text: '调到24度了', toolCalls: [call('climate.set', { targetTemp: 24 })] }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('空调24度')
+    expect(events.filter(e => e.type === 'speaking')).toHaveLength(1)
+  })
+})
+
+describe('voice.ask 之后的下一句直达慢层（实拍：绘本 ask 挂着，"结束"被快层接走乱答）', () => {
+  it('上一轮问了问题，下一轮输入不进快层', async () => {
+    const fast = fakeLLM(() => ({ text: '', toolCalls: [call('agent.handoff', {})] }))
+    const slow = fakeLLM(
+      () => ({ text: '', toolCalls: [call('voice.ask', { question: '要探险还是回家？', options: ['探险', '回家'] })] }),
+      () => ({ text: '问题问出去了' }),
+      () => ({ text: '好，故事收尾了' }),
+    )
+    const { p } = mk(fast, slow)
+    await p.run('给孩子讲个故事')
+    const fastCallsBefore = fast.seen.length
+    await p.run('结束')
+    expect(fast.seen.length, 'ask 挂着时新输入不该进快层').toBe(fastCallsBefore)
+  })
+})

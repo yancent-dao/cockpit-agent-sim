@@ -127,7 +127,7 @@ export const TOOLS: ToolDef[] = [
     desc: '控制空调。可以一次传多个字段（比如同时开空调并调温度），只传要改的字段即可，不用每个都填。',
     permission: '彩',
     params: {
-      power: { type: 'boolean', desc: '空调开关' },
+      power: { type: 'boolean', desc: '空调开关，布尔值 true/false（不是 "on"/"off" 字符串）。用户点名温度/风量而空调没开时，同一次调用带 power:true——只调温度不开机，用户什么都感觉不到' },
       targetTemp: { type: 'number', range: [16, 30], desc: '目标温度 °C' },
       fanSpeed: { type: 'number', range: [0, 7], desc: '风量档位 0-7' },
       airflow: { type: 'enum', values: ['face', 'feet', 'faceFeet', 'defrost'], desc: '出风模式' },
@@ -1051,7 +1051,7 @@ export const TOOLS: ToolDef[] = [
         items: { type: 'object', properties: {
           kind: { type: 'string', enum: ['time', 'signal'] },
           at: { type: 'string', description: 'kind=time 时的每天时刻，HH:MM' },
-          path: { type: 'string', description: 'kind=signal 时的信号路径，如 vehicle.gear' },
+          path: { type: 'string', description: 'kind=signal 时的信号路径。**只能用真实存在的信号名，不许自造**。常用：下雨=env.weather（值 rain/heavyRain）、起雾=env.weather==fog、开车=vehicle.gear==d、车速=vehicle.speed、车外温度=cabin.temperature.outside' },
           op: { type: 'string', enum: ['==', '!=', '>', '<', '>=', '<='] },
           value: { description: '比较值' },
         }, required: ['kind'] } },

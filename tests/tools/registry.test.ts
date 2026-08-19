@@ -1957,3 +1957,18 @@ describe('参数默认值', () => {
       }
   })
 })
+
+/**
+ * 缺参一次报全（2026-08-19 实拍）：story.continue 缺 idea 报一个、
+ * 补了 idea 又报缺 pages——一次一个挤牙膏，每个缺参多烧一轮 LLM。
+ */
+describe('必填参数缺失一次报全', () => {
+  it('同时缺两个必填参数，一条消息里全说出来', async () => {
+    const store2 = createStore(SIGNALS, CONSTRAINTS)
+    const reg2 = createRegistry(store2, TOOLS, Date.now, {} as any)
+    const r = await reg2.invoke('story.continue', {})
+    expect(r.status).toBe('rejected')
+    expect(r.message).toContain('idea')
+    expect(r.message).toContain('pages')
+  })
+})

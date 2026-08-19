@@ -1046,7 +1046,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       desc: "控制空调。可以一次传多个字段（比如同时开空调并调温度），只传要改的字段即可，不用每个都填。",
       permission: "彩",
       params: {
-        power: { type: "boolean", desc: "空调开关" },
+        power: { type: "boolean", desc: '空调开关，布尔值 true/false（不是 "on"/"off" 字符串）。用户点名温度/风量而空调没开时，同一次调用带 power:true——只调温度不开机，用户什么都感觉不到' },
         targetTemp: { type: "number", range: [16, 30], desc: "目标温度 °C" },
         fanSpeed: { type: "number", range: [0, 7], desc: "风量档位 0-7" },
         airflow: { type: "enum", values: ["face", "feet", "faceFeet", "defrost"], desc: "出风模式" },
@@ -1805,7 +1805,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
       name: "web.search",
       brief: "联网搜索现查",
       // 每次搜索 15 秒起——问句写全一次问够，别拆成三四次搜（用户在车里等不起）
-      desc: "联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**每次搜索要 15 秒起步——把问句写全（对象+时间范围+要什么数据）一次问够，别拆成几次搜，用户在车里等不起。**返回的答案往往很长，别整段念——挑一两句最关键的说，剩下的让用户看屏幕。每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。",
+      desc: '联网查东西。车里的知识、新闻之外的实时信息、你不确定的事实，都用这个而不是凭记忆答。结果会上屏，用户能回看数字和人名。**每次搜索要 15 秒起步——把问句写全（对象+时间范围+要什么数据）一次问够，别拆成几次搜，用户在车里等不起。****要出调研报告/多方查证的活，不要在这亲自搜**——task.delegate(background:true) 派子 Agent 后台查（它有独立轮次预算，完成自动通知），你把手头能立即交付的先交付掉；你亲自一轮轮搜，用户只能对着"思考中"干等，轮次还会耗尽在查证上。返回的答案往往很长，别整段念——挑一两句最关键的说，剩下的让用户看屏幕。每次调用都会花钱，别为了闲聊或者你本来就知道的常识调它。',
       permission: "彩",
       params: { query: { type: "string", required: true, desc: "要查的问题，一句话说清" } },
       handler: "webSearch"
@@ -1930,7 +1930,7 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           items: { type: "object", properties: {
             kind: { type: "string", enum: ["time", "signal"] },
             at: { type: "string", description: "kind=time 时的每天时刻，HH:MM" },
-            path: { type: "string", description: "kind=signal 时的信号路径，如 vehicle.gear" },
+            path: { type: "string", description: "kind=signal 时的信号路径。**只能用真实存在的信号名，不许自造**。常用：下雨=env.weather（值 rain/heavyRain）、起雾=env.weather==fog、开车=vehicle.gear==d、车速=vehicle.speed、车外温度=cabin.temperature.outside" },
             op: { type: "string", enum: ["==", "!=", ">", "<", ">=", "<="] },
             value: { description: "比较值" }
           }, required: ["kind"] }
@@ -4482,12 +4482,11 @@ ${dark ? DARK_CSS : LIGHT_CSS}`;
           args[key] = def.default;
     }
     function validate(t, args) {
+      const missing = Object.entries(t.params).filter(([k, d]) => d.required && (args?.[k] === void 0 || args?.[k] === null)).map(([k]) => k);
+      if (missing.length) return `缺少必填参数 ${missing.join("、")}`;
       for (const [key, def] of Object.entries(t.params)) {
         let v = args?.[key];
-        if (v === void 0 || v === null) {
-          if (def.required) return `缺少必填参数 ${key}`;
-          continue;
-        }
+        if (v === void 0 || v === null) continue;
         if (def.type === "number") {
           if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v))) {
             v = Number(v);
@@ -6503,6 +6502,7 @@ ${extras.desktop}`);
         content: JSON.stringify(result)
       }));
     }
+    let askPending = false;
     let denied = [];
     let allDenied = false;
     let bizCalls = 0;
@@ -6724,8 +6724,9 @@ ${extras.desktop}`);
       const unknown = names.filter((n) => !known.includes(n));
       return known.length ? { status: "ok", message: `已装载：${known.join("、")}${unknown.length ? `；没有这些工具：${unknown.join("、")}` : ""}` } : { status: "rejected", code: "UNKNOWN_TOOL", message: `目录里没有：${names.join("、")}`, suggestion: "对照工具目录里的名字再试" };
     };
-    async function runSlow(g, suggested, trace, handover = [], fastReported = false) {
+    async function runSlow(g, suggested, trace, handover = [], fastReported = false, fastSpoke = false) {
       let slowActed = false;
+      let turnOk = 0;
       const sm = deps.slowManifest;
       const loaded = /* @__PURE__ */ new Set([...sm.resident ?? [], ...suggested.map((n) => registry2.canonicalName(n))]);
       const view = thread.slice().map((m) => {
@@ -6781,6 +6782,12 @@ ${extras.desktop}`);
           if (text) commit(g, { role: "assistant", content: text });
           trace.push({ type: "reply", at: clock(), text, layer: "slow" });
           const echo = fastReported && !slowActed;
+          if (!text && !echo && !fastSpoke && !stale(g)) {
+            const fb = turnOk > 0 ? "办好了，结果在屏幕上" : "这件事我没弄成，换个说法我再试试";
+            emit({ type: "speaking", text: fb, layer: "slow" });
+            emit({ type: "done" });
+            return { said: fb, rounds, stop: "reply" };
+          }
           if (stale(g)) {
             if (text && !echo) emit({ type: "lateNote", text });
           } else {
@@ -6818,6 +6825,9 @@ ${extras.desktop}`);
         commit(g, ...toolMsgs);
         view.push(...toolMsgs);
         if (bizCalls > 0) slowActed = true;
+        turnOk += bizOk;
+        if (reply.toolCalls.some((c) => registry2.canonicalName(c.name) === "voice.ask") && bizOk > 0)
+          askPending = true;
         if (hitWall() && rounds < sm.maxRounds - 1) rounds = sm.maxRounds - 1;
       }
       const fallback = "这件事我没弄成，换个说法我再试试";
@@ -6839,17 +6849,19 @@ ${extras.desktop}`);
       thread.push({ role: "user", content: text });
       emit({ type: "thinking" });
       const pending = registry2.pendingConfirm();
+      const askJump = askPending;
+      askPending = false;
       let fast = { suggested: [], said: "", rounds: 0, did: 0 };
       try {
         let handover = [];
         let fastReported = false;
         if (runOpts.answer) {
-        } else if (!pending) {
+        } else if (!pending && !askJump) {
           fast = await runFast(g, trace);
           handover = allDenied ? [...denied] : [];
           fastReported = !!fast.said && fast.did > 0;
-        } else fast.suggested = [pending.tool];
-        const slow = await runSlow(g, fast.suggested, trace, handover, fastReported);
+        } else if (pending) fast.suggested = [pending.tool];
+        const slow = await runSlow(g, fast.suggested, trace, handover, fastReported, !!fast.said);
         if (!stale(g)) compaction = doCompact(g).catch(() => {
         });
         return {
@@ -9389,6 +9401,8 @@ ${text}` });
    你只说**新增**的：纠错、它没提的结果、需要用户决定的事。一切都对且没有新增 →
    **回空**，沉默是合法且常见的答案。
 4. 要用的工具不在手边时，看「工具目录」调 tools.load 点名取，下一轮就有。
+   **一句话里有几件事时，先把能立刻交付的交付掉（建卡/直调），耗时的转后台——
+   别让快活排在慢活后面**（实拍：先埋头查行情，小游戏迟迟不上屏，用户对着空桌面等）。
    **要联网查证、要成文交付的耗时活，必须 task.delegate(background:true) 转后台**——
    不是建议是规矩：子任务有独立轮次预算，状态栏会亮任务芯片让用户知道在跑，完成自动
    通知；你亲自一轮轮搜，用户只能对着"思考中"干等，轮次还会耗尽在查证上（实测两次翻车）。
@@ -9444,7 +9458,11 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 4. **绝不说"抱歉/我不懂/我做不了"，say 里也不许**——轮不到你的活你的同事都会做，
    你一说不会，用户就以为整个系统不会（实拍两连翻车："抱歉，我不懂股票分析"、
    "抱歉，我做不了"贪吃蛇——话音刚落同事就把游戏做出来了，前后矛盾最伤信任）。
-5. 别复述指令、别提模型和公司。`
+5. **没调工具就不许说"已/正在为您××"**——实拍三连翻车："换成新闻"答"正在为您播放新闻"、
+   "换成播客"答"已为您切换"、"记住24度"答"已记录"，全都一个调用没发。空口报成
+   比说做不了更糟：用户以为办好了，其实什么都没变。这轮真调了工具才能报结果，
+   没调就只说衔接语。
+6. 别复述指令、别提模型和公司。`
   };
 
   // agents/main-agent/skills/nav.ts
@@ -9575,8 +9593,10 @@ Markdown、列表符号、表情；坐标经纬度别念，说地名就行。屏
 【把车窗外写进故事】这是车里讲故事相对手机 App 唯一真正的优势：正在过的桥、
 外面的天气、要去的地方、几点钟——都织进去。先看一眼 navigation.* 和 weather。
 
-【收尾】孩子说不想听了、或快到站了（导航剩余少于两分钟），就 story.finish
-给个像样的结局，别硬停。默认讲到第三章之后问一句「就到这里好不好？」，
+【收尾】**"结束/不讲了/够了/别讲了"= 调 story.finish（带 ending），没有第二种理解**——
+它不是续写选项，更不是要你再问一个问题（实拍：用户说"结束"，故事又被续了一章
+还反问"想怎么对付大灰狼"）。孩子说不想听了、或快到站了（导航剩余少于两分钟），
+就 story.finish 给个像样的结局，别硬停。默认讲到第三章之后问一句「就到这里好不好？」，
 他说继续就接着写，没有上限。
 
 【安全】只讲温暖的、寓教于乐的内容。不碰暴力、恐怖、成人话题；主角遇到困难

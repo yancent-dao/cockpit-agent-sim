@@ -1,0 +1,541 @@
+<title>座舱 Agent 模拟环境</title>
+<style>
+  :root{
+    --bg:#F6F7F9; --panel:#FFFFFF; --panel2:#EEF1F6; --wash:#F9FAFC;
+    --line:#DFE4EC; --line2:#C6CEDC;
+    --ink:#1C2432; --ink2:#57627A; --ink3:#8A93A8;
+    --amber:#C77E1E; --amber-bg:#FBF3E4;
+    --blue:#2C63C7; --blue-bg:#EAF0FB;
+    --ok:#2E9E6B; --bad:#C94F3D; --bad-bg:#FBEBE8;
+    --radius:14px;
+    --font:"MiSans","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+  /* ── 左侧导航轨 ── */
+  nav.rail{position:fixed;left:0;top:0;bottom:0;width:192px;padding:36px 0 36px 26px;
+    display:flex;flex-direction:column;gap:5px;z-index:10;border-right:1px solid var(--line);background:var(--panel)}
+  nav.rail .logo{font-size:12px;letter-spacing:.18em;color:var(--ink3);margin-bottom:24px;font-weight:600}
+  nav.rail a{color:var(--ink2);text-decoration:none;font-size:14px;padding:6px 10px;border-radius:8px;display:flex;align-items:baseline;gap:9px}
+  nav.rail a:hover{color:var(--ink);background:var(--panel2)}
+  nav.rail a:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+  nav.rail a .n{font-size:11px;color:var(--amber);font-weight:600;min-width:16px}
+  nav.rail .foot{margin-top:auto;font-size:12px;color:var(--ink3);line-height:1.6}
+  main{margin-left:192px;padding:0 56px 90px;max-width:1200px}
+  @media (max-width:980px){nav.rail{display:none}main{margin-left:0;padding:0 20px 60px}}
+
+  section{padding-top:78px}
+  .eyebrow{font-size:12px;letter-spacing:.22em;color:var(--amber);font-weight:600;margin-bottom:12px}
+  h1{font-size:clamp(32px,4.4vw,48px);font-weight:600;line-height:1.24;text-wrap:balance}
+  h2{font-size:28px;font-weight:600;margin-bottom:6px;text-wrap:balance}
+  h2 .num{color:var(--amber);font-size:19px;vertical-align:.12em;margin-right:10px}
+  h3{font-size:18px;font-weight:600}
+  .lede{color:var(--ink2);max-width:48em;margin-bottom:28px}
+  .sub{color:var(--ink2);font-size:14px}
+  .hl{color:var(--amber);font-weight:500}
+  b{font-weight:600}
+
+  /* ── Hero ── */
+  header.hero{padding-top:84px}
+  .hero .thesis{font-size:18px;color:var(--ink2);max-width:42em;margin:18px 0 32px;text-wrap:balance}
+  .hero .thesis b{color:var(--ink)}
+  .stats{display:flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--panel)}
+  .stat{flex:1 1 150px;padding:18px 22px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:none}
+  .stat b{display:block;font-size:28px;line-height:1.25;font-variant-numeric:tabular-nums}
+  .stat b i{font-style:normal;font-size:14px;color:var(--ink3);margin-left:2px}
+  .stat span{font-size:13px;color:var(--ink2)}
+
+  /* ── 一/二：简版行 ── */
+  .rows{display:flex;flex-direction:column;gap:12px}
+  .row{display:grid;grid-template-columns:150px 1fr;gap:18px;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:16px 22px;align-items:baseline}
+  @media (max-width:760px){.row{grid-template-columns:1fr;gap:4px}}
+  .row .h{font-weight:600;font-size:15.5px}
+  .row .h small{display:block;font-size:12px;color:var(--ink3);font-weight:400;letter-spacing:.08em}
+  .row p{color:var(--ink2);font-size:14.5px}
+  .row p b.cost{color:var(--bad);font-weight:500}
+  .maprow{display:grid;grid-template-columns:1fr 34px 1.4fr;gap:14px;align-items:center;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:16px 22px}
+  @media (max-width:760px){.maprow{grid-template-columns:1fr}.maprow .arr{display:none}}
+  .maprow .pain{font-size:14.5px;color:var(--ink2)}
+  .maprow .pain b{display:block;color:var(--ink);font-size:15px}
+  .maprow .arr{color:var(--amber);font-size:19px;text-align:center}
+  .maprow .goal{font-size:14.5px;color:var(--ink2);border-left:3px solid var(--ok);padding-left:14px}
+  .maprow .goal b{display:block;color:var(--ink);font-size:15px}
+
+  /* ── 架构图通用 ── */
+  .diagram{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px;margin-bottom:18px}
+  .diagram .dtitle{font-size:13px;letter-spacing:.14em;font-weight:600;color:var(--ink3);margin-bottom:18px}
+  .node{background:var(--wash);border:1.5px solid var(--line2);border-radius:10px;padding:9px 14px;font-size:13.5px;text-align:center}
+  .node small{display:block;font-size:11.5px;color:var(--ink3);line-height:1.5;font-weight:400}
+  .node.warm{border-color:var(--amber);background:var(--amber-bg)}
+  .node.cool{border-color:var(--blue);background:var(--blue-bg)}
+  .node.danger{border-color:var(--bad);background:var(--bad-bg)}
+
+  /* 分层架构 */
+  .stack{display:flex;flex-direction:column}
+  .slayer{display:grid;grid-template-columns:108px 1fr;border:1.5px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--panel)}
+  .slayer + .sgap{height:18px;position:relative}
+  .sgap{height:18px;position:relative}
+  .sgap::before{content:"";position:absolute;left:50%;top:2px;bottom:2px;width:2px;background:var(--line2)}
+  .sgap::after{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);border:5px solid transparent;border-top:7px solid var(--line2)}
+  .slayer .lab{background:var(--panel2);padding:14px 12px;font-size:13px;font-weight:600;color:var(--ink2);display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--line);letter-spacing:.05em}
+  .slayer .lab small{font-weight:400;font-size:11px;color:var(--ink3);letter-spacing:0}
+  .slayer .boxes{display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px;align-items:center}
+  .principles{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .pill{font-size:12.5px;color:var(--ink2);border:1px solid var(--line2);border-radius:99px;padding:4px 13px;background:var(--panel)}
+  .pill b{color:var(--amber);font-weight:500}
+
+  /* Agent 流程图 */
+  .aflow{display:grid;grid-template-columns:110px 30px 1fr 30px 1fr;gap:0;align-items:stretch}
+  @media (max-width:860px){.aflow{grid-template-columns:1fr}.aflow .ax{transform:rotate(90deg);margin:2px 0}}
+  .ax{display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:18px}
+  .abox{border:1.5px solid var(--line2);border-radius:12px;padding:16px 18px;background:var(--wash)}
+  .abox.user{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;font-weight:600;font-size:15px;background:var(--panel2)}
+  .abox.user small{font-weight:400;font-size:12px;color:var(--ink3)}
+  .abox.fast{border-color:var(--blue);background:var(--blue-bg)}
+  .abox.slow{border-color:var(--amber);background:var(--amber-bg)}
+  .abox h4{font-size:15px;margin-bottom:2px}
+  .abox h4 small{font-weight:400;color:var(--ink2);font-size:12px;margin-left:6px}
+  .abox ul{list-style:none;margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  .abox li{font-size:13px;color:var(--ink2);padding-left:13px;position:relative;line-height:1.6}
+  .abox li::before{content:"";position:absolute;left:0;top:.6em;width:5px;height:5px;border-radius:2px;background:var(--line2)}
+  .abox.fast li::before{background:var(--blue)}
+  .abox.slow li::before{background:var(--amber)}
+  .asub{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  @media (max-width:860px){.asub{grid-template-columns:repeat(2,1fr)}}
+  .handnote{text-align:center;font-size:12.5px;color:var(--ink3);margin-top:12px}
+  .handnote b{color:var(--ink2);font-weight:500}
+
+  /* 工具清单 */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:13.5px;color:var(--ink2)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+  .dot.c{background:var(--ok)} .dot.g{background:var(--amber)} .dot.b{background:var(--bad)}
+  .toolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+  .tg{background:var(--wash);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .tg h4{font-size:14px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between}
+  .tg h4 em{font-style:normal;font-size:12px;color:var(--ink3);font-weight:400;font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:11.5px;font-family:ui-monospace,Menlo,monospace;color:var(--ink2);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+  .chip.g{border-color:var(--amber);color:var(--amber);background:var(--amber-bg)}
+  .chip.b{border-color:var(--bad);color:var(--bad);background:var(--bad-bg)}
+
+  /* 语音链路图 */
+  .vflow{display:grid;grid-template-columns:1fr 34px 200px 34px 1fr;gap:0;align-items:center}
+  @media (max-width:860px){.vflow{grid-template-columns:1fr}.vflow .ax{transform:rotate(90deg);margin:4px 0}}
+  .sources{display:flex;flex-direction:column;gap:8px}
+  .src{display:grid;grid-template-columns:88px 1fr;gap:10px;align-items:center}
+  .src .b{height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:#fff}
+  .src small{font-size:12px;color:var(--ink2);line-height:1.5}
+  .micnode{border:1.5px solid var(--amber);background:var(--amber-bg);border-radius:12px;padding:18px 14px;text-align:center}
+  .micnode b{display:block;font-size:15px}
+  .micnode small{font-size:12px;color:var(--ink2);line-height:1.6}
+  .vout{display:flex;flex-direction:column;gap:8px}
+  .vnotes{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+
+  /* HMI */
+  .hmi{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;align-items:start}
+  @media (max-width:900px){.hmi{grid-template-columns:1fr}}
+  .desk{display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(8,24px);gap:5px}
+  .ccard{border-radius:8px;display:flex;align-items:flex-end;padding:7px 10px;font-size:12px;font-weight:500;
+    border:1.5px solid var(--line2);background:var(--wash)}
+  .ccard.nav{grid-column:1/9;grid-row:1/5;border-color:var(--blue);background:var(--blue-bg)}
+  .ccard.media{grid-column:9/13;grid-row:1/5;border-color:var(--amber);background:var(--amber-bg)}
+  .ccard.weather{grid-column:1/5;grid-row:5/9}
+  .ccard.list{grid-column:5/9;grid-row:5/9}
+  .ccard.auto{grid-column:9/13;grid-row:5/7}
+  .ccard.metric{grid-column:9/13;grid-row:7/9}
+  .desknote{font-size:12.5px;color:var(--ink3);margin-top:12px;line-height:1.7}
+  .rules{display:flex;flex-direction:column;gap:10px}
+  .rule{background:var(--wash);border:1px solid var(--line);border-radius:12px;padding:13px 16px}
+  .rule b{font-size:14px;display:block;margin-bottom:2px}
+  .rule p{font-size:13px;color:var(--ink2)}
+  .chan{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+  @media (max-width:760px){.chan{grid-template-columns:1fr}}
+
+  /* 演示 case */
+  .cases{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+  @media (max-width:900px){.cases{grid-template-columns:1fr}}
+  .case{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;display:flex;flex-direction:column;gap:10px}
+  .case .no{font-size:12px;color:var(--amber);letter-spacing:.08em;font-weight:600}
+  .say{background:var(--wash);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:0 10px 10px 0;padding:9px 13px;font-size:14.5px}
+  .say::before{content:"🎙 ";opacity:.85}
+  .case .chain{font-size:13px;color:var(--ink2);line-height:1.8}
+  .case .chain b{color:var(--ink);font-weight:500}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+  .tag{font-size:12px;color:var(--blue);border:1px solid var(--blue);border-radius:99px;padding:1.5px 11px;background:var(--blue-bg)}
+  .tag.a{color:var(--amber);border-color:var(--amber);background:var(--amber-bg)}
+  .runorder{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px 24px}
+  .runorder ol{margin:8px 0 0 20px;color:var(--ink2);font-size:14px;display:flex;flex-direction:column;gap:6px}
+  .runorder li b{color:var(--ink);font-weight:500}
+
+  footer{margin-top:80px;padding-top:22px;border-top:1px solid var(--line);color:var(--ink3);font-size:13px;line-height:2}
+  footer code{font-family:ui-monospace,Menlo,monospace;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:1px 8px;color:var(--ink2);font-size:12.5px}
+</style>
+
+<nav class="rail" aria-label="章节导航">
+  <div class="logo">COCKPIT · SIM</div>
+  <a href="#bg"><span class="n">一</span>背景</a>
+  <a href="#goal"><span class="n">二</span>目的</a>
+  <a href="#arch"><span class="n">三</span>措施 · 平台结构</a>
+  <a href="#agent" style="padding-left:34px">Agent 架构</a>
+  <a href="#tools" style="padding-left:34px">原子能力</a>
+  <a href="#voice" style="padding-left:34px">语音链路</a>
+  <a href="#hmi" style="padding-left:34px">HMI &amp; 桌面</a>
+  <a href="#demo"><span class="n">四</span>演示</a>
+  <div class="foot">1347 tests · 零后端<br>加能力 = 加数据</div>
+</nav>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">产品汇报 · 2026-08</div>
+  <h1>座舱 Agent 模拟环境</h1>
+  <p class="thesis">以前一个产品点，设计完要等半年才能在车上看到。有了这个模拟座舱，<b>上午想的点子，下午就能开口对话、上屏看效果</b> —— 信号、Agent、界面都是一套，Demo 从第一天起就是车机的样子。</p>
+  <div class="stats">
+    <div class="stat"><b>82<i>个</i></b><span>原子工具 · 彩/灰/黑分级</span></div>
+    <div class="stat"><b>113<i>路</i></b><span>车辆信号 · 对齐 COVESA VSS</span></div>
+    <div class="stat"><b>22<i>张</i></b><span>卡片模板 · 12×8 统一栅格</span></div>
+    <div class="stat"><b>20+</b><span>真实三方 API 接入</span></div>
+    <div class="stat"><b>1347</b><span>自动化测试全绿</span></div>
+    <div class="stat"><b>0</b><span>后端 · 静态文件即部署</span></div>
+  </div>
+</header>
+
+<!-- ═══════════ 一、背景 ═══════════ -->
+<section id="bg">
+  <div class="eyebrow">SECTION 01</div>
+  <h2><span class="num">一</span>背景</h2>
+  <p class="lede">为什么做这个东西？三个很实际的痛。</p>
+  <div class="rows">
+    <div class="row"><div class="h">周期太长<small>设计 → 实车</small></div>
+      <p>一个产品点从设计到真正能体验，最少半年。<b class="cost">BUG 和设计问题都得等半年后才看得见</b>，那时候改，代价翻倍。</p></div>
+    <div class="row"><div class="h">文字讲不清<small>产品 → 研发</small></div>
+      <p>研发老问：这里到底是模型自己决策还是写死规则？交互出来长什么样？这些靠文档真讲不明白，<b class="cost">理解偏了就直接写进代码了</b>。</p></div>
+    <div class="row"><div class="h">Demo 各自为政<small>产品线之间</small></div>
+      <p>每个产品都拿自己顺手的 Agent 搭 Demo：没有车辆信号、没有语音流程、也没有应用之间的仲裁。<b class="cost">Demo 做得再好，搬到车机上还是得重来</b>。</p></div>
+  </div>
+</section>
+
+<!-- ═══════════ 二、目的 ═══════════ -->
+<section id="goal">
+  <div class="eyebrow">SECTION 02</div>
+  <h2><span class="num">二</span>目的</h2>
+  <p class="lede">所以搭了一个平台，做三件事，正好对着上面三个痛。</p>
+  <div class="rows">
+    <div class="maprow">
+      <div class="pain"><b>周期太长</b>环境不一致，结论没法比</div><div class="arr">→</div>
+      <div class="goal"><b>虚拟平台，模拟车辆信号</b>113 路信号对齐 VSS 标准，大家在同一台"车"上做 Demo，当天就能体验</div>
+    </div>
+    <div class="maprow">
+      <div class="pain"><b>文字讲不清</b>决策边界说不明白</div><div class="arr">→</div>
+      <div class="goal"><b>统一 Agent 架构，接底层原子能力</b>哪些归代码、哪些归模型，直接跑给研发看，不用猜</div>
+    </div>
+    <div class="maprow">
+      <div class="pain"><b>Demo 各自为政</b>交互五花八门</div><div class="arr">→</div>
+      <div class="goal"><b>统一 AI HMI 架构</b>卡片、语音、仲裁就一套，接进来天然就是车机的样子</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 三、措施：分层架构 ═══════════ -->
+<section id="arch">
+  <div class="eyebrow">SECTION 03</div>
+  <h2><span class="num">三</span>措施：平台整体分层架构</h2>
+  <p class="lede">整个平台六层，越往上越贴体验，越往下越是标准和数据。核心纪律就一条：<span class="hl">加能力 = 加数据，不改代码</span>。</p>
+
+  <div class="diagram">
+    <div class="dtitle">整体分层架构</div>
+    <div class="stack">
+      <div class="slayer"><div class="lab">呈现层<small>用户看到的</small></div><div class="boxes">
+        <div class="node cool">车机屏<small>干净可投屏 · 不带业务逻辑</small></div>
+        <div class="node">星河 Avatar<small>状态角标 · 逐句字幕</small></div>
+        <div class="node">控制面板<small>调试 / 演示 / 注入信号</small></div>
+        <div class="node">单文件版<small>双击就开 · 发出去就能用</small></div>
+      </div></div>
+      <div class="sgap"></div>
+      <div class="slayer"><div class="lab">编排层<small>谁上屏谁出声</small></div><div class="boxes">
+        <div class="node cool">卡片桌面<small>12×8 栅格 · 仲裁 / 等位 / 重力</small></div>
+        <div class="node">显示三通道<small>卡片 · 横幅 · 覆盖层</small></div>
+        <div class="node">声音仲裁<small>全系统就一个"嘴"</small></div>
+        <div class="node">规则编排器<small>桌面跟着车辆状态走 · 模型不插手</small></div>
+      </div></div>
+      <div class="sgap"></div>
+      <div class="slayer"><div class="lab">智能层<small>策略在模型</small></div><div class="boxes">
+        <div class="node warm">Agent 快慢双层<small>快层先干 · 慢层把关</small></div>
+        <div class="node">技能包 ×8<small>导航 / 媒体 / 绘本 / 调研…</small></div>
+        <div class="node">四级记忆<small>瞬时 · 会话 · 领域 · 长期</small></div>
+        <div class="node">子 Agent<small>慢活拆出去后台跑</small></div>
+      </div></div>
+      <div class="sgap"></div>
+      <div class="slayer"><div class="lab">平台层<small>机制在代码</small></div><div class="boxes">
+        <div class="node warm">Tool 注册表<small>82 个工具 · 彩/灰/黑权限</small></div>
+        <div class="node">确认流<small>对齐 MCP 标准</small></div>
+        <div class="node">约束引擎<small>开车禁视频 · 非 P 挡禁后备箱</small></div>
+        <div class="node">State Store<small>状态机 · 过渡仿真</small></div>
+        <div class="node">自动化引擎<small>用嘴建规则 · 到点就触发</small></div>
+      </div></div>
+      <div class="sgap"></div>
+      <div class="slayer"><div class="lab">数据层<small>加能力=加数据</small></div><div class="boxes">
+        <div class="node">signals ×113<small>对齐 COVESA VSS v6.0</small></div>
+        <div class="node">tools ×82<small>元数据对齐 AAOS</small></div>
+        <div class="node">cards ×22<small>数据形状 · 形态 · 交互，都是声明</small></div>
+        <div class="node">constraints / rules<small>声明式 · 白名单</small></div>
+      </div></div>
+      <div class="sgap"></div>
+      <div class="slayer"><div class="lab">接入层<small>全是真接口</small></div><div class="boxes">
+        <div class="node">高德<small>导航 / 地图 / 天气兜底</small></div>
+        <div class="node">OpenRouter<small>大模型 / 生图 / 生视频</small></div>
+        <div class="node">Open-Meteo<small>168 小时逐时天气</small></div>
+        <div class="node">iTunes · Radio Browser<small>音乐 / 电台 / 播客</small></div>
+        <div class="node">NewsAPI · Web Search<small>资讯 / 联网</small></div>
+        <div class="node">lrclib · Pexels · 讯飞 TTS<small>歌词 / 图库 / 云端语音</small></div>
+      </div></div>
+    </div>
+    <div class="principles">
+      <span class="pill"><b>工具只管机制，聪明留给模型</b> · 工具里不写一行"贴心逻辑"</span>
+      <span class="pill"><b>平台不认识任何具体 Agent</b> · 注册个清单就能跑</span>
+      <span class="pill"><b>不自己发明协议</b> · VSS / AAOS / MCP 全对齐业界标准</span>
+      <span class="pill"><b>零后端</b> · 静态文件，发出去就能跑</span>
+      <span class="pill"><b>运行时依赖为零</b> · 就 3 个开发依赖</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ Agent 架构 ═══════════ -->
+<section id="agent">
+  <div class="eyebrow">SECTION 03 · A</div>
+  <h2>Agent 架构：快慢双层</h2>
+  <p class="lede">跟人一样：条件反射归快层，要动脑子的归慢层。但用户感觉到的，永远只有一个助手。</p>
+  <div class="diagram">
+    <div class="dtitle">一句话进来之后</div>
+    <div class="aflow">
+      <div class="abox user">🎙 用户开口<small>或者点屏幕</small></div>
+      <div class="ax">→</div>
+      <div class="abox fast">
+        <h4>快层<small>小模型 · 27 个高频工具 · 秒级</small></h4>
+        <ul>
+          <li>只挂安全的"彩"权限操作，<b>能干的马上干、马上答</b></li>
+          <li>快归快，边界卡在权限分级上，出不了事</li>
+          <li>干不了的立刻移交，不磨蹭</li>
+        </ul>
+      </div>
+      <div class="ax">→</div>
+      <div class="abox slow">
+        <h4>慢层<small>大模型 · 工具按需取用</small></h4>
+        <ul>
+          <li>把快层干的活检查一遍，剩下的接着干</li>
+          <li>都对、没新增？那就不说话 —— <b>沉默也是答案</b></li>
+          <li>耗时的活拆给子 Agent 后台跑，快活先交付</li>
+        </ul>
+      </div>
+    </div>
+    <div class="handnote">每轮干完就<b>移交</b>，两层看同一份对话记录 · 用户中途插话？<b>旧活照干完，就是不抢话</b></div>
+    <div class="asub">
+      <div class="node">工具注册表<small>权限把关 · 该确认的弹确认</small></div>
+      <div class="node">技能包 ×8<small>目录常驻，用到才展开</small></div>
+      <div class="node">子 Agent<small>后台跑，跑完自动来报</small></div>
+      <div class="node">四级记忆<small>信号 → 会话 → 领域 → 偏好</small></div>
+    </div>
+  </div>
+  <div class="principles">
+    <span class="pill"><b>决策全在 Prompt 里</b> · 代码里出现意图判断就算违规</span>
+    <span class="pill"><b>拒绝要带原因和建议</b> · 模型拿着就能给替代方案</span>
+    <span class="pill"><b>只记用户明说的</b> · 不搞自动揣摩</span>
+  </div>
+</section>
+
+<!-- ═══════════ 原子能力 ═══════════ -->
+<section id="tools">
+  <div class="eyebrow">SECTION 03 · B</div>
+  <h2>原子能力：82 个工具，三级权限</h2>
+  <div class="legend">
+    <span><span class="dot c"></span><b>彩</b> ×80 · 直接干</span>
+    <span><span class="dot g"></span><b>灰</b> · 先问一句再干（车门这种）；车窗、驾驶模式<span class="hl">开车时自动升灰</span></span>
+    <span><span class="dot b"></span><b>黑</b> · 压根不给 Agent（刹车、转向）</span>
+  </div>
+  <div class="toolgrid">
+    <div class="tg"><h4>车辆控制 <em>19</em></h4><div class="chips">
+      <span class="chip">window.set</span><span class="chip">climate.set</span><span class="chip">seat.set</span><span class="chip">sunroof.set</span><span class="chip">defrost.set</span><span class="chip">mirror.set</span><span class="chip">wiper.set</span><span class="chip">steeringWheel.set</span><span class="chip">airPurifier.set</span><span class="chip">ambientLight.set</span><span class="chip">fragrance.set</span><span class="chip">light.set</span><span class="chip">childLock.set</span><span class="chip">chargePort.set</span><span class="chip">driveSetting.set</span><span class="chip g">door.set</span><span class="chip g">trunk.set</span><span class="chip">vehicle.getState</span><span class="chip">capability.list</span>
+    </div></div>
+    <div class="tg"><h4>导航与位置 <em>12</em></h4><div class="chips">
+      <span class="chip">navigation.search</span><span class="chip">navigation.setDestination</span><span class="chip">navigation.compareRoutes</span><span class="chip">navigation.searchAlong</span><span class="chip">navigation.control</span><span class="chip">navigation.getStatus</span><span class="chip">map.control</span><span class="chip">traffic.status</span><span class="chip">region.districts</span><span class="chip">places.save</span><span class="chip">places.list</span><span class="chip">places.remove</span>
+    </div></div>
+    <div class="tg"><h4>媒体与内容 <em>21</em></h4><div class="chips">
+      <span class="chip">media.control</span><span class="chip">media.volume</span><span class="chip">media.seek</span><span class="chip">media.mode</span><span class="chip">media.queue</span><span class="chip">media.favorite</span><span class="chip">music.search/play</span><span class="chip">podcast.search/play</span><span class="chip">radio.search/play</span><span class="chip">news.headlines/search/read</span><span class="chip">video.search/play</span><span class="chip">video.generate</span><span class="chip">music.generate</span><span class="chip">web.search</span>
+    </div></div>
+    <div class="tg"><h4>卡片与桌面 <em>6</em></h4><div class="chips">
+      <span class="chip">card.show</span><span class="chip">card.update</span><span class="chip">card.resize</span><span class="chip">card.dismiss</span><span class="chip">card.focus</span><span class="chip">desktop.getLayout</span>
+    </div></div>
+    <div class="tg"><h4>语音 <em>3</em></h4><div class="chips">
+      <span class="chip">voice.speak</span><span class="chip">voice.ask</span><span class="chip">voice.config</span>
+    </div></div>
+    <div class="tg"><h4>自动化任务 <em>5</em></h4><div class="chips">
+      <span class="chip">automation.create</span><span class="chip">automation.list</span><span class="chip">automation.toggle</span><span class="chip">automation.delete</span><span class="chip">automation.run</span>
+    </div></div>
+    <div class="tg"><h4>记忆 <em>3</em></h4><div class="chips">
+      <span class="chip">memory.remember</span><span class="chip">memory.forget</span><span class="chip">memory.list</span>
+    </div></div>
+    <div class="tg"><h4>AI 绘本「路上的故事」 <em>7</em></h4><div class="chips">
+      <span class="chip">story.profile</span><span class="chip">story.cast</span><span class="chip">story.begin</span><span class="chip">story.continue</span><span class="chip">story.finish</span><span class="chip">story.export</span><span class="chip">story.page</span>
+    </div></div>
+    <div class="tg"><h4>生活信息与主题 <em>6</em></h4><div class="chips">
+      <span class="chip">weather.query</span><span class="chip">stock.query</span><span class="chip">holiday.query</span><span class="chip">poem.today</span><span class="chip">theme.set</span><span class="chip">wallpaper.set</span>
+    </div></div>
+    <div class="tg"><h4>安全红线 <em>1</em></h4><div class="chips">
+      <span class="chip b">brake.apply（黑 · 永不注册）</span>
+    </div><p class="sub" style="margin-top:6px;font-size:13px">「黑」是能力压根不存在；「rejected」是有这个能力但这次不行 —— 会把原因用人话带回给模型。</p></div>
+  </div>
+</section>
+
+<!-- ═══════════ 语音链路 ═══════════ -->
+<section id="voice">
+  <div class="eyebrow">SECTION 03 · C</div>
+  <h2>语音链路：全系统就一个「嘴」</h2>
+  <p class="lede">谁想说话都得先排队，不会出现两路语音抢着说；用户一开口，谁都得让。</p>
+  <div class="diagram">
+    <div class="dtitle">声音仲裁</div>
+    <div class="vflow">
+      <div class="sources">
+        <div class="src"><div class="b" style="background:var(--amber)">confirm</div><small>确认询问 —— 涉及安全的问句最优先</small></div>
+        <div class="src"><div class="b" style="background:#B08A45">turn</div><small>对话回复 —— 但不许打断讲故事</small></div>
+        <div class="src"><div class="b" style="background:#7B93C0">story</div><small>绘本朗读 —— 被打断的那页从头重念</small></div>
+        <div class="src"><div class="b" style="background:#9AA6BF">delivery</div><small>后台任务来报 —— 嘴忙就等着</small></div>
+      </div>
+      <div class="ax">→</div>
+      <div class="micnode"><b>声音仲裁</b><small>唯一出声口<br>用户开口 = 最高打断力<br>（讲故事豁免）</small></div>
+      <div class="ax">→</div>
+      <div class="vout">
+        <div class="node">TTS 播报<small>一开口音乐自动压到 20%，说完复原</small></div>
+        <div class="node">字幕<small>按句子一页页上屏，不搞跑马灯</small></div>
+        <div class="node">星河角标<small>听 / 想 / 说 / 等确认，看一眼就知道它在干嘛</small></div>
+      </div>
+    </div>
+    <div class="vnotes">
+      <span class="pill">角落的确认按钮就是确认卡的投影，<b>点按和开口说，走同一条路</b></span>
+      <span class="pill">屏幕上摆着的<b>不逐条念</b>，嘴里只说关键差别</span>
+      <span class="pill">播报被打断，字幕跟着一起停</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ HMI & 桌面 ═══════════ -->
+<section id="hmi">
+  <div class="eyebrow">SECTION 03 · D</div>
+  <h2>HMI &amp; 桌面：卡片是带契约的投影</h2>
+  <p class="lede">桌面不是 Agent 想摆啥摆啥 —— 基础卡跟着车辆状态走，规则驱动，模型不插手。原则就一条：<span class="hl">可预测比好看重要</span>，演示的人得能预判结果。</p>
+  <div class="diagram">
+    <div class="dtitle">12×8 统一栅格 · 96 单元</div>
+    <div class="hmi">
+      <div>
+        <div class="desk" aria-label="12×8 栅格示意">
+          <div class="ccard nav">导航 · 左锚定，挤不走</div>
+          <div class="ccard media">媒体 · 分源查表</div>
+          <div class="ccard weather">天气 · 逐时预报</div>
+          <div class="ccard list">候选列表 · 能点</div>
+          <div class="ccard auto">自动化任务</div>
+          <div class="ccard metric">指标卡</div>
+        </div>
+        <div class="desknote">14 个形状 · 跨度和起点都取偶数 → 空隙一定是偶数宽，<b>最小的卡永远塞得进去，不会出现死缝</b> · 右上角 −/＋/✕ 用户自己调 · 有卡走了，空位自动往左上回填，不留洞</div>
+      </div>
+      <div class="rules">
+        <div class="rule"><b>模板有契约</b><p>数据长什么样、每个尺寸放什么内容、哪里能点 —— 全是声明出来的，不是代码里临时判断</p></div>
+        <div class="rule"><b>急事优先</b><p>紧急告警放不下就走覆盖层，绝不弹"桌面已满"；普通卡放不下就先排队，有空位自动上来</p></div>
+        <div class="rule"><b>模型直出的卡（canvas）</b><p>应对没有模板的长尾需求，四道闸兜底：消毒 → 容量 → 缩放 → 文字兜底；开车时不给滚动</p></div>
+      </div>
+    </div>
+    <div class="dtitle" style="margin-top:22px">显示三通道 · 内容和"说一声"分开走</div>
+    <div class="chan">
+      <div class="node"><b>卡片</b><small>正经内容：导航、媒体、候选、天气</small></div>
+      <div class="node"><b>横幅</b><small>说一声就完："车窗开了"、为什么没做成 —— 不占桌面格子</small></div>
+      <div class="node danger"><b>覆盖层</b><small>真出事了才用：安全告警、全屏内容</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 四、演示 ═══════════ -->
+<section id="demo">
+  <div class="eyebrow">SECTION 04</div>
+  <h2><span class="num">四</span>演示：九个 Case，把能力都过一遍</h2>
+  <p class="lede">每个 Case 就是一句话开场，全在同一台"车"上连着演，不用切环境。</p>
+  <div class="cases">
+
+    <div class="case"><div class="no">CASE 01 · 秒级车控与权限分级</div>
+      <div class="say">有点热，开点窗，空调调到 24 度</div>
+      <div class="chain">快层一秒把两件事都办了，顺口确认一句。接着说"把车门打开"——这是<b>灰权限</b>，屏上弹确认卡，点头才执行。开车的时候，连开窗都会自动升级成要确认。</div>
+      <div class="tags"><span class="tag">快慢双层</span><span class="tag a">彩/灰权限</span><span class="tag a">确认流</span><span class="tag">回执横幅</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 02 · 约束引擎与安全红线</div>
+      <div class="say">（开车时）放个电影 / 帮我踩一脚刹车</div>
+      <div class="chain">开车看视频？<b>约束引擎直接拦</b>，Agent 会好好说为什么，还给替代方案（"先听音频版？"）。让它踩刹车？<b>这个工具压根不存在</b>，它只会说这事得驾驶员自己来。</div>
+      <div class="tags"><span class="tag a">约束引擎</span><span class="tag a">安全红线</span><span class="tag">拒绝带原因</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 03 · 导航全链路</div>
+      <div class="say">找个附近有饺子馆的充电站，顺便看看哪条路不堵</div>
+      <div class="chain">真实高德接口：先搜充电站，拿着坐标再搜饺子馆 —— <b>没人预置过这个"意图"，是模型自己组合出来的</b>。候选上屏能点，比完路线设目的地，导航卡自动出来、实时 ETA。</div>
+      <div class="tags"><span class="tag">真实高德 API</span><span class="tag">工具组合</span><span class="tag">卡片点选</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 04 · 媒体多源与桌面仲裁</div>
+      <div class="say">放首周深的歌 … 换成新闻 … 声音小点，下一条</div>
+      <div class="chain">音乐、电台、播客、新闻、视频<b>一套播控随口切</b>；歌词唱到哪亮到哪，封面颜色晕进卡片。桌面上卡多了自己会挪位、排队，不乱。</div>
+      <div class="tags"><span class="tag">20+ 真实内容源</span><span class="tag">换源无缝</span><span class="tag">等位区</span><span class="tag">布局重力</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 05 · 插话打断</div>
+      <div class="say">关闭空调 ——（不等回话）—— 再把车窗关了</div>
+      <div class="chain">连说两句不等回话，<b>两句都会执行</b> —— 插话只是不抢话，不会把上一件事扔了。你一开口，播报立刻让路，音乐自动压低。</div>
+      <div class="tags"><span class="tag">插话不丢活</span><span class="tag">语音仲裁</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 06 · 生成式卡：没有的功能现场造</div>
+      <div class="say">给孩子来个算 24 点的小游戏，再帮我查下今天美股怎么样</div>
+      <div class="chain">小游戏没有现成工具？<b>模型现场写一个放上屏</b>。查行情这种慢活扔给<b>后台子 Agent</b> 跑，查完自动来报 —— 快活不用等慢活。</div>
+      <div class="tags"><span class="tag">生成式 UI</span><span class="tag">后台并行</span><span class="tag">任务芯片</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 07 · 自动化：用嘴建规则</div>
+      <div class="say">以后下雨就自动关窗；每天下午四点把空调打开</div>
+      <div class="chain">规则用嘴建，存下来就是用户自己的数据。控制面板上<b>一注雨，当场看规则触发</b>、车窗关上、横幅报一声。规则卡上能直接开关，任务码还能分享给别人。</div>
+      <div class="tags"><span class="tag">自动化引擎</span><span class="tag">到点就触发</span><span class="tag">现场注入信号</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 08 · 记忆与偏好</div>
+      <div class="say">记住我喜欢 24 度 ——（重启会话）—— 有点冷</div>
+      <div class="chain">说一句"记住"，就真记住了。<b>换个会话</b>说"有点冷"，它照着你的偏好调到 24，不瞎猜。播放队列、上回聊到哪，也都各有各的记法。</div>
+      <div class="tags"><span class="tag">四级记忆</span><span class="tag">跨会话</span></div>
+    </div>
+
+    <div class="case"><div class="no">CASE 09 · 路上的故事：AI 儿童绘本</div>
+      <div class="say">给妹妹讲个她当主角的故事吧</div>
+      <div class="chain">拍张照定妆（家长点头才用），<b>孩子自己当主角</b>，每章讲完让孩子接着编往下走。快到站自动收尾，一键导出 H5，发给爷爷奶奶双击就能看。</div>
+      <div class="tags"><span class="tag">多模态生成</span><span class="tag">孩子共写</span><span class="tag">H5 交付物</span></div>
+    </div>
+
+  </div>
+
+  <div class="runorder">
+    <h3>建议演示动线（12 分钟左右）</h3>
+    <ol>
+      <li><b>01 车控 + 02 红线</b>开场 —— 90 秒让人信"这是台真车"，顺便把权限分级讲完；</li>
+      <li><b>03 导航 → 04 媒体</b>连着放 —— 真实接口和桌面编排全在这段自然出现；</li>
+      <li><b>05 插话 + 06 生成式卡</b> —— 正面回答研发那两个问题：什么时候模型决策、交互长什么样；</li>
+      <li><b>07 自动化 + 08 记忆</b> —— 平台能沉淀东西：规则和偏好都是用户自己的数据；</li>
+      <li><b>09 绘本</b>收尾 —— 一个完整的新产品，接进来<b>只加了数据和 Prompt，平台一行代码没改</b>。</li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div>页面上的数字都是仓库实测：82 工具 · 113 信号 · 22 模板 · 1347 个测试全绿 · 运行时依赖 0</div>
+  <div>本地体验：<code>npm run dev</code> → localhost:5173 &nbsp;·&nbsp; 自动化跑场景：<code>npm run pilot</code>（让 LLM 扮真人跑 55 个场景）&nbsp;·&nbsp; 免安装分发：<code>node build-single.mjs</code> 单文件双击即开</div>
+  <div>天气数据 by Open-Meteo（CC BY 4.0）</div>
+</footer>
+
+</main>

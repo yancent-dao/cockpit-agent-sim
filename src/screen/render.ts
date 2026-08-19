@@ -260,7 +260,13 @@ export function cardBody(c: CardView): string {
         d.options?.length
           ? `<ol class="listcard opts">${d.options.map((o: string, n: number) =>
               `<li data-act="tap:item" data-value="${esc(`第${n + 1}个：${o}`)}"><b>${esc(o)}</b></li>`).join('')}</ol>`
-          : `<div>${['确认', '取消'].map(o => `<span class="opt">${o}</span>`).join('')}</div>`)
+          /**
+           * 无 options = 开放问题（绘本"后面会发生什么"这类）——不画任何按钮。
+           * 以前兜底画「确认/取消」两个装饰 span（给"要不要"类设计的），
+           * 开放续写走到这就全错了：没选项、点不了、语义也不对（实拍）。
+           * 真正的"要不要"确认（MRTR）自带 options:['确认','取消']，走上面那支
+           */
+          : `<div class="askopen">◎ 直接说出来就行</div>`)
     }
     case 'notice': {
       /**

@@ -244,3 +244,22 @@ describe('形态契约的通用不变量', () => {
     expect(seen.size).toBeGreaterThan(20)
   })
 })
+
+/**
+ * 开放问题不画假按钮（2026-08-19 实拍：绘本"你觉得后面会发生什么"
+ * 上屏成「请选择」+ 点不了的确认/取消——那是给"要不要"类二次确认的
+ * 兜底，开放续写走到这就全错了）。
+ */
+describe('confirm 卡：开放问题（无 options）', () => {
+  it('不画确认/取消装饰按钮，给"说出来就行"的提示', () => {
+    const h = body('confirm', 'wide', { title: '一起想', question: '你觉得后面会发生什么呢？', options: [] })
+    expect(h).not.toContain('确认')
+    expect(h).not.toContain('取消')
+    expect(h).toMatch(/说/)
+  })
+  it('带 options 的仍是编号可点列表（不受影响）', () => {
+    const h = body('confirm', 'wide', { question: '要哪个？', options: ['探险', '回家'] })
+    expect(h).toContain('第1个')
+    expect(h).toContain('探险')
+  })
+})

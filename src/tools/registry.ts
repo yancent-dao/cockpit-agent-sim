@@ -125,7 +125,9 @@ export function createRegistry(
       // ttl 用 untilTaskEnd 而非秒数：用户下一句一开口，这问题要么被回答要么被跳过，
       // 卡片就该走。挂满 60 秒是白占位置。
       else autoCard({ key: 'ask', template: 'confirm', size: 'wide', kind: 'system', ttl: 'untilTaskEnd',
-        data: { title: '请选择', question: args.question, options: args.options ?? [] } })
+        // 标题跟形态走：带选项是"选一个"，开放问题是"说想法"——写「请选择」会误导
+        data: { title: args.options?.length ? '请选择' : '想听听你的想法',
+          question: args.question, options: args.options ?? [] } })
       return { status: 'ok', data: { asked: args.question, options: args.options }, message: args.question }
     },
 

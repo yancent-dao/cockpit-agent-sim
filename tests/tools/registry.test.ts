@@ -925,7 +925,7 @@ describe('navigation.search', () => {
         '/v5/direction/driving': { status: '1', route: { paths: [{ distance: '900', cost: { duration: '120' }, steps: [] }] } },
       }),
     })
-    await r.invoke('navigation.searchAlong', { keyword: '停车场' })
+    await r.invoke('navigation.searchAlong', { query: '停车场' })
     expect(desk.findByKey('along')).toBeTruthy()
     await r.invoke('navigation.setDestination', { poiId: 'P1' })
     expect(desk.findByKey('along')).toBeUndefined()
@@ -1271,7 +1271,7 @@ describe('navigation.searchAlong —— 沿途/周边搜索', () => {
       return { ok: true, json: async () => ({ status: '1', pois: [] }) }
     }) as Fetcher, { webKey: 'k' })
     const r = createRegistry(store, TOOLS, () => now, { amap })
-    await r.invoke('navigation.searchAlong', { keyword: '服务区' })
+    await r.invoke('navigation.searchAlong', { query: '服务区' })
     // 搜索中心点应取路线前方的点，而不是当前车位置
     expect(decodeURIComponent(seenUrl)).not.toContain('location=116.397428,39.90923')
   })
@@ -1284,7 +1284,7 @@ describe('navigation.searchAlong —— 沿途/周边搜索', () => {
     }) as Fetcher, { webKey: 'k' })
     const r = createRegistry(store, TOOLS, () => now, { amap })
     // 第一步拿到充电站坐标后，Agent 应能以该坐标为中心再搜一次
-    const res = await r.invoke('navigation.searchAlong', { keyword: '饺子', near: '104.07,30.60' })
+    const res = await r.invoke('navigation.searchAlong', { query: '饺子', near: '104.07,30.60' })
     expect(res.status).toBe('ok')
     expect(decodeURIComponent(seenUrl)).toContain('location=104.07,30.60')
   })
@@ -1296,14 +1296,26 @@ describe('navigation.searchAlong —— 沿途/周边搜索', () => {
       return { ok: true, json: async () => ({ status: '1', pois: [] }) }
     }) as Fetcher, { webKey: 'k' })
     const r = createRegistry(store, TOOLS, () => now, { amap })
-    await r.invoke('navigation.searchAlong', { keyword: '饺子', near: '104.07,30.60', radius: 800 })
+    await r.invoke('navigation.searchAlong', { query: '饺子', near: '104.07,30.60', radius: 800 })
     expect(decodeURIComponent(seenUrl)).toContain('radius=800')
+  })
+
+  it('参数名跟 navigation.search 看齐用 query，不是 keyword——实拍模型用完 navigation.search 紧接着搜沿途会照搬 query，传 keyword 只会静默落回默认关键词（电车永远搜出充电站）', async () => {
+    let seenUrl = ''
+    const amap = createAmapClient((async (url: string) => {
+      seenUrl = url
+      return { ok: true, json: async () => ({ status: '1', pois: [] }) }
+    }) as Fetcher, { webKey: 'k' })
+    const r = createRegistry(store, TOOLS, () => now, { amap })
+    await r.invoke('navigation.searchAlong', { query: '饺子' })
+    expect(decodeURIComponent(seenUrl)).toContain('饺子')
+    expect(decodeURIComponent(seenUrl)).not.toContain('充电站')
   })
 
   it('结果自动上屏，带距离', async () => {
     const desk = createDeskForTest()
     const r = createRegistry(store, TOOLS, () => now, { desk, amap: poiAmap() })
-    const res = await r.invoke('navigation.searchAlong', { keyword: '充电站' })
+    const res = await r.invoke('navigation.searchAlong', { query: '充电站' })
     expect(res.status).toBe('ok')
     expect((res.data as any).pois).toHaveLength(2)
     const card = desk.findByKey('along')!
@@ -1313,7 +1325,7 @@ describe('navigation.searchAlong —— 沿途/周边搜索', () => {
 
   it('搜到的地点可以直接设成途经点——"顺路充个电"闭环', async () => {
     const r = createRegistry(store, TOOLS, () => now, { amap: poiAmap() })
-    const res = await r.invoke('navigation.searchAlong', { keyword: '充电站' })
+    const res = await r.invoke('navigation.searchAlong', { query: '充电站' })
     const first = (res.data as any).pois[0]
     expect(first.location).toBe('104.07,30.60') // 有坐标才能当途经点传回 setDestination
   })

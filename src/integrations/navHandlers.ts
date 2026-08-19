@@ -254,12 +254,17 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
 
     /**
      * 沿途/周边搜索。导航中沿路线前方找，没导航就绕当前位置找。
-     * 不传关键词时按车型给默认：电车找充电站、油车找加油站。
+     * 不传 query 时按车型给默认：电车找充电站、油车找加油站。
+     *
+     * 参数名跟 navigation.search 看齐用 query（不叫 keyword）——实拍模型
+     * 刚调完 navigation.search 紧接着搜沿途会照搬参数名，传 keyword 会被
+     * registry 的宽容校验静默接受（多余键不报错），args.query 读不到就
+     * 落回默认关键词，模型拿到"成功"但结果全是充电站，连撞几轮才发现。
      */
     navSearchAlong: async (args: any): Promise<ToolResult> => {
       const amap = needAmap()
       const carType = store.get('vehicle.carType') as CarType
-      const keyword = args.keyword || (carType === 'fuel' ? '加油站' : '充电站')
+      const keyword = args.query || (carType === 'fuel' ? '加油站' : '充电站')
       try {
         // near 允许 Agent 指定搜索中心：拿到一批充电站后再挨个搜"这个站周围有没有饺子馆"
         // 这类复合需求，靠的就是把"搜哪儿"的决策权留给 Agent，而不是写死在这儿

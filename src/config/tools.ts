@@ -523,14 +523,14 @@ export const TOOLS: ToolDef[] = [
     brief: '沿途周边搜服务点',
     desc: `找附近或沿途的地方（充电站、加油站、服务区、停车场、厕所、餐厅等），结果自动上屏，带编号。
       口头只说"找到几个，最近的是XX"这种一句话结论，别把每个的名字、距离逐条念——屏幕上有。
-不传 near 时：导航中沿路线前方找，没导航就找车辆附近；不传 keyword 时按车型自动选（电车找充电站、油车找加油站）。
+不传 near 时：导航中沿路线前方找，没导航就找车辆附近；不传 query 时按车型自动选（电车找充电站、油车找加油站）。
 **可以多次调用来组合出复杂需求**——传 near 就能以任意坐标为中心再搜一圈。
 例："找个周围有饺子馆的充电站" = 先调一次拿到几个充电站及其 location，
-再对每个 location 传 near + keyword:"饺子" + radius:800 各搜一次，哪个有结果就是它。
+再对每个 location 传 near + query:"饺子" + radius:800 各搜一次，哪个有结果就是它。
 找到后把该地点的 location 作为 waypoints 传给 navigation.setDestination 即可顺路去。`,
     permission: '彩',
     params: {
-      keyword: { type: 'string', desc: '要找什么，如"充电站""服务区""饺子"。不传则按车型自动选' },
+      query: { type: 'string', desc: '要找什么，如"充电站""服务区""饺子"（跟 navigation.search 的 query 同名同义）。不传则按车型自动选' },
       near: { type: 'string', desc: '搜索中心坐标"经度,纬度"。不传则自动用路线前方或车辆当前位置' },
       radius: { type: 'number', range: [100, 50000], desc: '搜索半径（米），默认 5000。找"某地周围步行可达的店"时用 500-1000' },
     },

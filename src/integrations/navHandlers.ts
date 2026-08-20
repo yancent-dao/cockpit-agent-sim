@@ -551,5 +551,54 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         return amapFail(e, '天气查询')
       }
     },
+
+    /**
+     * 多地天气一张列表卡（2026-08-19 实拍：用户说"查一下周边区县天气"，模型
+     * 规规矩矩拿到区县列表后循环调 weather.query，结果 N 张独立天气卡糊满
+     * 桌面——每次调用各查各的，没人知道自己是一批里的第几个）。
+     * 跟 navigation.compareRoutes"多方案合并成一张卡"同一个思路：并发查、
+     * 一次建卡，不是多次调用各建各的。
+     */
+    weatherNearby: async (args: any): Promise<ToolResult> => {
+      const amap = needAmap()
+      try {
+        const area = args.area || await amap.cityOf(store.get('vehicle.location') as string)
+        if (!area)
+          return { status: 'unavailable', code: 'PLACE_NOT_FOUND', message: '定不了当前在哪个城市', suggestion: '直接说要查哪个城市周边' }
+        const districts = await amap.districts(area)
+        if (!districts.length)
+          return { status: 'unavailable', code: 'PLACE_NOT_FOUND', message: `没查到「${area}」下辖的区县` }
+        // 并发查——15 个区县串行查要 15 次网络往返，并发只要最慢那一次
+        const results = await Promise.all(districts.map(async d => {
+          let now: any = null
+          if (openmeteo && d.center) {
+            try {
+              const [lng, lat] = d.center.split(',').map(Number)
+              now = (await openmeteo.forecast(lat, lng)).now
+            } catch { /* 走高德兜底 */ }
+          }
+          if (!now) { try { now = await amap.weatherNow(d.adcode) } catch { now = null } }
+          return { ...d, now }
+        }))
+        desk?.()?.render({
+          key: `weather-nearby:${area}`, template: 'list', kind: 'task', ttl: 'untilDismissed',
+          data: {
+            title: `${area}周边天气`,
+            items: results.map(r => ({
+              label: r.name,
+              sub: r.now ? `${r.now.weather} · ${r.now.temperature}°` : '查询失败',
+            })),
+          },
+        })
+        return {
+          status: 'ok',
+          message: `${area}周边 ${results.length} 个区县天气已上屏（一张列表卡，不用逐个建卡），`
+            + '口头挑重点讲（比如哪几个在下雨、温差大不大），别把每个区县都念一遍',
+          data: { area, districts: results.map(r => ({ name: r.name, adcode: r.adcode, center: r.center, now: r.now })) },
+        }
+      } catch (e) {
+        return amapFail(e, '周边天气查询')
+      }
+    },
   }
 }

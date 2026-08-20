@@ -123,3 +123,49 @@ describe('导航中换目的地：返回里带状态事实', () => {
     expect(String(r.message ?? '')).not.toContain('waypoints')
   })
 })
+
+/**
+ * 实拍（2026-08-19）：用户说"查一下周边区县天气"，模型规规矩矩拿到 15 个
+ * 区县后循环调 weather.query，结果 15 张独立天气卡糊满桌面——每次调用
+ * 各查各的，谁都不知道自己是"一批 15 个里的第几个"，也就没法只建一张卡。
+ *
+ * 参照 navigation.compareRoutes"多方案对比合并成一张卡"的先例：多个地点
+ * 的天气对比，也该是一次调用、并发查、一张列表卡，不是 N 次独立调用。
+ */
+describe('weather.nearby —— 多地天气一张列表卡，不是 N 张独立卡', () => {
+  const districts = [
+    { name: '双流区', adcode: '510116', center: '103.92,30.57' },
+    { name: '都江堰市', adcode: '510181', center: '103.62,30.99' },
+    { name: '彭州市', adcode: '510182', center: '103.94,30.99' },
+  ]
+  const fakeAmapNearby = {
+    cityOf: async () => '成都市',
+    districts: async () => districts,
+    weatherNow: async (adcode: string) =>
+      ({ weather: adcode === '510181' ? '中雨' : '阴', temperature: adcode === '510181' ? 19 : 23 }),
+    weatherForecast: async () => [],
+  }
+  const mkNearby = () => createRegistry(store, TOOLS, Date.now, { desk, amap: fakeAmapNearby } as any)
+
+  it('一次调用只建一张列表卡，不是每个区县一张', async () => {
+    const r = await mkNearby().invoke('weather.nearby', { area: '成都' })
+    expect(r.status).toBe('ok')
+    const card = desk.findByKey('weather-nearby:成都')
+    expect(card).toBeTruthy()
+    expect(card!.template).toBe('list')
+    expect((card!.data as any).items).toHaveLength(3)
+  })
+
+  it('每个区县的天气各自不同，不是复制同一份', async () => {
+    const r = await mkNearby().invoke('weather.nearby', { area: '成都' })
+    const items = (r.data as any).districts
+    const dj = items.find((d: any) => d.name === '都江堰市')
+    expect(dj.now.weather).toBe('中雨')
+    expect(dj.now.temperature).toBe(19)
+  })
+
+  it('不传 area 时用当前城市', async () => {
+    const r = await mkNearby().invoke('weather.nearby', {})
+    expect(r.status).toBe('ok')
+  })
+})

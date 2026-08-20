@@ -60,13 +60,30 @@ export function parseVolcFrame(buf: Uint8Array): VolcMsg {
 export interface VolcVoice { value: string; label: string; speaker: string; resourceId: string }
 const V = (speaker: string, label: string, res: string): VolcVoice =>
   ({ value: `volc:${speaker}`, label, speaker, resourceId: res })
-/** 2026-08-19 真调实测（探针逐个打通）：本账号开通的是 seed-tts-2.0，五个音色全验证过出声 */
+/**
+ * 2026-08-19 真调实测（探针逐个打通）：本账号开通的是 seed-tts-2.0。
+ * 首批 5 个 + 用户从控制台音色库对着抄来的 9 个候选 ID，逐个用真实 WS
+ * 连接过（scratchpad/volcprobe-batch.mjs），全部 14 个都出声，无一 403——
+ * 跟"账号只开通一部分、文档写的会 403"那次踩坑不同，这批全中，因为
+ * 全是同一个 uranus（2.0）资源下的音色。
+ */
 export const VOLC_VOICES: VolcVoice[] = [
   V('zh_female_shuangkuaisisi_uranus_bigtts', '豆包 · 爽快思思', 'seed-tts-2.0'),
   V('zh_female_tianmeitaozi_uranus_bigtts', '豆包 · 甜美桃子', 'seed-tts-2.0'),
   V('zh_female_gaolengyujie_uranus_bigtts', '豆包 · 高冷御姐', 'seed-tts-2.0'),
   V('zh_male_yangguangqingnian_uranus_bigtts', '豆包 · 阳光青年', 'seed-tts-2.0'),
   V('zh_male_wennuanahu_uranus_bigtts', '豆包 · 温暖阿虎', 'seed-tts-2.0'),
+  V('zh_female_xiaohe_uranus_bigtts', '豆包 · 小何', 'seed-tts-2.0'),
+  V('zh_female_tiexinnvsheng_uranus_bigtts', '豆包 · 贴心女声', 'seed-tts-2.0'),
+  V('zh_female_mengyatou_uranus_bigtts', '豆包 · 萌丫头', 'seed-tts-2.0'),
+  V('zh_female_wenrouxiaoya_uranus_bigtts', '豆包 · 温柔小雅', 'seed-tts-2.0'),
+  V('zh_female_tianmeiyueyue_uranus_bigtts', '豆包 · 甜美悦悦', 'seed-tts-2.0'),
+  V('zh_female_zhixingnv_uranus_bigtts', '豆包 · 知性女声', 'seed-tts-2.0'),
+  // 这个 ID 的拼音切不出有把握的中文名，没瞎编——宁可显示拼音，等控制台
+  // 官方名字核对后再改（label 是纯 UI 文案，改起来是表里加一个字的事）
+  V('zh_female_chunribu_uranus_bigtts', '豆包 · chunribu', 'seed-tts-2.0'),
+  V('zh_female_jiaochuannv_uranus_bigtts', '豆包 · 娇喘女声', 'seed-tts-2.0'),
+  V('zh_male_naiqimengwa_uranus_bigtts', '豆包 · 奶气萌娃', 'seed-tts-2.0'),
 ]
 
 export const isVolcVoice = (v: string) => v.startsWith('volc:')

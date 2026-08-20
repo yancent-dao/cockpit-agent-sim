@@ -43,6 +43,19 @@ const radioNo = (what: string): ToolResult => ({
   suggestion: '想换台的话说个台名，或者让我给你放歌',
 })
 
+/**
+ * 短视频是一次性搜索，没有队列（跟音乐/播客不同，video.play 从不碰
+ * st.queue）。实拍：放视频后说"下一个"，界面切回了播客卡——next/prev/jump
+ * 只挡了 radio 没挡 video，于是拿着上一次播客/音乐搜索留下的陈旧队列
+ * 当"下一条视频"续播了。跟电台同一类问题：判据是数据形状（这个 source
+ * 有没有队列语义），不是意图分支。
+ */
+const videoNo = (what: string): ToolResult => ({
+  status: 'rejected', code: 'NOT_APPLICABLE',
+  message: `在放短视频，${what}对它没用——一次搜索只给一条，没有队列`,
+  suggestion: '想看别的直接说个关键词',
+})
+
 export interface MediaDeps {
   itunes?: () => ItunesClient
   radio?: () => RadioClient
@@ -242,6 +255,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         case 'next':
         case 'prev': {
           if (cur.source === 'radio') return radioNo('切上下首')
+          if (cur.source === 'video') return videoNo('切上下条')
           const st = deps.state
           if (!st || !st.queue.size()) return {
             status: 'unavailable', code: 'NO_QUEUE',
@@ -262,6 +276,7 @@ export function createMediaHandlers(store: Store, desk?: () => Desk | undefined,
         /* ── 重设计 v2（2026-08-19）：屏幕点播与倍速，扩参不扩 Tool ── */
         case 'jump': {
           if (cur.source === 'radio') return radioNo('点播队列')
+          if (cur.source === 'video') return videoNo('点播队列')
           const st = deps.state
           if (!st || !st.queue.size()) return {
             status: 'unavailable', code: 'NO_QUEUE', message: '还没有播放列表',

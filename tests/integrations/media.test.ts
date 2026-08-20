@@ -61,6 +61,31 @@ describe('media.control：内容源无关的传输控制', () => {
     expect(r.message).toContain('电台')
     expect(r.suggestion).toBeTruthy()
   })
+
+  /**
+   * 实拍（2026-08-19）：放视频后说"下一个"，切回了播客界面。根因是
+   * video.play 从不碰 st.queue（每次都是一次性 Pexels 搜索，没有"下一条"
+   * 这个概念），而 media.control 的 next/prev 只挡了 radio，没挡 video——
+   * 于是它拿着上一次播客/音乐搜索留下的**陈旧队列**当成"下一条视频"续播，
+   * 界面就从视频卡跳回了播客卡。跟电台是同一类问题：不是所有内容源
+   * 都有队列语义，判据是数据形状（这个 source 有没有队列），不是意图。
+   */
+  it('视频同样不支持切换上下条——它没有队列，"下一个"不该偷用陈旧的播客/音乐队列', async () => {
+    const { createDomainState } = await import('../../src/state/domain')
+    const mem = () => { const m = new Map<string, string>(); return { get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } }
+    const state = createDomainState(mem())
+    // 模拟"之前搜过播客，队列里还留着"——video.play 从不清队列，这份陈旧数据会一直躺着
+    state.queue.set([
+      { track: '入狱以后', artist: '故事FM', source: 'podcast', streamUrl: 'u1', artwork: '' },
+      { track: '柏林墙与史塔西', artist: '故事FM', source: 'podcast', streamUrl: 'u2', artwork: '' },
+    ] as any, 0, '播客搜索')
+    const r2 = createRegistry(store, TOOLS, Date.now, { desk, state } as any)
+    playing('video')
+    const r = await r2.invoke('media.control', { action: 'next' })
+    expect(r.status).toBe('rejected')
+    expect(r.message).toContain('视频')
+    expect(store.get('media.source'), '不该被陈旧队列偷走播放源').toBe('video')
+  })
 })
 
 describe('media.volume', () => {

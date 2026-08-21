@@ -29,6 +29,9 @@ import type { PoemClient } from '../integrations/poem'
 import type { PodcastClient } from '../integrations/podcast'
 import { createGenHandlers } from '../integrations/genHandlers'
 import { createAutomationHandlers, type AutomationDeps } from '../integrations/automationHandlers'
+import { createTravelHandlers } from '../integrations/travelHandlers'
+import type { TravelStore } from '../state/travel'
+import type { SourceMap } from '../integrations/travelSources'
 import type { VideoGenClient } from '../integrations/orvideo'
 import type { MusicGenClient } from '../integrations/ormusic'
 
@@ -72,6 +75,9 @@ export interface RegistryDeps { desk?: Desk; amap?: AmapClient; itunes?: ItunesC
   poem?: PoemClient
   /** 播客 RSS 直取（只实时流播）。发现走 itunes.searchPodcasts */
   podcast?: PodcastClient
+  /** 旅行助手（长时任务）：任务仓 + 各类监控项的数据源表 */
+  travel?: TravelStore
+  travelSources?: SourceMap
   /** OpenRouter 生成式媒体（与绘本插图同一个 Key 同一个账本） */
   orvideo?: VideoGenClient
   ormusic?: MusicGenClient
@@ -277,6 +283,10 @@ export function createRegistry(
       validateArgs,
       p => store.signals.find(sg => sg.alias === p)?.label,
       clock),
+    ...createTravelHandlers({
+      store: () => deps.travel!, desk: () => sizedDesk(),
+      sources: () => deps.travelSources ?? {}, clock,
+    }),
     ...createLifeHandlers(() => sizedDesk(), () => deps.stocks, () => deps.holiday, () => deps.poem, clock),
     ...createMediaHandlers(store, () => sizedDesk(), { itunes: () => needCp('itunes'), radio: () => needCp('radio'), podcast: () => needCp('podcast'), news: () => needCp('news'), pexels: () => needCp('pexels'), websearch: () => needCp('websearch'), state: deps.state, lyrics: deps.lyrics }),
   }

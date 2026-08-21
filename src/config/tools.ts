@@ -601,6 +601,104 @@ export const TOOLS: ToolDef[] = [
     handler: 'weatherNearby',
   },
 
+  /* ── L2 应用级：旅行助手（长时任务） ── */
+  {
+    name: 'travel.create',
+    brief: '建长期行程任务',
+    desc: '把一次出行建成**长期任务**，跨上下电一直盯着。判据三条同时满足才建：' +
+      '有未来时间窗（≥明天）、要多步骤准备、有可监控的外部变量（机票/酒店价这类）——' +
+      '"今晚订个餐厅"不建。**建之前先问用户一句**"要不要我建个行程任务帮你盯着"，同意了再调。' +
+      '信息不全照建（待定态），缺的随对话补，别拿必填卡住用户。' +
+      'watch 里可以一次把要盯的项配上——建任务要控制在 2 轮对话内，分两次调用就超了。',
+    permission: '彩',
+    params: {
+      destination: { type: 'string', required: true, desc: '目的地，如"首尔"' },
+      title: { type: 'string', desc: '任务名，如"韩国行"。不传就用目的地' },
+      departDate: { type: 'string', desc: '出发日 YYYY-MM-DD。不确定就别传，待定态照样能建' },
+      returnDate: { type: 'string', desc: '返程日 YYYY-MM-DD' },
+      travelers: { type: 'number', desc: '几个人' },
+      watch: { type: 'array', items: { type: 'object',
+        properties: { kind: { type: 'string', enum: ['flight', 'hotel', 'fx', 'news'] },
+                      threshold: { type: 'number' }, direction: { type: 'string', enum: ['below', 'above'] } },
+        required: ['kind'] },
+        desc: '要盯的项，如 [{"kind":"flight","threshold":2000}]。不设 threshold 就只跟踪不提醒' },
+    },
+    handler: 'travelCreate',
+  },
+  {
+    name: 'travel.watch',
+    brief: '盯住某项价格',
+    desc: '给已有任务加一个监控项，或设价格提醒（"低于 2000 提醒我"）。' +
+      '设了 threshold 才会主动提醒；不设就只跟踪、供用户问起时回答。' +
+      '**盯的是价格，不是买卖**——本 Agent 的活到提醒为止，不下单不支付。',
+    permission: '彩',
+    params: {
+      taskId: { type: 'string', required: true, desc: '行程任务 id（travel.list 拿）' },
+      kind: { type: 'enum', values: ['flight', 'hotel', 'fx', 'news'], required: true, desc: '盯哪一类' },
+      label: { type: 'string', desc: '人话标识，如"成都→首尔 往返"。汇率写"CNY→KRW"能自动认出币种对' },
+      threshold: { type: 'number', desc: '提醒阈值。不传 = 只跟踪不提醒' },
+      direction: { type: 'enum', values: ['below', 'above'], desc: '低于还是高于阈值提醒，默认 below' },
+      expiresAt: { type: 'number', desc: '有效期（毫秒时间戳），过期自动失效。一般设成出发日' },
+    },
+    handler: 'travelWatch',
+  },
+  {
+    name: 'travel.unwatch',
+    brief: '不盯了',
+    desc: '撤销一条委托。用户说"不用盯了""别提醒了"时调。历史样本留着，之后还能看走势。',
+    permission: '彩',
+    params: { watchId: { type: 'string', required: true, desc: '委托 id（travel.list 拿）' } },
+    handler: 'travelUnwatch',
+  },
+  {
+    name: 'travel.list',
+    brief: '看行程与盯着的项',
+    fast: true,
+    desc: '行程任务、监控项和每项的走势事实（30 天极值、当前分位、方向、离提醒线还差多少），' +
+      '行程单卡同时上屏。**回答一切关于行程的问题都先调它拿数据**。' +
+      '返回里只有事实没有建议——"该不该买"是你的判断，拿这些数据说，' +
+      '但**必须带依据**（"比 30 天均价低 9%"），说不出依据的建议不要给。',
+    permission: '彩',
+    params: { taskId: { type: 'string', desc: '只看某一个任务。不传看全部' } },
+    handler: 'travelList',
+  },
+  {
+    name: 'travel.refresh',
+    brief: '立刻查最新价',
+    desc: '立即把监控项采一轮，到提醒线的会自动出趋势卡。' +
+      '用户问"现在什么价"、或刚建完任务想马上看一眼时调。' +
+      '平时不用调——引擎自己按节奏采（机酒每小时+上电、汇率新闻每天）。',
+    permission: '彩',
+    params: { taskId: { type: 'string', desc: '只采某个任务的。不传全采' } },
+    handler: 'travelRefresh',
+  },
+  {
+    name: 'travel.update',
+    brief: '改行程',
+    desc: '改任务信息（推迟日期、换目的地、改人数）。返回里带**新旧对照**和受影响的监控项，' +
+      '照着组织影响摘要说给用户听——三要素缺一不可：改了什么 → 影响哪几项 → 每项的新结论。',
+    permission: '彩',
+    params: {
+      taskId: { type: 'string', required: true, desc: '行程任务 id' },
+      title: { type: 'string', desc: '改任务名' },
+      destination: { type: 'string', desc: '改目的地' },
+      departDate: { type: 'string', desc: '新的出发日 YYYY-MM-DD' },
+      returnDate: { type: 'string', desc: '新的返程日 YYYY-MM-DD' },
+      travelers: { type: 'number', desc: '改人数' },
+      status: { type: 'enum', values: ['draft', 'active', 'archived'], desc: '行程结束了就 archived，归档后可查可复用' },
+    },
+    handler: 'travelUpdate',
+  },
+  {
+    name: 'travel.delete',
+    brief: '删行程任务',
+    desc: '删掉整个行程任务，它下面的监控项全停。**需要用户确认**（系统会自动弹确认卡）。' +
+      '删完把停掉了哪些监控告诉用户——别让人以为还有东西在后台盯着。',
+    permission: '灰',
+    params: { taskId: { type: 'string', required: true, desc: '行程任务 id' } },
+    handler: 'travelDelete',
+  },
+
   /* ── 语音 ── */
   {
     name: 'stock.query',

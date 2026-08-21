@@ -52,6 +52,12 @@ const NOISE = 0.01
 const TAIL = 10
 /** 分不出两半就不猜方向。2–3 个点的"趋势"跟噪声没法区分 */
 const MIN_FOR_DIRECTION = 4
+/**
+ * 少于这个数不给分位。实拍（2026-08-20 端到端冒烟）：刚建的委托只采了
+ * 1 个样本，分位却报「中位」——一个点没有任何位置可言，这是**编造依据**，
+ * 正好违反「建议必须带依据」。3 个点起才够说"在区间里的什么位置"。
+ */
+const MIN_FOR_BAND = 3
 
 const medianOf = (xs: number[]): number => {
   const a = [...xs].sort((x, y) => x - y)
@@ -101,13 +107,14 @@ export function analyze(
   // ——实拍算出过 -7%。极值仍按历史算，不被越界的当前值改写。
   const span = max - min
   const raw = span === 0 ? 0.5 : (cur - min) / span
-  const percentile = Math.min(1, Math.max(0, raw))
+  const enough = vals.length >= MIN_FOR_BAND
+  const percentile = enough ? Math.min(1, Math.max(0, raw)) : undefined
 
   const out: TrendResult = {
     count: vals.length,
     current: cur, min, max, median: mid,
-    percentile,
-    band: bandOf(percentile),
+    ...(percentile !== undefined ? { percentile } : {}),
+    band: percentile !== undefined ? bandOf(percentile) : 'unknown',
     direction: directionOf(vals),
     ...(vals.length >= 2 ? { changeFromPrev: cur - vals[vals.length - 2] } : {}),
   }

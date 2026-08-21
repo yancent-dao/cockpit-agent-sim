@@ -103,6 +103,35 @@ describe('分位的边界：创新低/创新高是真会发生的', () => {
   })
 })
 
+describe('样本太少时不许编依据', () => {
+  /**
+   * 实拍（2026-08-20 端到端冒烟）：刚建的委托只采了 1 个样本，分位却报
+   * 「中位」——一个点没有任何位置可言，这是**编造依据**，正好违反
+   * 「建议必须带依据」。跟方向少于 4 个点报 unknown 同一个道理。
+   */
+  it('只有 1 个样本 → 分位与档位都是未知，不是"中位"', () => {
+    const r = analyze(s([1607]))
+    expect(r.band).toBe('unknown')
+    expect(r.percentile).toBeUndefined()
+  })
+
+  it('2 个样本还是不够', () => {
+    expect(analyze(s([1607, 1650])).band).toBe('unknown')
+  })
+
+  it('3 个样本起才给分位——够画出一个区间了', () => {
+    const r = analyze(s([1600, 1700, 1800]))
+    expect(r.band).not.toBe('unknown')
+    expect(r.percentile).toBeDefined()
+  })
+
+  it('极值和「较昨日」不受影响——它们 1 个点就成立', () => {
+    const r = analyze(s([1607, 1650]))
+    expect(r.min).toBe(1607)
+    expect(r.changeFromPrev).toBe(43)
+  })
+})
+
 describe('方向：最近在涨还是在跌', () => {
   it('一路下跌 → falling', () => {
     expect(analyze(s([2600, 2500, 2300, 2100, 1900, 1868])).direction).toBe('falling')

@@ -242,6 +242,42 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     desc: '正在讲的绘本，由 story.* 工具自动创建与刷新，不要手动建。' +
       'data: {title, chapter, page, line, image, ideas?, lesson?}',
     fields: { line: { type: 'string', required: true } } },
+  /**
+   * 趋势卡（旅行助手，2026-08-20）。四类监控项（机票/酒店/汇率/新闻）共用。
+   *
+   * 为什么值得一张新模板：`chart` 是通用图表，而趋势卡的「历史曲线 + 预测带 +
+   * 分位对照 + 提醒线 + 监控状态」是**一个语义整体**——拆到 chart + generic
+   * 两张卡上，用户就得自己把"现在贵不贵"和"我设的线在哪"对起来。
+   *
+   * 三档是内容密度不是缩放：box 只回答"现在多少、贵不贵"；hall 加完整曲线与
+   * 提醒线；stage 再加 30 天分位对照和依据——「建议必须带依据」那条要展开说。
+   *
+   * **verdict 由模型给，不是代码算的**：分位/极值/方向是事实（core/trend 算），
+   * 买不买是策略。同 climate.set 不替用户多加两度。
+   */
+  { id: 'trend', label: '趋势卡', defaultSize: 'hall', sizes: ['box', 'hall', 'stage'],
+    desc: '价格/汇率的走势与结论。data: {title, unit?, current, changeFromPrev?, min?, max?, ' +
+      'median?, percentile?, points:[{at,value}], forecast?:[{at,value,lo?,hi?}], ' +
+      'threshold?, thresholdLabel?, verdict?:{label,tone:ok|warn|info}, basis?:[一句话依据], ' +
+      'monitor?:{everyLabel,expiresLabel,statusLabel}, updatedLabel?}。' +
+      'verdict 是你的判断（"可以下单"），依据放 basis——没依据的建议不要给。',
+    fields: { points: { type: 'array', required: true } } },
+  /**
+   * 攻略卡（旅行助手，2026-08-20）。目的地内容，不是日程安排——
+   * 日程是任务视角（行程单卡管），攻略是内容视角。
+   *
+   * 为什么不复用 list：list 是**平的**，而攻略天然分组（必去/必吃/贴士），
+   * 每组还带自己的一句说明。把分组塞进 list 的 label 里就是在用文本模拟结构。
+   *
+   * 两档的分界**不是大小是场景**：行驶中只给三组计数和一行摘要（要细节
+   * 就听），停车时才出图出血 + 全文——车上"读"这件事被行驶状态一刀切开。
+   */
+  { id: 'guide', label: '攻略卡', defaultSize: 'court', sizes: ['box', 'tower', 'court'],
+    requireItems: true,
+    desc: '目的地攻略（玩什么/吃什么/注意什么）。data: {title, sub?, hero?:渐变或图 url, ' +
+      'items:[{group:必去|必吃|贴士, label, sub?}], basis?:一句话来源}。' +
+      '按组归拢，每条一句为什么值得——"景福宫 / 穿韩服免门票"。',
+    fields: { items: { type: 'array', required: true } } },
   { id: 'automation', label: '自动任务卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
     requireItems: true,
     desc: '自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停',

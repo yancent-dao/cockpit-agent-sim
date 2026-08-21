@@ -84,6 +84,13 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
   metric: [SWIPE_AWAY, ...RESIZE, CLOSE],
   chart: [SWIPE_AWAY, ...RESIZE, CLOSE],
   image: [SWIPE_AWAY, ...RESIZE, CLOSE],
+  /**
+   * 趋势卡：点条目 = 问这一项的详情（回答类，点了等于说了这句话）。
+   * 不做"点一下就下单"——本 Agent 的活到提醒为止，PRD 6.2 的支付边界。
+   */
+  trend: [SWIPE_AWAY, ...RESIZE, CLOSE, { on: 'tap:item', route: 'answer' }],
+  /** 攻略卡：点某一条 = 让它展开讲这个地方（回答类，不叫醒也讲不了） */
+  guide: [SWIPE_AWAY, ...RESIZE, CLOSE, { on: 'tap:item', route: 'answer' }],
   storybook: [
     // 定妆卡的「就是他 / 再画一张」——点了等于说了这句话，怎么处置归模型
     { on: 'tap:item', route: 'answer' },

@@ -334,6 +334,40 @@ export const imageForm: FormFn = (c, r) => {
 }
 
 /** 模板的形态函数。加模板 = 加一条，不改调用方 */
+
+/**
+ * 趋势卡（旅行助手）。三档是**内容密度**不是缩放：
+ *   box(16)   现价 + 迷你走势 + 结论 —— 只回答"现在多少、贵不贵"
+ *   hall(36)  + 完整曲线 · 预测带 · 提醒线 · 30 天极值
+ *   stage(64) + 分位对照 · 依据 · 监控详情 —— 「建议必须带依据」要展开说
+ *
+ * 三个 blocks 名字跨档不变（chart 在小档画迷你线、大档画带预测带的全图），
+ * 靠**加块**而不是换块来拉开差异 —— 「块只增不减」那条不变量。
+ */
+export const trendForm: FormFn = (c, r) => {
+  const a = area(c, r)
+  const base = ['now', 'chart', 'verdict']
+  if (a >= 56) return { blocks: [...base, 'extremes', 'threshold', 'percentile', 'basis', 'monitor'] }
+  if (a >= 30) return { blocks: [...base, 'extremes', 'threshold'] }
+  return { blocks: base }
+}
+
+/**
+ * 攻略卡（旅行助手）。分界**不是大小是场景**：
+ *   box(16)   三组只报计数 + 一行摘要 —— 行驶中不放需要逐字读的东西
+ *   tower(32) 列条目，无图
+ *   court(48) 图出血 + 全文 —— 停车时才给
+ *
+ * 小档走 mode:'count'（互斥渲染，同能力目录的先例），不是把条目截短——
+ * 攻略截一半比不给更糟：用户会以为就这么点。
+ */
+export const guideForm: FormFn = (c, r) => {
+  const a = area(c, r)
+  if (c >= 6 && a >= 44) return { blocks: ['hero', 'groups'], maxItems: 9, cols: 1 }
+  if (a >= 28) return { blocks: ['groups'], maxItems: 8, cols: 1 }
+  return { blocks: ['groups'], maxItems: 3, mode: 'count', cols: 1 }
+}
+
 export const CARD_FORMS: Record<string, FormFn> = {
   nav: navForm,
   control: controlForm,
@@ -356,6 +390,8 @@ export const CARD_FORMS: Record<string, FormFn> = {
   metric: metricForm,
   chart: chartForm,
   image: imageForm,
+  trend: trendForm,
+  guide: guideForm,
   generic: genericForm,
 }
 

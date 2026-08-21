@@ -78,6 +78,31 @@ describe('分位与分档：当前值在 30 天里贵不贵', () => {
   })
 })
 
+describe('分位的边界：创新低/创新高是真会发生的', () => {
+  /**
+   * 实拍（2026-08-20 眼看 mock 曲线时发现）：当前价 1439 低于 30 天最低价
+   * 1481，分位算出 **-7%**。这跟数据真假无关——真实机票"今天创了新低"
+   * 完全正常，只是这一刻的值落在历史区间之外。分位是"在历史里的位置"，
+   * 位置不该是负的。
+   */
+  it('当前价低于 30 天最低 → 分位夹到 0，仍是低位', () => {
+    const r = analyze(s([2000, 2200, 2400]), 1800)
+    expect(r.percentile).toBe(0)
+    expect(r.band).toBe('low')
+  })
+
+  it('当前价高于 30 天最高 → 分位夹到 1，仍是高位', () => {
+    const r = analyze(s([2000, 2200, 2400]), 2600)
+    expect(r.percentile).toBe(1)
+    expect(r.band).toBe('high')
+  })
+
+  it('极值仍按历史算，不被越界的当前值改写——曲线的坐标轴是历史的', () => {
+    const r = analyze(s([2000, 2200, 2400]), 1800)
+    expect(r.min).toBe(2000)
+  })
+})
+
 describe('方向：最近在涨还是在跌', () => {
   it('一路下跌 → falling', () => {
     expect(analyze(s([2600, 2500, 2300, 2100, 1900, 1868])).direction).toBe('falling')
@@ -89,6 +114,26 @@ describe('方向：最近在涨还是在跌', () => {
 
   it('小幅震荡不算趋势 → flat，别把噪声报成拐点', () => {
     expect(analyze(s([2000, 2010, 1995, 2005, 2000])).direction).toBe('flat')
+  })
+
+  /**
+   * 实拍（同上）：机票 30 天从 1892 跌到 1486，方向却报 rising；酒店
+   * 472 涨到 520 却报 falling —— 判据只看尾部 5 个点的首尾两个值，
+   * 被噪声主导了。真实价格同样有日间噪声，这是真 bug 不是 mock 的锅。
+   */
+  it('单个尖刺不该翻转方向——真实价格天天有噪声', () => {
+    const falling = [2600, 2500, 2400, 2300, 2200, 2100, 2000, 1950, 1900, 2050]
+    expect(analyze(s(falling)).direction).toBe('falling')
+  })
+
+  it('尾部两点恰好反向也不该翻转整体判断', () => {
+    const rising = [1800, 1850, 1900, 1980, 2050, 2120, 2200, 2280, 2260, 2240]
+    expect(analyze(s(rising)).direction).toBe('rising')
+  })
+
+  it('样本太少分不出趋势就说不知道，不硬猜', () => {
+    expect(analyze(s([2000, 1900])).direction).toBe('unknown')
+    expect(analyze(s([2000, 1900, 1850])).direction).toBe('unknown')
   })
 
   it('跟上一个样本的差额单独给出——卡上那个「较昨日」靠它', () => {

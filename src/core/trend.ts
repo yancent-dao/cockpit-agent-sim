@@ -49,15 +49,31 @@ const bandOf = (p: number): Band =>
  */
 const NOISE = 0.01
 /** 看最近几个点。太少认噪声，太多把老趋势也算进来 */
-const TAIL = 5
+const TAIL = 10
+/** 分不出两半就不猜方向。2–3 个点的"趋势"跟噪声没法区分 */
+const MIN_FOR_DIRECTION = 4
 
+const medianOf = (xs: number[]): number => {
+  const a = [...xs].sort((x, y) => x - y)
+  return a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2
+}
+
+/**
+ * 方向：把尾部窗口对半分，比**两半的中位数**。
+ *
+ * 第一版比的是窗口首尾两个**单点**，被噪声主导——实拍（2026-08-20 眼看
+ * mock 曲线）机票 30 天从 1892 跌到 1486 报 rising、酒店 472 涨到 520
+ * 报 falling，两个都反了。真实价格同样有日间噪声，这是真 bug。
+ * 中位数对比对单个尖刺免疫。
+ */
 function directionOf(vals: number[]): Direction {
-  if (vals.length < 2) return 'unknown'
-  const tail = vals.slice(-TAIL)
-  const first = tail[0]
-  const last = tail[tail.length - 1]
-  if (!first) return 'unknown'
-  const rel = (last - first) / Math.abs(first)
+  if (vals.length < MIN_FOR_DIRECTION) return 'unknown'
+  const tail = vals.slice(-Math.min(TAIL, vals.length))
+  const half = Math.floor(tail.length / 2)
+  const before = medianOf(tail.slice(0, half))
+  const after = medianOf(tail.slice(-half))
+  if (!before) return 'unknown'
+  const rel = (after - before) / Math.abs(before)
   return rel < -NOISE ? 'falling' : rel > NOISE ? 'rising' : 'flat'
 }
 
@@ -79,9 +95,13 @@ export function analyze(
     ? asc[(asc.length - 1) / 2]
     : (asc[asc.length / 2 - 1] + asc[asc.length / 2]) / 2
 
-  // 全都一个价时除零 —— 淡季价格纹丝不动是真会发生的，落在中位
+  // 全都一个价时除零 —— 淡季价格纹丝不动是真会发生的，落在中位。
+  // **夹到 [0,1]**：当前价可能落在历史区间之外（今天创了新低/新高，
+  // 真实数据里完全正常），而分位是"在历史里的位置"，位置不该是负的
+  // ——实拍算出过 -7%。极值仍按历史算，不被越界的当前值改写。
   const span = max - min
-  const percentile = span === 0 ? 0.5 : (cur - min) / span
+  const raw = span === 0 ? 0.5 : (cur - min) / span
+  const percentile = Math.min(1, Math.max(0, raw))
 
   const out: TrendResult = {
     count: vals.length,

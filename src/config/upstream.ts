@@ -27,6 +27,7 @@ export const UPSTREAM = {
   itunes: 'https://itunes.apple.com',
   amap: 'https://restapi.amap.com',
   openmeteo: 'https://api.open-meteo.com',
+  frankfurter: 'https://api.frankfurter.dev',
   newsapi: 'https://newsapi.org',
   pexels: 'https://api.pexels.com',
   openrouter: 'https://openrouter.ai',
@@ -54,7 +55,7 @@ export type Upstream = keyof typeof UPSTREAM
  * 高德 IP 定位会定到代理节点头上（实拍：设置成都，定位杭州滨江=VPN 落地的
  * 阿里云），延迟还绕地球。itunes 苹果国内有 CDN，直连更快。
  */
-export const ABROAD = new Set<Upstream>(['openrouter', 'newsapi', 'pexels', 'radio', 'openmeteo', 'lrclib'])
+export const ABROAD = new Set<Upstream>(['openrouter', 'newsapi', 'pexels', 'radio', 'openmeteo', 'lrclib', 'frankfurter'])
 
 /** Vite 的 server.proxy / preview.proxy 配置。纯转发，一行业务逻辑都没有 */
 export function proxyTable() {

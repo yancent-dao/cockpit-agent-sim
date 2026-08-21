@@ -52,7 +52,12 @@ describe('相邻两档渲染出来的东西必须不同', () => {
     monitor: { everyLabel: '每小时采一次', expiresLabel: '至 9 月 2 日', statusLabel: '已触发' },
     updatedLabel: '10 分钟前',
     // 攻略卡：分组条目（group 字段是它跟 list 的关键差别）
-    guideItems: undefined,
+    hero: '', source: '来源：近 3 个月高频提及',
+    // 行程单卡：D-day + 时间线 + 待决策，三样都要，少一样相邻档就渲染成一样
+    dday: 'D-13', when: '9 月 2 日出发 · 首尔 5 天',
+    steps: Array.from({ length: 8 }, (_, i) => ({ label: '步骤' + i, state: 'running', detail: '细节' + i })),
+    decide: { question: '机票到价了，现在定吗？', options: ['看趋势', '先不定'] },
+    foot: '盯着 3 项',
   }
 
   it('每个模板的相邻两档渲染结果都不一样', () => {

@@ -342,21 +342,76 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .card .trfoot{flex:none;display:flex;align-items:center;gap:calc(12px*var(--u));flex-wrap:wrap;
   font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);font-variant-numeric:tabular-nums}
 .card .trnote{color:var(--tx-3);font-size:calc(var(--t-cap)*var(--u))}
-/* ── 攻略卡 ── */
+/* ── 攻略卡 ──
+   出血头图：负边距顶到卡片内边距之外，由 .card 的 overflow:hidden + 圆角裁 */
 .card .gdcount{flex:1;display:flex;align-items:center;justify-content:space-around}
 .card .gdcount div{display:flex;flex-direction:column;align-items:center;gap:calc(4px*var(--u))}
 .card .gdcount b{font-size:calc(var(--t-hero)*var(--u));font-weight:800;line-height:1;color:var(--ac);
   font-variant-numeric:tabular-nums}
 .card .gdcount span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
-.card .gdsub{flex:none;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.card .gdhero{flex:none;position:relative;display:flex;align-items:flex-end;gap:calc(12px*var(--u));
+  margin:calc(-22px*var(--u)) calc(-26px*var(--u)) calc(14px*var(--u));
+  min-height:calc(150px*var(--u));padding:calc(20px*var(--u)) calc(26px*var(--u));
+  background-size:cover;background-position:center;
+  background-image:linear-gradient(150deg,#4C5FA8 0%,#6E7FC4 42%,#A9A2D6 100%)}
+.card .gdhero::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,.28) 100%)}
+.card .gdheroin{position:relative;z-index:1;min-width:0}
+.card .gdhero b{display:block;font-size:calc(var(--t-lead)*var(--u));font-weight:800;line-height:1.12;
+  color:#fff;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .gdhero span{display:block;margin-top:calc(3px*var(--u));font-size:calc(var(--t-cap)*var(--u));
+  color:rgba(255,255,255,.84)}
+.card .gdhero em{position:relative;z-index:1;margin-left:auto;flex:none;font-style:normal;white-space:nowrap;
+  font-size:calc(var(--t-cap)*var(--u));color:#fff;padding:calc(4px*var(--u)) calc(13px*var(--u));
+  border-radius:var(--r-pill,999px);background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.34);
+  font-variant-numeric:tabular-nums}
+/* 分组：语义色 + 圆点，远看就能分块。色是数据给的档，不是硬编码词义 */
 .card .gdgroups{flex:1;min-height:0;display:flex;flex-direction:column;gap:calc(10px*var(--u))}
-.card .gdg h4{margin:0 0 calc(4px*var(--u));font-size:calc(var(--t-cap)*var(--u));font-weight:600;
-  color:var(--ac);letter-spacing:.06em}
-.card .gdi{display:flex;align-items:baseline;gap:calc(10px*var(--u));padding:calc(3px*var(--u)) 0;
-  border-radius:calc(8px*var(--u))}
-.card .gdi b{flex:none;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1)}
-.card .gdi small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
+.card .gdg{padding-bottom:calc(8px*var(--u));border-bottom:1px solid var(--hair,var(--hairline))}
+.card .gdg:last-child{border-bottom:none;padding-bottom:0}
+.card .gdg h4{margin:0 0 calc(5px*var(--u));display:flex;align-items:center;gap:calc(8px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;letter-spacing:.08em}
+.card .gdg h4 i{flex:none;width:calc(9px*var(--u));height:calc(9px*var(--u));border-radius:50%}
+.card .gd-brand h4{color:var(--brand-fg)}.card .gd-brand h4 i{background:var(--brand-gr)}
+.card .gd-warn h4{color:var(--warn-fg)}.card .gd-warn h4 i{background:var(--warn-gr)}
+.card .gd-media h4{color:var(--media-fg)}.card .gd-media h4 i{background:var(--media-gr)}
+/* 条目两行堆叠——名字和"为什么值得"挤一行会互相截断 */
+.card .gdi{padding:calc(4px*var(--u)) 0;min-width:0}
+.card .gdi b{display:block;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .gdi small{display:block;margin-top:1px;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .gdbasis{flex:none;margin-top:auto;padding-top:calc(10px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+/* ── 行程单卡 ── */
+.card .itday{flex:none;display:flex;align-items:baseline;gap:calc(12px*var(--u))}
+.card .itday b{font-size:calc(var(--t-num)*var(--u));font-weight:800;line-height:1;color:var(--ac);
+  font-variant-numeric:tabular-nums}
+.card .itday span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.card .itline{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center}
+.card .itstep{display:flex;gap:calc(13px*var(--u));padding:calc(7px*var(--u)) 0;min-width:0}
+.card .itstep i{flex:none;width:calc(13px*var(--u));height:calc(13px*var(--u));border-radius:50%;
+  margin-top:calc(7px*var(--u))}
+.card .itstep div{min-width:0;flex:1}
+.card .itstep b{display:block;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .itstep small{display:block;margin-top:1px;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .is-done i{background:var(--ok-gr)}
+.card .is-running i{background:var(--brand-gr);box-shadow:0 0 0 calc(4px*var(--u)) var(--brand-bg)}
+.card .is-warn i{background:var(--warn-gr);box-shadow:0 0 0 calc(4px*var(--u)) var(--warn-bg)}
+.card .is-todo i{background:transparent;border:2px solid var(--n4,#CBD5E1);box-sizing:border-box}
+.card .is-todo b{color:var(--tx-2);font-weight:500}
+/* 待决策：整张卡唯一要用户动手的地方，给它琥珀底 */
+.card .itdecide{flex:none;margin-top:calc(10px*var(--u));background:var(--warn-bg);
+  border:1px solid var(--warn-bd);border-radius:var(--r-blk,16px);padding:calc(14px*var(--u)) calc(16px*var(--u))}
+.card .itdecide b{display:block;font-size:calc(var(--t-cap)*var(--u));font-weight:600;color:var(--warn-fg);
+  line-height:1.4}
+.card .itopts{display:flex;gap:calc(10px*var(--u));margin-top:calc(11px*var(--u))}
+.card .itopts span{flex:1;text-align:center;padding:calc(9px*var(--u)) 0;border-radius:var(--r-pill,999px);
+  font-size:calc(var(--t-cap)*var(--u));font-weight:600;background:var(--sf-card);
+  border:1px solid var(--warn-bd);color:var(--warn-fg)}
+.card .itopts span:first-child{background:var(--acgr);border-color:transparent;color:#fff}
 /* 截断必须说出来。只截不说，用户以为屏上就这么多 */
 .card .more{flex:none;margin-top:calc(6px*var(--u));font-size:calc(var(--t-cap)*var(--u));
   color:var(--tx-3,var(--text-secondary))}

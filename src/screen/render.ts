@@ -531,6 +531,13 @@ export function cardBody(c: CardView): string {
      * 攻略卡。小档只报每组几条（mode:count）——行驶中不放需要逐字读的东西，
      * 截一半比不给更糟：用户会以为就这么点。
      */
+    /**
+     * 攻略卡。设计稿三件事这里都要落地，缺一张就退回"文字堆"：
+     *   ① **出血头图**——负边距顶到卡片内边距之外，由 .card 的
+     *     overflow:hidden + 圆角自己裁（同绘本"画册是出血不是镶白边"）
+     *   ② **分组带语义色**——必去/必吃/贴士各一个色，远看就能分块
+     *   ③ **条目两行堆叠**——名字和"为什么值得"挤一行会互相截断
+     */
     case 'guide': {
       const form = formOf('guide', ...dimsOf(c.size))
       const items: Array<{ group?: string; label: string; sub?: string }> = d.items ?? []
@@ -538,16 +545,53 @@ export function cardBody(c: CardView): string {
       if (form.mode === 'count')
         return `<div class="gdcount">${groups.map(g =>
           `<div><b>${items.filter(i => (i.group ?? '推荐') === g).length}</b><span>${esc(g)}</span></div>`).join('')}</div>`
-      const { shown } = truncate(items, form.maxItems)
+      const { shown, rest } = truncate(items, form.maxItems)
+      // 组名 → 语义色档。名单是**数据**，认不出的走默认——不硬编码"必去"这类词的含义
+      const tone = (g: string) => /吃|食|餐/.test(g) ? 'warn' : /贴士|注意|提醒/.test(g) ? 'media' : 'brand'
       return [
-        form.blocks.includes('hero') && d.sub ? `<div class="gdsub">${esc(d.sub)}</div>` : '',
+        form.blocks.includes('hero')
+          ? `<div class="gdhero"${d.hero ? ` style="background-image:url(${esc(d.hero)})"` : ''}>
+              <div class="gdheroin"><b>${esc(d.title ?? '')}</b>${
+                d.sub ? `<span>${esc(d.sub)}</span>` : ''}</div>
+              <em>${groups.length} 组 · ${items.length} 条</em>
+            </div>` : '',
         `<div class="gdgroups">${groups.map(g => {
           const mine = shown.filter(i => (i.group ?? '推荐') === g)
-          return mine.length ? `<div class="gdg"><h4>${esc(g)}</h4>${mine.map(i =>
-            `<div class="gdi" data-act="tap:item" data-value="${esc(`讲讲${i.label}`)}">
-              <b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div>`).join('')}</div>` : ''
+          return mine.length ? `<div class="gdg gd-${tone(g)}">
+            <h4><i></i>${esc(g)}</h4>
+            ${mine.map(i => `<div class="gdi" data-act="tap:item" data-value="${esc(`讲讲${i.label}`)}">
+              <b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div>`).join('')}
+          </div>` : ''
         }).join('')}</div>`,
-        d.basis ? `<div class="trnote">${esc(d.basis)}</div>` : '',
+        // 截断必须说出来。只截不说，用户以为屏上就这么多
+        rest > 0 ? `<div class="gdbasis">还有 ${rest} 条，问我就行</div>`
+          : d.source ? `<div class="gdbasis">${esc(d.source)}</div>` : '',
+      ].filter(Boolean).join('')
+    }
+    /**
+     * 行程单卡。**不复用 progress**：那张卡表达不了 D-day 计数、按状态
+     * 上色的时间线、以及底部那个"待你决策"块——而这三样正是长时任务
+     * 区别于普通进展的地方（PRD §7.1「行程结构、子任务状态、待决策点」）。
+     */
+    case 'itinerary': {
+      const form = formOf('itinerary', ...dimsOf(c.size))
+      const has = (b: string) => form.blocks.includes(b)
+      const steps: Array<{ label: string; state?: string; detail?: string }> = d.steps ?? []
+      const { shown, rest } = truncate(steps, form.maxItems)
+      return [
+        has('dday') && d.dday
+          ? `<div class="itday"><b>${esc(d.dday)}</b>${d.when ? `<span>${esc(d.when)}</span>` : ''}</div>` : '',
+        `<div class="itline">${shown.map(st => `<div class="itstep is-${esc(st.state ?? 'todo')}">
+            <i></i><div><b>${esc(st.label)}</b>${
+              has('detail') && st.detail ? `<small>${esc(st.detail)}</small>` : ''}</div>
+          </div>`).join('')}${rest > 0 ? `<div class="more">还有 ${rest} 项</div>` : ''}</div>`,
+        // 待决策：整张卡唯一需要用户动作的地方，给它琥珀底和两个点选
+        has('decide') && d.decide?.question
+          ? `<div class="itdecide"><b>${esc(d.decide.question)}</b>
+              <div class="itopts">${(d.decide.options ?? []).slice(0, 2).map((o: string) =>
+                `<span data-act="tap:item" data-value="${esc(o)}">${esc(o)}</span>`).join('')}</div>
+            </div>` : '',
+        d.foot ? `<div class="gdbasis">${esc(d.foot)}</div>` : '',
       ].filter(Boolean).join('')
     }
     default: {

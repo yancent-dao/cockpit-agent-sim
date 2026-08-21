@@ -363,9 +363,27 @@ export const trendForm: FormFn = (c, r) => {
  */
 export const guideForm: FormFn = (c, r) => {
   const a = area(c, r)
-  if (c >= 6 && a >= 44) return { blocks: ['hero', 'groups'], maxItems: 9, cols: 1 }
-  if (a >= 28) return { blocks: ['groups'], maxItems: 8, cols: 1 }
+  /**
+   * 容量按**行**推，不用魔法数字：一个两行条目 ≈ 96px ≈ 一个行单元(103.5px)。
+   * 大档要扣掉头图（168px ≈ 1.3 行）、三个组标题（117px ≈ 0.9 行）和来源行，
+   * 合计约 3 行；tower 没有头图，只扣组标题与来源约 1 行。
+   * 实测（2026-08-21 画廊）：不扣的话 court 溢出 129px，「T-money」被裁掉半行。
+   */
+  if (c >= 6 && a >= 44) return { blocks: ['hero', 'groups'], maxItems: capacityOf(1, r) - 3, cols: 1, overflow: 'more' }
+  if (a >= 28) return { blocks: ['groups'], maxItems: capacityOf(1, r) - 1, cols: 1, overflow: 'more' }
   return { blocks: ['groups'], maxItems: 3, mode: 'count', cols: 1 }
+}
+
+
+/**
+ * 行程单卡。三档：box 只给时间线（谁办完了谁还没），tower 加 D-day 与
+ * 每步细节，court 再加"待你决策"块——需要用户动手的那一步值得最大的档。
+ */
+export const itineraryForm: FormFn = (c, r) => {
+  const a = area(c, r)
+  if (a >= 44) return { blocks: ['dday', 'line', 'detail', 'decide'], maxItems: capacityOf(1, r) - 2, cols: 1, overflow: 'more' }
+  if (a >= 28) return { blocks: ['dday', 'line', 'detail'], maxItems: capacityOf(1, r) - 1, cols: 1, overflow: 'more' }
+  return { blocks: ['line'], maxItems: capacityOf(1, r), cols: 1, overflow: 'more' }
 }
 
 export const CARD_FORMS: Record<string, FormFn> = {
@@ -391,6 +409,7 @@ export const CARD_FORMS: Record<string, FormFn> = {
   chart: chartForm,
   image: imageForm,
   trend: trendForm,
+  itinerary: itineraryForm,
   guide: guideForm,
   generic: genericForm,
 }

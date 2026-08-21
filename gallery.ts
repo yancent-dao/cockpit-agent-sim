@@ -56,7 +56,17 @@ const DATA: Record<string, any> = {
     basis: ['比 30 天均价低 9%', '近一周连续回落，昨起跌破提醒线'],
     monitor: { everyLabel: '每小时采一次', expiresLabel: '至 9 月 2 日出发', statusLabel: '已触发' },
     updatedLabel: '10 分钟前' },
-  guide: { title: '首尔 · 玩什么', sub: '9 月 2–6 日 · 明洞出发', basis: '来源：近 3 个月高频提及 + 你的口味偏好',
+  itinerary: { title: '韩国行', dday: 'D-13', when: '2026-09-02 出发 · 首尔 5 天 4 晚',
+    steps: [
+      { label: '机票', state: 'done', detail: '¥1,868　提醒线 ¥2,000' },
+      { label: '酒店', state: 'running', detail: '¥620 / 晚　提醒线 ¥560 / 晚' },
+      { label: '汇率', state: 'running', detail: '100 CNY ≈ 20,768' },
+      { label: '签证材料', state: 'todo', detail: '还在等第一次取数' },
+    ],
+    decide: { question: '机票到你说的价了（¥1,868），现在定吗？',
+      options: ['看看机票的价格趋势', '先不定，继续盯着'] },
+    foot: '盯着 3 项' },
+  guide: { title: '首尔 · 玩什么', sub: '9 月 2–6 日 · 明洞出发', source: '来源：近 3 个月高频提及 + 你的口味偏好',
     items: [
       { group: '必去', label: '景福宫', sub: '穿韩服免门票，守门将换岗 10:00 / 14:00' },
       { group: '必去', label: '北村韩屋村', sub: '上午人少好拍，住户区请轻声' },

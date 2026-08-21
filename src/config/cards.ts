@@ -272,10 +272,21 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 两档的分界**不是大小是场景**：行驶中只给三组计数和一行摘要（要细节
    * 就听），停车时才出图出血 + 全文——车上"读"这件事被行驶状态一刀切开。
    */
+  /**
+   * 行程单卡（旅行助手，2026-08-21）。**不复用 progress**——那张卡表达不了
+   * D-day 计数、按状态上色的时间线、和底部"待你决策"块，而这三样正是
+   * 长时任务区别于普通后台进展的地方（PRD §7.1）。
+   */
+  { id: 'itinerary', label: '行程单卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
+    requireItems: true,
+    desc: '一次出行的全貌。data: {title, dday?:"D-13", when?:"9月2日出发·首尔5天", ' +
+      'steps:[{label, state:done|running|todo|warn, detail?}], ' +
+      'decide?:{question, options:[两个]}, foot?}。由 travel.* 自动维护，不用手动建。',
+    fields: { steps: { type: 'array', required: true } } },
   { id: 'guide', label: '攻略卡', defaultSize: 'court', sizes: ['box', 'tower', 'court'],
     requireItems: true,
     desc: '目的地攻略（玩什么/吃什么/注意什么）。data: {title, sub?, hero?:渐变或图 url, ' +
-      'items:[{group:必去|必吃|贴士, label, sub?}], basis?:一句话来源}。' +
+      'items:[{group:必去|必吃|贴士, label, sub?}], source?:一句话来源}。' +
       '按组归拢，每条一句为什么值得——"景福宫 / 穿韩服免门票"。',
     fields: { items: { type: 'array', required: true } } },
   { id: 'automation', label: '自动任务卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],

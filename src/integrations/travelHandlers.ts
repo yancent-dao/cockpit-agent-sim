@@ -57,29 +57,66 @@ function core(deps: TravelDeps) {
       { threshold: w.threshold, direction: w.direction })
   }
 
-  /** 行程单卡 = f(仓)。每次增删改跑完重画，同编排器「桌面 = f(状态)」 */
+  /** 各类的单位。光秃秃一个 1850 谁也不知道是钱还是韩元 */
+  const UNIT: Record<WatchKind, (v: number) => string> = {
+    flight: v => `¥${v.toLocaleString()}`,
+    hotel: v => `¥${v.toLocaleString()} / 晚`,
+    fx: v => `100 CNY ≈ ${v.toLocaleString()}`,
+    news: v => `${v} 条`,
+  }
+
+  /** 距出发还有几天。没定日期就没有 D-day——不编一个 */
+  const ddayOf = (departDate?: string): string | undefined => {
+    if (!departDate) return undefined
+    const days = Math.ceil((Date.parse(departDate + 'T00:00:00') - deps.clock()) / 86_400_000)
+    return Number.isFinite(days) ? (days > 0 ? `D-${days}` : days === 0 ? '今天出发' : '已出发') : undefined
+  }
+
+  /**
+   * 行程单卡 = f(仓)。用 itinerary 模板不用 progress——D-day、按状态上色的
+   * 时间线、待决策块这三样是长时任务的身份，通用进展卡表达不了。
+   */
   const paintPlan = () => {
     const d = deps.desk()
     if (!d) return
     const tasks = S().tasks().filter(t => t.status !== 'archived')
     if (!tasks.length) { const c = d.findByKey(PLAN_KEY); if (c) d.dismiss(c.id); return }
     const ws = S().watches()
+    const one = tasks.length === 1 ? tasks[0] : undefined
+    const mine = (id: string) => ws.filter(w => w.taskId === id && w.status !== 'cancelled')
+    // 到价了的那条 → 待决策。只挑一条：两个决策一起问，用户不知道先答哪个
+    const hit = one && mine(one.id).find(w => w.status === 'fired')
+    const steps = tasks.flatMap(t => {
+      const list = mine(t.id)
+      // 单任务时标题已经是它了，再来一行"曼谷 · 曼谷"是废话
+      const head = one ? [] : [{
+        label: t.destination === t.title ? t.title : `${t.title} · ${t.destination}`,
+        state: t.status === 'draft' ? 'warn' : 'running',
+        detail: t.departDate ? `${t.departDate} 出发` : '日期还没定',
+      }]
+      return [...head, ...list.map(w => ({
+        label: KIND_LABEL[w.kind],
+        state: w.status === 'fired' ? 'done' : w.lastValue === undefined ? 'todo' : 'running',
+        detail: w.lastValue !== undefined
+          ? `${UNIT[w.kind](w.lastValue)}${w.threshold !== undefined
+              ? `　提醒线 ${UNIT[w.kind](w.threshold)}` : ''}`
+          : '还在等第一次取数',
+      }))]
+    })
     d.render({
-      key: PLAN_KEY, template: 'progress', kind: 'task', ttl: 'untilDismissed',
+      key: PLAN_KEY, template: 'itinerary', kind: 'task', ttl: 'untilDismissed',
       data: {
-        title: tasks.length === 1 ? tasks[0].title : `${tasks.length} 个行程`,
-        items: tasks.flatMap(t => {
-          const mine = ws.filter(w => w.taskId === t.id)
-          return [{
-            label: `${t.title} · ${t.destination}`,
-            state: t.status === 'draft' ? 'running' : 'done',
-            detail: t.departDate ? `${t.departDate} 出发` : '日期待定',
-          }, ...mine.map(w => ({
-            label: KIND_LABEL[w.kind],
-            state: w.status === 'fired' ? 'done' : w.status === 'active' ? 'running' : 'failed',
-            detail: w.lastValue !== undefined ? `${w.lastValue}` : '还没取到数',
-          }))]
-        }),
+        title: one ? one.title : `${tasks.length} 个行程`,
+        dday: one ? ddayOf(one.departDate) : undefined,
+        when: one
+          ? `${one.departDate ? `${one.departDate} 出发` : '日期待定'} · ${one.destination}`
+          : undefined,
+        steps,
+        decide: hit ? {
+          question: `${KIND_LABEL[hit.kind]}到你说的价了（${UNIT[hit.kind](hit.lastValue!)}），现在定吗？`,
+          options: [`看看${KIND_LABEL[hit.kind]}的价格趋势`, '先不定，继续盯着'],
+        } : undefined,
+        foot: `盯着 ${ws.filter(w => w.status === 'active').length} 项`,
       },
     })
   }

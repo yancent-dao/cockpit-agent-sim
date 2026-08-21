@@ -89,6 +89,8 @@ export const INTERACTIONS: Record<string, InteractionDecl[]> = {
    * 不做"点一下就下单"——本 Agent 的活到提醒为止，PRD 6.2 的支付边界。
    */
   trend: [SWIPE_AWAY, ...RESIZE, CLOSE, { on: 'tap:item', route: 'answer' }],
+  /** 行程单卡：点待决策的选项 = 说了这句话（回答类，怎么处置归模型） */
+  itinerary: [SWIPE_AWAY, ...RESIZE, CLOSE, { on: 'tap:item', route: 'answer' }],
   /** 攻略卡：点某一条 = 让它展开讲这个地方（回答类，不叫醒也讲不了） */
   guide: [SWIPE_AWAY, ...RESIZE, CLOSE, { on: 'tap:item', route: 'answer' }],
   storybook: [

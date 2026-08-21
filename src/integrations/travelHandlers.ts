@@ -41,7 +41,13 @@ const DEFAULT_RHYTHM: Record<WatchKind, { everyMs?: number; onBoot?: boolean }> 
 let seq = 0
 const newId = (p: string) => `${p}${++seq}_${Math.random().toString(36).slice(2, 6)}`
 
-export function createTravelHandlers(deps: TravelDeps) {
+/**
+ * 内核。两个出口共用它——**采样与建卡只有一份代码**：
+ *   · createTravelHandlers → 给 registry 的七个 handler
+ *   · createTravelEngine   → 给装配层的定时采样（只采到期的那几项，
+ *     不是每次全采：机酒的免费额度很小，多采一次就少一次）
+ */
+function core(deps: TravelDeps) {
   const S = () => deps.store()
 
   /** 一条委托的趋势事实。**只有事实，没有推荐**——买不买归模型 */
@@ -103,7 +109,7 @@ export function createTravelHandlers(deps: TravelDeps) {
     })
   }
 
-  return {
+  const handlers = {
     /* ── 建任务。信息不全照建，缺什么在返回里说 ── */
     travelCreate: async (args: any): Promise<ToolResult> => {
       const destination = String(args?.destination ?? '').trim()
@@ -248,6 +254,50 @@ export function createTravelHandlers(deps: TravelDeps) {
         data: { taskId: t.id, stopped: stopped.map(w => ({ kind: w.kind, kindLabel: KIND_LABEL[w.kind] })) },
         message: `「${t.title}」删了${stopped.length
           ? `，${stopped.map(w => KIND_LABEL[w.kind]).join('、')}的监控都停了` : ''}——把停了哪些告诉用户` }
+    },
+  }
+
+  return { handlers, paintTrend, paintPlan, factsOf }
+}
+
+/** 给 registry 的七个 handler */
+export function createTravelHandlers(deps: TravelDeps) {
+  return core(deps).handlers
+}
+
+/**
+ * 给装配层的采样引擎。跟 core/monitor 的分工：monitor 说"谁到期了"，
+ * 这里负责真去取数、建卡，并把**触发了的**交回去让装配层叫醒模型。
+ *
+ * 只采点名的那几项——不是每次全采。机酒的免费额度很小（RapidAPI 免费层
+ * 50 次/月），多采一次就少一次；汇率虽然免费，一天该采一次就别一小时一次。
+ */
+export function createTravelEngine(deps: TravelDeps) {
+  const { handlers, paintTrend, paintPlan, factsOf } = core(deps)
+  void handlers
+  return {
+    /** monitor 的 onDue 回调。返回触发了的，装配层据此建交付素材 */
+    async sampleDue(ids: string[]) {
+      const st = deps.store()
+      const fired = await sampleRound(st, ids, deps.sources())
+      for (const f of fired) {
+        const w = st.watches().find(x => x.id === f.watch.id)
+        if (w) paintTrend(w, f.note)
+      }
+      if (fired.length) paintPlan()
+      return fired.map(f => {
+        const w = st.watches().find(x => x.id === f.watch.id)
+        return {
+          watchId: f.watch.id, kind: f.watch.kind, label: f.watch.label,
+          value: f.value, threshold: f.watch.threshold, note: f.note,
+          trend: w ? factsOf(w) : undefined,
+        }
+      })
+    },
+    /** 喂给 core/monitor 的条目表：生效中的委托 + 各自的采样节奏 */
+    items() {
+      return deps.store().activeWatches(deps.clock())
+        .map(w => ({ id: w.id, everyMs: w.everyMs, onBoot: w.onBoot, lastAt: w.lastAt }))
     },
   }
 }

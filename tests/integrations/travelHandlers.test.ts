@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createTravelHandlers } from '../../src/integrations/travelHandlers'
+import { createTravelHandlers, createTravelEngine } from '../../src/integrations/travelHandlers'
 import { createTravelStore } from '../../src/state/travel'
 import { createDesk } from '../../src/cards/desk'
 import { mockSource } from '../../src/integrations/travelMock'
@@ -209,5 +209,60 @@ describe('机制/策略的界线', () => {
       fs.readFileSync('src/integrations/travelHandlers.ts', 'utf8'))
     expect(src).not.toMatch(/includes\(['"`](想|要|帮我|盯|买)/)
     expect(src).not.toMatch(/intent\s*===/)
+  })
+})
+
+/* ══════════ 装配层用的采样引擎 ══════════ */
+
+describe('createTravelEngine：定时采样的那一半', () => {
+  const mkEngine = () => createTravelEngine({
+    store: () => store, desk: () => desk,
+    sources: () => ({ flight: mockSource(() => NOW), hotel: mockSource(() => NOW) }),
+    clock: () => NOW,
+  })
+
+  it('items() 把生效中的委托和各自的采样节奏喂给调度器', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    ok(await h.travelWatch({ taskId: t, kind: 'flight' }))
+    const items = mkEngine().items()
+    expect(items).toHaveLength(1)
+    expect(items[0].everyMs).toBe(3_600_000)   // 机票每小时
+    expect(items[0].onBoot).toBe(true)
+    expect(items[0].lastAt).toBeUndefined()    // 没采过 → 下一 tick 立刻采
+  })
+
+  it('撤销的委托不再进调度——停了就是真停', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const w = (ok(await h.travelWatch({ taskId: t, kind: 'flight' })).data as any).watchId
+    ok(await h.travelUnwatch({ watchId: w }))
+    expect(mkEngine().items()).toEqual([])
+  })
+
+  it('只采点名的那几项——机酒免费额度小，多采一次少一次', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const a = (ok(await h.travelWatch({ taskId: t, kind: 'flight' })).data as any).watchId
+    const b = (ok(await h.travelWatch({ taskId: t, kind: 'hotel' })).data as any).watchId
+    await mkEngine().sampleDue([a])
+    expect(store.samples(a, NOW + 1000)).toHaveLength(1)
+    expect(store.samples(b, NOW + 1000)).toHaveLength(0)
+  })
+
+  it('触发的建趋势卡并交回装配层，没触发的一个字不说', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const hit = (ok(await h.travelWatch({ taskId: t, kind: 'flight', threshold: 9999 })).data as any).watchId
+    const miss = (ok(await h.travelWatch({ taskId: t, kind: 'hotel', threshold: 1 })).data as any).watchId
+    const fired = await mkEngine().sampleDue([hit, miss])
+    expect(fired.map(f => f.watchId)).toEqual([hit])
+    expect(desk.findByKey(`travel-trend:${hit}`)).toBeTruthy()
+    expect(desk.findByKey(`travel-trend:${miss}`)).toBeUndefined()
+  })
+
+  it('交回的素材带趋势事实和示例标记，装配层照着叫醒模型', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const w = (ok(await h.travelWatch({ taskId: t, kind: 'flight', threshold: 9999 })).data as any).watchId
+    const fired = await mkEngine().sampleDue([w])
+    expect(fired[0].trend).toBeTruthy()
+    expect(fired[0].note).toContain('示例数据')
+    expect(fired[0].label).toBeTruthy()
   })
 })

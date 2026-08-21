@@ -157,6 +157,22 @@ input::placeholder{color:#4A5462}
     </div>
     <div id="storyNote" class="hint" style="margin-top:6px"></div>
   </section>
+
+  <!-- 旅行助手：长时任务的演示可控性。
+       真实价格不会配合演示按时降价——所以给两个手动闸：立刻采一轮（不等
+       采样周期），和一个把阈值设在现价之上的示例任务（下一轮必然命中，
+       链路全真，不造假数据）。 -->
+  <section>
+    <h2>旅行助手</h2>
+    <div class="hint">机酒是<b>示例数据</b>（卡片和播报都会标明），汇率是真的。
+      演示"到价触发"用「建示例任务」——它把提醒线设在现价之上，下一轮必然命中。</div>
+    <div class="row" style="margin-top:9px">
+      <button id="tvDemo">建示例任务</button>
+      <button id="tvRefresh">立刻采一轮</button>
+      <button id="tvClear">清掉全部行程</button>
+    </div>
+    <div id="tvNote" class="hint" style="margin-top:6px"></div>
+  </section>
  </div>
 
  <div>

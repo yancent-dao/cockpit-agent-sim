@@ -42,6 +42,17 @@ describe('相邻两档渲染出来的东西必须不同', () => {
     lanes: [{ dir: '↑' }, { dir: '↰', use: true }], nextTurn: '然后直行 1.2 公里',
     arriveAt: '14:26', eta: 18, distance: 6.2,
     queue: [{ track: '七里香' }], nextUp: ['七里香', '借口'],
+    // 趋势卡（旅行助手）：曲线点、极值、提醒线、分位、依据、监控详情——
+    // 少一样这里的相邻档就会渲染成一样，那正是这条测试要拦的
+    points: Array.from({ length: 30 }, (_, i) => ({ at: i * 864e5, value: 2400 - i * 18 })),
+    current: 1868, changeFromPrev: -86, min: 1842, max: 2486, median: 2166,
+    percentile: 0.04, threshold: 2000, thresholdLabel: '提醒线 2000',
+    verdict: { label: '可以下单', tone: 'ok' },
+    basis: ['比 30 天均价低 9%', '近一周连续回落'],
+    monitor: { everyLabel: '每小时采一次', expiresLabel: '至 9 月 2 日', statusLabel: '已触发' },
+    updatedLabel: '10 分钟前',
+    // 攻略卡：分组条目（group 字段是它跟 list 的关键差别）
+    guideItems: undefined,
   }
 
   it('每个模板的相邻两档渲染结果都不一样', () => {

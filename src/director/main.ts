@@ -25,6 +25,12 @@ import { createPoemClient } from '../integrations/poem'
 import { createPodcastClient } from '../integrations/podcast'
 import { createAutomationStore, type AutomationRule } from '../state/automation'
 import { createAutomationEngine } from '../core/automation'
+import { createMonitor } from '../core/monitor'
+import { createTravelStore } from '../state/travel'
+import { createTravelEngine } from '../integrations/travelHandlers'
+import { createFxClient } from '../integrations/frankfurter'
+import { fxSource } from '../integrations/travelSources'
+import { mockSource } from '../integrations/travelMock'
 import { createVideoGen } from '../integrations/orvideo'
 import { createMusicGen } from '../integrations/ormusic'
 import { createLrclibClient } from '../integrations/lrclib'
@@ -350,6 +356,99 @@ const onAutoFire = async (rule: AutomationRule) => {
 const autoEngine = createAutomationEngine(store, autoStore, r => { void onAutoFire(r) })
 setInterval(() => autoEngine.evaluate(), 5000)
 
+/* ── 旅行任务的采样调度 ──
+ *
+ * monitor 只说"谁到期了"，取数/建卡在 travelEngine，叫醒模型在这儿——
+ * 三层各管各的，跟 automation 的 引擎判定 / 装配执行 是同一条分工。
+ *
+ * 触发之后**不直接说话**，而是把事实交给模型去组织话术（PRD：建议必须
+ * 带依据，而依据在返回的 trend 里）。走 scheduler 排队：系统事件永远
+ * 等用户这一轮说完才轮到自己，不抢麦。
+ */
+const travelEngine = createTravelEngine({
+  store: () => travelStore, desk: () => desk,
+  sources: () => travelSources, clock: Date.now,
+})
+const travelMonitor = createMonitor({
+  items: () => travelEngine.items(),
+  onDue: ids => { void onTravelDue(ids) },
+})
+async function onTravelDue(ids: string[]) {
+  // ids 为空 = 面板已经自己采过了，这里只走"叫醒模型报简报"那一半
+  const fired = ids.length ? await travelEngine.sampleDue(ids)
+    : travelStore.watches().filter(w => w.status === 'fired')
+      .map(w => ({ watchId: w.id, kind: w.kind, label: w.label, value: w.lastValue!,
+                   threshold: w.threshold, note: undefined as string | undefined,
+                   trend: undefined as any }))
+  if (!fired.length) return          // 无更新不开口——连模型都不叫醒
+  log('p', `✈ 行程监控触发 ${fired.length} 项：${fired.map(f => f.label).join('、')}`)
+  const facts = fired.map(f =>
+    `${f.label}：现在 ${f.value}${f.threshold !== undefined ? `（你设的线 ${f.threshold}）` : ''}` +
+    `${f.trend?.band ? `，近 30 天处于${f.trend.band}` : ''}${f.note ? `（${f.note}）` : ''}`).join('；')
+  scheduler.submit(
+    `[系统] 你盯着的行程有更新了：${facts}。` +
+    `按章法报一句 ≤40 字的简报，带上依据；屏幕上趋势卡已经有了，别逐条念数字。`,
+    { source: 'system:travelFired' })
+}
+/* ── 面板上的三个手动闸（演示可控性） ──
+ *
+ * 真实价格不会配合演示按时降价，这是接真 API 的固有矛盾。不造假数据的解法
+ * 是**把阈值设在现价之上**：下一轮采样必然命中，触发链路、卡片、话术全是真的。
+ */
+const tvNote = (t: string) => { const e = $s('tvNote'); if (e) e.textContent = t }
+$('tvDemo').onclick = async () => {
+  const c = await registry.invoke('travel.create', {
+    destination: '首尔', title: '韩国行',
+    departDate: new Date(Date.now() + 13 * 864e5).toISOString().slice(0, 10),
+    watch: [{ kind: 'flight' }, { kind: 'hotel' }, { kind: 'fx', direction: 'above' }],
+  })
+  const taskId = (c.data as any)?.taskId
+  // 先采一轮拿到现价，再把提醒线设在现价之上——演示必然触发，且全是真链路
+  await registry.invoke('travel.refresh', { taskId })
+  for (const w of travelStore.watches().filter(w => w.taskId === taskId)) {
+    if (w.lastValue === undefined || w.kind === 'fx') continue
+    travelStore.addWatch({ ...w, id: w.id + '_x', threshold: Math.round(w.lastValue * 1.05) })
+    travelStore.cancelWatch(w.id)
+  }
+  tvNote('示例任务建好了（韩国行 · 首尔）。点「立刻采一轮」就会触发到价提醒。')
+  log('p', '✈ 已建示例行程任务')
+  push()
+}
+$('tvRefresh').onclick = async () => {
+  const ids = travelStore.activeWatches(Date.now()).map(w => w.id)
+  const fired = await travelEngine.sampleDue(ids)
+  tvNote(fired.length ? `采了 ${ids.length} 项，${fired.length} 项到价了` : `采了 ${ids.length} 项，没有到提醒线的`)
+  if (fired.length) void onTravelDue([])   // 走同一条交付：叫醒模型报简报
+  push()
+}
+$('tvClear').onclick = () => {
+  for (const t of travelStore.tasks()) travelStore.removeTask(t.id)
+  for (const c of [...desk.layout().cards]) if (c.template === 'trend' || c.key === 'travel-plan') desk.dismiss(c.id)
+  tvNote('行程都清了')
+  push()
+}
+
+// 每分钟看一眼谁到期。粒度按分钟够了——价格场景不追秒级，端上也不该空转
+setInterval(() => travelMonitor.tick(), 60_000)
+// 上电补采一轮（PRD：上电后先做一次全量信息更新，判断是否需要提醒）
+setTimeout(() => travelMonitor.boot(), 1500)
+
+/* ══════════ 旅行助手（长时任务） ══════════
+ *
+ * 任务与委托跨上下电存续：关这个窗口 = 熄火（引擎停），重新打开 = 上电
+ * （boot 补采一轮）——跟自动化引擎「车机窗口在任务就在」同一条零后端边界。
+ *
+ * 四类监控项**三真一模拟**：汇率是真的（frankfurter，零 Key、有真历史），
+ * 新闻走既有 NewsAPI；机酒暂用示例数据源（RapidAPI 候选全是非官方封装、
+ * 免费层 50 次/月），它同时是录制槽——拿到 Key 换一行就是真的。
+ */
+const travelStore = createTravelStore(defaultStorage())
+const travelSources = {
+  fx: fxSource(createFxClient(fetch.bind(window))),
+  flight: mockSource(),
+  hotel: mockSource(),
+}
+
 const registry = createRegistry(store, TOOLS, Date.now, {
   state, prefs, desk, amap, itunes: createItunesClient(), radio: createRadioClient(fetch.bind(window)),
   lyrics: createLrclibClient(fetch.bind(window), api('lrclib')).search,
@@ -362,6 +461,7 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   websearch: createWebSearch(createOnlineChat(() => apiKey, () => modelId)),
   story, image: imageGen,
   automation: { store: autoStore, execute: executeAutomation },
+  travel: travelStore, travelSources,
   // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
   // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
   storage: defaultStorage(),

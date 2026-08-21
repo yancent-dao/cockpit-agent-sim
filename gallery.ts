@@ -45,6 +45,27 @@ const DATA: Record<string, any> = {
   metric: { title: '续航', value: 420, unit: '公里', sub: '电量 68% · 空调开着', percent: 68, trend: '↑2' },
   chart: { title: '近 7 天电耗', kind: 'bar', unit: 'kWh/100km', series: [{ label: '周一', value: 13 }, { label: '周二', value: 17 }, { label: '周三', value: 11 }, { label: '周四', value: 21 }, { label: '周五', value: 15 }, { label: '周六', value: 9 }, { label: '周日', value: 16 }] },
   image: { title: '宽窄巷子', url: '', caption: '成都市青羊区金河路口', meta: '距您 3.4 公里' },
+  // 旅行助手两张。趋势卡的曲线是 30 天真形状（先跌后稳），不是直线——
+  // 直线看不出"预测带跟历史接不接得上"这类版式问题
+  trend: { title: '机票 · 成都→首尔 往返',
+    points: Array.from({ length: 30 }, (_, i) => ({ at: Date.now() - (30 - i) * 864e5,
+      value: Math.round(2400 - i * 19 + Math.sin(i * 1.7) * 42) })),
+    current: 1868, changeFromPrev: -86, min: 1842, max: 2486, median: 2166, percentile: 0.04,
+    threshold: 2000, thresholdLabel: '提醒线 ¥2,000',
+    verdict: { label: '可以下单', tone: 'ok' },
+    basis: ['比 30 天均价低 9%', '近一周连续回落，昨起跌破提醒线'],
+    monitor: { everyLabel: '每小时采一次', expiresLabel: '至 9 月 2 日出发', statusLabel: '已触发' },
+    updatedLabel: '10 分钟前' },
+  guide: { title: '首尔 · 玩什么', sub: '9 月 2–6 日 · 明洞出发', basis: '来源：近 3 个月高频提及 + 你的口味偏好',
+    items: [
+      { group: '必去', label: '景福宫', sub: '穿韩服免门票，守门将换岗 10:00 / 14:00' },
+      { group: '必去', label: '北村韩屋村', sub: '上午人少好拍，住户区请轻声' },
+      { group: '必去', label: '南山塔', sub: '日落前 1 小时上去，白天夜景都能看到' },
+      { group: '必吃', label: '广藏市场', sub: '生拌牛肉、绿豆煎饼，现金更快' },
+      { group: '必吃', label: '土俗村参鸡汤', sub: '景福宫旁边，11 点前不排队' },
+      { group: '贴士', label: 'T-money', sub: '便利店买，地铁公交都能刷' },
+      { group: '贴士', label: '天气', sub: '9 月 20–27 度，早晚凉，带薄外套' },
+    ] },
   generic: { title: '车况', text: '胎压正常，电量 68%。', items: [{ label: '左前', value: 2.4 }, { label: '右前', value: 2.4 }] },
 }
 

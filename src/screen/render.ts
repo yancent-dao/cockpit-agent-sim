@@ -478,6 +478,78 @@ export function cardBody(c: CardView): string {
     case 'nav':
       // 导航卡由 renderNavCard 单独处理——活地图有状态，不能跟着文字一起重绘
       return ''
+    /**
+     * 趋势卡（旅行助手）。三档靠 blocks 加块拉开差异，曲线自己画 SVG——
+     * chart 模板画不了预测带和提醒线，这也是它单开模板的理由。
+     *
+     * **verdict 是模型给的**，代码不算：分位/极值是事实，"可以下单"是判断。
+     * 没给就不显示，不替模型编一个。
+     */
+    case 'trend': {
+      const form = formOf('trend', ...dimsOf(c.size))
+      const has = (b: string) => form.blocks.includes(b)
+      const pts: Array<{ at: number; value: number }> = d.points ?? []
+      const vals = pts.map(p => p.value)
+      const lo = Math.min(...vals, d.threshold ?? Infinity)
+      const hi = Math.max(...vals, d.threshold ?? -Infinity)
+      const span = hi - lo || 1
+      // viewBox 固定 1000×300，preserveAspectRatio:none 拉伸——卡多大都填满
+      const y = (v: number) => 285 - ((v - lo) / span) * 260
+      const x = (i: number) => vals.length < 2 ? 500 : (i / (vals.length - 1)) * 1000
+      const line = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+      const chart = vals.length
+        ? `<div class="trchart"><svg viewBox="0 0 1000 300" preserveAspectRatio="none">
+            ${vals.length > 1 ? `<path d="M${line.split(' ').join(' L')} L1000,300 L0,300 Z" class="trfill"></path>` : ''}
+            ${vals.length > 1 ? `<polyline points="${line}" class="trline"></polyline>` : ''}
+            ${has('threshold') && d.threshold !== undefined
+              ? `<line x1="0" y1="${y(d.threshold).toFixed(1)}" x2="1000" y2="${y(d.threshold).toFixed(1)}" class="trthr"></line>` : ''}
+            <circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="6" class="trdot"></circle>
+          </svg></div>`
+        : '<div class="trchart trempty">还没取到数</div>'
+      const delta = d.changeFromPrev
+      return [
+        `<div class="trnow"><b>${esc(String(d.current ?? '—'))}</b>${
+          delta !== undefined && delta !== 0
+            ? `<span class="trdelta ${delta < 0 ? 'down' : 'up'}">${delta < 0 ? '↓' : '↑'}${Math.abs(delta)}</span>` : ''
+        }${has('extremes') && d.min !== undefined
+          ? `<span class="trext">30 天 ${d.min}–${d.max}</span>` : ''}</div>`,
+        chart,
+        // 分位条：只有 stage 档给，而且**没有分位就不画**（样本不足时诚实留白）
+        has('percentile') && d.percentile !== undefined
+          ? `<div class="trpct"><i style="left:${(d.percentile * 100).toFixed(0)}%"></i></div>` : '',
+        has('basis') && d.basis?.length
+          ? `<div class="trbasis">${d.basis.map((b: string) => `<span>${esc(b)}</span>`).join('')}</div>` : '',
+        `<div class="trfoot">${[
+          d.verdict?.label ? `<span class="pill ${esc(d.verdict.tone ?? 'info')}">${esc(d.verdict.label)}</span>` : '',
+          d.thresholdLabel ? `<span>${esc(d.thresholdLabel)}</span>` : '',
+          has('monitor') && d.monitor?.everyLabel ? `<span>${esc(d.monitor.everyLabel)}</span>` : '',
+          d.updatedLabel ? `<span class="trnote">${esc(d.updatedLabel)}</span>` : '',
+        ].filter(Boolean).join('')}</div>`,
+      ].filter(Boolean).join('')
+    }
+    /**
+     * 攻略卡。小档只报每组几条（mode:count）——行驶中不放需要逐字读的东西，
+     * 截一半比不给更糟：用户会以为就这么点。
+     */
+    case 'guide': {
+      const form = formOf('guide', ...dimsOf(c.size))
+      const items: Array<{ group?: string; label: string; sub?: string }> = d.items ?? []
+      const groups = [...new Set(items.map(i => i.group ?? '推荐'))]
+      if (form.mode === 'count')
+        return `<div class="gdcount">${groups.map(g =>
+          `<div><b>${items.filter(i => (i.group ?? '推荐') === g).length}</b><span>${esc(g)}</span></div>`).join('')}</div>`
+      const { shown } = truncate(items, form.maxItems)
+      return [
+        form.blocks.includes('hero') && d.sub ? `<div class="gdsub">${esc(d.sub)}</div>` : '',
+        `<div class="gdgroups">${groups.map(g => {
+          const mine = shown.filter(i => (i.group ?? '推荐') === g)
+          return mine.length ? `<div class="gdg"><h4>${esc(g)}</h4>${mine.map(i =>
+            `<div class="gdi" data-act="tap:item" data-value="${esc(`讲讲${i.label}`)}">
+              <b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div>`).join('')}</div>` : ''
+        }).join('')}</div>`,
+        d.basis ? `<div class="trnote">${esc(d.basis)}</div>` : '',
+      ].filter(Boolean).join('')
+    }
     default: {
       // 诊断 8：模板声明了 items/actions 却只画 text，静默丢数据。
       // 不修的话模型会因为 generic 不好用而滥用生成式卡

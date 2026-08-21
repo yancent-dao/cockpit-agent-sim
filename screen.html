@@ -309,6 +309,54 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .listcard li .rr{margin-left:auto;font-style:normal;flex:none;
   font-size:calc(var(--t-cap)*var(--u));color:var(--ac);font-variant-numeric:tabular-nums}
+/* ── 趋势卡（旅行助手）──
+   曲线自己画：chart 模板画不了预测带和提醒线，这也是它单开模板的理由 */
+.card .trnow{flex:none;display:flex;align-items:baseline;gap:calc(12px*var(--u))}
+.card .trnow b{font-size:calc(var(--t-num)*var(--u));font-weight:800;line-height:1;
+  color:var(--tx-1);font-variant-numeric:tabular-nums}
+.card .trdelta{font-size:calc(var(--t-cap)*var(--u));font-weight:600;padding:2px 10px;
+  border-radius:var(--r-pill,999px);font-variant-numeric:tabular-nums}
+.card .trdelta.down{color:var(--ok-fg);background:var(--ok-bg);border:1px solid var(--ok-bd)}
+.card .trdelta.up{color:var(--danger-fg);background:var(--danger-bg);border:1px solid var(--danger-bd)}
+.card .trext{margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);
+  font-variant-numeric:tabular-nums}
+.card .trchart{flex:1;min-height:calc(60px*var(--u));position:relative}
+.card .trchart svg{position:absolute;inset:0;width:100%;height:100%}
+.card .trline{fill:none;stroke:var(--ac);stroke-width:3;vector-effect:non-scaling-stroke;
+  stroke-linejoin:round;stroke-linecap:round}
+.card .trfill{fill:var(--acbg);opacity:.55;stroke:none}
+/* 提醒线用琥珀虚线不用红——红留给拒绝和告警 */
+.card .trthr{stroke:var(--warn-fg);stroke-width:2;vector-effect:non-scaling-stroke;
+  stroke-dasharray:10 8;opacity:.75}
+.card .trdot{fill:var(--ac);stroke:var(--sf-card);stroke-width:2.5;vector-effect:non-scaling-stroke}
+.card .trempty{display:flex;align-items:center;justify-content:center;
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+/* 分位条：没有分位就不画（样本不足时诚实留白），不给一个假的中位 */
+.card .trpct{flex:none;height:calc(12px*var(--u));border-radius:var(--r-pill,999px);position:relative;
+  background:linear-gradient(90deg,var(--ok-fg),var(--ok-bd) 32%,var(--warn-bd) 64%,var(--warn-fg))}
+.card .trpct i{position:absolute;top:calc(-7px*var(--u));width:0;height:0;
+  border-left:calc(8px*var(--u)) solid transparent;border-right:calc(8px*var(--u)) solid transparent;
+  border-top:calc(11px*var(--u)) solid var(--tx-1);transform:translateX(-50%)}
+.card .trbasis{flex:none;display:flex;flex-direction:column;gap:calc(3px*var(--u));
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);line-height:1.45}
+.card .trfoot{flex:none;display:flex;align-items:center;gap:calc(12px*var(--u));flex-wrap:wrap;
+  font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);font-variant-numeric:tabular-nums}
+.card .trnote{color:var(--tx-3);font-size:calc(var(--t-cap)*var(--u))}
+/* ── 攻略卡 ── */
+.card .gdcount{flex:1;display:flex;align-items:center;justify-content:space-around}
+.card .gdcount div{display:flex;flex-direction:column;align-items:center;gap:calc(4px*var(--u))}
+.card .gdcount b{font-size:calc(var(--t-hero)*var(--u));font-weight:800;line-height:1;color:var(--ac);
+  font-variant-numeric:tabular-nums}
+.card .gdcount span{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.card .gdsub{flex:none;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.card .gdgroups{flex:1;min-height:0;display:flex;flex-direction:column;gap:calc(10px*var(--u))}
+.card .gdg h4{margin:0 0 calc(4px*var(--u));font-size:calc(var(--t-cap)*var(--u));font-weight:600;
+  color:var(--ac);letter-spacing:.06em}
+.card .gdi{display:flex;align-items:baseline;gap:calc(10px*var(--u));padding:calc(3px*var(--u)) 0;
+  border-radius:calc(8px*var(--u))}
+.card .gdi b{flex:none;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1)}
+.card .gdi small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 截断必须说出来。只截不说，用户以为屏上就这么多 */
 .card .more{flex:none;margin-top:calc(6px*var(--u));font-size:calc(var(--t-cap)*var(--u));
   color:var(--tx-3,var(--text-secondary))}

@@ -566,13 +566,25 @@ export function createDesk(clock: () => number = Date.now) {
     // 尺寸三级：显式（调用方）> 建议（内容反查）> 模板默认。
     // 有 items 的卡按条数挑最小能装下的档——3 条候选不该占半屏空一半
     const tmplDefault = CARD_TEMPLATES.find(t => t.id === input.template)?.defaultSize as Size | undefined
-    const size = input.size
+    let size = input.size
       ?? (Array.isArray(input.data?.items) && input.data.items.length
             ? suggestSize(input.template, input.data.items.length) as Size
             : undefined)
       ?? tmplDefault ?? 'box'
-    const sizeErr = checkSize(input.template, size)
-    if (sizeErr) return { status: 'rejected', ...sizeErr }
+    /**
+     * 建卡时 size 是三层优先级里最弱的"建议"层（物理>意愿>建议）——
+     * 不合法的建议落到内容反查/模板默认继续建，不整卡拒掉（2026-08-25
+     * pilot 两次实拍：模型给攻略卡传 frame、又传 tile，章法写了"不用传"
+     * 还是传，被拒后自纠白烧一轮）。resize 是用户意愿层，那边保持拒绝。
+     */
+    let sizeNote: string | undefined
+    if (checkSize(input.template, size)) {
+      const fallback = (Array.isArray(input.data?.items) && input.data.items.length
+        ? suggestSize(input.template, input.data.items.length) as Size : undefined)
+        ?? tmplDefault ?? 'box'
+      sizeNote = `${size} 尺寸这个模板不支持，已按 ${fallback} 上屏`
+      size = fallback
+    }
     const id = input.id ?? `card_${++seq}`
     const card: Card = {
       id, key: input.key, template: input.template, size, kind: input.kind ?? 'task',
@@ -623,7 +635,8 @@ export function createDesk(clock: () => number = Date.now) {
      * 覆盖层不是放不下就往里扔的垃圾桶。
      */
     if (r.status === 'rejected' && isCritical) return toOverlay()
-    return r
+    // 尺寸降级的说明搭车带回去——Agent 看得见才不会下次还传同一个错档
+    return sizeNote && r.status === 'ok' ? { ...r, note: [r.note, sizeNote].filter(Boolean).join('；') } : r
   }
 
   function update(id: string, data: any): DeskResult {

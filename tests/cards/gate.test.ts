@@ -12,22 +12,30 @@ import { TOOLS } from '../../src/config/tools'
  * 尺寸是**几何契约**，归 desk 管；desk 是唯一咽喉（空壳卡检查的先例）。
  */
 describe('尺寸闸在 desk：三条路一个闸', () => {
-  it('handler 直调 desk.show 传模板不支持的尺寸 → 拒绝', () => {
+  /**
+   * 2026-08-25 语义修订（pilot 两次实拍：模型给攻略卡传 frame、又传 tile，
+   * 章法写了"size 不用传"还是传）：**建卡时 size 是三层优先级里最弱的
+   * "建议"层**（物理>意愿>建议），一个不合法的建议合理的处置是落到
+   * 模板默认档继续把卡建出来，不是整个调用拒掉让模型自纠白烧一轮。
+   * resize（用户意愿层）保持拒绝——那是明确指令，错了要说。
+   */
+  it('handler 直调 desk.show 传模板不支持的尺寸 → 落到默认档照建，附说明', () => {
     const d = createDesk()
     // list 的下限是 box：chip 放不下一条带副标题的候选
     const r = d.show({ template: 'list', size: 'chip' as any, ttl: 60,
       data: { title: '候选', items: [{ label: 'a' }] } })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
-    expect(r.message, '报错要带人话').toMatch(/支持/)
+    expect(r.status).toBe('ok')
+    const card = d.get((r as any).cardId)!
+    expect(card.size).not.toBe('chip')
+    expect(String((r as any).note ?? ''), '降级说明要带人话，模型看得见才不会下次还传').toContain('chip')
   })
 
-  it('desk.render（规则/handler 的刷新路径）同样被拦', () => {
+  it('desk.render（规则/handler 的刷新路径）同样降级不拒', () => {
     const d = createDesk()
     const r = d.render({ key: 'x', template: 'confirm', size: 'chip' as any, ttl: 60,
       data: { title: 'q', question: '真的吗' } })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(r.status).toBe('ok')
+    expect(d.findByKey('x')!.size).not.toBe('chip')
   })
 
   it('desk.resize 也过同一个闸 —— reconcile 恢复时不会恢复出非法档', () => {
@@ -49,12 +57,14 @@ describe('尺寸闸在 desk：三条路一个闸', () => {
     expect(r.status).toBe('ok')
   })
 
-  it("模板声明 'tower'（新名），传 'tower' 认、传乱写的不认", () => {
+  it("模板声明 'tower'（新名），传 'tower' 认、乱写的降到默认档", () => {
     const d = createDesk()
     expect(d.show({ template: 'nav', size: 'hall' as any, kind: 'rule', evictable: false, ttl: 60,
       data: { destination: 'x' } }).status).toBe('ok')
-    expect(d.show({ template: 'nav', size: '巨大' as any, kind: 'rule', evictable: false, ttl: 60,
-      data: { destination: 'x' } }).status).toBe('rejected')
+    const r = d.show({ template: 'nav', size: '巨大' as any, kind: 'rule', evictable: false, ttl: 60,
+      data: { destination: 'x' } })
+    expect(r.status).toBe('ok')
+    expect(d.get((r as any).cardId)!.size).not.toBe('巨大')
   })
 })
 
@@ -82,7 +92,10 @@ describe('canvas 尺寸白名单开全档', () => {
       template: 'canvas', size: 'full', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
-    expect(fs.status).toBe('rejected')
+    // 降级语义（2026-08-25）：full 不给，但卡照建——降到白名单里的档，
+    // 覆盖桌面的防御目的一样达成，模型不用为一个建议档白烧一轮
+    expect(fs.status).toBe('ok')
+    expect(String((fs.data as any)?.size ?? '')).not.toBe('full')
   })
 
   it('canvas 的模板 desc 与 sizes 白名单来自同一个数组 —— 不可能再打架', async () => {
@@ -107,7 +120,8 @@ describe('canvas 尺寸白名单开全档', () => {
     const reg2 = createRegistry(store, TOOLS, Date.now, { desk: createDesk() })
     const r = await reg2.invoke('card.show', { template: 'canvas', size: 'full',
       ttl: 'untilDismissed', data: { title: 'x', html: '<p>1</p>', text: 'x' } })
-    expect(r.status).toBe('rejected')
+    expect(r.status).toBe('ok')                 // 降级不拒
+    expect((r.data as any)?.size).not.toBe('full')   // 但绝不以 full 上屏
   })
 
   it('模板 desc 教"按内容形状选尺寸"——游戏竖向内容指向 2/3', async () => {

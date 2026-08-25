@@ -266,3 +266,84 @@ describe('createTravelEngine：定时采样的那一半', () => {
     expect(fired[0].label).toBeTruthy()
   })
 })
+
+describe('没装配时的降级：人话，不是 TypeError', () => {
+  /**
+   * 实拍（2026-08-25 pilot real-travel）：pilot 的 registry 没接 travel 仓，
+   * 模型调 travel.list/refresh 直接炸 HANDLER_ERROR: Cannot read properties
+   * of undefined——裸 TypeError 进了模型上下文，它只能瞎编一句"后台抽风"。
+   * 拒绝必须携带机器可读原因 + 人话（核心原则第 4 条），没装配也一样。
+   */
+  it('仓没接时七个工具全部返回 unavailable + 人话，不抛', async () => {
+    const bare = createTravelHandlers({
+      store: () => undefined as any, desk: () => undefined,
+      sources: () => ({}), clock: () => NOW,
+    })
+    for (const [name, args] of [
+      ['travelCreate', { destination: '首尔' }], ['travelWatch', { taskId: 'x', kind: 'flight' }],
+      ['travelUnwatch', { watchId: 'x' }], ['travelList', {}], ['travelRefresh', {}],
+      ['travelUpdate', { taskId: 'x' }], ['travelDelete', { taskId: 'x' }],
+    ] as const) {
+      const r = await (bare as any)[name](args)
+      expect(r.status, name).toBe('unavailable')
+      expect(r.code, name).toBe('NOT_WIRED')
+      expect(String(r.message)).not.toMatch(/undefined|TypeError/)
+    }
+  })
+})
+
+describe('create 的两刀（2026-08-25 pilot 三连跑）', () => {
+  /**
+   * 防重：T4 屏上冒出"2 个行程"——后台子代理查机票时自己又 create 了
+   * 一个曼谷任务。判据是数据形状（同目的地 + 非归档已存在），不是猜意图：
+   * 复用返回已有任务，不新建。
+   */
+  it('同目的地已有活跃任务 → 复用它，不建第二个', async () => {
+    const a = ok(await h.travelCreate({ destination: '曼谷' }))
+    const b = ok(await h.travelCreate({ destination: '曼谷', watch: [{ kind: 'flight' }] }))
+    expect((b.data as any).taskId).toBe((a.data as any).taskId)
+    expect(store.tasks()).toHaveLength(1)
+    expect(String(b.message)).toContain('已经有')
+  })
+
+  it('复用时新的 watch 照样加上——不因复用丢掉这次要盯的项', async () => {
+    ok(await h.travelCreate({ destination: '曼谷' }))
+    ok(await h.travelCreate({ destination: '曼谷', watch: [{ kind: 'flight' }] }))
+    expect(store.watches()).toHaveLength(1)
+  })
+
+  it('已归档的不算重——去过曼谷还能再去', async () => {
+    const a = ok(await h.travelCreate({ destination: '曼谷' }))
+    store.updateTask((a.data as any).taskId, { status: 'archived' })
+    const b = ok(await h.travelCreate({ destination: '曼谷' }))
+    expect((b.data as any).taskId).not.toBe((a.data as any).taskId)
+  })
+
+  /**
+   * 首采价：实拍模型建完任务手里没数，宁可 delegate 后台查价，用户催了
+   * 三轮才拿到参考价。create 建完 watch 立即采一轮，价直接带在返回里——
+   * "机票现在多少钱"在建任务这一步就闭环，模型没有理由再去别处查。
+   */
+  it('create 带 watch 时返回里直接有首采价（含示例标记）', async () => {
+    const r = ok(await h.travelCreate({
+      destination: '曼谷', watch: [{ kind: 'flight' }, { kind: 'hotel' }],
+    }))
+    const q = (r.data as any).quotes
+    expect(q).toHaveLength(2)
+    expect(q[0].value).toBeGreaterThan(0)
+    expect(q[0].label).toBeTruthy()
+    expect(JSON.stringify(q)).toContain('示例数据')
+    expect(String(r.message)).toContain('参考价')
+  })
+
+  it('没配 watch 就没有 quotes，不硬凑', async () => {
+    const r = ok(await h.travelCreate({ destination: '曼谷' }))
+    expect((r.data as any).quotes).toEqual([])
+  })
+
+  it('源没接的 kind 采不到就跳过，create 本身照样成功', async () => {
+    const r = ok(await h.travelCreate({ destination: '曼谷', watch: [{ kind: 'news' }] }))
+    expect(r.status).toBe('ok')
+    expect((r.data as any).quotes).toEqual([])
+  })
+})

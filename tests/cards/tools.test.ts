@@ -40,11 +40,11 @@ describe('卡片调度 Tool', () => {
     expect((await show({ template: 'whatever' })).code).toBe('INVALID_PARAMS')
   })
 
-  it('card.show 尺寸必须是该模板支持的形状之一', async () => {
-    // 天气卡的形状池是 tile/wide/band，拿不到 stage（那档是导航卡专属）
+  it('card.show 传了模板不支持的档 → 降到合法档照建（size 是建议层，2026-08-25）', async () => {
+    // 天气卡的形状池里没有 stage（那档是导航卡专属）——但卡照建，只是降档
     const r = await show({ template: 'weather', size: 'stage', data: { now: { weather: '晴', temperature: 25 } } })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(r.status).toBe('ok')
+    expect((r.data as any)?.size).not.toBe('stage')
   })
 
   // 导航卡由 orchestrator 按车辆状态驱动。Agent 手动建会出现两张、
@@ -144,17 +144,18 @@ describe('卡片调度 Tool', () => {
     }
   })
 
-  it('stage 是稀缺档，只有导航卡能用——全桌面只有一个合法位置，两张必冲突', async () => {
+  it('stage 是稀缺档，只有导航卡能用——别家要它一律降档，绝不以 stage 上屏', async () => {
     const r = await show({ template: 'weather', size: 'stage',
       data: { now: { weather: '晴', temperature: 25 } } })
-    expect(r.status).toBe('rejected')
-    expect(r.code).toBe('SIZE_NOT_SUPPORTED')
+    expect(r.status).toBe('ok')
+    expect((r.data as any)?.size).not.toBe('stage')
   })
 
-  it('full 是覆盖层不是尺寸，别的卡拿不到——天气盖住导航是安全问题', async () => {
+  it('full 是覆盖层不是尺寸，别的卡拿不到——降档上屏，天气永远盖不住导航', async () => {
     const r = await show({ template: 'weather', size: 'full',
       data: { now: { weather: '晴', temperature: 25 } } })
-    expect(r.status).toBe('rejected')
+    expect(r.status).toBe('ok')
+    expect((r.data as any)?.size).not.toBe('full')
   })
 
   it('导航卡可以被调小到自己的尺寸表档位', async () => {

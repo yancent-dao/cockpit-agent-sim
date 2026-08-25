@@ -22,6 +22,10 @@ import { createHolidayClient } from '../../src/integrations/holiday'
 import { createPoemClient } from '../../src/integrations/poem'
 import { createPodcastClient } from '../../src/integrations/podcast'
 import { createAutomationStore } from '../../src/state/automation'
+import { createTravelStore } from '../../src/state/travel'
+import { mockSource } from '../../src/integrations/travelMock'
+import { fxSource } from '../../src/integrations/travelSources'
+import { createFxClient } from '../../src/integrations/frankfurter'
 import { createRadioClient } from '../../src/integrations/radio'
 import { createNewsClient } from '../../src/integrations/news'
 import { createPexelsClient } from '../../src/integrations/pexels'
@@ -213,6 +217,10 @@ async function runScenario(s: Scenario) {
     stocks: createStockClient(fetch as any), holiday: createHolidayClient(fetch as any),
     poem: createPoemClient(fetch as any), podcast: createPodcastClient(fetch as any),
     automation: { store: createAutomationStore({ get: () => null, set: () => {} }) },
+    // 旅行助手（2026-08-25 pilot 实拍补）：漏接这个仓，模型第二轮建任务
+    // 盯价全炸 HANDLER_ERROR——pilot 的装配必须跟 director 一样全
+    travel: createTravelStore({ get: () => null, set: () => {} }),
+    travelSources: { flight: mockSource(), hotel: mockSource(), fx: fxSource(createFxClient(fetch as any)) },
     radio: createRadioClient(fetch as any),
     ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),
@@ -254,8 +262,17 @@ async function runScenario(s: Scenario) {
     const t0 = Date.now()
     turnT0 = t0; firstSpeakMs = 0; fastSaid = false; slowSilent = true
     const r = await agent.run(say)
+    /**
+     * 调用↔结果按**出现次序**配对（2026-08-25 实拍破案）：以前 find 按 name
+     * 配第一个，同名工具连调三次会把三条都显示成第一次的结果——travel.create
+     * 第三次明明成功了，快照却显示三连拒，白追了一轮"假 bug"。
+     * 快照显示错误比没有快照更糟：它会把评审引向不存在的问题。
+     */
+    const seen = new Map<string, number>()
     const calls = r.trace.filter(x => x.type === 'toolCall').map((x: any) => {
-      const res = r.trace.find((y: any) => y.type === 'toolResult' && y.name === x.name)
+      const nth = seen.get(x.name) ?? 0
+      seen.set(x.name, nth + 1)
+      const res = r.trace.filter((y: any) => y.type === 'toolResult' && y.name === x.name)[nth]
       return { name: x.name, args: x.args, result: (res as any)?.result }
     })
     history.push({ role: 'assistant', content: r.reply || '(无话术)' })

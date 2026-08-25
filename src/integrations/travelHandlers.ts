@@ -153,15 +153,22 @@ function core(deps: TravelDeps) {
       if (!destination)
         return { status: 'rejected', code: 'INVALID_PARAMS',
           message: '还不知道要去哪儿', suggestion: '问一句目的地，其它的可以边聊边补' }
-      const pending = REQUIRED_SOON.filter(k => !args?.[k])
-      const id = newId('task')
-      S().addTask({
-        id, title: String(args?.title ?? destination).trim(), destination,
-        departDate: args?.departDate, returnDate: args?.returnDate,
-        travelers: args?.travelers,
-        status: pending.length ? 'draft' : 'active',
-        createdAt: deps.clock(),
-      })
+      /**
+       * 防重（2026-08-25 pilot 实拍：后台子代理查机票时自己又 create 了
+       * 一个曼谷任务，屏上冒出"2 个行程"）。判据是数据形状——同目的地 +
+       * 非归档已存在 → 复用，不新建；这次要盯的项照样往它身上加。
+       */
+      const dup = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
+      const pending = dup ? [] : REQUIRED_SOON.filter(k => !args?.[k])
+      const id = dup?.id ?? newId('task')
+      if (!dup)
+        S().addTask({
+          id, title: String(args?.title ?? destination).trim(), destination,
+          departDate: args?.departDate, returnDate: args?.returnDate,
+          travelers: args?.travelers,
+          status: pending.length ? 'draft' : 'active',
+          createdAt: deps.clock(),
+        })
       // 监控项可以一次配上——PRD 要求建任务 ≤2 轮对话，分两次调用就超了
       const watchIds = (Array.isArray(args?.watch) ? args.watch : [])
         .filter((w: any) => w?.kind in KIND_LABEL)
@@ -175,10 +182,33 @@ function core(deps: TravelDeps) {
           })
           return wid
         })
+      /**
+       * 首采价（2026-08-25 pilot 实拍：模型建完任务手里没数，宁可 delegate
+       * 后台查价，用户催了三轮才拿到参考价）。建完立即采一轮，价直接带在
+       * 返回里——"机票现在多少钱"在这一步就闭环。采不到（源没接/报错）
+       * 就静默跳过，create 本身照样成功。
+       */
+      const quotes: Array<{ watchId: string; kind: WatchKind; label: string;
+        value: number; text: string; note?: string }> = []
+      await Promise.all(S().watches().filter(w => watchIds.includes(w.id)).map(async w => {
+        const src = deps.sources()[w.kind]
+        if (!src) return                               // 源没接：静默跳过，create 照样成功
+        try {
+          const q = await src.quote(w)
+          S().addSample(w.id, q.value, q.at)
+          quotes.push({ watchId: w.id, kind: w.kind, label: KIND_LABEL[w.kind],
+            value: q.value, text: UNIT[w.kind](q.value), note: q.note })
+        } catch { /* 坏源不拖垮建任务 */ }
+      }))
       paintPlan()
-      return { status: 'ok', data: { taskId: id, watchIds, pending },
-        message: `任务建好了${pending.length ? `（还缺 ${pending.join('、')}，可以边聊边补）` : ''}` +
-          `${watchIds.length ? `，${watchIds.length} 项已经开始盯了` : ''}` }
+      const quoteLine = quotes.length
+        ? `。参考价：${quotes.map(q => `${q.label} ${q.text}`).join('、')}${quotes.some(q => q.note) ? `（${quotes.find(q => q.note)!.note}）` : ''}——用户问价直接报这个，别再转后台查`
+        : ''
+      return { status: 'ok', data: { taskId: id, watchIds, pending, quotes },
+        message: dup
+          ? `已经有「${dup.title}」这个行程了，直接用它${watchIds.length ? `，新加 ${watchIds.length} 项监控` : ''}${quoteLine}`
+          : `任务建好了${pending.length ? `（还缺 ${pending.join('、')}，可以边聊边补）` : ''}` +
+            `${watchIds.length ? `，${watchIds.length} 项已经开始盯了` : ''}${quoteLine}` }
     },
 
     /* ── 建委托 ── */
@@ -297,9 +327,25 @@ function core(deps: TravelDeps) {
   return { handlers, paintTrend, paintPlan, factsOf }
 }
 
-/** 给 registry 的七个 handler */
+/**
+ * 给 registry 的七个 handler。
+ *
+ * 包一层装配守卫（2026-08-25 pilot 实拍）：pilot 的 registry 没接 travel 仓，
+ * 模型调 travel.list 直接炸 HANDLER_ERROR: Cannot read properties of
+ * undefined——裸 TypeError 进了模型上下文，它只能瞎编一句"后台抽风"。
+ * 拒绝必须携带机器可读原因 + 人话（核心原则第 4 条），**没装配也一样**。
+ */
 export function createTravelHandlers(deps: TravelDeps) {
-  return core(deps).handlers
+  const { handlers } = core(deps)
+  const NOT_WIRED: ToolResult = {
+    status: 'unavailable', code: 'NOT_WIRED',
+    message: '行程功能在这个环境里没装配',
+    suggestion: '如实告诉用户行程管家暂时用不了，别猜原因',
+  }
+  return Object.fromEntries(Object.entries(handlers).map(([name, fn]) => [
+    name,
+    async (args: any): Promise<ToolResult> => deps.store() ? fn(args) : NOT_WIRED,
+  ])) as typeof handlers
 }
 
 /**

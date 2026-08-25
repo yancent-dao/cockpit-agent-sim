@@ -130,6 +130,18 @@ describe('travel.create：信息不全也照建', () => {
     expect((card.data as any).flight).toBeTruthy()   // 价格块长出来了
   })
 
+  it('首采回填历史：源有 history 就一并入仓——不然刚建的监控 30 天后才有曲线（2026-08-25 实拍「监控项没有图」）', async () => {
+    ok(await h.travelCreate({
+      destination: '曼谷', departDate: '2026-09-06',
+      watch: [{ kind: 'flight' }, { kind: 'hotel', stay: { city: '曼谷', dayFrom: 1, dayTo: 3 } }],
+    }))
+    for (const w of store.watches())
+      expect(store.samples(w.id, NOW + 1000).length, '历史回填 + 首采').toBeGreaterThan(10)
+    const card = desk.findByKey('travel-trip')!
+    expect((card.data as any).flight.points.length).toBeGreaterThan(10)
+    expect((card.data as any).stays[0].points.length).toBeGreaterThan(10)
+  })
+
   it('没有目的地就拒——这是任务的身份，没有它盯什么都不知道', async () => {
     const r = await h.travelCreate({ title: '出去玩' })
     expect(r.status).toBe('rejected')
@@ -150,9 +162,16 @@ describe('travel.watch：建委托', () => {
     expect(r.status).toBe('rejected')
   })
 
-  it('新建的委托 lastAt 是空的——下一轮调度立刻采它（建完就有数）', async () => {
+  it('travel.watch 单独建也回填历史并首采——跟 create 里配的一个待遇（lastAt 因此不再是空，调度器按节奏接着采）', async () => {
     const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
     ok(await h.travelWatch({ taskId: t, kind: 'flight' }))
+    expect(store.samples(store.watches()[0].id, NOW + 1000).length).toBeGreaterThan(10)
+    expect(store.watches()[0].lastAt).toBe(NOW)
+  })
+
+  it('源没接的 kind：watch 照建、lastAt 保持空——下一轮调度立刻采它', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    ok(await h.travelWatch({ taskId: t, kind: 'news' }))
     expect(store.watches()[0].lastAt).toBeUndefined()
   })
 })
@@ -164,11 +183,12 @@ describe('travel.refresh：立即采一轮', () => {
     return t
   }
 
-  it('采完样本进仓，返回每项的最新值', async () => {
+  it('采完样本进仓，返回每项的最新值（建 watch 时已回填 30 天+首采，refresh 再 +1）', async () => {
     await setup()
+    const before = store.samples(store.watches()[0].id, NOW + 1000).length
     const r = ok(await h.travelRefresh({}))
     expect((r.data as any).sampled).toBe(1)
-    expect(store.samples(store.watches()[0].id, NOW + 1000)).toHaveLength(1)
+    expect(store.samples(store.watches()[0].id, NOW + 1000)).toHaveLength(before + 1)
   })
 
   it('跌破阈值 → 触发：trip 卡原地出决策条，不弹新卡', async () => {
@@ -258,6 +278,16 @@ describe('travel.update：改了什么、影响哪几项', () => {
     expect((desk.findByKey('travel-trip')!.data as any).dayIdx).toBeUndefined()
   })
 
+  it('目的地变了要提醒模型：攻略/标题还是旧的、不需要的监控用 unwatch 真停（2026-08-25 实拍：改海口后卡片还是三亚攻略，模型嘴上说停掉监控却没调）', async () => {
+    ok(await h.travelPlan({ destination: '三亚',
+      days: [{ title: 'D1', stops: [{ name: '亚龙湾' }] }] }))
+    const t = store.tasks()[0].id
+    ok(await h.travelWatch({ taskId: t, kind: 'hotel' }))
+    const r = ok(await h.travelUpdate({ taskId: t, destination: '海口' }))
+    expect(String(r.message)).toContain('travel.plan')
+    expect(String(r.message)).toContain('travel.unwatch')
+  })
+
   it('什么都没改时如实说没变，不编影响', async () => {
     const t = (ok(await h.travelCreate({
       title: '韩国行', destination: '首尔', departDate: '2026-09-02',
@@ -298,7 +328,7 @@ describe('travel.unwatch：不用盯了', () => {
     ok(await h.travelRefresh({}))
     ok(await h.travelUnwatch({ watchId: w }))
     expect(store.activeWatches(NOW)).toHaveLength(0)
-    expect(store.samples(w, NOW + 1000)).toHaveLength(1)
+    expect(store.samples(w, NOW + 1000).length, '样本留着，曲线还能看').toBeGreaterThan(0)
   })
 })
 
@@ -327,7 +357,7 @@ describe('createTravelEngine：定时采样的那一半', () => {
     expect(items).toHaveLength(1)
     expect(items[0].everyMs).toBe(3_600_000)   // 机票每小时
     expect(items[0].onBoot).toBe(true)
-    expect(items[0].lastAt).toBeUndefined()    // 没采过 → 下一 tick 立刻采
+    expect(items[0].lastAt).toBe(NOW)          // 建完即回填+首采，调度器按节奏接着采
   })
 
   it('撤销的委托不再进调度——停了就是真停', async () => {
@@ -341,9 +371,11 @@ describe('createTravelEngine：定时采样的那一半', () => {
     const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
     const a = (ok(await h.travelWatch({ taskId: t, kind: 'flight' })).data as any).watchId
     const b = (ok(await h.travelWatch({ taskId: t, kind: 'hotel' })).data as any).watchId
+    const beforeA = store.samples(a, NOW + 1000).length
+    const beforeB = store.samples(b, NOW + 1000).length
     await mkEngine().sampleDue([a])
-    expect(store.samples(a, NOW + 1000)).toHaveLength(1)
-    expect(store.samples(b, NOW + 1000)).toHaveLength(0)
+    expect(store.samples(a, NOW + 1000)).toHaveLength(beforeA + 1)
+    expect(store.samples(b, NOW + 1000)).toHaveLength(beforeB)
   })
 
   it('触发的在 trip 卡上出决策条并交回装配层，没触发的一个字不说', async () => {

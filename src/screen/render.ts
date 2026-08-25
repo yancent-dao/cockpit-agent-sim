@@ -601,6 +601,7 @@ export function cardBody(c: CardView): string {
         d.stays?.length ? `<div class="tpprice"><div class="tpph"><b>住宿 · ${d.stays.length} 段</b></div>${
             d.stays.map((st: any) => `<div class="tpstayrow" data-act="tap:item" data-value="看看${esc(st.label ?? '')}的价格趋势">
               <div><b>${esc(st.label ?? '')}</b><small class="num">${esc(st.range ?? '')}</small></div>
+              ${has('dayfull') && (st.points?.length ?? 0) > 1 ? `<i class="tpsk">${spark(st.points)}</i>` : ''}
               <b class="num">${esc(st.text ?? '')}</b>${delta(st.delta)}</div>`).join('')}</div>` : '',
       ].filter(Boolean).join('')}</div>` : ''
       return [

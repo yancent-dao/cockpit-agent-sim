@@ -11,7 +11,7 @@ import type { Desk } from '../cards/desk'
 import type { ToolResult } from '../tools/registry'
 import type { TravelStore, TravelWatch, WatchKind } from '../state/travel'
 import { analyze } from '../core/trend'
-import { sampleRound, type SourceMap } from './travelSources'
+import { sampleRound, type SourceMap, type PriceQuote } from './travelSources'
 
 export interface TravelDeps {
   store: () => TravelStore
@@ -104,6 +104,7 @@ function core(deps: TravelDeps) {
       range: w.stay ? `D${w.stay.dayFrom}–${w.stay.dayTo}` : '',
       text: w.lastValue !== undefined ? UNIT.hotel(w.lastValue) : '等第一次取数',
       delta: factsOf(w).changeFromPrev,
+      points: S().samples(w.id, now).map(x => x.value),
       watchId: w.id,
     })) : undefined
     const others = tasks.length - 1
@@ -154,6 +155,22 @@ function core(deps: TravelDeps) {
         updatedLabel: note,
       },
     })
+  }
+
+  /**
+   * 首采（2026-08-25 实拍「监控项没有图」）：源有 history 就先回填 30 天再采
+   * 今天——不然刚建的监控只有 1 个点，曲线要等 30 天才长出来。源没接/报错
+   * 静默跳过，watch 照建（lastAt 保持空，下一轮调度立刻采它）。
+   */
+  const firstSample = async (w: TravelWatch): Promise<PriceQuote | undefined> => {
+    const src = deps.sources()[w.kind]
+    if (!src) return undefined
+    try {
+      if (src.history) for (const pt of await src.history(w, 30)) S().addSample(w.id, pt.value, pt.at)
+      const q = await src.quote(w)
+      S().addSample(w.id, q.value, q.at)
+      return q
+    } catch { return undefined }
   }
 
   const handlers = {
@@ -259,14 +276,9 @@ function core(deps: TravelDeps) {
       const quotes: Array<{ watchId: string; kind: WatchKind; label: string;
         value: number; text: string; note?: string }> = []
       await Promise.all(S().watches().filter(w => watchIds.includes(w.id)).map(async w => {
-        const src = deps.sources()[w.kind]
-        if (!src) return                               // 源没接：静默跳过，create 照样成功
-        try {
-          const q = await src.quote(w)
-          S().addSample(w.id, q.value, q.at)
-          quotes.push({ watchId: w.id, kind: w.kind, label: KIND_LABEL[w.kind],
-            value: q.value, text: UNIT[w.kind](q.value), note: q.note })
-        } catch { /* 坏源不拖垮建任务 */ }
+        const q = await firstSample(w)                 // 回填 30 天历史 + 采今天
+        if (q) quotes.push({ watchId: w.id, kind: w.kind, label: KIND_LABEL[w.kind],
+          value: q.value, text: UNIT[w.kind](q.value), note: q.note })
       }))
       paintTrip()
       const quoteLine = quotes.length
@@ -297,6 +309,7 @@ function core(deps: TravelDeps) {
         everyMs: args?.everyMs ?? DEFAULT_RHYTHM[kind].everyMs,
         onBoot: args?.onBoot ?? DEFAULT_RHYTHM[kind].onBoot,
       })
+      await firstSample(S().watches().find(w => w.id === id)!)   // 建完就有曲线
       paintTrip()
       return { status: 'ok', data: { watchId: id },
         message: args?.threshold !== undefined
@@ -384,9 +397,18 @@ function core(deps: TravelDeps) {
         lastValue: w.lastValue, trend: factsOf(w),
       }))
       paintTrip()
+      /**
+       * 目的地变了，攻略/标题/监控还都是旧地方的（2026-08-25 实拍：三亚改
+       * 海口后卡片还是三亚攻略；模型嘴上说"帮你停掉三亚酒店监控"却没调
+       * unwatch）。判据是 changed 的字段名——系统状态，不是解析用户的话。
+       */
+      const destMoved = changed.some(c => c.field === 'destination')
       return { status: 'ok', data: { taskId: before.id, changed, affected },
         message: changed.length
-          ? `改好了，${affected.length} 项监控跟着重算了——把「改了什么→影响哪几项→每项新结论」说给用户`
+          ? `改好了，${affected.length} 项监控跟着重算了——把「改了什么→影响哪几项→每项新结论」说给用户${destMoved
+              ? '。注意：攻略、标题和监控还是原目的地的——用 travel.plan 重出新目的地的攻略；' +
+                '不再需要的监控用 travel.unwatch 真停掉，别只嘴上说停了'
+              : ''}`
           : '这几项本来就是这个值，没改动' }
     },
 

@@ -39,8 +39,10 @@ const WATCH = {
   flight: { label: '机票 · 成都 ⇄ 曼谷', text: '¥1,670', delta: -28,
     points: [2100, 2050, 1980, 1890, 1810, 1740, 1670] },
   stays: [
-    { label: '曼谷 · 考山路', range: 'D1–3 · 3 晚', text: '¥638 / 晚', delta: 8, watchId: 'w1' },
-    { label: '芭提雅 · 海滩', range: 'D4 · 1 晚', text: '¥520 / 晚', delta: -12, watchId: 'w2' },
+    { label: '曼谷 · 考山路', range: 'D1–3 · 3 晚', text: '¥638 / 晚', delta: 8, watchId: 'w1',
+      points: [598, 610, 605, 622, 630, 638] },
+    { label: '芭提雅 · 海滩', range: 'D4 · 1 晚', text: '¥520 / 晚', delta: -12, watchId: 'w2',
+      points: [560, 548, 542, 533, 528, 520] },
   ],
 }
 
@@ -103,10 +105,11 @@ describe('盯价阶段：同一张卡长出价格块', () => {
     expect(html).toContain('polyline')
   })
 
-  it('分段住宿各一行——不同的地方住不同的酒店，各盯各的价', () => {
+  it('分段住宿各一行，行尾带 mini 走势——不同的地方住不同的酒店，各盯各的价各看各的线', () => {
     expect(html.match(/tpstay/g)!.length).toBeGreaterThanOrEqual(2)
     expect(html).toContain('¥638 / 晚')
     expect(html).toContain('¥520 / 晚')
+    expect(html.match(/polyline/g)!.length, '机票 1 条 + 两段住宿各 1 条').toBeGreaterThanOrEqual(3)
   })
 
   it('D-day 徽标顶替攻略徽标', () => {

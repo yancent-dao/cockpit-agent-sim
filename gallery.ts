@@ -78,8 +78,10 @@ const DATA: Record<string, any> = {
     flight: { label: '成都 ⇄ 曼谷', text: '¥1,670', delta: -28,
       points: [2150, 2080, 2110, 1990, 1930, 1870, 1820, 1780, 1730, 1670] },
     stays: [
-      { label: '曼谷 · 考山路', range: 'D1–3', text: '¥638 / 晚', delta: 8, watchId: 'w1' },
-      { label: '芭提雅 · 海滩', range: 'D4', text: '¥520 / 晚', delta: -12, watchId: 'w2' },
+      { label: '曼谷 · 考山路', range: 'D1–3', text: '¥638 / 晚', delta: 8, watchId: 'w1',
+        points: [598, 604, 610, 605, 615, 622, 618, 630, 626, 638] },
+      { label: '芭提雅 · 海滩', range: 'D4', text: '¥520 / 晚', delta: -12, watchId: 'w2',
+        points: [566, 560, 552, 548, 543, 538, 533, 528, 524, 520] },
     ],
     decide: { question: '机票到你说的价了（¥1,670），现在定吗？',
       options: ['看看机票的价格趋势', '先不定，继续盯着'] },

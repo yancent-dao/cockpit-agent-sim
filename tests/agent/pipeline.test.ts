@@ -369,6 +369,38 @@ describe('stale turn 的慢层 LLM 报错不该冒泡到当前对话（实拍：
   })
 })
 
+describe('视角注释的三种回环（2026-08-25 实拍连环）', () => {
+  it('慢层把注释原文当话术复读——不出声（实拍：「你在哪里查着呢」得到『【你的快手分身刚对用户说】"我看看"…』整段上屏）', async () => {
+    const fast = fakeLLM(() => ({ text: '我看看' }))
+    const slow = fakeLLM(() => ({ text: '【你的快手分身刚对用户说】"我看看"（它口中的"同事/转交"都是指你自己，没有别人；它没办完的事由你办完再收尾）' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('你在哪里查着呢')
+    const speaks = (events.filter(e => e.type === 'speaking') as any[]).map(e => e.text)
+    expect(speaks.some(t => t.includes('快手分身')), '注入的注释不许被念出来').toBe(false)
+  })
+
+  it('快层纯填充（说了话但零业务零接力）时注释不再制造悬案——实拍：用户说"好的"，注释说"没办完的事由你办完"，慢层跟着"稍等"就散场', async () => {
+    const fast = fakeLLM(() => ({ text: '稍等' }))
+    const slow = fakeLLM(() => ({ text: '好的，帮你把监控配上' }))
+    const { p } = mk(fast, slow)
+    const r = await p.run('好的')
+    const prompt = (r.trace as any[]).find(t => t.type === 'prompt' && t.layer === 'slow')
+    const note = prompt.view.find((m: any) => String(m.content).includes('快手分身'))
+    expect(note, '注释还在（点破没有别人）').toBeTruthy()
+    expect(String(note.content)).not.toContain('没办完')
+    expect(String(note.content)).toContain('没有悬着的事')
+  })
+
+  it('快层把工具名当话术（"-agent.handoff-"）——纯工具名形状的输出不出声', async () => {
+    const fast = fakeLLM(() => ({ text: '-agent.handoff-' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('好')
+    const fastSpeaks = (events.filter(e => e.type === 'speaking') as any[]).filter(e => e.layer === 'fast')
+    expect(fastSpeaks, '工具名不是话').toHaveLength(0)
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

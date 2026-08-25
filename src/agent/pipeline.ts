@@ -368,16 +368,24 @@ export function createPipeline(deps: PipelineDeps) {
     return [...past, ...now]
   }
 
+  /**
+   * 纯工具名形状的输出不是话（2026-08-25 实拍：快层把 "-agent.handoff-"
+   * 当话术说了出来）。判据是数据形状——整句只是一个 xx.yy 标识符，
+   * 不含任何自然语言；跟 {item} 展平同类，协议适配不是意图分支。
+   */
+  const toolNameShaped = (t: string) =>
+    /^[-—·\s"'`]*[a-zA-Z][\w-]*[._][\w.-]+[-—·\s"'`]*$/.test(t.trim())
+
   /** 快层：能干的立刻干、立刻说；收尾勾选转交。打断（世代变了）即弃场闭嘴 */
   async function runFast(g: number, trace: TraceStep[], turn: Turn):
-    Promise<{ suggested: string[]; said: string; rounds: number; did: number; denied: string[]; allDenied: boolean }> {
+    Promise<{ suggested: string[]; said: string; rounds: number; did: number; bizCalls: number; denied: string[]; allDenied: boolean }> {
     const fm = deps.fastManifest
     const allTools = [...registry.schemas('openai', fm.tools), HANDOFF_SCHEMA]
     let suggested: string[] = []
     let said = ''
     let rounds = 0
     /** 本 turn 快层办成了几件事（业务工具 ok 数）——慢层复述静音的判据之一 */
-    let did = 0
+    let did = 0, bizCalls = 0
     /** handoff 是快层的**终止符**：调完就收尾，再开一轮只会再调一遍（实拍） */
     let handedOff = false
     /** 上一次 execRound 的越权结果——run() 拿它拼 handover 清单 */
@@ -402,7 +410,7 @@ export function createPipeline(deps: PipelineDeps) {
       // maxTokens 拦话术轮的"长思考狂写"（实拍 qwen-flash 撤工具后那轮 24s）：
       // 话术纪律 ≤15 字 + 一个 handoff 调用，300 token 顶天
       try { reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : 800 }) }
-      catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds, did, denied, allDenied } }
+      catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds, did, bizCalls, denied, allDenied } }
       ;(pEntry as any).llmMs = clock() - tChat
       ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
       /**
@@ -416,16 +424,16 @@ export function createPipeline(deps: PipelineDeps) {
        * 「旧慢层活照干完、话术降级」，慢层做到了，快层没有；
        * 而快层挂的恰恰是车控这类**用户明说要做的事**，丢掉最刺眼。
        */
-      if (discarded(g)) return { suggested, said, rounds, did, denied, allDenied }
+      if (discarded(g)) return { suggested, said, rounds, did, bizCalls, denied, allDenied }
       // 话术立刻出——先斩后奏的"奏"不等工具返回（车控是本地毫秒级，查询类模型自会下一轮再说）
-      if (reply.text && !stale(g)) {
+      if (reply.text && !stale(g) && !toolNameShaped(reply.text)) {
         said = reply.text
         trace.push({ type: 'reply', at: clock(), text: reply.text, layer: 'fast' })
         emit({ type: 'speaking', text: reply.text, layer: 'fast' })
       }
       if (!reply.toolCalls?.length) {
         if (reply.text) commit(g, { role: 'assistant', content: reply.text })
-        return { suggested, said, rounds, did, denied, allDenied }
+        return { suggested, said, rounds, did, bizCalls, denied, allDenied }
       }
       commit(g, asstMsg(reply))
       const outcome = await execRound(g, reply.toolCalls, fm.tools, trace, {
@@ -439,7 +447,7 @@ export function createPipeline(deps: PipelineDeps) {
           // say = 勾选顺带的话术。实拍：话术轮模型只调 handoff 不给 text，轮次用尽
           // 一声没吭——说话不能依赖模型"调完还记得说"，并进同一个调用
           const say = String(args?.say ?? '').trim()
-          if (say && !said && !stale(g)) {
+          if (say && !said && !stale(g) && !toolNameShaped(say)) {
             said = say
             trace.push({ type: 'reply', at: clock(), text: say, layer: 'fast' })
             emit({ type: 'speaking', text: say, layer: 'fast' })
@@ -450,11 +458,12 @@ export function createPipeline(deps: PipelineDeps) {
       }, turn, { quietRejects: true, lane: 'fast' })
       denied = outcome.denied; allDenied = outcome.allDenied
       did += outcome.bizOk
+      bizCalls += outcome.bizCalls
       commit(g, ...outcome.toolMsgs)
       // 手头这批工具做完就收手：作废的那一轮不该再开新一轮 LLM，
       // 它的输出只会更没意义，还占着模型额度和时间
-      if (stale(g)) return { suggested, said, rounds, did, denied, allDenied }
-      if (handedOff) return { suggested, said, rounds, did, denied, allDenied }
+      if (stale(g)) return { suggested, said, rounds, did, bizCalls, denied, allDenied }
+      if (handedOff) return { suggested, said, rounds, did, bizCalls, denied, allDenied }
       /**
        * **整轮都越权 = 这活归慢层，立刻转交。** 再跑一轮只是等模型
        * 把同一个结论说一遍（实拍那一轮 3.9 秒）。越权的工具名直接当
@@ -462,10 +471,10 @@ export function createPipeline(deps: PipelineDeps) {
        */
       if (allDenied) {
         for (const n of denied) if (!suggested.includes(n)) suggested.push(n)
-        return { suggested, said, rounds, did, denied, allDenied }
+        return { suggested, said, rounds, did, bizCalls, denied, allDenied }
       }
     }
-    return { suggested, said, rounds, did, denied, allDenied }
+    return { suggested, said, rounds, did, bizCalls, denied, allDenied }
   }
 
   /* ── 子 Agent 委托（§6）：机制在此，拆不拆/拆几个/等不等全在慢层模型 ── */
@@ -613,7 +622,7 @@ export function createPipeline(deps: PipelineDeps) {
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
   async function runSlow(g: number, suggested: string[], trace: TraceStep[], turn: Turn,
                          handover: string[] = [], fastReported = false, fastSpoke = false,
-                         fastSaid = ''): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
+                         fastSaid = '', fastBusy = false): Promise<{ said: string; rounds: number; stop: TurnResult['stopReason'] }> {
     /**
      * 慢层复述静音（2026-08-17 实拍）。屏端同文去重逮不住换说法的复述
      * （「车窗已打开」→「窗户也打开了」），persona 的"说过的不许再说"
@@ -642,7 +651,15 @@ export function createPipeline(deps: PipelineDeps) {
        * 原文不动（thread/trace 是历史），只在慢层的视图里点破。
        */
       if (m.role === 'assistant' && fastSaid && m.content === fastSaid)
-        return { ...m, content: `【你的快手分身刚对用户说】"${fastSaid}"（它口中的"同事/转交"都是指你自己，没有别人；它没办完的事由你办完再收尾）` }
+        /**
+         * 分两版（2026-08-25 实拍）：快层零业务零接力时它的话就是纯填充
+         * （"稍等""我看看"），老文案的"没办完的事由你办完"凭空制造悬案——
+         * 用户说"好的"，慢层跟着"稍等"就散场，create 从没被调。
+         * 判据全是系统状态：动过业务工具（含失败——解释失败是实事）或有接力。
+         */
+        return { ...m, content: fastBusy || handover.length
+          ? `【你的快手分身刚对用户说】"${fastSaid}"（它口中的"同事/转交"都是指你自己，没有别人；它没办完的事由你办完再收尾）`
+          : `【你的快手分身刚应了一声】"${fastSaid}"（没有别人，也没有悬着的事——正常接着办用户这句话的事就好）` }
       if (m.role !== 'tool' || !String(m.content).includes('NOT_AUTHORIZED')) return m
       try {
         const r = JSON.parse(String(m.content))
@@ -717,7 +734,10 @@ export function createPipeline(deps: PipelineDeps) {
       ;(pEntry as any).llmMs = clock() - tChat
       ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
       if (!reply.toolCalls?.length) {
-        const text = reply.text ?? ''
+        // 注释回环（2026-08-25 实拍）：模型把视角注释原文当回复吐回来
+        // （"【你的快手分身刚对用户说】…"整段上屏）。系统自己注入的标记
+        // 出现在输出里就是回环——按空话术处理，让兜底或合法静默接住
+        const text = String(reply.text ?? '').includes('你的快手分身') ? '' : (reply.text ?? '')
         if (text) commit(g, { role: 'assistant', content: text })
         trace.push({ type: 'reply', at: clock(), text, layer: 'slow' })
         const echo = !canSpeak()   // 快层报过、慢层没干活 → 复述（与工具闸同一谓词）
@@ -835,7 +855,7 @@ export function createPipeline(deps: PipelineDeps) {
     // 消费即清——答了或岔开都算翻篇，别让它劫持后面每一句
     const askJump = askPending
     askPending = false
-    let fast = { suggested: [] as string[], said: '', rounds: 0, did: 0, denied: [] as string[], allDenied: false }
+    let fast = { suggested: [] as string[], said: '', rounds: 0, did: 0, bizCalls: 0, denied: [] as string[], allDenied: false }
     /**
      * 这一轮结束后，上一轮悬着的确认就该作废——用户已经说了别的。
      * 不清的话那个未过期的 token 会继续劫持输入路由满 60 秒（见到 pending
@@ -865,7 +885,8 @@ export function createPipeline(deps: PipelineDeps) {
       } else if (pending) fast.suggested = [pending.tool]
       // askJump（无 pending）：不预载，慢层自己看上下文接答案
 
-      const slow = await runSlow(g, fast.suggested, trace, turn, handover, fastReported, !!fast.said, fast.said)
+      const slow = await runSlow(g, fast.suggested, trace, turn, handover, fastReported, !!fast.said, fast.said,
+        fast.did > 0 || fast.bizCalls > 0)
       // 压缩在回复送出之后才起跑——fire-and-forget，不占响应路径一毫秒（§7.5）
       if (!stale(g)) compaction = doCompact(g).catch(() => { /* 失败保持原样，下轮重试 */ })
       return {

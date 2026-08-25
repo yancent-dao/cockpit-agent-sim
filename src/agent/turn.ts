@@ -19,6 +19,9 @@ export interface Turn {
   wasJustOk(lane: string, sig: string): boolean
   /** 记录 lane 本轮 ok/被 REPEAT_CALL 拦下的签名，覆盖上一轮记录 */
   recordLane(lane: string, sigs: string[]): void
+  /** 本 turn 有 mic 工具成功出过声（voice.speak/ask ok）。空收场兜底的免罪牌 */
+  markSpoke(): void
+  spoke(): boolean
 }
 
 export function createTurn(): Turn {
@@ -26,7 +29,11 @@ export function createTurn(): Turn {
   let failStreak = 0
   const prevOk = new Map<string, Set<string>>()
 
+  let micSpoke = false
+
   return {
+    markSpoke() { micSpoke = true },
+    spoke() { return micSpoke },
     noteFailSig(sig, metaOnly) {
       if (sig && sig === lastFailSig) failStreak++
       else if (!metaOnly) { lastFailSig = sig; failStreak = sig ? 1 : 0 }

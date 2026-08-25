@@ -273,6 +273,8 @@ export function createPipeline(deps: PipelineDeps) {
                 message: '这个调用上一轮刚成功过，重复只会原地打转——直接收尾' }
             : await registry.invoke(c.name, c.args, { allow, round })
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
+      // mic 工具真出声了 → turn 记一笔（空收场兜底靠它分"合法静默"和"全程哑场"）
+      if (MIC.has(name) && result.status === 'ok') turn.markSpoke()
       if (result.status === 'inputRequired' && audible()) emit({ type: 'confirming', text: result.message ?? '需要确认' })
       // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
       // 结果都如实进报告，慢层看得到（用户实拍："已拒绝执行 无权调用 navigation.setDestination"）
@@ -736,8 +738,12 @@ export function createPipeline(deps: PipelineDeps) {
       if (!reply.toolCalls?.length) {
         // 注释回环（2026-08-25 实拍）：模型把视角注释原文当回复吐回来
         // （"【你的快手分身刚对用户说】…"整段上屏）。系统自己注入的标记
-        // 出现在输出里就是回环——按空话术处理，让兜底或合法静默接住
-        const text = String(reply.text ?? '').includes('你的快手分身') ? '' : (reply.text ?? '')
+        // 出现在输出里就是回环——按空话术处理，让兜底或合法静默接住。
+        // 同族（同日 pilot 实拍）：把【前情摘要】连任务 ID 整段念给用户——
+        // 摘要标记起截掉，正常的前半句保留
+        const raw = String(reply.text ?? '')
+        const text = raw.includes('你的快手分身') ? ''
+          : raw.includes(SUM_MARK) ? raw.slice(0, raw.indexOf(SUM_MARK)).trim() : raw
         if (text) commit(g, { role: 'assistant', content: text })
         trace.push({ type: 'reply', at: clock(), text, layer: 'slow' })
         const echo = !canSpeak()   // 快层报过、慢层没干活 → 复述（与工具闸同一谓词）
@@ -746,7 +752,9 @@ export function createPipeline(deps: PipelineDeps) {
          * 模型交了白卷——整个 turn 没人对用户说过一个字，静默结束，用户干等
          * 2 分钟。快层说过话（闲聊/已报结果）时空收场是合法静默，不兜。
          */
-        if (!text && !echo && !fastSpoke && !stale(g)) {
+        // 慢层这轮已经用 mic 工具播过（2026-08-25 实拍：plan ok + speak 都成了，
+        // 兜底又追一句"没弄成"把成功现场说成失败）→ 空收场是合法静默
+        if (!text && !echo && !fastSpoke && !turn.spoke() && !stale(g)) {
           const fb = turnOk > 0 ? '办好了，结果在屏幕上' : '这件事我没弄成，换个说法我再试试'
           emit({ type: 'speaking', text: fb, layer: 'slow' })
           emit({ type: 'done' })

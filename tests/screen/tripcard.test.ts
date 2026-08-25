@@ -56,6 +56,19 @@ const HIT = {
   decide: { question: '机票到你说的价了（¥980），现在定吗？', options: ['去订机票', '继续盯着'] },
 }
 
+describe('自带滚动容器（2026-08-25 实拍：.bd 的 flex-end 把溢出内容推进顶部滚不到的区域，头图/行前/D1 行头全被吞）', () => {
+  it('全部内容包在 tppage 里——它自己滚，从顶部开始', () => {
+    const html = body('court', WATCH)
+    expect(html.startsWith('<div class="tppage">')).toBe(true)
+    expect(html.trimEnd().endsWith('</div>')).toBe(true)
+    expect(html.indexOf('tphero')).toBeGreaterThan(html.indexOf('tppage'))
+  })
+
+  it('hall 同样包着——布局统一从顶部开始', () => {
+    expect(body('hall', WATCH).startsWith('<div class="tppage">')).toBe(true)
+  })
+})
+
 describe('选线阶段：目的地宽泛先收敛', () => {
   const html = body('court', { title: '云南', dest: '云南', lines: LINES })
 

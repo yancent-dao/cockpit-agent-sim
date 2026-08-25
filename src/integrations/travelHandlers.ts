@@ -262,7 +262,7 @@ function core(deps: TravelDeps) {
       await refreshWx(id)          // 已有出发日的（改行程场景）天气跟着新行程走
       paintTrip()
       return { status: 'ok', data: { taskId: id, dayCount: clean.length },
-        message: `${clean.length} 天的攻略上卡了，Day 会自动轮播——口头只说一句收尾，` +
+        message: `${clean.length} 天的攻略上卡了，行程从上往下滑——口头只说一句收尾，` +
           '内容让屏幕讲，也不要反问「要不要盯价」（卡上已写了怎么继续）；' +
           '用户认可了再 travel.create 接管盯价' }
     },
@@ -436,7 +436,8 @@ function core(deps: TravelDeps) {
               ? '。注意：有行程还是草稿——用户已认可攻略的话，下一个动作就是 travel.create' +
                 '（转正+配监控，机票价直接在它返回的 quotes 里，不用再搜）'
               : ''}`
-          : '还没有行程任务' }
+          : '还没有行程任务。用户要出去玩的话：目的地宽泛（省级）先 travel.plan 交 ' +
+            'lines（2–4 条线路收敛），具体目的地直接交 days——先给内容再问问题' }
     },
 
     /* ── 改任务。返回新旧对照，影响摘要的话由模型组织 ── */

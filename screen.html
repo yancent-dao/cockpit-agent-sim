@@ -372,6 +372,11 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .card .tpprep span{padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
   font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--brand-fg);
   background:var(--brand-bg);border:1px solid var(--brand-bd);white-space:nowrap}
+/* 旅行卡自己的滚动容器：从顶部开始（.bd 是 flex-end），负 margin+同值
+   padding 保住出血头图；行驶档内容少填不满，也从顶排——扫一眼的东西在上面 */
+.card .tppage{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto;
+  margin:calc(-22px*var(--u)) calc(-26px*var(--u));
+  padding:calc(22px*var(--u)) calc(26px*var(--u))}
 /* 选线（v3）：目的地宽泛先收敛，点一条 = 说了那句话 */
 .card .tplines{flex:1;min-height:0;display:flex;flex-direction:column;gap:calc(10px*var(--u))}
 .card .tpline-item{background:var(--sf-raised,rgba(15,23,42,.04));border-radius:var(--r-blk,16px);

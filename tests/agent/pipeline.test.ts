@@ -401,6 +401,32 @@ describe('视角注释的三种回环（2026-08-25 实拍连环）', () => {
   })
 })
 
+describe('空收场兜底的误报（2026-08-25 pilot 实拍：travel.plan ok + voice.speak 都播了「攻略上卡了」，模型接着重复调 speak 被熔断拦、烧光轮次后，兜底又追了句「这件事我没弄成」——把成功现场说成失败）', () => {
+  it('慢层这轮已经用 mic 工具出过声——空收场是合法静默，不兜底', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('voice.speak', { text: '攻略上卡了' })] }),
+      () => ({ text: '' }),
+    )
+    const { p, events } = mk(fast, slow)
+    await p.run('挑大理丽江那条')
+    const speaks = (events.filter(e => e.type === 'speaking') as any[]).map(e => e.text)
+    expect(speaks.some(t => /没弄成|办好了/.test(t)), '播过就不该再兜底').toBe(false)
+  })
+})
+
+describe('前情摘要标记泄漏（2026-08-25 pilot 实拍：模型把【前情摘要】连任务 ID 整段念给用户）', () => {
+  it('输出含摘要标记——标记起全部截掉，只留前面的正常话术', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '行程已确认，祝您旅途愉快！ 【前情摘要】 云南大理丽江5天行程已上卡（任务ID：task4_dgel）' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('就按这个来')
+    const speaks = (events.filter(e => e.type === 'speaking') as any[]).map(e => e.text)
+    expect(speaks.some(t => t.includes('前情摘要')), '摘要格式不许上嘴').toBe(false)
+    expect(speaks.some(t => t.includes('祝您旅途愉快')), '正常的前半句保留').toBe(true)
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

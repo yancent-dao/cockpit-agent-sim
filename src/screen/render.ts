@@ -579,7 +579,13 @@ export function cardBody(c: CardView): string {
               ${has('dayfull') && (st.points?.length ?? 0) > 1 ? `<i class="tpsk">${spark(st.points)}</i>` : ''}
               <b class="num">${esc(st.text ?? '')}</b>${delta(st.delta)}</div>`).join('')}</div>` : '',
       ].filter(Boolean).join('')}</div>` : ''
-      return [
+      /**
+       * 自带滚动容器（2026-08-25 实拍）：.bd 全局 justify-content:flex-end，
+       * 内容超高时溢出部分被推进**顶部滚不到的区域**——头图/行前准备/D1
+       * 行头全被吞。tppage 自己滚、从顶部开始；负 margin + 同值 padding
+       * 让出血头图仍然顶到卡片边缘。
+       */
+      return '<div class="tppage">' + [
         has('herofull') ? `<div class="tphero"><div class="tpheroin"><b>${esc(d.dest ?? d.title ?? '')}</b>${
           d.sub ? `<span>${esc(d.sub)}</span>` : ''}</div>${
           badge ? `<em class="num">${esc(badge)}</em>` : ''}</div>` : '',
@@ -604,7 +610,7 @@ export function cardBody(c: CardView): string {
               days[0].stay ? `<small>宿 ${esc(days[0].stay)}</small>` : ''}</div>${wxOf(0)}</div>`
           : '',
         has('dayfull') && d.foot ? `<div class="tpfoot">${esc(d.foot)}</div>` : '',
-      ].filter(Boolean).join('')
+      ].filter(Boolean).join('') + '</div>'
     }
     default: {
       // 诊断 8：模板声明了 items/actions 却只画 text，静默丢数据。

@@ -400,6 +400,17 @@ describe('视角注释的三种回环（2026-08-25 实拍连环）', () => {
     expect(fastSpeaks, '序列化的调用不是话').toHaveLength(0)
   })
 
+  it('序列化调用混在句中（同日再拍：「滇西北经典线已生成，6天5晚。 agent_handoff: …」）——从调用处截断，前半句人话保留', async () => {
+    const fast = fakeLLM(() => ({ text: '滇西北经典线已生成，6天5晚。 agent_handoff: 行程计划已生成并上屏。 suggestedTools: ["weather.query"]' }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('大理丽江那条')
+    const fastSpeaks = (events.filter(e => e.type === 'speaking') as any[]).filter(e => e.layer === 'fast')
+    expect(fastSpeaks).toHaveLength(1)
+    expect(fastSpeaks[0].text).toBe('滇西北经典线已生成，6天5晚。')
+    expect(fastSpeaks[0].text).not.toContain('agent_handoff')
+  })
+
   it('快层把工具名当话术（"-agent.handoff-"）——纯工具名形状的输出不出声', async () => {
     const fast = fakeLLM(() => ({ text: '-agent.handoff-' }))
     const slow = fakeLLM(() => ({ text: '好' }))

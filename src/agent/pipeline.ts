@@ -379,9 +379,17 @@ export function createPipeline(deps: PipelineDeps) {
     /^[-—·\s"'`]*[a-zA-Z][\w-]*[._][\w.-]+[-—·\s"'`]*$/.test(t.trim())
     // 序列化的调用也不是话（同日 pilot 实拍："agent_handoff: say=\"稍等\"
     // suggestedTools=[…] 云南有四条线…"整段上嘴）：以 工具名: 或 工具名( 开头
-    // 的输出是模型把调用写成了文字，后面就算跟着人话也不可信——整段作废，
-    // 快层的话让慢层接（thread 里原文还在，接力不丢内容）
+    // 的输出是模型把调用写成了文字——整段作废，快层的话让慢层接
     || /^\s*[a-zA-Z][\w-]*[._][\w-]+\s*[:(]/.test(t)
+  /**
+   * 序列化调用混在句中（同日再拍："滇西北经典线已生成，6天5晚。
+   * agent_handoff: 行程计划已生成…"）：从调用处截断，前半句人话保留。
+   * 判据仍是数据形状——空白后跟 工具名:/( 的序列化特征。
+   */
+  const stripSerialized = (t: string) => {
+    const m = /\s[a-zA-Z][\w-]*[._][\w-]+\s*[:(]/.exec(t)
+    return m ? t.slice(0, m.index).trim() : t
+  }
 
   /** 快层：能干的立刻干、立刻说；收尾勾选转交。打断（世代变了）即弃场闭嘴 */
   async function runFast(g: number, trace: TraceStep[], turn: Turn):
@@ -433,10 +441,11 @@ export function createPipeline(deps: PipelineDeps) {
        */
       if (discarded(g)) return { suggested, said, rounds, did, bizCalls, denied, allDenied }
       // 话术立刻出——先斩后奏的"奏"不等工具返回（车控是本地毫秒级，查询类模型自会下一轮再说）
-      if (reply.text && !stale(g) && !toolNameShaped(reply.text)) {
-        said = reply.text
-        trace.push({ type: 'reply', at: clock(), text: reply.text, layer: 'fast' })
-        emit({ type: 'speaking', text: reply.text, layer: 'fast' })
+      const cleanText = reply.text ? stripSerialized(reply.text) : ''
+      if (cleanText && !stale(g) && !toolNameShaped(cleanText)) {
+        said = cleanText
+        trace.push({ type: 'reply', at: clock(), text: cleanText, layer: 'fast' })
+        emit({ type: 'speaking', text: cleanText, layer: 'fast' })
       }
       if (!reply.toolCalls?.length) {
         if (reply.text) commit(g, { role: 'assistant', content: reply.text })
@@ -453,7 +462,7 @@ export function createPipeline(deps: PipelineDeps) {
           suggested = arr.filter((n: string) => registry.list().some(t => t.name === registry.canonicalName(n)))
           // say = 勾选顺带的话术。实拍：话术轮模型只调 handoff 不给 text，轮次用尽
           // 一声没吭——说话不能依赖模型"调完还记得说"，并进同一个调用
-          const say = String(args?.say ?? '').trim()
+          const say = stripSerialized(String(args?.say ?? '').trim())
           if (say && !said && !stale(g) && !toolNameShaped(say)) {
             said = say
             trace.push({ type: 'reply', at: clock(), text: say, layer: 'fast' })

@@ -699,7 +699,18 @@ export function createPipeline(deps: PipelineDeps) {
          * 一处不看 stale(g) 就直接 emit 的地方，跟同一文件里其它收尾分支
          * （lateNote、空话术兜底）的纪律不一致。trace 仍然记录，供排查。
          */
-        if (!stale(g)) emit({ type: 'error', message: String(e) })
+        /**
+         * 快层已办成事并报过话、且没有待接力的活（2026-08-25 实拍：开车窗
+         * 成功+已播报"主驾车窗已全开"，慢层例行接力时 429，"出错了：模型
+         * 限流"弹给了一个已经得到完整反馈的用户）——此时慢层的失败是内部
+         * 事，静默收尾。判据全是系统状态：fastReported（说过且办成）+
+         * handover 空（没有越权工具等慢层干）。接力清单非空时活还没人干，
+         * 失败必须报。
+         */
+        if (!stale(g)) {
+          if (fastReported && !handover.length) emit({ type: 'done' })   // 静默也要收尾
+          else emit({ type: 'error', message: String(e) })
+        }
         return { said: '', rounds, stop: 'error' }
       }
 

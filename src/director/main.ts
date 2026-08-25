@@ -1026,7 +1026,7 @@ async function ask(text: string, opts: { answer?: boolean; source?: string } = {
       console.groupEnd()
     }
     if (s.type === 'reply' && s.text) log('a', `  ⟵${s.layer === 'fast' ? '⚡' : '🐢'} ${s.text}`)
-    if (s.type === 'toolCall') log('t', `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission}]`)
+    if (s.type === 'toolCall') log('t', `  → ${s.name}(${JSON.stringify(s.args)})  [${s.permission ?? '元'}]`)
     if (s.type === 'toolResult') {
       const res: any = s.result
       const cls = res.status === 'ok' ? 'k' : res.status === 'inputRequired' ? 'r' : res.status === 'failed' ? 'e' : 'r'

@@ -335,6 +335,29 @@ describe('stale turn 的慢层 LLM 报错不该冒泡到当前对话（实拍：
     expect(errors, 'stale 的 LLM 报错不该冒泡成当前对话的错误').toHaveLength(0)
   })
 
+  it('快层已办成事并报过话、无接力清单——慢层 LLM 挂了不该抢麦报错（2026-08-25 实拍：开车窗成功+已播报，慢层 429 却弹"出错了：模型限流"）', async () => {
+    const fast = fakeLLM(
+      () => ({ toolCalls: [call('window.set', { window: 'driver', position: 100 })] }),
+      () => ({ toolCalls: [call('agent.handoff', { say: '主驾车窗已打开', suggestedTools: [] })] }),
+    )
+    const slow = fakeLLM(() => { throw new Error('429 模型限流了') })
+    const { p, events } = mk(fast, slow)
+    await p.run('打开车窗')
+    expect(events.filter(e => e.type === 'error'), '用户已有完整反馈，收尾失败不该冒泡').toHaveLength(0)
+    expect(events.filter(e => e.type === 'done'), '轮次要正常收尾').toHaveLength(1)
+  })
+
+  it('快层整轮越权转交（有接力清单）时慢层 LLM 挂了必须报错——活还没人干', async () => {
+    const fast = fakeLLM(
+      () => ({ toolCalls: [call('navigation.setDestination', { name: '天府广场' })] }),
+      () => ({ toolCalls: [call('agent.handoff', { say: '这就帮你设导航', suggestedTools: ['navigation.setDestination'] })] }),
+    )
+    const slow = fakeLLM(() => { throw new Error('网络挂了') })
+    const { p, events } = mk(fast, slow)
+    await p.run('导航去天府广场')
+    expect(events.filter(e => e.type === 'error'), '接力的活黄了必须让用户知道').toHaveLength(1)
+  })
+
   it('但没被 barge-in 的正常报错，还是要照常告诉用户', async () => {
     const fast = fakeLLM(() => ({ text: '好' }))
     const slow = fakeLLM(() => { throw new Error('网络挂了') })

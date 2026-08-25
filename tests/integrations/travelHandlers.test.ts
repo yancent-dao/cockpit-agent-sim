@@ -37,6 +37,45 @@ beforeEach(() => {
 
 const ok = (r: ToolResult) => { expect(r.status).toBe('ok'); return r }
 
+describe('travel.plan：攻略数据进仓，trip 卡上屏', () => {
+  const DAYS = [
+    { title: '大皇宫 · 卧佛寺 · 考山路', stay: '曼谷·考山路',
+      stops: [{ time: '09:00', name: '大皇宫', note: '门票 500 泰铢' }] },
+    { title: '去芭提雅', stay: '芭提雅·海滩', cityChange: true,
+      stops: [{ time: '08:30', name: '大巴去芭提雅' }] },
+  ]
+
+  it('建 draft 任务存下日程与行前准备，trip 卡上屏', async () => {
+    const r = ok(await h.travelPlan({ destination: '曼谷', days: DAYS, prep: ['落地签', '换泰铢'] }))
+    expect((r.data as any).taskId).toBeTruthy()
+    const t = store.tasks()[0]
+    expect(t.status).toBe('draft')
+    expect(t.days).toHaveLength(2)
+    expect(t.prep).toEqual(['落地签', '换泰铢'])
+    const c = desk.findByKey('travel-trip')!
+    expect(c.template).toBe('trip')
+    expect((c.data as any).days).toHaveLength(2)
+  })
+
+  it('同目的地再 plan 是更新不是新建——防重判据跟 create 同一条', async () => {
+    ok(await h.travelPlan({ destination: '曼谷', days: DAYS }))
+    ok(await h.travelPlan({ destination: '曼谷', days: [DAYS[0]] }))
+    expect(store.tasks()).toHaveLength(1)
+    expect(store.tasks()[0].days).toHaveLength(1)
+  })
+
+  it('没有日程就拒——攻略卡的身份就是 Day-by-day', async () => {
+    const r = await h.travelPlan({ destination: '曼谷' })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('INVALID_PARAMS')
+  })
+
+  it('没有目的地就拒', async () => {
+    const r = await h.travelPlan({ days: DAYS })
+    expect(r.status).toBe('rejected')
+  })
+})
+
 describe('travel.create：信息不全也照建', () => {
   it('只给目的地就能建——待定态，缺什么在返回里说清楚', async () => {
     const r = ok(await h.travelCreate({ title: '韩国行', destination: '首尔' }))
@@ -58,6 +97,37 @@ describe('travel.create：信息不全也照建', () => {
     }))
     expect((r.data as any).watchIds).toHaveLength(2)
     expect(store.watches()).toHaveLength(2)
+  })
+
+
+  it('watch 项可带住宿段——多城市行程一段一条酒店监控，各盯各的价', async () => {
+    const r = ok(await h.travelCreate({
+      destination: '曼谷', departDate: '2026-09-06',
+      watch: [
+        { kind: 'flight' },
+        { kind: 'hotel', stay: { city: '曼谷', dayFrom: 1, dayTo: 3 } },
+        { kind: 'hotel', stay: { city: '芭提雅', dayFrom: 4, dayTo: 4 } },
+      ],
+    }))
+    expect((r.data as any).watchIds).toHaveLength(3)
+    const hotels = store.watches().filter(w => w.kind === 'hotel')
+    expect(hotels.map(w => w.stay?.city)).toEqual(['曼谷', '芭提雅'])
+    const card = desk.findByKey('travel-trip')!
+    expect((card.data as any).stays).toHaveLength(2)
+    expect((card.data as any).flight).toBeTruthy()   // 首采价直接进卡
+  })
+
+  it('先 plan 后 create：同一个任务原地生长，攻略数据不丢', async () => {
+    ok(await h.travelPlan({ destination: '曼谷',
+      days: [{ title: 'D1', stops: [{ name: '大皇宫' }] }] }))
+    ok(await h.travelCreate({ destination: '曼谷', departDate: '2026-09-06',
+      watch: [{ kind: 'flight' }] }))
+    expect(store.tasks()).toHaveLength(1)
+    expect(store.tasks()[0].days).toHaveLength(1)
+    expect(store.tasks()[0].status).toBe('active')   // 确认即接管，draft 转正
+    const card = desk.findByKey('travel-trip')!
+    expect((card.data as any).days).toHaveLength(1)  // 攻略还在卡上
+    expect((card.data as any).flight).toBeTruthy()   // 价格块长出来了
   })
 
   it('没有目的地就拒——这是任务的身份，没有它盯什么都不知道', async () => {
@@ -101,17 +171,18 @@ describe('travel.refresh：立即采一轮', () => {
     expect(store.samples(store.watches()[0].id, NOW + 1000)).toHaveLength(1)
   })
 
-  it('跌破阈值 → 触发，趋势卡上屏', async () => {
+  it('跌破阈值 → 触发：trip 卡原地出决策条，不弹新卡', async () => {
     await setup(9999)                        // 必然跌破
     const r = ok(await h.travelRefresh({}))
     expect((r.data as any).fired).toHaveLength(1)
-    expect(desk.findByKey(`travel-trend:${store.watches()[0].id}`)).toBeTruthy()
+    expect(desk.findByKey(`travel-trend:${store.watches()[0].id}`)).toBeUndefined()
+    expect((desk.findByKey('travel-trip')!.data as any).decide).toBeTruthy()
   })
 
-  it('没触发就不建卡——「无更新不开口」的卡片版', async () => {
+  it('没触发就没有决策条——「无更新不开口」的卡片版', async () => {
     await setup(1)                           // 永远够不到
     ok(await h.travelRefresh({}))
-    expect(desk.findByKey(`travel-trend:${store.watches()[0].id}`)).toBeUndefined()
+    expect((desk.findByKey('travel-trip')!.data as any).decide).toBeUndefined()
   })
 
   it('示例数据的标记原样带进返回——模型看得见才不会说成实时价', async () => {
@@ -137,13 +208,30 @@ describe('travel.list：问答的数据底座', () => {
   it('行程单卡上屏', async () => {
     ok(await h.travelCreate({ title: '韩国行', destination: '首尔' }))
     ok(await h.travelList({}))
-    expect(desk.findByKey('travel-plan')).toBeTruthy()
+    expect(desk.findByKey('travel-trip')).toBeTruthy()
+  })
+
+
+  it('有 draft 任务时 message 把"确认即接管"的路摆出来——2026-08-25 pilot 实拍：确认后模型去 web.search 查价，create 从没被调', async () => {
+    ok(await h.travelPlan({ destination: '曼谷',
+      days: [{ title: 'D1', stops: [{ name: '大皇宫' }] }] }))
+    const r = ok(await h.travelList({}))
+    expect(String(r.message)).toContain('travel.create')
+    expect(String(r.message)).toContain('quotes')
+  })
+
+  it('showTrend 点名一条委托 → 趋势卡上屏（钻取视图，点价格块的落点）', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const w = (ok(await h.travelWatch({ taskId: t, kind: 'flight' })).data as any).watchId
+    ok(await h.travelRefresh({}))
+    ok(await h.travelList({ showTrend: w }))
+    expect(desk.findByKey(`travel-trend:${w}`)).toBeTruthy()
   })
 
   it('一个任务都没有时说清楚，不上空卡', async () => {
     const r = ok(await h.travelList({}))
     expect((r.data as any).tasks).toEqual([])
-    expect(desk.findByKey('travel-plan')).toBeUndefined()
+    expect(desk.findByKey('travel-trip')).toBeUndefined()
   })
 })
 
@@ -157,6 +245,17 @@ describe('travel.update：改了什么、影响哪几项', () => {
     const d = r.data as any
     expect(d.changed).toEqual([{ field: 'departDate', from: '2026-09-02', to: '2026-09-03' }])
     expect(d.affected).toHaveLength(1)
+  })
+
+
+  it('dayIdx 锁定轮播帧——"看第三天"的落点；null 恢复自动轮播', async () => {
+    const t = (ok(await h.travelPlan({ destination: '曼谷',
+      days: [{ title: 'D1', stops: [{ name: 'a' }] }, { title: 'D2', stops: [{ name: 'b' }] }],
+    })).data as any).taskId
+    ok(await h.travelUpdate({ taskId: t, dayIdx: 1 }))
+    expect((desk.findByKey('travel-trip')!.data as any).dayIdx).toBe(1)
+    ok(await h.travelUpdate({ taskId: t, dayIdx: null }))
+    expect((desk.findByKey('travel-trip')!.data as any).dayIdx).toBeUndefined()
   })
 
   it('什么都没改时如实说没变，不编影响', async () => {
@@ -181,9 +280,9 @@ describe('travel.delete：删了要说停了哪些', () => {
   it('删完桌面上跟它相关的卡也撤掉——留着就是在显示一个不存在的行程', async () => {
     const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
     ok(await h.travelList({}))
-    expect(desk.findByKey('travel-plan')).toBeTruthy()
+    expect(desk.findByKey('travel-trip')).toBeTruthy()
     ok(await h.travelDelete({ taskId: t }))
-    expect(desk.findByKey('travel-plan')).toBeUndefined()
+    expect(desk.findByKey('travel-trip')).toBeUndefined()
   })
 
   it('删不存在的任务如实说没有，不假装删成功', async () => {
@@ -247,14 +346,14 @@ describe('createTravelEngine：定时采样的那一半', () => {
     expect(store.samples(b, NOW + 1000)).toHaveLength(0)
   })
 
-  it('触发的建趋势卡并交回装配层，没触发的一个字不说', async () => {
+  it('触发的在 trip 卡上出决策条并交回装配层，没触发的一个字不说', async () => {
     const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
     const hit = (ok(await h.travelWatch({ taskId: t, kind: 'flight', threshold: 9999 })).data as any).watchId
     const miss = (ok(await h.travelWatch({ taskId: t, kind: 'hotel', threshold: 1 })).data as any).watchId
     const fired = await mkEngine().sampleDue([hit, miss])
     expect(fired.map(f => f.watchId)).toEqual([hit])
-    expect(desk.findByKey(`travel-trend:${hit}`)).toBeTruthy()
-    expect(desk.findByKey(`travel-trend:${miss}`)).toBeUndefined()
+    expect(desk.findByKey(`travel-trend:${hit}`)).toBeUndefined()  // 不弹新卡
+    expect((desk.findByKey('travel-trip')!.data as any).decide).toBeTruthy()
   })
 
   it('交回的素材带趋势事实和示例标记，装配层照着叫醒模型', async () => {

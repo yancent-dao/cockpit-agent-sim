@@ -53,6 +53,23 @@ describe('相邻两档渲染出来的东西必须不同', () => {
     updatedLabel: '10 分钟前',
     // 攻略卡：分组条目（group 字段是它跟 list 的关键差别）
     hero: '', source: '来源：近 3 个月高频提及',
+    // 融合旅行卡 trip：头图/行前准备/Day 帧/价格块/分段住宿/决策条——
+    // 少一样相邻档就渲染成一样，那正是这条测试要拦的
+    dest: '曼谷',
+    prep: ['落地签可办', '换点泰铢', '电话卡机场有', '雨季带伞'],
+    days: [
+      { title: '大皇宫 · 卧佛寺 · 考山路', stay: '曼谷·考山路',
+        stops: [{ time: '09:00', name: '大皇宫', note: '门票 500 泰铢' }],
+        trans: ['步行 10 分钟'] },
+      { title: '去芭提雅', stay: '芭提雅·海滩', cityChange: true,
+        stops: [{ time: '08:30', name: '大巴去芭提雅' }] },
+    ],
+    flight: { label: '机票 · 成都 ⇄ 曼谷', text: '¥1,670', delta: -28,
+      points: [2100, 2050, 1980, 1890, 1810, 1740, 1670] },
+    stays: [
+      { label: '曼谷 · 考山路', range: 'D1–3 · 3 晚', text: '¥638 / 晚', delta: 8 },
+      { label: '芭提雅 · 海滩', range: 'D4 · 1 晚', text: '¥520 / 晚', delta: -12 },
+    ],
     // 行程单卡：D-day + 时间线 + 待决策，三样都要，少一样相邻档就渲染成一样
     dday: 'D-13', when: '9 月 2 日出发 · 首尔 5 天',
     steps: Array.from({ length: 8 }, (_, i) => ({ label: '步骤' + i, state: 'running', detail: '细节' + i })),

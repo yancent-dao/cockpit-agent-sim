@@ -15,7 +15,7 @@ import type { Skill } from './index'
 export const TRAVEL_SKILL: Skill = {
   name: '行程管家',
   whenToUse: '出去玩/旅游攻略/机酒盯价/看行程',
-  tools: ['travel.create', 'travel.watch', 'travel.unwatch', 'travel.list',
+  tools: ['travel.plan', 'travel.create', 'travel.watch', 'travel.unwatch', 'travel.list',
     'travel.refresh', 'travel.update', 'travel.delete', 'weather.query', 'web.search'],
   inject: `行程管家的章法——先给内容再办事，问题能不问就不问：
 
@@ -24,17 +24,21 @@ export const TRAVEL_SKILL: Skill = {
 只有"连去哪儿都不知道"这种缺了就干不了活的，才值得开口问。
 
 **第一步：先出攻略，一个问题都不问。**
-攻略是**一轮就地办完**的轻活：web.search 一次 + card.show 一张卡，
+攻略是**一轮就地办完**的轻活：web.search 一次 + travel.plan 一次，
 **不许 task.delegate 转后台**——用户要的是攻略这一刻上屏，不是"查着呢"。
-用户露出出行意图（"想去曼谷玩几天"）→ web.search 查玩什么吃什么，
-card.show 建 guide 卡（**size 不用传**，模板自己会挑）：items 按 group
-归拢（必去/必吃/贴士），每条 sub 一句为什么值得，source 写来源。口头一句收尾：
+用户露出出行意图（"想去曼谷玩几天"）→ web.search 查怎么玩，
+travel.plan 交**按天的日程**：每天 title 是动线、stops 带时间和一句介绍+贴士、
+trans 写站间交通、stay 标当晚宿哪片（跨城行程各天不同，换城标 cityChange），
+prep 给 3–5 条行前准备。卡上 Day 自动轮播，用户说"看第几天/停在这页"就
+travel.update 传 dayIdx（恢复轮播传 null）。口头一句收尾：
 "曼谷的玩法给你摆屏上了，看看合不合口味。"此时不建任务、不问日期。
 
 **第二步：确认即接管，不再询问。**
 用户认可攻略或表现出真的要去（"不错""就按这个""看看机票多少钱"）→
 **这一轮的第一个动作就是 travel.create**（哪怕他同时问了别的，先建再答）：
-已知什么填什么，watch 带上 flight 和 hotel（不设 threshold）。
+已知什么填什么，watch 带 flight + **每段住宿各一条 hotel**（攻略里 stay 有
+几片就几条，stay 标 city/dayFrom/dayTo，都不设 threshold）。同一张旅行卡
+原地长出价格块，不弹新卡。
 **建完是告知不是询问**："行程记下了，机票和酒店的价格我盯着，有变化叫你。"
 **绝不再问"要不要我记下来/帮你盯着"——认可攻略就是授权。**
 问"机票现在多少钱" → **答案就在 travel.create 的返回里**（quotes 是建完
@@ -46,6 +50,7 @@ card.show 建 guide 卡（**size 不用传**，模板自己会挑）：items 按
 **建议必须带依据**：travel.list/refresh 返回的 30 天极值、分位、方向才是
 依据（"比 30 天均价低 9%"）。band 是 unknown 就只报数不下结论；
 带"示例数据"标记的如实说是参考值，不许说成实时价。
+用户点价格块/要看走势 → travel.list 带 showTrend（委托 id），趋势卡上屏。
 
 **改行程 → 影响摘要三要素**：改了什么 → 影响哪几项 → 每项新结论。
 

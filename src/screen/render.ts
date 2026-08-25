@@ -528,70 +528,98 @@ export function cardBody(c: CardView): string {
       ].filter(Boolean).join('')
     }
     /**
-     * 攻略卡。小档只报每组几条（mode:count）——行驶中不放需要逐字读的东西，
-     * 截一半比不给更糟：用户会以为就这么点。
+     * 融合旅行卡（2026-08-25）。一张卡 = 一次旅行的家，三个阶段原地生长：
+     * 攻略（头图+行前准备+Day 轮播）→ 盯价（+价格块）→ 到价（+决策条）。
+     * 阶段判据全是**数据形状**：有 flight/stays 画价格块，有 decide 画决策条。
+     *
+     * Day 轮播是纯 CSS：全部帧一次输出（绝对定位叠放），容器 data-n 标帧数，
+     * keyframes 在 screen.html 按 n 轮转——零状态零计时器，重渲染只是相位重置。
+     * data.dayIdx 存在 = 用户锁定了帧（"停在这页"/"看第三天"），只画那一帧。
      */
-    /**
-     * 攻略卡。设计稿三件事这里都要落地，缺一张就退回"文字堆"：
-     *   ① **出血头图**——负边距顶到卡片内边距之外，由 .card 的
-     *     overflow:hidden + 圆角自己裁（同绘本"画册是出血不是镶白边"）
-     *   ② **分组带语义色**——必去/必吃/贴士各一个色，远看就能分块
-     *   ③ **条目两行堆叠**——名字和"为什么值得"挤一行会互相截断
-     */
-    case 'guide': {
-      const form = formOf('guide', ...dimsOf(c.size))
-      const items: Array<{ group?: string; label: string; sub?: string }> = d.items ?? []
-      const groups = [...new Set(items.map(i => i.group ?? '推荐'))]
-      if (form.mode === 'count')
-        return `<div class="gdcount">${groups.map(g =>
-          `<div><b>${items.filter(i => (i.group ?? '推荐') === g).length}</b><span>${esc(g)}</span></div>`).join('')}</div>`
-      const { shown, rest } = truncate(items, form.maxItems)
-      // 组名 → 语义色档。名单是**数据**，认不出的走默认——不硬编码"必去"这类词的含义
-      const tone = (g: string) => /吃|食|餐/.test(g) ? 'warn' : /贴士|注意|提醒/.test(g) ? 'media' : 'brand'
-      return [
-        form.blocks.includes('hero')
-          ? `<div class="gdhero"${d.hero ? ` style="background-image:url(${esc(d.hero)})"` : ''}>
-              <div class="gdheroin"><b>${esc(d.title ?? '')}</b>${
-                d.sub ? `<span>${esc(d.sub)}</span>` : ''}</div>
-              <em>${groups.length} 组 · ${items.length} 条</em>
-            </div>` : '',
-        `<div class="gdgroups">${groups.map(g => {
-          const mine = shown.filter(i => (i.group ?? '推荐') === g)
-          return mine.length ? `<div class="gdg gd-${tone(g)}">
-            <h4><i></i>${esc(g)}</h4>
-            ${mine.map(i => `<div class="gdi" data-act="tap:item" data-value="${esc(`讲讲${i.label}`)}">
-              <b>${esc(i.label)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div>`).join('')}
-          </div>` : ''
-        }).join('')}</div>`,
-        // 截断必须说出来。只截不说，用户以为屏上就这么多
-        rest > 0 ? `<div class="gdbasis">还有 ${rest} 条，问我就行</div>`
-          : d.source ? `<div class="gdbasis">${esc(d.source)}</div>` : '',
-      ].filter(Boolean).join('')
-    }
-    /**
-     * 行程单卡。**不复用 progress**：那张卡表达不了 D-day 计数、按状态
-     * 上色的时间线、以及底部那个"待你决策"块——而这三样正是长时任务
-     * 区别于普通进展的地方（PRD §7.1「行程结构、子任务状态、待决策点」）。
-     */
-    case 'itinerary': {
-      const form = formOf('itinerary', ...dimsOf(c.size))
+    case 'trip': {
+      const form = formOf('trip', ...dimsOf(c.size))
       const has = (b: string) => form.blocks.includes(b)
-      const steps: Array<{ label: string; state?: string; detail?: string }> = d.steps ?? []
-      const { shown, rest } = truncate(steps, form.maxItems)
+      const days: Array<{ title: string; stay?: string; cityChange?: boolean
+        stops: Array<{ time?: string; name: string; note?: string }>; trans?: string[] }> = d.days ?? []
+      const lockedIdx = typeof d.dayIdx === 'number' && days[d.dayIdx] ? d.dayIdx : undefined
+      const frames = lockedIdx !== undefined ? [lockedIdx] : days.map((_, i) => i)
+      const anim = lockedIdx === undefined && frames.length > 1
+        ? ` data-n="${Math.min(frames.length, 7)}"` : ''
+      const badge = d.dday ?? d.badge
+      // 帧的密度是阶段的函数：攻略阶段帧是主角（完整时间轴）；长出价格块后
+      // 帧退居单行继续转（stage 双列例外）；到价时刻决策条是主角，帧一律单行
+      // 到价时刻决策条是主角，帧一律收单行（stage 实测也塞不下：画廊 h3 偷走
+      // 50px 后双列帧差 102px）；盯价态 stage 双列帧保留（空间够）
+      const fullFrame = has('dayfull') && !d.decide?.question
+        && (!(d.flight || d.stays?.length) || has('daycols'))
+      // 帧头：D 几 · 当天动线 · 宿在哪段（换城日用琥珀标出来）
+      const head = (i: number) => `<div class="tpfh"><b class="tpfd num">D${i + 1}</b>` +
+        `<b>${esc(days[i].title)}</b>${days[i].stay
+          ? `<span class="tpstay${days[i].cityChange ? ' is-move' : ''}">宿 ${esc(days[i].stay)}</span>` : ''}</div>`
+      const stopRow = (st: { time?: string; name: string; note?: string }) =>
+        `<div class="tpstop">${st.time ? `<span class="num">${esc(st.time)}</span>` : '<span></span>'}` +
+        `<div><b>${esc(st.name)}</b>${st.note ? `<small>${esc(st.note)}</small>` : ''}</div></div>`
+      // 完整帧：时间轴 + 站间交通；双列档站点铺两栏（tpcols），交通衔接放不下就不画
+      const frame = (i: number, cols: boolean) => `<div class="tpfr" style="animation-delay:${
+        frames.indexOf(i) * 8}s">${head(i)}${cols
+          ? `<div class="tpcols">${days[i].stops.map(stopRow).join('')}</div>`
+          : days[i].stops.map((st, k) => stopRow(st) + (days[i].trans?.[k]
+              ? `<div class="tptrans">↓ ${esc(days[i].trans![k])}</div>` : '')).join('')}</div>`
+      // 单行帧（行驶中）：动线一行 + 宿哪，扫一眼即走
+      // 单行帧。宽档（daycols）多出来的空间换成动线摘要——不是把同样的东西放大
+      const lineFrame = (i: number) => {
+        const sub = [days[i].stay ? `宿 ${esc(days[i].stay)}` : '',
+          has('daycols') ? days[i].stops.map(st => esc(st.name)).join(' → ') : '',
+        ].filter(Boolean).join(' · ')
+        return `<div class="tpfr tpline" style="animation-delay:${
+          frames.indexOf(i) * 8}s"><b class="tpfd num">D${i + 1}</b><div><b>${esc(days[i].title)}</b>${
+            sub ? `<small>${sub}</small>` : ''}</div></div>`
+      }
+      const dots = frames.length
+        ? `<div class="tpdots">${frames.map((_, k) =>
+            `<i${lockedIdx !== undefined || frames.length < 2 ? ' class="on"' : ''} style="animation-delay:${k * 8}s"></i>`).join('')}` +
+          `<span>${lockedIdx !== undefined
+            ? `停在 D${lockedIdx + 1} · 说"继续轮播"恢复`
+            : frames.length > 1 ? `${frames.length} 天自动轮播 · 说"停在这页"或"看第几天"` : ''}</span></div>`
+        : ''
+      const delta = (v?: number) => v === undefined || v === 0 ? ''
+        : `<span class="trdelta ${v < 0 ? 'down' : 'up'}">${v < 0 ? '↓' : '↑'}${Math.abs(v)}</span>`
+      // 价格块：court/stage 给曲线，行驶中只给一行摘要——扫一眼即走
+      const spark = (pts: number[]) => {
+        if (pts.length < 2) return ''
+        const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1
+        const line = pts.map((v, i) =>
+          `${((i / (pts.length - 1)) * 300).toFixed(1)},${(75 - ((v - lo) / span) * 62).toFixed(1)}`).join(' ')
+        return `<svg viewBox="0 0 300 80" preserveAspectRatio="none"><polyline points="${line}" class="trline"></polyline></svg>`
+      }
+      const pricey = !!(d.flight || d.stays?.length)
+      // 价格块：曲线只给停车档（行驶中扫一眼即走）；两段式住宿各一行
+      const prices = pricey ? `<div class="tpprices">${[
+        d.flight ? `<div class="tpprice" data-act="tap:item" data-value="看看机票的价格趋势">
+            <div class="tpph"><b>${esc(d.flight.label ?? '机票')}</b>${delta(d.flight.delta)}</div>
+            <b class="tppv num">${esc(d.flight.text ?? '')}</b>${has('dayfull') ? spark(d.flight.points ?? []) : ''}</div>` : '',
+        d.stays?.length ? `<div class="tpprice"><div class="tpph"><b>住宿 · ${d.stays.length} 段</b></div>${
+            d.stays.map((st: any) => `<div class="tpstayrow" data-act="tap:item" data-value="看看${esc(st.label ?? '')}的价格趋势">
+              <div><b>${esc(st.label ?? '')}</b><small class="num">${esc(st.range ?? '')}</small></div>
+              <b class="num">${esc(st.text ?? '')}</b>${delta(st.delta)}</div>`).join('')}</div>` : '',
+      ].filter(Boolean).join('')}</div>` : ''
       return [
-        has('dday') && d.dday
-          ? `<div class="itday"><b>${esc(d.dday)}</b>${d.when ? `<span>${esc(d.when)}</span>` : ''}</div>` : '',
-        `<div class="itline">${shown.map(st => `<div class="itstep is-${esc(st.state ?? 'todo')}">
-            <i></i><div><b>${esc(st.label)}</b>${
-              has('detail') && st.detail ? `<small>${esc(st.detail)}</small>` : ''}</div>
-          </div>`).join('')}${rest > 0 ? `<div class="more">还有 ${rest} 项</div>` : ''}</div>`,
-        // 待决策：整张卡唯一需要用户动作的地方，给它琥珀底和两个点选
+        has('herofull') ? `<div class="tphero"><div class="tpheroin"><b>${esc(d.dest ?? d.title ?? '')}</b>${
+          d.sub ? `<span>${esc(d.sub)}</span>` : ''}</div>${
+          badge ? `<em class="num">${esc(badge)}</em>` : ''}</div>` : '',
+        !has('herofull') ? `<div class="tpstrip"><b>${esc(d.dest ?? d.title ?? '')}</b>${
+          badge ? `<em class="num">${esc(badge)}</em>` : ''}</div>` : '',
+        has('prep') && d.prep?.length && !d.flight
+          ? `<div class="tpprep">${d.prep.map((x: string) => `<span>${esc(x)}</span>`).join('')}</div>` : '',
+        prices,
+        days.length ? `<div class="tpcar${!fullFrame && has('dayfull') ? ' is-line' : ''}"${anim}>${frames.map(i =>
+          fullFrame ? frame(i, has('daycols')) : lineFrame(i)).join('')}</div>${dots}` : '',
         has('decide') && d.decide?.question
-          ? `<div class="itdecide"><b>${esc(d.decide.question)}</b>
-              <div class="itopts">${(d.decide.options ?? []).slice(0, 2).map((o: string) =>
+          ? `<div class="tpdecide"><b>${esc(d.decide.question)}</b>
+              <div class="tpopts">${(d.decide.options ?? []).slice(0, 2).map((o: string) =>
                 `<span data-act="tap:item" data-value="${esc(o)}">${esc(o)}</span>`).join('')}</div>
             </div>` : '',
-        d.foot ? `<div class="gdbasis">${esc(d.foot)}</div>` : '',
+        has('dayfull') && d.foot ? `<div class="tpfoot">${esc(d.foot)}</div>` : '',
       ].filter(Boolean).join('')
     }
     default: {

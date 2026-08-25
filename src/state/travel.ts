@@ -11,6 +11,18 @@
  */
 import type { DomainStorage } from './domain'
 
+/** 单日行程的一站。time 不强求——有的站就是"晚上随便逛" */
+export interface TripStop { time?: string; name: string; note?: string }
+/** 一天的行程帧。trans[i] 是第 i 站到第 i+1 站的交通衔接 */
+export interface TripDay {
+  title: string
+  stops: TripStop[]
+  trans?: string[]
+  /** 当晚宿在哪段——分段住宿的判据是行程数据，不是猜 */
+  stay?: string
+  cityChange?: boolean
+}
+
 export interface TravelTask {
   id: string
   title: string
@@ -22,6 +34,12 @@ export interface TravelTask {
   /** draft 待定 · active 监控中 · archived 已归档（可查、可当模板复用） */
   status: 'draft' | 'active' | 'archived'
   createdAt: number
+  /* ── 攻略数据（2026-08-25 融合卡）：卡 = f(仓)，攻略也进仓 ── */
+  days?: TripDay[]
+  prep?: string[]
+  summary?: string
+  /** 用户锁定的轮播帧（"看第三天"）。空 = 自动轮播 */
+  dayIdx?: number
 }
 
 /** 四类监控项（POC 范围）：机票价 · 酒店价 · 汇率 · 新闻 */
@@ -43,6 +61,8 @@ export interface TravelWatch {
   onBoot?: boolean
   lastValue?: number
   lastAt?: number
+  /** 分段住宿（hotel 专用）：这条监控盯的是行程里哪一段的酒店 */
+  stay?: { city: string; dayFrom: number; dayTo: number }
 }
 
 export interface TravelSample { watchId: string; at: number; value: number }

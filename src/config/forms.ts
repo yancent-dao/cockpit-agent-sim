@@ -353,37 +353,20 @@ export const trendForm: FormFn = (c, r) => {
 }
 
 /**
- * 攻略卡（旅行助手）。分界**不是大小是场景**：
- *   box(16)   三组只报计数 + 一行摘要 —— 行驶中不放需要逐字读的东西
- *   tower(32) 列条目，无图
- *   court(48) 图出血 + 全文 —— 停车时才给
- *
- * 小档走 mode:'count'（互斥渲染，同能力目录的先例），不是把条目截短——
- * 攻略截一半比不给更糟：用户会以为就这么点。
+ * 融合旅行卡。档位只决定每一帧的密度，轮播机制不变：
+ *   hall(36)   窄色条 + 价格摘要行 + 单行轮播——行驶中扫一眼即走
+ *   court(48)  头图出血 + 行前准备 + 完整单日时间轴 + 价格块 + 决策条
+ *   stage(64)  单日时间轴双列铺开——相邻档内容必须不同
+ * 阶段字段（flight/stays/decide）缺了就不画，那是数据的事不是档位的事。
  */
-export const guideForm: FormFn = (c, r) => {
+export const tripForm: FormFn = (c, r) => {
   const a = area(c, r)
-  /**
-   * 容量按**行**推，不用魔法数字：一个两行条目 ≈ 96px ≈ 一个行单元(103.5px)。
-   * 大档要扣掉头图（168px ≈ 1.3 行）、三个组标题（117px ≈ 0.9 行）和来源行，
-   * 合计约 3 行；tower 没有头图，只扣组标题与来源约 1 行。
-   * 实测（2026-08-21 画廊）：不扣的话 court 溢出 129px，「T-money」被裁掉半行。
-   */
-  if (c >= 6 && a >= 44) return { blocks: ['hero', 'groups'], maxItems: capacityOf(1, r) - 3, cols: 1, overflow: 'more' }
-  if (a >= 28) return { blocks: ['groups'], maxItems: capacityOf(1, r) - 1, cols: 1, overflow: 'more' }
-  return { blocks: ['groups'], maxItems: 3, mode: 'count', cols: 1 }
-}
-
-
-/**
- * 行程单卡。三档：box 只给时间线（谁办完了谁还没），tower 加 D-day 与
- * 每步细节，court 再加"待你决策"块——需要用户动手的那一步值得最大的档。
- */
-export const itineraryForm: FormFn = (c, r) => {
-  const a = area(c, r)
-  if (a >= 44) return { blocks: ['dday', 'line', 'detail', 'decide'], maxItems: capacityOf(1, r) - 2, cols: 1, overflow: 'more' }
-  if (a >= 28) return { blocks: ['dday', 'line', 'detail'], maxItems: capacityOf(1, r) - 1, cols: 1, overflow: 'more' }
-  return { blocks: ['line'], maxItems: capacityOf(1, r), cols: 1, overflow: 'more' }
+  const base = ['hero', 'days', 'prices']
+  // 靠**加块**不换块拉开差异（「块只增不减」不变量，同 trendForm）：
+  // herofull=头图从色条长成出血大图；dayfull=帧从单行长成时间轴；daycols=双列
+  if (a >= 56) return { blocks: [...base, 'herofull', 'prep', 'dayfull', 'daycols', 'decide'] }
+  if (a >= 44) return { blocks: [...base, 'herofull', 'prep', 'dayfull', 'decide'] }
+  return { blocks: base }
 }
 
 export const CARD_FORMS: Record<string, FormFn> = {
@@ -409,8 +392,7 @@ export const CARD_FORMS: Record<string, FormFn> = {
   chart: chartForm,
   image: imageForm,
   trend: trendForm,
-  itinerary: itineraryForm,
-  guide: guideForm,
+  trip: tripForm,
   generic: genericForm,
 }
 

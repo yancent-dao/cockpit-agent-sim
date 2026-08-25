@@ -20,7 +20,7 @@ export interface TravelDeps {
   clock: () => number
 }
 
-const PLAN_KEY = 'travel-plan'
+const TRIP_KEY = 'travel-trip'
 const trendKey = (watchId: string) => `travel-trend:${watchId}`
 
 /** 建任务要的关键项。缺了照建（待定态），但要在返回里说清缺什么 */
@@ -73,50 +73,60 @@ function core(deps: TravelDeps) {
   }
 
   /**
-   * 行程单卡 = f(仓)。用 itinerary 模板不用 progress——D-day、按状态上色的
-   * 时间线、待决策块这三样是长时任务的身份，通用进展卡表达不了。
+   * 融合旅行卡 = f(仓)（2026-08-25，替代 itinerary 的 paintPlan）。
+   * 一张卡 = 一次旅行的家：攻略 / 盯价 / 到价同 key 原地生长，阶段判据
+   * 全是数据形状——有 days 画轮播，有监控画价格块，有 fired 画决策条。
+   *
+   * render() 同 key 是**合并**语义，所以会消失的字段（decide/flight/stays/
+   * dayIdx）每次都显式给值（undefined 也算给）——绘本定妆照残留的教训。
    */
-  const paintPlan = () => {
+  const paintTrip = () => {
     const d = deps.desk()
     if (!d) return
     const tasks = S().tasks().filter(t => t.status !== 'archived')
-    if (!tasks.length) { const c = d.findByKey(PLAN_KEY); if (c) d.dismiss(c.id); return }
-    const ws = S().watches()
-    const one = tasks.length === 1 ? tasks[0] : undefined
-    const mine = (id: string) => ws.filter(w => w.taskId === id && w.status !== 'cancelled')
-    // 到价了的那条 → 待决策。只挑一条：两个决策一起问，用户不知道先答哪个
-    const hit = one && mine(one.id).find(w => w.status === 'fired')
-    const steps = tasks.flatMap(t => {
-      const list = mine(t.id)
-      // 单任务时标题已经是它了，再来一行"曼谷 · 曼谷"是废话
-      const head = one ? [] : [{
-        label: t.destination === t.title ? t.title : `${t.title} · ${t.destination}`,
-        state: t.status === 'draft' ? 'warn' : 'running',
-        detail: t.departDate ? `${t.departDate} 出发` : '日期还没定',
-      }]
-      return [...head, ...list.map(w => ({
-        label: KIND_LABEL[w.kind],
-        state: w.status === 'fired' ? 'done' : w.lastValue === undefined ? 'todo' : 'running',
-        detail: w.lastValue !== undefined
-          ? `${UNIT[w.kind](w.lastValue)}${w.threshold !== undefined
-              ? `　提醒线 ${UNIT[w.kind](w.threshold)}` : ''}`
-          : '还在等第一次取数',
-      }))]
-    })
+    if (!tasks.length) { const c = d.findByKey(TRIP_KEY); if (c) d.dismiss(c.id); return }
+    const t = tasks[tasks.length - 1]                      // 最新的那次旅行是主角
+    const ws = S().watches().filter(w => w.taskId === t.id && w.status !== 'cancelled')
+    const alive = ws.filter(w => w.status === 'active' || w.status === 'fired')
+    const flightW = alive.find(w => w.kind === 'flight')
+    const hotelWs = alive.filter(w => w.kind === 'hotel')
+    // 到价的那条 → 决策条。只挑一条：两个决策一起问，用户不知道先答哪个
+    const hit = alive.find(w => w.status === 'fired')
+    const now = deps.clock()
+    const flight = flightW ? {
+      label: `机票 · ${flightW.label}`,
+      text: flightW.lastValue !== undefined ? UNIT.flight(flightW.lastValue) : '等第一次取数',
+      delta: factsOf(flightW).changeFromPrev,
+      points: S().samples(flightW.id, now).map(x => x.value),
+    } : undefined
+    const stays = hotelWs.length ? hotelWs.map(w => ({
+      label: w.stay ? `${w.stay.city}` : w.label,
+      range: w.stay ? `D${w.stay.dayFrom}–${w.stay.dayTo}` : '',
+      text: w.lastValue !== undefined ? UNIT.hotel(w.lastValue) : '等第一次取数',
+      delta: factsOf(w).changeFromPrev,
+      watchId: w.id,
+    })) : undefined
+    const others = tasks.length - 1
     d.render({
-      key: PLAN_KEY, template: 'itinerary', kind: 'task', ttl: 'untilDismissed',
+      key: TRIP_KEY, template: 'trip', kind: 'task', ttl: 'untilDismissed',
+      // 到价 = 用户点名要盯的事有了结果，不该被常规刷新挤回等位区
+      urgency: hit ? 'urgent' : undefined,
       data: {
-        title: one ? one.title : `${tasks.length} 个行程`,
-        dday: one ? ddayOf(one.departDate) : undefined,
-        when: one
-          ? `${one.departDate ? `${one.departDate} 出发` : '日期待定'} · ${one.destination}`
-          : undefined,
-        steps,
+        title: t.title, dest: t.destination,
+        sub: t.departDate
+          ? `${t.departDate} 出发${t.days?.length ? ` · ${t.days.length} 天` : ''}${t.travelers ? ` · ${t.travelers} 人` : ''}`
+          : t.days?.length ? `${t.days.length} 天怎么玩 · 攻略给你摆好了` : '日期还没定',
+        badge: t.days?.length ? `${t.days.length} 天 · ${t.destination}` : undefined,
+        dday: ddayOf(t.departDate),
+        prep: t.prep, days: t.days, dayIdx: t.dayIdx,
+        flight, stays,
         decide: hit ? {
           question: `${KIND_LABEL[hit.kind]}到你说的价了（${UNIT[hit.kind](hit.lastValue!)}），现在定吗？`,
           options: [`看看${KIND_LABEL[hit.kind]}的价格趋势`, '先不定，继续盯着'],
         } : undefined,
-        foot: `盯着 ${ws.filter(w => w.status === 'active').length} 项`,
+        foot: alive.length
+          ? `盯着 ${alive.filter(w => w.status === 'active').length} 项${others > 0 ? ` · 还有 ${others} 个行程` : ''}`
+          : t.summary ?? (t.days?.length ? '说"就按这个来"，机票酒店我就帮你盯起来' : undefined),
       },
     })
   }
@@ -147,6 +157,52 @@ function core(deps: TravelDeps) {
   }
 
   const handlers = {
+    /* ── 攻略进仓。模型查完攻略把结构化日程交过来，trip 卡上屏 ── */
+    travelPlan: async (args: any): Promise<ToolResult> => {
+      const destination = String(args?.destination ?? '').trim()
+      if (!destination)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: '还不知道要去哪儿', suggestion: '先确定目的地再出攻略' }
+      const days = Array.isArray(args?.days) ? args.days : []
+      if (!days.length)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: '没有日程，攻略卡的身份就是一天一天怎么玩',
+          suggestion: 'days 按天给：[{title:"当天动线", stops:[{time?,name,note?}], trans?, stay?}]' }
+      // 逐元素查必填——模型换字段名静默入仓的教训（story.begin 那次正文空白上屏）
+      const bad = days.find((x: any) => !x?.title || !Array.isArray(x?.stops)
+        || !x.stops.length || x.stops.some((st: any) => !st?.name))
+      if (bad)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: `有一天的日程不完整（收到的键：${Object.keys(bad ?? {}).join('、') || '空'}）`,
+          suggestion: '每天要 title 和至少一个 stops，每站要 name' }
+      const clean = days.map((x: any) => ({
+        title: String(x.title),
+        stops: x.stops.map((st: any) => ({
+          time: st.time !== undefined ? String(st.time) : undefined,
+          name: String(st.name),
+          note: st.note !== undefined ? String(st.note) : undefined,
+        })),
+        trans: Array.isArray(x.trans) ? x.trans.map(String) : undefined,
+        stay: x.stay !== undefined ? String(x.stay) : undefined,
+        cityChange: x.cityChange === true || undefined,
+      }))
+      const prep = Array.isArray(args?.prep) ? args.prep.map(String) : undefined
+      // 防重判据跟 create 同一条：同目的地 + 非归档 → 更新它，不新建
+      const dup = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
+      const id = dup?.id ?? newId('task')
+      const patch = { days: clean, prep, summary: args?.summary !== undefined ? String(args.summary) : undefined }
+      if (dup) S().updateTask(id, patch)
+      else S().addTask({
+        id, title: String(args?.title ?? destination).trim(), destination,
+        status: 'draft', createdAt: deps.clock(), ...patch,
+      })
+      paintTrip()
+      return { status: 'ok', data: { taskId: id, dayCount: clean.length },
+        message: `${clean.length} 天的攻略上卡了，Day 会自动轮播——口头只说一句收尾，` +
+          '内容让屏幕讲，也不要反问「要不要盯价」（卡上已写了怎么继续）；' +
+          '用户认可了再 travel.create 接管盯价' }
+    },
+
     /* ── 建任务。信息不全照建，缺什么在返回里说 ── */
     travelCreate: async (args: any): Promise<ToolResult> => {
       const destination = String(args?.destination ?? '').trim()
@@ -159,7 +215,10 @@ function core(deps: TravelDeps) {
        * 非归档已存在 → 复用，不新建；这次要盯的项照样往它身上加。
        */
       const dup = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
-      const pending = dup ? [] : REQUIRED_SOON.filter(k => !args?.[k])
+      const merged = { ...dup, departDate: args?.departDate ?? dup?.departDate,
+        returnDate: args?.returnDate ?? dup?.returnDate,
+        travelers: args?.travelers ?? dup?.travelers }
+      const pending = REQUIRED_SOON.filter(k => !(merged as any)[k])
       const id = dup?.id ?? newId('task')
       if (!dup)
         S().addTask({
@@ -169,6 +228,9 @@ function core(deps: TravelDeps) {
           status: pending.length ? 'draft' : 'active',
           createdAt: deps.clock(),
         })
+      // 先 plan 后 create：同一个任务原地转正（确认即接管），攻略数据不动
+      else S().updateTask(id, { departDate: merged.departDate, returnDate: merged.returnDate,
+        travelers: merged.travelers, status: pending.length ? dup.status : 'active' })
       // 监控项可以一次配上——PRD 要求建任务 ≤2 轮对话，分两次调用就超了
       const watchIds = (Array.isArray(args?.watch) ? args.watch : [])
         .filter((w: any) => w?.kind in KIND_LABEL)
@@ -176,8 +238,14 @@ function core(deps: TravelDeps) {
           const wid = newId('w')
           S().addWatch({
             id: wid, taskId: id, kind: w.kind,
-            label: w.label ?? `${destination}${KIND_LABEL[w.kind as WatchKind]}`,
+            label: w.label ?? (w.stay?.city
+              ? `${w.stay.city}${KIND_LABEL[w.kind as WatchKind]}`
+              : `${destination}${KIND_LABEL[w.kind as WatchKind]}`),
             threshold: w.threshold, direction: w.direction ?? 'below',
+            // 分段住宿：多城市行程一段一条酒店监控，各盯各的价
+            stay: w.stay?.city !== undefined
+              ? { city: String(w.stay.city), dayFrom: Number(w.stay.dayFrom), dayTo: Number(w.stay.dayTo) }
+              : undefined,
             status: 'active', ...DEFAULT_RHYTHM[w.kind as WatchKind],
           })
           return wid
@@ -200,7 +268,7 @@ function core(deps: TravelDeps) {
             value: q.value, text: UNIT[w.kind](q.value), note: q.note })
         } catch { /* 坏源不拖垮建任务 */ }
       }))
-      paintPlan()
+      paintTrip()
       const quoteLine = quotes.length
         ? `。参考价：${quotes.map(q => `${q.label} ${q.text}`).join('、')}${quotes.some(q => q.note) ? `（${quotes.find(q => q.note)!.note}）` : ''}——用户问价直接报这个，别再转后台查`
         : ''
@@ -229,7 +297,7 @@ function core(deps: TravelDeps) {
         everyMs: args?.everyMs ?? DEFAULT_RHYTHM[kind].everyMs,
         onBoot: args?.onBoot ?? DEFAULT_RHYTHM[kind].onBoot,
       })
-      paintPlan()
+      paintTrip()
       return { status: 'ok', data: { watchId: id },
         message: args?.threshold !== undefined
           ? `盯上了：${KIND_LABEL[kind]}${args.direction === 'above' ? '高于' : '低于'} ${args.threshold} 就提醒`
@@ -240,7 +308,7 @@ function core(deps: TravelDeps) {
     travelUnwatch: async (args: any): Promise<ToolResult> => {
       const w = S().cancelWatch(String(args?.watchId ?? ''))
       if (!w) return { status: 'rejected', code: 'NOT_FOUND', message: '没有这条委托' }
-      paintPlan()
+      paintTrip()
       return { status: 'ok', data: { watchId: w.id }, message: `不盯${KIND_LABEL[w.kind]}了` }
     },
 
@@ -251,9 +319,8 @@ function core(deps: TravelDeps) {
         ? st.activeWatches(deps.clock()).filter(w => w.taskId === args.taskId)
         : st.activeWatches(deps.clock())
       const fired = await sampleRound(st, scope.map(w => w.id), deps.sources())
-      // 触发了的才上卡：「无更新不开口」的卡片版
-      for (const f of fired) paintTrend(st.watches().find(w => w.id === f.watch.id)!, f.note)
-      paintPlan()
+      // 触发了的在 trip 卡上原地出决策条——不弹新卡，一张卡是一次旅行的家
+      paintTrip()
       return { status: 'ok',
         data: {
           sampled: scope.length,
@@ -264,7 +331,7 @@ function core(deps: TravelDeps) {
           })),
         },
         message: fired.length
-          ? `${fired.length} 项到你说的价了，趋势卡已上屏`
+          ? `${fired.length} 项到你说的价了，旅行卡上出了决策条`
           : '都更新了，没有到提醒线的' }
     },
 
@@ -275,10 +342,24 @@ function core(deps: TravelDeps) {
       const watches = st.watches()
         .filter(w => tasks.some(t => t.id === w.taskId))
         .map(w => ({ ...w, kindLabel: KIND_LABEL[w.kind], trend: factsOf(w) }))
-      paintPlan()
+      paintTrip()
+      // 钻取：点价格块/用户要看走势 → 完整趋势卡（trend 的唯一入口，2026-08-25 起）
+      if (args?.showTrend) {
+        const w = st.watches().find(x => x.id === args.showTrend)
+        if (w) paintTrend(w)
+      }
+      /**
+       * draft 存在 = 攻略给过、还没接管（2026-08-25 pilot 实拍：用户说"就按
+       * 这个来"，慢层调完 list 却跑去 web.search 查价，create 从没被调）。
+       * 判据是任务状态不是话的内容——同"pending 确认直达慢层"一族。
+       */
+      const draft = tasks.some(t => t.status === 'draft' && !watches.some(w => w.taskId === t.id))
       return { status: 'ok', data: { tasks, watches },
         message: tasks.length
-          ? '行程和盯着的项都在这儿了，卡片也上屏了——口头挑重点说就行'
+          ? `行程和盯着的项都在这儿了，卡片也上屏了——口头挑重点说就行${draft
+              ? '。注意：有行程还是草稿——用户已认可攻略的话，下一个动作就是 travel.create' +
+                '（转正+配监控，机票价直接在它返回的 quotes 里，不用再搜）'
+              : ''}`
           : '还没有行程任务' }
     },
 
@@ -293,12 +374,16 @@ function core(deps: TravelDeps) {
         .map(f => ({ field: f, from: (before as any)[f], to: args[f] }))
       if (changed.length)
         st.updateTask(before.id, Object.fromEntries(changed.map(c => [c.field, c.to])) as any)
+      // 轮播锁帧："看第三天"落 dayIdx，null = 恢复自动轮播。是展示意愿不是行程事实，
+      // 不进 changed 对照——改它不会让任何监控重算
+      if (args?.dayIdx !== undefined)
+        st.updateTask(before.id, { dayIdx: args.dayIdx === null ? undefined : Number(args.dayIdx) })
       // 受影响的监控项：这个任务下的全部——日期变了它们的判断依据就全变了
       const affected = st.watches().filter(w => w.taskId === before.id).map(w => ({
         watchId: w.id, kind: w.kind, kindLabel: KIND_LABEL[w.kind],
         lastValue: w.lastValue, trend: factsOf(w),
       }))
-      paintPlan()
+      paintTrip()
       return { status: 'ok', data: { taskId: before.id, changed, affected },
         message: changed.length
           ? `改好了，${affected.length} 项监控跟着重算了——把「改了什么→影响哪几项→每项新结论」说给用户`
@@ -316,7 +401,7 @@ function core(deps: TravelDeps) {
         // 相关的卡一起撤——留着就是在显示一个不存在的行程
         for (const w of stopped) { const c = d.findByKey(trendKey(w.id)); if (c) d.dismiss(c.id) }
       }
-      paintPlan()
+      paintTrip()
       return { status: 'ok',
         data: { taskId: t.id, stopped: stopped.map(w => ({ kind: w.kind, kindLabel: KIND_LABEL[w.kind] })) },
         message: `「${t.title}」删了${stopped.length
@@ -324,7 +409,7 @@ function core(deps: TravelDeps) {
     },
   }
 
-  return { handlers, paintTrend, paintPlan, factsOf }
+  return { handlers, paintTrend, paintTrip, factsOf }
 }
 
 /**
@@ -356,18 +441,15 @@ export function createTravelHandlers(deps: TravelDeps) {
  * 50 次/月），多采一次就少一次；汇率虽然免费，一天该采一次就别一小时一次。
  */
 export function createTravelEngine(deps: TravelDeps) {
-  const { handlers, paintTrend, paintPlan, factsOf } = core(deps)
+  const { handlers, paintTrend, paintTrip, factsOf } = core(deps)
   void handlers
   return {
     /** monitor 的 onDue 回调。返回触发了的，装配层据此建交付素材 */
     async sampleDue(ids: string[]) {
       const st = deps.store()
       const fired = await sampleRound(st, ids, deps.sources())
-      for (const f of fired) {
-        const w = st.watches().find(x => x.id === f.watch.id)
-        if (w) paintTrend(w, f.note)
-      }
-      if (fired.length) paintPlan()
+      // 到价 → trip 卡原地出决策条，不弹新卡（趋势卡只走钻取）
+      if (fired.length) paintTrip()
       return fired.map(f => {
         const w = st.watches().find(x => x.id === f.watch.id)
         return {

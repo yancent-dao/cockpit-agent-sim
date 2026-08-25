@@ -263,32 +263,20 @@ export const CARD_TEMPLATES: CardTemplate[] = [
       'verdict 是你的判断（"可以下单"），依据放 basis——没依据的建议不要给。',
     fields: { points: { type: 'array', required: true } } },
   /**
-   * 攻略卡（旅行助手，2026-08-20）。目的地内容，不是日程安排——
-   * 日程是任务视角（行程单卡管），攻略是内容视角。
+   * 融合旅行卡（2026-08-25，设计稿 artifact「旅行助手 HMI」）。
+   * 一张卡 = 一次旅行在屏幕上的家：攻略（头图+行前准备+Day 轮播帧）→
+   * 盯价（+机票/分段住宿价格块）→ 到价（+决策条），同 key 原地生长。
+   * 三个阶段是**数据形状**不是状态机：有 days 没价格块 = 攻略；有 flight/
+   * stays = 盯价；有 decide = 到价——渲染只看字段，没有 phase 枚举。
    *
-   * 为什么不复用 list：list 是**平的**，而攻略天然分组（必去/必吃/贴士），
-   * 每组还带自己的一句说明。把分组塞进 list 的 label 里就是在用文本模拟结构。
-   *
-   * 两档的分界**不是大小是场景**：行驶中只给三组计数和一行摘要（要细节
-   * 就听），停车时才出图出血 + 全文——车上"读"这件事被行驶状态一刀切开。
+   * 它吃掉了 guide 与 itinerary 两个模板：分开建卡的话"确认攻略之后"
+   * 屏幕上就是两张卡讲同一次旅行，用户还得自己对齐。
+   * Day 轮播是纯 CSS（keyframes 在 screen.html），零状态零计时器。
    */
-  /**
-   * 行程单卡（旅行助手，2026-08-21）。**不复用 progress**——那张卡表达不了
-   * D-day 计数、按状态上色的时间线、和底部"待你决策"块，而这三样正是
-   * 长时任务区别于普通后台进展的地方（PRD §7.1）。
-   */
-  { id: 'itinerary', label: '行程单卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
-    requireItems: true,
-    desc: '一次出行的全貌。data: {title, dday?:"D-13", when?:"9月2日出发·首尔5天", ' +
-      'steps:[{label, state:done|running|todo|warn, detail?}], ' +
-      'decide?:{question, options:[两个]}, foot?}。由 travel.* 自动维护，不用手动建。',
-    fields: { steps: { type: 'array', required: true } } },
-  { id: 'guide', label: '攻略卡', defaultSize: 'court', sizes: ['box', 'tower', 'court'],
-    requireItems: true,
-    desc: '目的地攻略（玩什么/吃什么/注意什么）。data: {title, sub?, hero?:渐变或图 url, ' +
-      'items:[{group:必去|必吃|贴士, label, sub?}], source?:一句话来源}。' +
-      '按组归拢，每条一句为什么值得——"景福宫 / 穿韩服免门票"。',
-    fields: { items: { type: 'array', required: true } } },
+  { id: 'trip', label: '旅行卡', defaultSize: 'court', sizes: ['hall', 'court', 'stage'],
+    systemOnly: true,
+    desc: '一次旅行的家：攻略/盯价/到价同一张卡。由 travel.* 机制生成，不手动建。',
+    fields: { days: { type: 'array' } } },
   { id: 'automation', label: '自动任务卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
     requireItems: true,
     desc: '自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停',

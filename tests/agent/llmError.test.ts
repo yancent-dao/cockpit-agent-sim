@@ -92,3 +92,58 @@ describe('瞬时 429 自动退避重试一次——协议客户端的机制，�
     } finally { globalThis.fetch = orig }
   })
 })
+
+describe('主对话关推理（2026-08-25 实拍：deepseek-v4-flash 名字带 flash 其实是推理模型，话术轮 maxTokens 全被思考吃掉，content 空 →「无话术」）', () => {
+  const mkFetch = (handler: (body: any, n: number) => Response) => {
+    let n = 0
+    return (async (url: any, init?: any) => {
+      if (String(url).includes('/chat/completions')) { n++; return handler(JSON.parse(init.body), n) }
+      throw new Error('unexpected ' + url)
+    }) as any
+  }
+  const OK = new Response(JSON.stringify({ choices: [{ message: { content: '好' } }] }), { status: 200 })
+
+  it('默认请求带 reasoning.enabled=false——语音场景延迟就是体验，不要思考', async () => {
+    const { createOpenRouter } = await import('../../src/agent/llm')
+    const orig = globalThis.fetch
+    let seen: any
+    globalThis.fetch = mkFetch(body => { seen = body; return OK.clone() })
+    try {
+      await createOpenRouter(() => 'k', () => 'm', () => 0).chat({ system: 's', messages: [], tools: [] })
+      expect(seen.reasoning).toEqual({ enabled: false })
+    } finally { globalThis.fetch = orig }
+  })
+
+  it('模型说 reasoning mandatory（gemini 类 400）→ 换 effort:minimal 重发，同模型第二次直接用 effort', async () => {
+    const { createOpenRouter } = await import('../../src/agent/llm')
+    const orig = globalThis.fetch
+    const bodies: any[] = []
+    globalThis.fetch = mkFetch(body => {
+      bodies.push(body.reasoning)
+      return body.reasoning?.enabled === false
+        ? new Response('{"error":{"message":"Reasoning is mandatory for this endpoint and cannot be disabled"}}', { status: 400 })
+        : OK.clone()
+    })
+    try {
+      const llm = createOpenRouter(() => 'k', () => 'g', () => 0)
+      const r1 = await llm.chat({ system: 's', messages: [], tools: [] })
+      expect(r1.text).toBe('好')
+      const r2 = await llm.chat({ system: 's', messages: [], tools: [] })
+      expect(r2.text).toBe('好')
+      // 第一次：off → 400 → effort；第二次：记住了，直接 effort，单请求
+      expect(bodies).toEqual([{ enabled: false }, { effort: 'minimal' }, { effort: 'minimal' }])
+    } finally { globalThis.fetch = orig }
+  })
+
+  it('别的 400 不重发，照常人话报错', async () => {
+    const { createOpenRouter } = await import('../../src/agent/llm')
+    const orig = globalThis.fetch
+    let n = 0
+    globalThis.fetch = mkFetch(() => { n++; return new Response('{"error":{"message":"bad request"}}', { status: 400 }) })
+    try {
+      await expect(createOpenRouter(() => 'k', () => 'm', () => 0).chat({ system: 's', messages: [], tools: [] }))
+        .rejects.toThrow()
+      expect(n).toBe(1)
+    } finally { globalThis.fetch = orig }
+  })
+})

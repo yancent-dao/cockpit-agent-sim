@@ -148,6 +148,15 @@ export function createOnlineChat(getKey: () => string, getModel: () => string) {
 export function createOpenRouter(getKey: () => string, getModel: () => string,
                                  retryDelayMs: () => number = () => 1500): LLM {
   const base = `${api('openrouter')}/api/v1`
+  /**
+   * 主对话不要推理——语音场景延迟就是体验（2026-08-25 实拍：deepseek-v4-flash
+   * 名字带 flash 其实是原生推理模型，话术轮的 maxTokens 全被思考吃掉，
+   * content 为空 →「无话术」）。但两家取向相反：deepseek 类必须
+   * enabled:false 才出 content，gemini 类强制推理、关了直接 400
+   * "Reasoning is mandatory"——没有一个参数两头通吃。自适应：默认关，
+   * 撞 mandatory 就换 effort:minimal 重发并按模型记住。都是实测出来的。
+   */
+  const reasoningMode = new Map<string, 'off' | 'effort'>()
 
   return {
     async models(): Promise<ModelInfo[]> {
@@ -173,7 +182,8 @@ export function createOpenRouter(getKey: () => string, getModel: () => string,
        * 不是业务兜底：上游满载多为秒级抖动，一次 1.5s 退避能吸收大半，
        * 省得每次都把错误怼到用户脸上。连续两次 429 才如实报。
        */
-      const once = () => fetch(`${base}/chat/completions`, {
+      const model = getModel()
+      const once = (mode: 'off' | 'effort') => fetch(`${base}/chat/completions`, {
         method: 'POST',
         // 120s 超时：大模型长轮正常 5-45s，悬挂连接不许冻住整个 turn
         signal: AbortSignal.timeout(120_000),
@@ -183,21 +193,32 @@ export function createOpenRouter(getKey: () => string, getModel: () => string,
           'X-Title': 'Cockpit Agent Sim',
         },
         body: JSON.stringify({
-          model: getModel(),
+          model,
           messages: [{ role: 'system', content: req.system }, ...req.messages],
           tools: req.tools,
           tool_choice: 'auto',
           temperature: 0.3,
           ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+          reasoning: mode === 'effort' ? { effort: 'minimal' } : { enabled: false },
           // 同一模型不同 provider 延迟差几倍（实测 GLM-flash 8.6s→3.2s）。
           // 语音场景延迟就是体验，按延迟路由
           provider: { sort: 'latency' },
         }),
       })
-      let res = await once()
+      let mode = reasoningMode.get(model) ?? 'off'
+      let res = await once(mode)
+      // 强制推理的模型（gemini 类）不接受关：换最低档重发一次，之后记住
+      if (res.status === 400 && mode === 'off') {
+        const body = await res.text()
+        if (/reasoning/i.test(body) && /mandatory|cannot be disabled/i.test(body)) {
+          mode = 'effort'
+          reasoningMode.set(model, mode)
+          res = await once(mode)
+        } else throw new Error(llmErrorText(400, body))
+      }
       if (res.status === 429) {
         await new Promise(r => setTimeout(r, retryDelayMs()))
-        res = await once()
+        res = await once(mode)
       }
       if (!res.ok) throw new Error(llmErrorText(res.status, await res.text()))
       const json = await res.json()

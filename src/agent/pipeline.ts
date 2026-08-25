@@ -377,6 +377,11 @@ export function createPipeline(deps: PipelineDeps) {
    */
   const toolNameShaped = (t: string) =>
     /^[-—·\s"'`]*[a-zA-Z][\w-]*[._][\w.-]+[-—·\s"'`]*$/.test(t.trim())
+    // 序列化的调用也不是话（同日 pilot 实拍："agent_handoff: say=\"稍等\"
+    // suggestedTools=[…] 云南有四条线…"整段上嘴）：以 工具名: 或 工具名( 开头
+    // 的输出是模型把调用写成了文字，后面就算跟着人话也不可信——整段作废，
+    // 快层的话让慢层接（thread 里原文还在，接力不丢内容）
+    || /^\s*[a-zA-Z][\w-]*[._][\w-]+\s*[:(]/.test(t)
 
   /** 快层：能干的立刻干、立刻说；收尾勾选转交。打断（世代变了）即弃场闭嘴 */
   async function runFast(g: number, trace: TraceStep[], turn: Turn):

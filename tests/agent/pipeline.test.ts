@@ -391,6 +391,15 @@ describe('视角注释的三种回环（2026-08-25 实拍连环）', () => {
     expect(String(note.content)).toContain('没有悬着的事')
   })
 
+  it('快层把整个工具调用序列化成文本（2026-08-25 pilot 实拍：「agent_handoff: say=\"稍等\" suggestedTools=[…] 云南有四条线…」整段上嘴）——不出声', async () => {
+    const fast = fakeLLM(() => ({ text: 'agent_handoff: say="稍等，我帮您规划一下" suggestedTools=["travel.plan"] 云南有四条线给你挑' }))
+    const slow = fakeLLM(() => ({ text: '云南有四条线，屏上给你摆出来' }))
+    const { p, events } = mk(fast, slow)
+    await p.run('我想去云南旅行')
+    const fastSpeaks = (events.filter(e => e.type === 'speaking') as any[]).filter(e => e.layer === 'fast')
+    expect(fastSpeaks, '序列化的调用不是话').toHaveLength(0)
+  })
+
   it('快层把工具名当话术（"-agent.handoff-"）——纯工具名形状的输出不出声', async () => {
     const fast = fakeLLM(() => ({ text: '-agent.handoff-' }))
     const slow = fakeLLM(() => ({ text: '好' }))

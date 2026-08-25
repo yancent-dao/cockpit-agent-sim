@@ -52,6 +52,12 @@ export interface PipelineDeps {
   registry: Registry
   store: Store
   fastLlm: LLM
+  /**
+   * 快层开关（2026-08-25 产品决策）：可用的快层模型要么比慢层还慢一个
+   * 数量级、要么爱把工具调用当话念，先关掉全走慢层——面板可再开。
+   * 只关 runFast 这一段：异步记忆压缩照旧用小模型（那是省钱不是抢答）。
+   */
+  fastEnabled?: () => boolean
   slowLlm: LLM
   fastManifest: AgentManifest
   slowManifest: AgentManifest
@@ -900,7 +906,7 @@ export function createPipeline(deps: PipelineDeps) {
          * "第4个"无事可做——实拍它编造 placeId 去调无权工具白烧 3.6 秒。
          * 跟「pending 确认直达慢层」同族：输入来源是系统状态，不是意图。
          */
-      } else if (!pending && !askJump) {
+      } else if (!pending && !askJump && (deps.fastEnabled?.() ?? true)) {
         fast = await runFast(g, trace, turn)
         handover = fast.allDenied ? [...fast.denied] : []
         fastReported = !!fast.said && fast.did > 0

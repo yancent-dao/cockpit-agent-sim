@@ -245,7 +245,9 @@ async function runScenario(s: Scenario) {
   const fastLlm = createOpenRouter(() => OPENROUTER_KEY, () => FAST_MODEL)
   // 分层计时：快层第一声何时出——过滤器架构的核心验收指标
   let firstSpeakMs = 0, fastSaid = false, slowSilent = true, turnT0 = 0
-  const agent = createPipeline({ registry, store, fastLlm, slowLlm: llm,
+  const agent = createPipeline({
+    fastEnabled: () => false,   // 2026-08-25 产品决策：主路径全走慢层
+    registry, store, fastLlm, slowLlm: llm,
     fastManifest: FAST_AGENT, slowManifest: { ...MAIN_AGENT, skills: SKILLS },
     desktopSummary: () => desk.summary(),
     prefsList: () => prefs.list().map(x => x.text),

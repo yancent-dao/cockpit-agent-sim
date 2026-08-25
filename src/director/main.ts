@@ -503,7 +503,28 @@ const llm = createOpenRouter(() => apiKey, () => modelId)
 // 快层用自己的（更便宜更快的）模型；没选就跟慢层同一个——功能不断，只是不快
 const fastLlm = createOpenRouter(() => apiKey, () => fastModelId || modelId)
 const LASTTIME_KEY = 'cockpit-sim:lastTime'
+/**
+ * 快层开关（2026-08-25 产品决策）：可用的快层模型要么比慢层还慢一个量级、
+ * 要么爱把工具调用当话念——默认关，全走慢层；换到真正快的模型可一键再开。
+ * localStorage 记住选择，跟快层模型选择同一层：这是"这台车用谁的脑子"的配置。
+ */
+const FAST_LAYER_KEY = 'cockpit-sim:fastLayer'
+let fastLayerOn = localStorage.getItem(FAST_LAYER_KEY) === 'on'
+const paintFastLayer = () => {
+  const b = $('fastLayer')
+  b.classList.toggle('on', fastLayerOn)
+  b.textContent = fastLayerOn ? '快层：开（先斩后奏）' : '快层：关（全走慢层）'
+}
+$('fastLayer').onclick = () => {
+  fastLayerOn = !fastLayerOn
+  localStorage.setItem(FAST_LAYER_KEY, fastLayerOn ? 'on' : 'off')
+  paintFastLayer()
+  log('p', fastLayerOn ? '快层已开：车控类先斩后奏' : '快层已关：所有输入直达慢层')
+}
+paintFastLayer()
+
 const pipeline = createPipeline({
+  fastEnabled: () => fastLayerOn,
   registry, store, fastLlm, slowLlm: llm,
   fastManifest: FAST_AGENT, slowManifest: { ...MAIN_AGENT, skills: SKILLS },
   desktopSummary: () => desk.summary(),

@@ -40,11 +40,11 @@ beforeEach(() => {
   reg = createRegistry(store, TOOLS)
 })
 
-const mk = (fast: LLM, slow: LLM) => {
+const mk = (fast: LLM, slow: LLM, extra: any = {}) => {
   const events: PipelineEvent[] = []
   const p = createPipeline({
     registry: reg, store, fastLlm: fast, slowLlm: slow,
-    fastManifest: FAST_AGENT, slowManifest: MAIN_AGENT,
+    fastManifest: FAST_AGENT, slowManifest: MAIN_AGENT, ...extra,
   })
   p.on(e => events.push(e))
   return { p, events }
@@ -444,6 +444,28 @@ describe('前情摘要标记泄漏（2026-08-25 pilot 实拍：模型把【前�
     const speaks = (events.filter(e => e.type === 'speaking') as any[]).map(e => e.text)
     expect(speaks.some(t => t.includes('前情摘要')), '摘要格式不许上嘴').toBe(false)
     expect(speaks.some(t => t.includes('祝您旅途愉快')), '正常的前半句保留').toBe(true)
+  })
+})
+
+describe('快层开关（2026-08-25 产品决策：快层模型普遍太慢/爱把调用当话说，先关掉全走慢层，面板可再开）', () => {
+  it('关掉后快层 LLM 一次都不该被调，输入直达慢层', async () => {
+    const fast = fakeLLM(() => ({ text: '不该出现' }))
+    const slow = fakeLLM(() => ({ text: '好，这就帮你办' }))
+    const { p, events } = mk(fast, slow, { fastEnabled: () => false })
+    const r = await p.run('打开车窗')
+    expect(fast.seen, '快层被跳过').toHaveLength(0)
+    expect(r.reply).toBe('好，这就帮你办')
+    const speaks = (events.filter(e => e.type === 'speaking') as any[])
+    expect(speaks).toHaveLength(1)
+    expect(speaks[0].layer).toBe('slow')
+  })
+
+  it('不传开关默认开——既有行为不变', async () => {
+    const fast = fakeLLM(() => ({ text: '好' }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('你好')
+    expect(fast.seen.length).toBeGreaterThan(0)
   })
 })
 

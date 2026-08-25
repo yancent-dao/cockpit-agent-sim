@@ -68,6 +68,14 @@ const FAST_NAME = /flash|mini|haiku|lite|turbo|small|nano|instant|fast/i
  */
 const SLOW_VARIANT = /:(batch|free|thinking|extended)\b/
 
+/**
+ * 免费档整体下架（2026-08-25 实拍 429）：:free 档是**账户级**每分钟 ~20 次
+ * 的限流，而这套架构一句话 = 快层 2 轮 + 慢层 1 轮 + 异步压缩，天然是请求
+ * 放大器——免费档进主对话必然频繁限流，还慢（实测快层 16.5s）。纯函数，可单测
+ */
+export const dropFreeTier = (models: ModelInfo[]): ModelInfo[] =>
+  models.filter(m => !/:free\b/.test(m.id))
+
 /** 快速模型筛选。纯函数，可单测 */
 export function pickFastModels(models: ModelInfo[]): ModelInfo[] {
   return models

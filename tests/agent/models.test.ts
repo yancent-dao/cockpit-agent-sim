@@ -48,7 +48,7 @@ describe('stripThinking：清理各家模型的思考标签', () => {
     expect(stripThinking(undefined)).toBe('')
   })
 })
-import { pickFastModels, FALLBACK_MODELS } from '../../src/agent/llm'
+import { pickFastModels, dropFreeTier, FALLBACK_MODELS } from '../../src/agent/llm'
 import type { ModelInfo } from '../../src/agent/llm'
 
 const m = (id: string, price = 1): ModelInfo => ({ id, name: id, tools: true, promptPrice: price })
@@ -100,5 +100,25 @@ describe('toSpeech：伪工具调用残片剥离', () => {
       .toBe('新闻卡我先收一下。')
     expect(toSpeech('好了<tool_call>{"name":"x"}</tool_call>')).toBe('好了')
     expect(toSpeech('正常的话术不受影响')).toBe('正常的话术不受影响')
+  })
+})
+
+describe('dropFreeTier：免费档整体下架（2026-08-25 实拍 429）', () => {
+  /**
+   * :free 档每分钟 20 次的账户级限流，撞上"一句话 = 快层 2 轮 + 慢层 1 轮 +
+   * 异步压缩"的放大器，主对话必然频繁 429。快层筛选早就排除了 :free，
+   * 但主模型下拉是全量列表——用户照样能选中免费档然后被限流。
+   */
+  it('滤掉所有 :free 变体，其余原样保留', () => {
+    const out = dropFreeTier([
+      { id: 'qwen/qwen3.7-flash', name: 'f', tools: true },
+      { id: 'nvidia/nemotron-nano-9b-v2:free', name: 'n', tools: true },
+      { id: 'z-ai/glm-4.7-flash:free', name: 'g', tools: true },
+    ])
+    expect(out.map(x => x.id)).toEqual(['qwen/qwen3.7-flash'])
+  })
+
+  it('兜底列表本来就没有免费档——过滤后一个不少', () => {
+    expect(dropFreeTier(FALLBACK_MODELS)).toHaveLength(FALLBACK_MODELS.length)
   })
 })

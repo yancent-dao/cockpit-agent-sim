@@ -42,7 +42,7 @@ import { createWebSearch } from '../integrations/websearch'
 import { createOpenMeteoClient } from '../integrations/openmeteo'
 import { createPipeline } from '../agent/pipeline'
 import { createScheduler } from '../agent/scheduler'
-import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, type ModelInfo } from '../agent/llm'
+import { createOpenRouter, createOnlineChat, FALLBACK_MODELS, pickFastModels, dropFreeTier, type ModelInfo } from '../agent/llm'
 import { createBus } from '../bus'
 import { createDesk } from '../cards/desk'
 import { createOrchestrator } from '../cards/orchestrator'
@@ -1172,8 +1172,9 @@ $('fastOnly').onclick = () => { fastOnly = !fastOnly; $('fastOnly').classList.to
 async function loadModels() {
   if (!apiKey) { allModels = FALLBACK_MODELS; renderModels(); return }
   try {
-    allModels = await llm.models()
-    log('k', `✓ 已加载 ${allModels.length} 个支持 function calling 的模型`)
+    const raw = await llm.models()
+    allModels = dropFreeTier(raw)   // 免费档限流又慢，整体下架（fast 筛选里早就排了）
+    log('k', `✓ 已加载 ${allModels.length} 个支持 function calling 的模型（已滤掉 ${raw.length - allModels.length} 个免费档）`)
   } catch (err) {
     allModels = FALLBACK_MODELS
     log('e', `✗ 模型列表拉取失败，使用兜底列表：${err}`)

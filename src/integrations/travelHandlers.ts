@@ -279,15 +279,29 @@ function core(deps: TravelDeps) {
        * 非归档已存在 → 复用，不新建；这次要盯的项照样往它身上加。
        */
       const dup = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
-      const merged = { ...dup, departDate: args?.departDate ?? dup?.departDate,
-        returnDate: args?.returnDate ?? dup?.returnDate,
+      /**
+       * 参数名退化照收（2026-08-25 实拍：模型传 startDate/endDate，departDate
+       * 没落仓）——同 {item} 展平先例，协议适配不是意图分支。
+       * 过去的日期是幻觉不是行程（同一份实拍：2023-07-15）：不入仓。
+       */
+      const notPast = (v: any) => {
+        if (v === undefined) return undefined
+        const t = Date.parse(String(v) + 'T23:59:59')
+        return Number.isFinite(t) && t >= deps.clock() ? String(v) : null   // null = 给了但过期
+      }
+      const rawDepart = args?.departDate ?? args?.startDate
+      const rawReturn = args?.returnDate ?? args?.endDate
+      const depart = notPast(rawDepart)
+      const ret = notPast(rawReturn)
+      const merged = { ...dup, departDate: depart ?? dup?.departDate,
+        returnDate: ret ?? dup?.returnDate,
         travelers: args?.travelers ?? dup?.travelers }
       const pending = REQUIRED_SOON.filter(k => !(merged as any)[k])
       const id = dup?.id ?? newId('task')
       if (!dup)
         S().addTask({
           id, title: String(args?.title ?? destination).trim(), destination,
-          departDate: args?.departDate, returnDate: args?.returnDate,
+          departDate: depart ?? undefined, returnDate: ret ?? undefined,
           travelers: args?.travelers,
           status: pending.length ? 'draft' : 'active',
           createdAt: deps.clock(),
@@ -332,11 +346,20 @@ function core(deps: TravelDeps) {
       const quoteLine = quotes.length
         ? `。参考价：${quotes.map(q => `${q.label} ${q.text}`).join('、')}${quotes.some(q => q.note) ? `（${quotes.find(q => q.note)!.note}）` : ''}——用户问价直接报这个，别再转后台查`
         : ''
+      /**
+       * 空任务提醒（2026-08-25 实拍：模型把三天行程全念在嘴上、只调 create，
+       * 屏上一张只有头图的空卡）。判据是数据形状：任务既无 days 也无 lines。
+       */
+      const after = S().task(id)
+      const noContent = !after?.days?.length && !after?.lines?.length
+        ? '。注意：任务还没有行程内容，屏上是张空卡——把刚才排的行程用 travel.plan 交上来（days）'
+        : ''
+      const pastNote = depart === null ? `。你给的出发日（${rawDepart}）已经过了，当没给处理——问用户哪天走` : ''
       return { status: 'ok', data: { taskId: id, watchIds, pending, quotes },
-        message: dup
+        message: (dup
           ? `已经有「${dup.title}」这个行程了，直接用它${watchIds.length ? `，新加 ${watchIds.length} 项监控` : ''}${quoteLine}`
           : `任务建好了${pending.length ? `（还缺 ${pending.join('、')}，可以边聊边补）` : ''}` +
-            `${watchIds.length ? `，${watchIds.length} 项已经开始盯了` : ''}${quoteLine}` }
+            `${watchIds.length ? `，${watchIds.length} 项已经开始盯了` : ''}${quoteLine}`) + noContent + pastNote }
     },
 
     /* ── 建委托 ── */

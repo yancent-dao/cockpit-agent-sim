@@ -188,6 +188,31 @@ describe('travel.create：信息不全也照建', () => {
   })
 
 
+  it('建了个没有行程内容的任务——message 提醒补 travel.plan（2026-08-25 实拍：模型把三天行程全念在嘴上、只调 create，屏上一张空卡）', async () => {
+    const r = ok(await h.travelCreate({ destination: '首尔' }))
+    expect(String(r.message)).toContain('travel.plan')
+    // 有内容时不啰嗦
+    ok(await h.travelPlan({ destination: '曼谷',
+      days: [{ title: 'D1', stops: [{ name: '大皇宫' }] }] }))
+    const r2 = ok(await h.travelCreate({ destination: '曼谷', departDate: dstr(3) }))
+    expect(String(r2.message)).not.toContain('travel.plan')
+  })
+
+  it('startDate/endDate 是模型对参数名的常见退化——照收（同 {item} 展平先例）', async () => {
+    ok(await h.travelCreate({ destination: '首尔',
+      startDate: dstr(10), endDate: dstr(13) }))
+    expect(store.tasks()[0].departDate).toBe(dstr(10))
+    expect(store.tasks()[0].returnDate).toBe(dstr(13))
+    expect(store.tasks()[0].status).toBe('active')
+  })
+
+  it('过去的日期是幻觉不是行程——不入仓，message 说明', async () => {
+    const r = ok(await h.travelCreate({ destination: '首尔', departDate: '2023-07-15' }))
+    expect(store.tasks()[0].departDate).toBeUndefined()
+    expect(store.tasks()[0].status).toBe('draft')
+    expect(String(r.message)).toMatch(/过去|已经过了/)
+  })
+
   it('watch 项可带住宿段——多城市行程一段一条酒店监控，各盯各的价', async () => {
     const r = ok(await h.travelCreate({
       destination: '曼谷', departDate: '2026-09-06',

@@ -71,3 +71,20 @@ trend 模板与 paintTrend 保留(钻取视图)。
   是内容不是机制);接 Pexels 真图列入待办。
 - 攻略生成成本:days 结构比 7 条清单重,一轮 web.search + 一次 travel.plan
   仍是"就地办完"的量级;实测太慢再考虑骨架先出。
+
+## v3 修订(2026-08-25 下午,用户拍板)
+
+轮播撤销,改**滚动单页 + 分步共建**(设计稿 page-steps,五步脚本):
+
+- **选线阶段**:目的地宽泛(省级)时 travel.plan 先交 `lines`(2-4 条线路:
+  名称/城市链/天数/适合谁),trip 卡渲染选线列表;选定后再交 days,lines 自动清。
+- **滚动单页**:days 全部纵向展开(court 单列/stage 双列),`.bd` 自带滚动;
+  hall 行驶档只给单行摘要,天然不滚。轮播 CSS(tpf* keyframes/tpdots/data-n)
+  与 dayIdx 锁帧全部退役。
+- **每天带天气**:确认(有 departDate)后机制自动拉 Open-Meteo 16 天逐日预报
+  (amap geocode 定坐标),按行程日对齐存 task.wx,dayhead 行尾显示;
+  超预报窗的日子不显示不编造,临近自动补上。影响行程的异常天气(骑车日阵雨)
+  由模型在播报里主动提。
+- **随意变动是一等公民**:改行程=任何时候重交完整 days(travel.plan 同任务
+  更新,模型手里有全份,局部改也整份交);换住宿段=unwatch旧+watch新;
+  改日期/人数/目的地=travel.update(天气与监控自动重算)。没有"锁定"状态。

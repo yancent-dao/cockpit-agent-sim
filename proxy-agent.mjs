@@ -76,10 +76,18 @@ function socksTunnel(u, host, port, ok, fail) {
 
 let warnedFallback = false
 
-export function envProxyAgent() {
+/**
+ * @param {string} [fallbackUrl] 环境变量都没有时的兜底代理地址。
+ *   2026-08-25 实拍：dev server 在没 export HTTPS_PROXY 的终端里启动，
+ *   出口直连 CN，慢层 Claude Opus 403 锁区——用户每换一个终端就要
+ *   记得 export 一次是个坑。vite.config 会把 .env.local 的 PROXY_URL
+ *   传进来（无 VITE_ 前缀，不进前端 bundle），从此在哪个终端启动都带代理。
+ */
+export function envProxyAgent(fallbackUrl) {
   const raw = process.env.HTTPS_PROXY || process.env.https_proxy
     || process.env.HTTP_PROXY || process.env.http_proxy
     || process.env.ALL_PROXY || process.env.all_proxy
+    || fallbackUrl
   if (!raw) return undefined
   let u
   try { u = new URL(raw) } catch { return undefined }

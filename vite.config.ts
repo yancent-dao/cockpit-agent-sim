@@ -18,7 +18,8 @@ const proxy: Record<string, any> = proxyTable()
  * **只对出海上游挂**（ABROAD 白名单）：国内上游走 VPN 是降级——
  * 高德 IP 定位会定到代理节点头上（实拍：设置成都，天气卡显示杭州滨江）。
  */
-const agent = envProxyAgent()
+// PROXY_URL 放 .env.local（无 VITE_ 前缀不进 bundle）：环境变量缺席时的兜底
+const agent = envProxyAgent(loadEnv('development', __dirname, '').PROXY_URL)
 if (agent) for (const k of Object.keys(proxy))
   if (ABROAD.has(k.slice(PROXY_PREFIX.length) as any)) proxy[k].agent = agent
 

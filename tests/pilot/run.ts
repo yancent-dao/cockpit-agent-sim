@@ -25,6 +25,7 @@ import { createAutomationStore } from '../../src/state/automation'
 import { createTravelStore } from '../../src/state/travel'
 import { mockSource } from '../../src/integrations/travelMock'
 import { fxSource } from '../../src/integrations/travelSources'
+import { createOpenMeteoClient } from '../../src/integrations/openmeteo'
 import { createFxClient } from '../../src/integrations/frankfurter'
 import { createRadioClient } from '../../src/integrations/radio'
 import { createNewsClient } from '../../src/integrations/news'
@@ -221,6 +222,13 @@ async function runScenario(s: Scenario) {
     // 盯价全炸 HANDLER_ERROR——pilot 的装配必须跟 director 一样全
     travel: createTravelStore({ get: () => null, set: () => {} }),
     travelSources: { flight: mockSource(), hotel: mockSource(), fx: fxSource(createFxClient(fetch as any)) },
+    travelWeather: async (city: string, days: number) => {
+      if (!amap) throw new Error('amap 未配置')
+      const g = await amap.geocode(city)
+      if (!g?.location) throw new Error('定位不到 ' + city)
+      const [lng, lat] = g.location.split(',').map(Number)
+      return createOpenMeteoClient(fetch as any).daily(lat, lng, days)
+    },
     radio: createRadioClient(fetch as any),
     ...(NEWS_KEY && { news: createNewsClient(fetch as any, () => NEWS_KEY) }),
     ...(PEXELS_KEY && { pexels: createPexelsClient(fetch as any, () => PEXELS_KEY) }),

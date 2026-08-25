@@ -75,6 +75,11 @@ const DATA: Record<string, any> = {
         stops: [{ time: '08:30', name: '大巴去芭提雅', note: 'Ekkamai 东站发车，2 小时' },
           { time: '11:30', name: '格兰岛', note: '快艇上岛，浮潜香蕉船' }] },
     ],
+    wx: [
+      { date: '2026-09-06', weather: '晴', hi: 33, lo: 26 },
+      { date: '2026-09-07', weather: '多云', hi: 32, lo: 26 },
+      { date: '2026-09-08', weather: '小雨', hi: 30, lo: 25 },
+    ],
     flight: { label: '成都 ⇄ 曼谷', text: '¥1,670', delta: -28,
       points: [2150, 2080, 2110, 1990, 1930, 1870, 1820, 1780, 1730, 1670] },
     stays: [

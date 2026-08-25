@@ -528,63 +528,20 @@ export function cardBody(c: CardView): string {
       ].filter(Boolean).join('')
     }
     /**
-     * 融合旅行卡（2026-08-25）。一张卡 = 一次旅行的家，三个阶段原地生长：
-     * 攻略（头图+行前准备+Day 轮播）→ 盯价（+价格块）→ 到价（+决策条）。
-     * 阶段判据全是**数据形状**：有 flight/stays 画价格块，有 decide 画决策条。
-     *
-     * Day 轮播是纯 CSS：全部帧一次输出（绝对定位叠放），容器 data-n 标帧数，
-     * keyframes 在 screen.html 按 n 轮转——零状态零计时器，重渲染只是相位重置。
-     * data.dayIdx 存在 = 用户锁定了帧（"停在这页"/"看第三天"），只画那一帧。
+     * 融合旅行卡 v3（2026-08-25 用户拍板：轮播退役，滚动单页）。
+     * 一张卡 = 一次旅行的家，四个阶段全是**数据形状**：lines（选线）→
+     * days（攻略全文，纵向铺开靠 .bd 滚动）→ flight/stays（盯价，置顶）→
+     * decide（到价，价格块与全文之间）。hall 行驶档只给单行摘要——
+     * 行驶中不给滚动是 HMI 纪律，档位判据即滚动判据。
      */
     case 'trip': {
       const form = formOf('trip', ...dimsOf(c.size))
       const has = (b: string) => form.blocks.includes(b)
       const days: Array<{ title: string; stay?: string; cityChange?: boolean
         stops: Array<{ time?: string; name: string; note?: string }>; trans?: string[] }> = d.days ?? []
-      const lockedIdx = typeof d.dayIdx === 'number' && days[d.dayIdx] ? d.dayIdx : undefined
-      const frames = lockedIdx !== undefined ? [lockedIdx] : days.map((_, i) => i)
-      const anim = lockedIdx === undefined && frames.length > 1
-        ? ` data-n="${Math.min(frames.length, 7)}"` : ''
       const badge = d.dday ?? d.badge
-      // 帧的密度是阶段的函数：攻略阶段帧是主角（完整时间轴）；长出价格块后
-      // 帧退居单行继续转（stage 双列例外）；到价时刻决策条是主角，帧一律单行
-      // 到价时刻决策条是主角，帧一律收单行（stage 实测也塞不下：画廊 h3 偷走
-      // 50px 后双列帧差 102px）；盯价态 stage 双列帧保留（空间够）
-      const fullFrame = has('dayfull') && !d.decide?.question
-        && (!(d.flight || d.stays?.length) || has('daycols'))
-      // 帧头：D 几 · 当天动线 · 宿在哪段（换城日用琥珀标出来）
-      const head = (i: number) => `<div class="tpfh"><b class="tpfd num">D${i + 1}</b>` +
-        `<b>${esc(days[i].title)}</b>${days[i].stay
-          ? `<span class="tpstay${days[i].cityChange ? ' is-move' : ''}">宿 ${esc(days[i].stay)}</span>` : ''}</div>`
-      const stopRow = (st: { time?: string; name: string; note?: string }) =>
-        `<div class="tpstop">${st.time ? `<span class="num">${esc(st.time)}</span>` : '<span></span>'}` +
-        `<div><b>${esc(st.name)}</b>${st.note ? `<small>${esc(st.note)}</small>` : ''}</div></div>`
-      // 完整帧：时间轴 + 站间交通；双列档站点铺两栏（tpcols），交通衔接放不下就不画
-      const frame = (i: number, cols: boolean) => `<div class="tpfr" style="animation-delay:${
-        frames.indexOf(i) * 8}s">${head(i)}${cols
-          ? `<div class="tpcols">${days[i].stops.map(stopRow).join('')}</div>`
-          : days[i].stops.map((st, k) => stopRow(st) + (days[i].trans?.[k]
-              ? `<div class="tptrans">↓ ${esc(days[i].trans![k])}</div>` : '')).join('')}</div>`
-      // 单行帧（行驶中）：动线一行 + 宿哪，扫一眼即走
-      // 单行帧。宽档（daycols）多出来的空间换成动线摘要——不是把同样的东西放大
-      const lineFrame = (i: number) => {
-        const sub = [days[i].stay ? `宿 ${esc(days[i].stay)}` : '',
-          has('daycols') ? days[i].stops.map(st => esc(st.name)).join(' → ') : '',
-        ].filter(Boolean).join(' · ')
-        return `<div class="tpfr tpline" style="animation-delay:${
-          frames.indexOf(i) * 8}s"><b class="tpfd num">D${i + 1}</b><div><b>${esc(days[i].title)}</b>${
-            sub ? `<small>${sub}</small>` : ''}</div></div>`
-      }
-      const dots = frames.length
-        ? `<div class="tpdots">${frames.map((_, k) =>
-            `<i${lockedIdx !== undefined || frames.length < 2 ? ' class="on"' : ''} style="animation-delay:${k * 8}s"></i>`).join('')}` +
-          `<span>${lockedIdx !== undefined
-            ? `停在 D${lockedIdx + 1} · 说"继续轮播"恢复`
-            : frames.length > 1 ? `${frames.length} 天自动轮播 · 说"停在这页"或"看第几天"` : ''}</span></div>`
-        : ''
       const delta = (v?: number) => v === undefined || v === 0 ? ''
         : `<span class="trdelta ${v < 0 ? 'down' : 'up'}">${v < 0 ? '↓' : '↑'}${Math.abs(v)}</span>`
-      // 价格块：court/stage 给曲线，行驶中只给一行摘要——扫一眼即走
       const spark = (pts: number[]) => {
         if (pts.length < 2) return ''
         const lo = Math.min(...pts), hi = Math.max(...pts), span = hi - lo || 1
@@ -592,9 +549,27 @@ export function cardBody(c: CardView): string {
           `${((i / (pts.length - 1)) * 300).toFixed(1)},${(75 - ((v - lo) / span) * 62).toFixed(1)}`).join(' ')
         return `<svg viewBox="0 0 300 80" preserveAspectRatio="none"><polyline points="${line}" class="trline"></polyline></svg>`
       }
-      const pricey = !!(d.flight || d.stays?.length)
-      // 价格块：曲线只给停车档（行驶中扫一眼即走）；两段式住宿各一行
-      const prices = pricey ? `<div class="tpprices">${[
+      // 选线阶段：目的地宽泛先收敛，点一条 = 说了那句话
+      const linesBlk = !days.length && d.lines?.length
+        ? `<div class="tplines">${d.lines.map((l: any) =>
+            `<div class="tpline-item" data-act="tap:item" data-value="就走${esc(l.name ?? '')}">
+              <div class="tplh"><b>${esc(l.name ?? '')}</b>${l.days ? `<span class="num">${esc(l.days)}</span>` : ''}</div>
+              <div class="tplr num">${esc(l.route ?? '')}</div>${l.note ? `<small>${esc(l.note)}</small>` : ''}
+            </div>`).join('')}</div>` : ''
+      // 每天的行头：D 几 · 动线 · 当天天气 · 宿哪（换城日琥珀）
+      const wxOf = (i: number) => {
+        const w = d.wx?.[i]
+        return w ? `<span class="tpwx num">${esc(w.weather)} ${w.hi}° / ${w.lo}°</span>` : ''
+      }
+      const dayBlk = (i: number) => `<div class="tpday">
+        <div class="tpfh"><b class="tpfd num">D${i + 1}</b><b>${esc(days[i].title)}</b>${wxOf(i)}${days[i].stay
+          ? `<span class="tpstay${days[i].cityChange ? ' is-move' : ''}">宿 ${esc(days[i].stay)}</span>` : ''}</div>
+        ${days[i].stops.map((st, k) =>
+          `<div class="tpstop">${st.time ? `<span class="num">${esc(st.time)}</span>` : '<span></span>'}` +
+          `<div><b>${esc(st.name)}</b>${st.note ? `<small>${esc(st.note)}</small>` : ''}</div></div>` +
+          (days[i].trans?.[k] ? `<div class="tptrans">↓ ${esc(days[i].trans![k])}</div>` : '')).join('')}
+      </div>`
+      const prices = (d.flight || d.stays?.length) ? `<div class="tpprices">${[
         d.flight ? `<div class="tpprice" data-act="tap:item" data-value="看看机票的价格趋势">
             <div class="tpph"><b>${esc(d.flight.label ?? '机票')}</b>${delta(d.flight.delta)}</div>
             <b class="tppv num">${esc(d.flight.text ?? '')}</b>${has('dayfull') ? spark(d.flight.points ?? []) : ''}</div>` : '',
@@ -613,13 +588,21 @@ export function cardBody(c: CardView): string {
         has('prep') && d.prep?.length && !d.flight
           ? `<div class="tpprep">${d.prep.map((x: string) => `<span>${esc(x)}</span>`).join('')}</div>` : '',
         prices,
-        days.length ? `<div class="tpcar${!fullFrame && has('dayfull') ? ' is-line' : ''}"${anim}>${frames.map(i =>
-          fullFrame ? frame(i, has('daycols')) : lineFrame(i)).join('')}</div>${dots}` : '',
         has('decide') && d.decide?.question
           ? `<div class="tpdecide"><b>${esc(d.decide.question)}</b>
               <div class="tpopts">${(d.decide.options ?? []).slice(0, 2).map((o: string) =>
                 `<span data-act="tap:item" data-value="${esc(o)}">${esc(o)}</span>`).join('')}</div>
             </div>` : '',
+        has('dayfull') ? linesBlk : '',
+        // 全文纵向铺开（stage 双列）——长了靠 .bd 自己滚；行驶档没有这一块
+        has('dayfull') && days.length
+          ? `<div class="tpdays${has('daycols') ? ' tpcols' : ''}">${days.map((_, i) => dayBlk(i)).join('')}</div>`
+          : '',
+        // 行驶档：首日一行摘要，扫一眼即走
+        !has('dayfull') && days.length
+          ? `<div class="tpnow"><b class="tpfd num">D1</b><div><b>${esc(days[0].title)}</b>${
+              days[0].stay ? `<small>宿 ${esc(days[0].stay)}</small>` : ''}</div>${wxOf(0)}</div>`
+          : '',
         has('dayfull') && d.foot ? `<div class="tpfoot">${esc(d.foot)}</div>` : '',
       ].filter(Boolean).join('')
     }

@@ -605,12 +605,14 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'travel.plan',
     brief: '攻略上卡（按天的日程）',
-    desc: '把查好的攻略组织成**按天的日程**交给系统，旅行卡上屏（Day 自动轮播，' +
-      '不用你翻页）。用户露出出行意图就先调它——**先给攻略再说别的，一个问题都不问**。' +
-      '每天：title 是当天动线（"大皇宫 · 卧佛寺 · 考山路"），stops 按时间给 2–4 站' +
-      '（note 一句为什么值得+实用贴士），trans[i] 是第 i 站到下一站怎么走，' +
-      'stay 写当晚宿在哪片区域（跨城市的行程各天 stay 不同，换城那天标 cityChange）。' +
-      '调完**只说一句收尾**，内容让屏幕讲——正文别在嘴上复述一遍。',
+    desc: '攻略上卡的唯一通道，可反复调（同目的地原地更新）。两种用法：' +
+      '①目的地宽泛（省级"云南"）先交 lines（2–4 条线路收敛，问一个偏好问题）；' +
+      '②目的地具体/选定线路后交 days（按天日程，交 days 会自动清 lines）。' +
+      '每天：title 是当天动线，stops 按时间 2–4 站（note 一句为什么值得+贴士），' +
+      'trans[i] 是站间交通，stay 写当晚宿哪片（跨城行程各天不同，换城标 cityChange）。' +
+      '**用户随时可以改行程**："D2 不想骑车"→改好 D2 后把完整 days 重交一遍' +
+      '（你手里有全份，局部改也整份交），卡原地更新、天气监控自动跟上。' +
+      '调完**只说一句收尾**，内容让屏幕讲。',
     permission: '彩',
     params: {
       destination: { type: 'string', required: true, desc: '目的地，如"曼谷"' },
@@ -625,6 +627,12 @@ export const TOOLS: ToolDef[] = [
           stay: { type: 'string' }, cityChange: { type: 'boolean' },
         }, required: ['title', 'stops'] },
         desc: '按天的日程。每站 note 一句介绍+贴士，如"门票 500 泰铢，要过膝着装"' },
+      lines: { type: 'array', items: { type: 'object',
+        properties: { name: { type: 'string' }, route: { type: 'string' },
+          days: { type: 'string' }, note: { type: 'string' } },
+        required: ['name', 'route'] },
+        desc: '选线阶段用：[{"name":"滇西北 · 雪山古城线","route":"昆明 → 大理 → 丽江",' +
+          '"days":"6–8 天","note":"适合谁一句话"}]。交 days 时不用带' },
       prep: { type: 'array', items: { type: 'string' },
         desc: '行前准备，3–5 条短句：签证/货币/电话卡/天气衣物' },
       summary: { type: 'string', desc: '一句话总结，卡片脚注用' },
@@ -725,9 +733,6 @@ export const TOOLS: ToolDef[] = [
       returnDate: { type: 'string', desc: '新的返程日 YYYY-MM-DD' },
       travelers: { type: 'number', desc: '改人数' },
       status: { type: 'enum', values: ['draft', 'active', 'archived'], desc: '行程结束了就 archived，归档后可查可复用' },
-      dayIdx: { type: 'number',
-        desc: '锁定攻略轮播到第几天（0 起）。用户说"看第三天"传 2、"停在这页"传当前天；' +
-          '说"继续轮播"传 null 恢复自动' },
     },
     handler: 'travelUpdate',
   },

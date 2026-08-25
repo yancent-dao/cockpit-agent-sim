@@ -462,6 +462,18 @@ const registry = createRegistry(store, TOOLS, Date.now, {
   story, image: imageGen,
   automation: { store: autoStore, execute: executeAutomation },
   travel: travelStore, travelSources,
+  /**
+   * 行程逐日天气（v3）：高德 geocode 定坐标（中文地名它最擅长）→
+   * Open-Meteo 16 天逐日。任一环没配（没 Key/没网）就没有天气，行程照常。
+   * 注意高德 location 是 "lng,lat" 序，Open-Meteo 要 lat,lon——老坑。
+   */
+  travelWeather: async (city: string, days: number) => {
+    if (!amap) throw new Error('amap 未配置')
+    const g = await amap.geocode(city)
+    if (!g?.location) throw new Error('定位不到 ' + city)
+    const [lng, lat] = g.location.split(',').map(Number)
+    return createOpenMeteoClient(fetch.bind(window)).daily(lat, lng, days)
+  },
   // 常用地址持久化 + 语音配置：voice.config 写的 key 跟上面那个音色下拉框
   // 是同一个（cockpit-sim:tts:voice），单一事实，车机屏靠 storage 事件生效
   storage: defaultStorage(),

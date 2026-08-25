@@ -64,6 +64,8 @@ describe('相邻两档渲染出来的东西必须不同', () => {
       { title: '去芭提雅', stay: '芭提雅·海滩', cityChange: true,
         stops: [{ time: '08:30', name: '大巴去芭提雅' }] },
     ],
+    wx: [{ date: '2026-09-06', weather: '晴', hi: 33, lo: 26 },
+      { date: '2026-09-07', weather: '小雨', hi: 30, lo: 25 }],
     flight: { label: '机票 · 成都 ⇄ 曼谷', text: '¥1,670', delta: -28,
       points: [2100, 2050, 1980, 1890, 1810, 1740, 1670] },
     stays: [

@@ -18,6 +18,9 @@ export interface TravelDeps {
   desk: () => Desk | undefined
   sources: () => SourceMap
   clock: () => number
+  /** 逐日天气（v3）：城市 → 16 天预报。没装配就没有天气，行程照常 */
+  weather?: () => ((city: string, days: number) => Promise<Array<{
+    date: string; weather: string; hi: number; lo: number }>>) | undefined
 }
 
 const TRIP_KEY = 'travel-trip'
@@ -119,8 +122,8 @@ function core(deps: TravelDeps) {
           : t.days?.length ? `${t.days.length} 天怎么玩 · 攻略给你摆好了` : '日期还没定',
         badge: t.days?.length ? `${t.days.length} 天 · ${t.destination}` : undefined,
         dday: ddayOf(t.departDate),
-        prep: t.prep, days: t.days, dayIdx: t.dayIdx,
-        flight, stays,
+        prep: t.prep, days: t.days, lines: t.days?.length ? undefined : t.lines,
+        wx: t.wx, flight, stays,
         decide: hit ? {
           question: `${KIND_LABEL[hit.kind]}到你说的价了（${UNIT[hit.kind](hit.lastValue!)}），现在定吗？`,
           options: [`看看${KIND_LABEL[hit.kind]}的价格趋势`, '先不定，继续盯着'],
@@ -173,6 +176,27 @@ function core(deps: TravelDeps) {
     } catch { return undefined }
   }
 
+  /**
+   * 行程天气（v3）：有出发日 + 在 16 天预报窗内才拉，按行程日对齐存
+   * task.wx；窗外的日子存 null——**不编造超窗的天气**。源没接/报错静默
+   * 跳过，行程照常。改日期/改目的地后重拉（调用方负责触发）。
+   */
+  const refreshWx = async (taskId: string) => {
+    const t = S().task(taskId)
+    const fetchWx = deps.weather?.()
+    if (!t?.departDate || !t.days?.length || !fetchWx) return
+    const start = Date.parse(t.departDate + 'T00:00:00')
+    const daysOut = (start - deps.clock()) / 86_400_000
+    if (!Number.isFinite(daysOut) || daysOut > 16) return   // 整程超窗：临近再补
+    try {
+      const fc = await fetchWx(t.destination, 16)
+      const byDate = new Map(fc.map(w => [w.date, w]))
+      const wx = t.days.map((_, i) =>
+        byDate.get(new Date(start + i * 86_400_000).toISOString().slice(0, 10)) ?? null)
+      S().updateTask(taskId, { wx })
+    } catch { /* 天气拉不到不拦行程 */ }
+  }
+
   const handlers = {
     /* ── 攻略进仓。模型查完攻略把结构化日程交过来，trip 卡上屏 ── */
     travelPlan: async (args: any): Promise<ToolResult> => {
@@ -181,10 +205,31 @@ function core(deps: TravelDeps) {
         return { status: 'rejected', code: 'INVALID_PARAMS',
           message: '还不知道要去哪儿', suggestion: '先确定目的地再出攻略' }
       const days = Array.isArray(args?.days) ? args.days : []
+      const lines = Array.isArray(args?.lines) ? args.lines : []
+      /* ── 选线阶段（v3）：目的地宽泛先给几条线收敛，选定交 days 后 lines 自动清 ── */
+      if (!days.length && lines.length) {
+        const cleanLines = lines
+          .filter((x: any) => x?.name && x?.route)
+          .map((x: any) => ({ name: String(x.name), route: String(x.route),
+            days: x.days !== undefined ? String(x.days) : undefined,
+            note: x.note !== undefined ? String(x.note) : undefined }))
+        if (!cleanLines.length)
+          return { status: 'rejected', code: 'INVALID_PARAMS',
+            message: '线路不完整', suggestion: '每条线要 name 和 route' }
+        const dupL = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
+        const idL = dupL?.id ?? newId('task')
+        if (dupL) S().updateTask(idL, { lines: cleanLines })
+        else S().addTask({ id: idL, title: String(args?.title ?? destination).trim(),
+          destination, status: 'draft', createdAt: deps.clock(), lines: cleanLines })
+        paintTrip()
+        return { status: 'ok', data: { taskId: idL, lineCount: cleanLines.length },
+          message: `${cleanLines.length} 条线路上卡了——问一个偏好问题帮用户挑（点某条 = 选了它），` +
+            '选定后再交 days' }
+      }
       if (!days.length)
         return { status: 'rejected', code: 'INVALID_PARAMS',
-          message: '没有日程，攻略卡的身份就是一天一天怎么玩',
-          suggestion: 'days 按天给：[{title:"当天动线", stops:[{time?,name,note?}], trans?, stay?}]' }
+          message: '没有日程也没有线路',
+          suggestion: '目的地宽泛先交 lines 收敛；具体了交 days：[{title, stops:[{time?,name,note?}], trans?, stay?}]' }
       // 逐元素查必填——模型换字段名静默入仓的教训（story.begin 那次正文空白上屏）
       const bad = days.find((x: any) => !x?.title || !Array.isArray(x?.stops)
         || !x.stops.length || x.stops.some((st: any) => !st?.name))
@@ -207,12 +252,14 @@ function core(deps: TravelDeps) {
       // 防重判据跟 create 同一条：同目的地 + 非归档 → 更新它，不新建
       const dup = S().tasks().find(t => t.destination === destination && t.status !== 'archived')
       const id = dup?.id ?? newId('task')
-      const patch = { days: clean, prep, summary: args?.summary !== undefined ? String(args.summary) : undefined }
+      const patch = { days: clean, prep, lines: undefined,   // 选择题答完就撤
+        summary: args?.summary !== undefined ? String(args.summary) : undefined }
       if (dup) S().updateTask(id, patch)
       else S().addTask({
         id, title: String(args?.title ?? destination).trim(), destination,
         status: 'draft', createdAt: deps.clock(), ...patch,
       })
+      await refreshWx(id)          // 已有出发日的（改行程场景）天气跟着新行程走
       paintTrip()
       return { status: 'ok', data: { taskId: id, dayCount: clean.length },
         message: `${clean.length} 天的攻略上卡了，Day 会自动轮播——口头只说一句收尾，` +
@@ -280,6 +327,7 @@ function core(deps: TravelDeps) {
         if (q) quotes.push({ watchId: w.id, kind: w.kind, label: KIND_LABEL[w.kind],
           value: q.value, text: UNIT[w.kind](q.value), note: q.note })
       }))
+      await refreshWx(id)
       paintTrip()
       const quoteLine = quotes.length
         ? `。参考价：${quotes.map(q => `${q.label} ${q.text}`).join('、')}${quotes.some(q => q.note) ? `（${quotes.find(q => q.note)!.note}）` : ''}——用户问价直接报这个，别再转后台查`
@@ -387,10 +435,9 @@ function core(deps: TravelDeps) {
         .map(f => ({ field: f, from: (before as any)[f], to: args[f] }))
       if (changed.length)
         st.updateTask(before.id, Object.fromEntries(changed.map(c => [c.field, c.to])) as any)
-      // 轮播锁帧："看第三天"落 dayIdx，null = 恢复自动轮播。是展示意愿不是行程事实，
-      // 不进 changed 对照——改它不会让任何监控重算
-      if (args?.dayIdx !== undefined)
-        st.updateTask(before.id, { dayIdx: args.dayIdx === null ? undefined : Number(args.dayIdx) })
+      // 日期或目的地动了 → 天气跟着重拉（不动就不重拉，别浪费上游）
+      if (changed.some(c => c.field === 'departDate' || c.field === 'destination'))
+        await refreshWx(before.id)
       // 受影响的监控项：这个任务下的全部——日期变了它们的判断依据就全变了
       const affected = st.watches().filter(w => w.taskId === before.id).map(w => ({
         watchId: w.id, kind: w.kind, kindLabel: KIND_LABEL[w.kind],

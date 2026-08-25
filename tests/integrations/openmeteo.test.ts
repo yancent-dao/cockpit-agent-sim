@@ -133,3 +133,40 @@ describe('出错时说人话', () => {
       .rejects.toMatchObject({ code: 'TIMEOUT' })
   })
 })
+
+describe('daily()：旅行卡的 16 天逐日预报（2026-08-25 行程带天气）', () => {
+  const mk = (json: any, capture?: { url?: string }) =>
+    createOpenMeteoClient(async (url: string) => {
+      if (capture) capture.url = url
+      return { ok: true, json: async () => json } as any
+    })
+
+  const dailyReply = {
+    daily: {
+      time: ['2026-09-06', '2026-09-07'],
+      weather_code: [0, 61],
+      temperature_2m_max: [21.4, 18.2],
+      temperature_2m_min: [9.1, 8.0],
+    },
+  }
+
+  it('请求 16 天、只要 daily 三个字段', async () => {
+    const cap: { url?: string } = {}
+    await mk(dailyReply, cap).daily(25.04, 102.71, 16)
+    expect(cap.url).toContain('forecast_days=16')
+    expect(cap.url).toContain('daily=')
+    expect(cap.url).not.toContain('hourly=')
+  })
+
+  it('归一化成行程要的形状：date · 天气词 · 高低温', async () => {
+    const days = await mk(dailyReply).daily(25.04, 102.71, 16)
+    expect(days).toEqual([
+      { date: '2026-09-06', weather: '晴', hi: 21, lo: 9 },
+      { date: '2026-09-07', weather: '小雨', hi: 18, lo: 8 },
+    ])
+  })
+
+  it('没数据抛人话错', async () => {
+    await expect(mk({}).daily(25, 102, 16)).rejects.toThrow(/没给出数据/)
+  })
+})

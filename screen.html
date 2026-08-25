@@ -372,39 +372,36 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .card .tpprep span{padding:calc(3px*var(--u)) calc(11px*var(--u));border-radius:var(--r-pill,999px);
   font-size:calc(var(--t-cap)*var(--u));font-weight:500;color:var(--brand-fg);
   background:var(--brand-bg);border:1px solid var(--brand-bd);white-space:nowrap}
-/* Day 轮播：全部帧叠放，data-n 选 keyframes，帧和指示点同 delay 同步。
-   零状态零计时器——screen 层不出现任何业务逻辑 */
-.card .tpcar{position:relative;flex:1;min-height:calc(60px*var(--u));pointer-events:none}
-/* 单行帧模式（盯价/到价）：轮播是配角，收固定高把空间让给价格块 */
-.card .tpcar.is-line{flex:none;height:calc(84px*var(--u))}
-.card .tpfr{position:absolute;inset:0;display:flex;flex-direction:column;min-width:0}
-.card .tpcar[data-n] .tpfr{opacity:0}
-.card .tpcar[data-n="2"] .tpfr{animation:tpf2 16s infinite}
-.card .tpcar[data-n="3"] .tpfr{animation:tpf3 24s infinite}
-.card .tpcar[data-n="4"] .tpfr{animation:tpf4 32s infinite}
-.card .tpcar[data-n="5"] .tpfr{animation:tpf5 40s infinite}
-.card .tpcar[data-n="6"] .tpfr{animation:tpf6 48s infinite}
-.card .tpcar[data-n="7"] .tpfr{animation:tpf7 56s infinite}
-@keyframes tpf2{0%{opacity:0}3%,47%{opacity:1}50%,100%{opacity:0}}
-@keyframes tpf3{0%{opacity:0}2%,31%{opacity:1}33.3%,100%{opacity:0}}
-@keyframes tpf4{0%{opacity:0}2%,23%{opacity:1}25%,100%{opacity:0}}
-@keyframes tpf5{0%{opacity:0}1.5%,18.5%{opacity:1}20%,100%{opacity:0}}
-@keyframes tpf6{0%{opacity:0}1.5%,15.2%{opacity:1}16.7%,100%{opacity:0}}
-@keyframes tpf7{0%{opacity:0}1.5%,12.8%{opacity:1}14.3%,100%{opacity:0}}
-@media (prefers-reduced-motion: reduce){
-  .card .tpcar[data-n] .tpfr{animation:none}
-  .card .tpcar[data-n] .tpfr:first-child{opacity:1}
-}
-/* 帧头：D 几 · 动线 · 宿哪（换城日琥珀） */
-.card .tpfh{flex:none;display:flex;align-items:baseline;gap:calc(10px*var(--u));min-width:0;
+/* 选线（v3）：目的地宽泛先收敛，点一条 = 说了那句话 */
+.card .tplines{flex:1;min-height:0;display:flex;flex-direction:column;gap:calc(10px*var(--u))}
+.card .tpline-item{background:var(--sf-raised,rgba(15,23,42,.04));border-radius:var(--r-blk,16px);
+  padding:calc(12px*var(--u)) calc(15px*var(--u));min-width:0}
+.card .tplh{display:flex;align-items:baseline;gap:calc(10px*var(--u));min-width:0}
+.card .tplh b{min-width:0;font-size:calc(var(--t-body)*var(--u));font-weight:700;color:var(--tx-1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tplh span{margin-left:auto;flex:none;font-size:calc(var(--t-cap)*var(--u));
+  color:var(--brand-fg);font-weight:600}
+.card .tplr{margin-top:calc(2px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tpline-item small{display:block;margin-top:1px;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 全文单页（v3）：days 纵向铺开，长了靠 .bd 自己滚；stage 双列 */
+.card .tpdays{flex:none;display:flex;flex-direction:column}
+.card .tpdays.tpcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:calc(28px*var(--u))}
+.card .tpday{padding:calc(9px*var(--u)) 0;border-top:1px solid var(--hair,var(--hairline));min-width:0}
+/* 帧头：D 几 · 动线 · 天气 · 宿哪（换城日琥珀） */
+.card .tpfh{display:flex;align-items:baseline;gap:calc(10px*var(--u));min-width:0;
   margin-bottom:calc(2px*var(--u))}
 .card .tpfd{flex:none;font-size:calc(var(--t-lead)*var(--u));font-weight:800;line-height:1;color:var(--ac)}
-.card .tpfh>b:not(.tpfd){font-size:calc(var(--t-body)*var(--u));font-weight:700;color:var(--tx-1);
+.card .tpfh>b:not(.tpfd){min-width:0;font-size:calc(var(--t-body)*var(--u));font-weight:700;color:var(--tx-1);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card .tpfh .tpstay{margin-left:auto;flex:none;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+.card .tpwx{flex:none;margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
+.card .tpfh .tpstay{flex:none;margin-left:auto;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
+/* 有天气时天气占了 auto，宿哪紧随其后 */
+.card .tpwx~.tpstay{margin-left:calc(6px*var(--u))}
 .card .tpfh .tpstay.is-move{color:var(--warn-fg);font-weight:600}
 /* 单日时间轴 */
-.card .tpstop{display:flex;gap:calc(11px*var(--u));padding:calc(5px*var(--u)) 0;min-width:0;
+.card .tpstop{display:flex;gap:calc(11px*var(--u));padding:calc(4px*var(--u)) 0;min-width:0;
   align-items:baseline}
 .card .tpstop>span{flex:none;width:calc(56px*var(--u));font-size:calc(var(--t-cap)*var(--u));
   font-weight:700;color:var(--ac)}
@@ -412,33 +409,12 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
 .card .tpstop b{font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1)}
 .card .tpstop small{margin-left:calc(6px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2)}
 .card .tptrans{padding-left:calc(67px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
-.card .tpcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:calc(24px*var(--u))}
-/* 单行帧（行驶中） */
-.card .tpfr.tpline{flex-direction:row;align-items:center;gap:calc(12px*var(--u))}
-.card .tpline div{min-width:0;flex:1}
-.card .tpline div b{display:block;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1);
+/* 行驶档：首日一行摘要，扫一眼即走 */
+.card .tpnow{flex:1;min-height:0;display:flex;align-items:center;gap:calc(12px*var(--u));min-width:0}
+.card .tpnow div{min-width:0;flex:1}
+.card .tpnow div b{display:block;font-size:calc(var(--t-body)*var(--u));font-weight:600;color:var(--tx-1);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card .tpline div small{display:block;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card .tpline .tpfd{font-size:calc(var(--t-lead)*var(--u))}
-/* 指示器：点与帧同 delay 同步高亮 */
-.card .tpdots{flex:none;display:flex;align-items:center;gap:calc(7px*var(--u));
-  margin-top:calc(6px*var(--u))}
-.card .tpdots i{flex:none;width:calc(8px*var(--u));height:calc(8px*var(--u));border-radius:50%;
-  background:var(--brand-bd);position:relative}
-.card .tpdots i.on{width:calc(22px*var(--u));border-radius:var(--r-pill,999px);background:var(--ac)}
-.card .tpdots i::after{content:'';position:absolute;inset:0;border-radius:inherit;background:var(--ac);
-  opacity:0}
-.card .tpcar[data-n="2"]~.tpdots i::after{animation:tpf2 16s infinite}
-.card .tpcar[data-n="3"]~.tpdots i::after{animation:tpf3 24s infinite}
-.card .tpcar[data-n="4"]~.tpdots i::after{animation:tpf4 32s infinite}
-.card .tpcar[data-n="5"]~.tpdots i::after{animation:tpf5 40s infinite}
-.card .tpcar[data-n="6"]~.tpdots i::after{animation:tpf6 48s infinite}
-.card .tpcar[data-n="7"]~.tpdots i::after{animation:tpf7 56s infinite}
-/* delay 挂在 i 的内联样式上，::after 继承同一份——点和帧才对得上拍 */
-.card .tpcar[data-n]~.tpdots i::after{animation-delay:inherit}
-.card .tpdots span{margin-left:calc(4px*var(--u));font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tpnow div small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3)}
 /* 价格块：机票带迷你走势，住宿分段各一行 */
 .card .tpprices{flex:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
   gap:calc(10px*var(--u));margin-top:calc(8px*var(--u))}

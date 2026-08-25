@@ -135,7 +135,37 @@ export function createOpenMeteoClient(fetcher: Fetcher, opts: OmOpts = {}) {
     }
   }
 
-  return { forecast }
+  /**
+   * 逐日预报（旅行卡，2026-08-25）：行程确认后每天带天气。
+   * 只要 daily 三个字段——16 天 × 逐时会让响应大十倍，行程用不上。
+   * Open-Meteo 免费档 forecast_days 上限就是 16，超窗的日子上游不给，
+   * 调用方按日期对齐后自然缺席——不编造。
+   */
+  async function daily(lat: number, lon: number, days: number):
+      Promise<Array<{ date: string; weather: string; hi: number; lo: number }>> {
+    const qs = new URLSearchParams({
+      latitude: String(lat), longitude: String(lon),
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min',
+      timezone: 'auto', forecast_days: String(Math.min(days, 16)),
+    })
+    let timer!: ReturnType<typeof setTimeout>
+    const timeout = new Promise<never>((_, rej) => {
+      timer = setTimeout(() => rej(new OmError('天气服务没响应，等太久', 'TIMEOUT')), timeoutMs)
+    })
+    const res = await Promise.race([fetcher(`${ENDPOINT()}?${qs}`), timeout]).finally(() => clearTimeout(timer))
+    const json: any = await res.json().catch(() => ({}))
+    if (!res.ok) throw new OmError(json?.reason || '天气服务没接受这次请求', 'UPSTREAM')
+    const d = json?.daily
+    if (!d?.time?.length) throw new OmError('天气服务没给出数据', 'NO_DATA')
+    return d.time.map((date: string, i: number) => ({
+      date,
+      weather: wmoLabel(Number(d.weather_code[i])),
+      hi: Math.round(Number(d.temperature_2m_max[i])),
+      lo: Math.round(Number(d.temperature_2m_min[i])),
+    }))
+  }
+
+  return { forecast, daily }
 }
 
 export type OpenMeteoClient = ReturnType<typeof createOpenMeteoClient>

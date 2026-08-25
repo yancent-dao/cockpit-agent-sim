@@ -20,18 +20,28 @@ const mem = (): DomainStorage => {
 }
 
 const NOW = 1_756_000_000_000
+const DAY = 86_400_000
+/** NOW 后第 n 天的 YYYY-MM-DD */
+const dstr = (n: number) => new Date(NOW + n * DAY).toISOString().slice(0, 10)
 let store: ReturnType<typeof createTravelStore>
 let desk: ReturnType<typeof createDesk>
 let h: ReturnType<typeof createTravelHandlers>
+let wxCalls: Array<{ city: string; days: number }>
 
 beforeEach(() => {
   store = createTravelStore(mem())
   desk = createDesk()
+  wxCalls = []
   h = createTravelHandlers({
     store: () => store,
     desk: () => desk,
     sources: () => ({ flight: mockSource(() => NOW), hotel: mockSource(() => NOW) }),
     clock: () => NOW,
+    weather: () => async (city, days) => {
+      wxCalls.push({ city, days })
+      return Array.from({ length: 16 }, (_, i) => ({
+        date: dstr(i), weather: i % 2 ? '小雨' : '晴', hi: 21 - i, lo: 9 - i }))
+    },
   })
 })
 
@@ -73,6 +83,84 @@ describe('travel.plan：攻略数据进仓，trip 卡上屏', () => {
   it('没有目的地就拒', async () => {
     const r = await h.travelPlan({ days: DAYS })
     expect(r.status).toBe('rejected')
+  })
+})
+
+describe('travel.plan 的选线阶段（v3：目的地宽泛先收敛）', () => {
+  const LINES = [
+    { name: '滇西北 · 雪山古城线', route: '昆明 → 大理 → 丽江', days: '6–8 天', note: '经典走法' },
+    { name: '滇南 · 雨林风情线', route: '昆明 → 西双版纳', days: '5–6 天', note: '冬天最舒服' },
+  ]
+
+  it('只交 lines 不交 days：draft 任务存线路，trip 卡渲染选线列表', async () => {
+    const r = ok(await h.travelPlan({ destination: '云南', lines: LINES }))
+    expect((r.data as any).taskId).toBeTruthy()
+    expect(store.tasks()[0].lines).toHaveLength(2)
+    const c = desk.findByKey('travel-trip')!
+    expect((c.data as any).lines).toHaveLength(2)
+    expect((c.data as any).days).toBeUndefined()
+  })
+
+  it('选定后交 days，lines 自动清——选择题答完就撤', async () => {
+    ok(await h.travelPlan({ destination: '云南', lines: LINES }))
+    ok(await h.travelPlan({ destination: '云南',
+      days: [{ title: 'D1 昆明', stops: [{ name: '滇池' }] }] }))
+    expect(store.tasks()).toHaveLength(1)
+    expect(store.tasks()[0].lines).toBeUndefined()
+    expect((desk.findByKey('travel-trip')!.data as any).lines).toBeUndefined()
+  })
+
+  it('lines 和 days 都没有才拒', async () => {
+    const r = await h.travelPlan({ destination: '云南' })
+    expect(r.status).toBe('rejected')
+  })
+})
+
+describe('行程天气（v3：确认后每天带天气，超窗不编造）', () => {
+  const plan = () => h.travelPlan({ destination: '大理',
+    days: [{ title: 'D1', stops: [{ name: '古城' }] },
+           { title: 'D2', stops: [{ name: '洱海' }] }] })
+
+  it('有出发日就拉 16 天预报，按行程日对齐存卡', async () => {
+    ok(await plan())
+    ok(await h.travelCreate({ destination: '大理', departDate: dstr(3) }))
+    expect(wxCalls).toHaveLength(1)
+    expect(wxCalls[0].city).toBe('大理')
+    const wx = (desk.findByKey('travel-trip')!.data as any).wx
+    expect(wx).toHaveLength(2)                       // 跟 days 对齐
+    expect(wx[0].date).toBe(dstr(3))                 // D1 = 出发日
+    expect(wx[0].hi).toBe(21 - 3)
+  })
+
+  it('出发日没定就不拉——没有日期哪来的天气', async () => {
+    ok(await plan())
+    expect(wxCalls).toHaveLength(0)
+  })
+
+  it('出发日超出 16 天预报窗：不拉不编造，卡上没有天气', async () => {
+    ok(await plan())
+    ok(await h.travelCreate({ destination: '大理', departDate: dstr(30) }))
+    expect(wxCalls).toHaveLength(0)
+    expect((desk.findByKey('travel-trip')!.data as any).wx).toBeUndefined()
+  })
+
+  it('改出发日重拉，天气跟着新日期走', async () => {
+    ok(await plan())
+    const t = (ok(await h.travelCreate({ destination: '大理', departDate: dstr(3) })).data as any).taskId
+    ok(await h.travelUpdate({ taskId: t, departDate: dstr(5) }))
+    expect(wxCalls).toHaveLength(2)
+    expect((desk.findByKey('travel-trip')!.data as any).wx[0].date).toBe(dstr(5))
+  })
+
+  it('部分超窗：窗内的给，窗外的日子缺席——行程 5 天出发在第 14 天，只有前 2 天有天气', async () => {
+    ok(await h.travelPlan({ destination: '大理',
+      days: Array.from({ length: 5 }, (_, i) => ({ title: `D${i + 1}`, stops: [{ name: 'x' }] })) }))
+    ok(await h.travelCreate({ destination: '大理', departDate: dstr(14) }))
+    const wx = (desk.findByKey('travel-trip')!.data as any).wx
+    expect(wx).toHaveLength(5)
+    expect(wx[0]).toBeTruthy()      // D1 = 第14天,在窗内
+    expect(wx[1]).toBeTruthy()      // D2 = 第15天,在窗内
+    expect(wx[2]).toBeNull()        // D3 = 第16天,窗外
   })
 })
 
@@ -267,16 +355,6 @@ describe('travel.update：改了什么、影响哪几项', () => {
     expect(d.affected).toHaveLength(1)
   })
 
-
-  it('dayIdx 锁定轮播帧——"看第三天"的落点；null 恢复自动轮播', async () => {
-    const t = (ok(await h.travelPlan({ destination: '曼谷',
-      days: [{ title: 'D1', stops: [{ name: 'a' }] }, { title: 'D2', stops: [{ name: 'b' }] }],
-    })).data as any).taskId
-    ok(await h.travelUpdate({ taskId: t, dayIdx: 1 }))
-    expect((desk.findByKey('travel-trip')!.data as any).dayIdx).toBe(1)
-    ok(await h.travelUpdate({ taskId: t, dayIdx: null }))
-    expect((desk.findByKey('travel-trip')!.data as any).dayIdx).toBeUndefined()
-  })
 
   it('目的地变了要提醒模型：攻略/标题还是旧的、不需要的监控用 unwatch 真停（2026-08-25 实拍：改海口后卡片还是三亚攻略，模型嘴上说停掉监控却没调）', async () => {
     ok(await h.travelPlan({ destination: '三亚',

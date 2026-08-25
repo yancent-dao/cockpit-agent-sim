@@ -38,8 +38,10 @@ export interface TravelTask {
   days?: TripDay[]
   prep?: string[]
   summary?: string
-  /** 用户锁定的轮播帧（"看第三天"）。空 = 自动轮播 */
-  dayIdx?: number
+  /** 选线阶段（v3）：目的地宽泛时先给几条线路收敛，选定交 days 后自动清 */
+  lines?: Array<{ name: string; route: string; days?: string; note?: string }>
+  /** 逐日天气，与 days 对齐（v3）。窗外的日子是 null——不编造 */
+  wx?: Array<{ date: string; weather: string; hi: number; lo: number } | null>
 }
 
 /** 四类监控项（POC 范围）：机票价 · 酒店价 · 汇率 · 新闻 */

@@ -26,7 +26,20 @@ export function llmErrorText(status: number, body: string): string {
         '或检查代理（浏览器走 VPN 不等于 dev server 也走：它只认启动终端里的 HTTPS_PROXY）'
     return '模型拒绝了这次请求（403）——换个模型试试'
   }
-  if (status === 429) return '模型限流了：请求太频繁，稍等几秒再说一次'
+  if (status === 429) {
+    /**
+     * 2026-08-25 实拍：钱够、免费档也下架了还在 429——那是**上游 provider
+     * 满载**（热门便宜模型的最快提供方常常也最挤），跟账户配额是两回事，
+     * 一刀切说"请求太频繁"会让用户以为是自己的问题。按响应体分层。
+     */
+    const provider = /"provider_name"\s*:\s*"([^"]+)"/.exec(body)?.[1]
+    if (provider || /provider returned error|upstream/i.test(body))
+      return `模型的上游服务商${provider ? `（${provider}）` : ''}正忙——不是你的账户问题，` +
+        '稍等再试，总撞就换个模型'
+    if (/free-models|free_models/i.test(body))
+      return '账户级限流：免费档每分钟只有约 20 次——换成付费模型'
+    return '模型限流了：请求太频繁，稍等几秒再说一次'
+  }
   if (status >= 500) return '模型服务临时故障，稍后再试；总失败就换个模型'
   return `模型没连上（${status}）——换个模型试试，或看浏览器控制台的完整响应`
 }
@@ -132,7 +145,8 @@ export function createOnlineChat(getKey: () => string, getModel: () => string) {
   }
 }
 
-export function createOpenRouter(getKey: () => string, getModel: () => string): LLM {
+export function createOpenRouter(getKey: () => string, getModel: () => string,
+                                 retryDelayMs: () => number = () => 1500): LLM {
   const base = `${api('openrouter')}/api/v1`
 
   return {
@@ -154,7 +168,12 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
     },
 
     async chat(req: LLMRequest): Promise<LLMReply> {
-      const res = await fetch(`${base}/chat/completions`, {
+      /**
+       * 瞬时 429 退避重试一次——协议客户端的机制（同 per-request 超时一档），
+       * 不是业务兜底：上游满载多为秒级抖动，一次 1.5s 退避能吸收大半，
+       * 省得每次都把错误怼到用户脸上。连续两次 429 才如实报。
+       */
+      const once = () => fetch(`${base}/chat/completions`, {
         method: 'POST',
         // 120s 超时：大模型长轮正常 5-45s，悬挂连接不许冻住整个 turn
         signal: AbortSignal.timeout(120_000),
@@ -175,6 +194,11 @@ export function createOpenRouter(getKey: () => string, getModel: () => string): 
           provider: { sort: 'latency' },
         }),
       })
+      let res = await once()
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, retryDelayMs()))
+        res = await once()
+      }
       if (!res.ok) throw new Error(llmErrorText(res.status, await res.text()))
       const json = await res.json()
       const m = json.choices?.[0]?.message

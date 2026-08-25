@@ -245,6 +245,13 @@ describe('travel.watch：建委托', () => {
     expect(String(r.message)).toContain('2000')
   })
 
+  it('建完返回首采价——问价在 watch 这一步就闭环，不用再 refresh', async () => {
+    const t = (ok(await h.travelCreate({ title: '韩国行', destination: '首尔' })).data as any).taskId
+    const r = ok(await h.travelWatch({ taskId: t, kind: 'flight' }))
+    expect((r.data as any).quote?.value).toBeGreaterThan(0)
+    expect(String(r.message)).toContain('¥')
+  })
+
   it('任务不存在就拒，不建孤儿委托', async () => {
     const r = await h.travelWatch({ taskId: '不存在', kind: 'flight' })
     expect(r.status).toBe('rejected')
@@ -277,6 +284,17 @@ describe('travel.refresh：立即采一轮', () => {
     const r = ok(await h.travelRefresh({}))
     expect((r.data as any).sampled).toBe(1)
     expect(store.samples(store.watches()[0].id, NOW + 1000)).toHaveLength(before + 1)
+  })
+
+  it('返回带每项最新价——2026-08-25 pilot 实拍：模型问价拿不到数，换着 label 连调 6 次 refresh 打转', async () => {
+    await setup()
+    const r = ok(await h.travelRefresh({}))
+    const latest = (r.data as any).latest
+    expect(latest).toHaveLength(1)
+    expect(latest[0].kind).toBe('flight')
+    expect(latest[0].value).toBeGreaterThan(0)
+    expect(latest[0].text).toContain('¥')
+    expect(String(r.message)).toContain('直接报')
   })
 
   it('跌破阈值 → 触发：trip 卡原地出决策条，不弹新卡', async () => {

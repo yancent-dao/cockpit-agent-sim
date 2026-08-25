@@ -357,12 +357,14 @@ function core(deps: TravelDeps) {
         everyMs: args?.everyMs ?? DEFAULT_RHYTHM[kind].everyMs,
         onBoot: args?.onBoot ?? DEFAULT_RHYTHM[kind].onBoot,
       })
-      await firstSample(S().watches().find(w => w.id === id)!)   // 建完就有曲线
+      const q = await firstSample(S().watches().find(w => w.id === id)!)   // 建完就有曲线
       paintTrip()
-      return { status: 'ok', data: { watchId: id },
-        message: args?.threshold !== undefined
+      // 首采价直接带在返回里——"问价"在这一步就闭环，模型没理由再 refresh
+      const qLine = q ? `。现价 ${UNIT[kind](q.value)}${q.note ? `（${q.note}）` : ''}——直接报给用户` : ''
+      return { status: 'ok', data: { watchId: id, quote: q },
+        message: (args?.threshold !== undefined
           ? `盯上了：${KIND_LABEL[kind]}${args.direction === 'above' ? '高于' : '低于'} ${args.threshold} 就提醒`
-          : `盯上了：${KIND_LABEL[kind]}，有明显变化我说一声` }
+          : `盯上了：${KIND_LABEL[kind]}，有明显变化我说一声`) + qLine }
     },
 
     /* ── 撤销委托。样本留着——曲线还能看 ── */
@@ -382,9 +384,19 @@ function core(deps: TravelDeps) {
       const fired = await sampleRound(st, scope.map(w => w.id), deps.sources())
       // 触发了的在 trip 卡上原地出决策条——不弹新卡，一张卡是一次旅行的家
       paintTrip()
+      /**
+       * latest 带每项最新值（2026-08-25 pilot 实拍）：以前只回"都更新了，
+       * 没有到提醒线的"——模型要报价拿不到数，换着 label 连调 6 次 refresh
+       * 打转，烧光轮次后只剩空收场兜底，用户问四遍一个数没听到。
+       * 答案必须在返回里，模型才没有理由再调一次。
+       */
+      const latest = st.watches()
+        .filter(w => scope.some(x => x.id === w.id) && w.lastValue !== undefined)
+        .map(w => ({ watchId: w.id, kind: w.kind, kindLabel: KIND_LABEL[w.kind],
+          label: w.label, value: w.lastValue!, text: UNIT[w.kind](w.lastValue!) }))
       return { status: 'ok',
         data: {
-          sampled: scope.length,
+          sampled: scope.length, latest,
           fired: fired.map(f => ({
             watchId: f.watch.id, kind: f.watch.kind, label: f.watch.label,
             value: f.value, threshold: f.watch.threshold, note: f.note,
@@ -393,7 +405,10 @@ function core(deps: TravelDeps) {
         },
         message: fired.length
           ? `${fired.length} 项到你说的价了，旅行卡上出了决策条`
-          : '都更新了，没有到提醒线的' }
+          : latest.length
+            ? `最新价在 latest 里：${latest.map(l => `${l.kindLabel} ${l.text}`).join('、')}` +
+              '——直接报给用户，不用再调一次'
+            : '都更新了，没有到提醒线的' }
     },
 
     /* ── 全景。问答的数据底座，也是行程单卡的来源 ── */

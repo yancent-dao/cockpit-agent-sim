@@ -617,7 +617,10 @@ export const TOOLS: ToolDef[] = [
     params: {
       destination: { type: 'string', required: true, desc: '目的地，如"曼谷"' },
       title: { type: 'string', desc: '行程名。不传就用目的地' },
-      days: { type: 'array', required: true, items: { type: 'object',
+      // 2026-08-25 实拍：required 忘摘把选线阶段整个堵死——schema 告诉模型
+      // days 必填，逼得它硬塞 days:"8" 凑数。lines 和 days 至少交一个，
+      // 「都没有才拒」的判据在 handler 里
+      days: { type: 'array', items: { type: 'object',
         properties: {
           title: { type: 'string', desc: '当天动线，如"大皇宫 · 卧佛寺 · 考山路"' },
           stops: { type: 'array', items: { type: 'object',
@@ -626,7 +629,7 @@ export const TOOLS: ToolDef[] = [
           trans: { type: 'array', items: { type: 'string' } },
           stay: { type: 'string' }, cityChange: { type: 'boolean' },
         }, required: ['title', 'stops'] },
-        desc: '按天的日程。每站 note 一句介绍+贴士，如"门票 500 泰铢，要过膝着装"' },
+        desc: '按天的日程（lines 和 days 至少交一个：选线阶段只交 lines，定了线路交 days）。每站 note 一句介绍+贴士' },
       lines: { type: 'array', items: { type: 'object',
         properties: { name: { type: 'string' }, route: { type: 'string' },
           days: { type: 'string' }, note: { type: 'string' } },

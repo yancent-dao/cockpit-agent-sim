@@ -2091,3 +2091,28 @@ describe('出站 schema 的保真（2026-08-25 破案：模型"不看 schema"其
       expect(t.function.parameters.additionalProperties, t.function.name).toBe(false)
   })
 })
+
+describe('travel.plan 的两种形状要过 registry 校验层（2026-08-25 实拍：lines-only 被「缺少必填参数 days」拒——handler 支持了、required 没摘，schema 还告诉模型 days 必填，逼得它硬塞 days:"8" 凑数）', () => {
+  const mkTravelReg = async () => {
+    const { createTravelStore } = await import('../../src/state/travel')
+    const m = new Map<string, string>()
+    return createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, {
+      desk: createDeskForTest(),
+      travel: createTravelStore({ get: (k: string) => m.get(k) ?? null, set: (k: string, v: string) => m.set(k, v) } as any),
+      travelSources: {},
+    } as any)
+  }
+
+  it('只交 lines（选线阶段）能走通全链路', async () => {
+    const reg2 = await mkTravelReg()
+    const r = await reg2.invoke('travel.plan', { destination: '非洲',
+      lines: [{ name: '肯尼亚 · 野生动物线', route: '内罗毕 → 马塞马拉' }] })
+    expect(r.status).toBe('ok')
+  })
+
+  it('schema 里 days 不再是必填——模型不被逼着硬塞', async () => {
+    const reg2 = await mkTravelReg()
+    const plan = reg2.schemas('openai', ['travel.plan'])[0] as any
+    expect(plan.function.parameters.required).not.toContain('days')
+  })
+})

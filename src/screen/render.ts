@@ -53,8 +53,10 @@ export function listBody(items: any[], opts: ListOpts = {}): string {
   const { shown, rest } = truncate(all, max)
   // data-act/-value：触控命中目标。点第 2 项 = 说"第二个"（回答类路由），
   // value 带序号和名字，模型收到的合成输入跟语音说法同构
+  // label/sub 两行堆叠（2026-08-25 实拍：同 flex 行里 sub 把 label 挤成
+  // 「比亚迪…」）——列容器 ltx 里各占一行，label 永不被 sub 挤
   return `<ol class="listcard${opts.cols === 2 ? ' c2' : ''}">${shown.map((i: any, n: number) => `
-    <li data-act="tap:item" data-value="${esc(i.value ?? `第${n + 1}个：${i.label ?? i}`)}"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}${
+    <li data-act="tap:item" data-value="${esc(i.value ?? `第${n + 1}个：${i.label ?? i}`)}"><div class="ltx"><b>${esc(i.label ?? i)}</b>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</div>${
       i.right ? `<em class="rr">${esc(i.right)}</em>` : ''}</li>`).join('')}</ol>${
     rest > 0 ? `<div class="more">还有 ${rest} 条没显示</div>` : ''}`
 }

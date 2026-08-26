@@ -294,18 +294,22 @@ body[data-night]{--glass-bd:rgba(255,255,255,.12);--glass-bg:rgba(19,26,37,.72);
    滚动位置模型看不见，模型的世界观仍以 summary 的可见条数为准 */
 .listcard.c2{grid-template-columns:1fr 1fr;column-gap:calc(24px*var(--u))}
 .listcard.c3{grid-template-columns:repeat(3,1fr);column-gap:calc(20px*var(--u))}
-.listcard li{counter-increment:pick;display:flex;align-items:baseline;gap:calc(14px*var(--u));
-  padding:calc(10px*var(--u)) calc(12px*var(--u));border-radius:calc(14px*var(--u));min-width:0;
+.listcard li{counter-increment:pick;display:flex;align-items:center;gap:calc(14px*var(--u));
+  padding:calc(9px*var(--u)) calc(12px*var(--u));min-width:0;
   background:transparent;transition:background .15s}
-.listcard li:nth-child(odd){background:color-mix(in srgb, var(--n1,#F6F8FB) 65%, transparent)}
+/* 斑马纹退役改发丝线（list 升级四点，设计定稿今日落实）：
+   深浅交替在截图里读作"一半条目变灰了"，分隔感交给细线 */
+.listcard li+li{border-top:1px solid var(--hair,var(--hairline))}
+/* label/sub 两行堆叠：sub 再长也挤不到 label */
+.listcard li .ltx{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
 .listcard li::before{content:counter(pick);flex:none;
   width:calc(38px*var(--u));height:calc(38px*var(--u));border-radius:calc(12px*var(--u));
   background:var(--acgr);color:#fff;box-shadow:0 2px 8px -2px var(--ac);
   font-size:calc(var(--t-cap)*var(--u));font-weight:700;
   display:flex;align-items:center;justify-content:center;align-self:center}
-.listcard li b{font-size:calc(var(--t-body)*var(--u));font-weight:600;
+.listcard li b{display:block;font-size:calc(var(--t-body)*var(--u));font-weight:600;
   color:var(--tx-1,var(--text-primary));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.listcard li small{font-size:calc(var(--t-cap)*var(--u));color:var(--tx-3,var(--text-secondary));
+.listcard li small{display:block;font-size:calc(var(--t-cap)*var(--u));color:var(--tx-2,var(--text-secondary));
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .listcard li .rr{margin-left:auto;font-style:normal;flex:none;
   font-size:calc(var(--t-cap)*var(--u));color:var(--ac);font-variant-numeric:tabular-nums}

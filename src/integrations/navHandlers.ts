@@ -409,6 +409,74 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
       }
     },
 
+    /**
+     * 改路不动终点（2026-08-25 实拍「加途经点老被改成终点」）。
+     * 根因是结构性的：以前加途经点要模型自己搜坐标、找回原目的地、重调
+     * setDestination 全量重传——三步错任何一步终点就没了。这个工具
+     * **根本没有 destination 参数**：终点保持是机制保证，不是 Prompt 约定。
+     * addWaypoint 收地点名（自动搜）或坐标（"lng,lat"，来自 searchAlong）。
+     */
+    navModifyRoute: async (args: any): Promise<ToolResult> => {
+      if (!store.get('navigation.active'))
+        return { status: 'rejected', code: 'NOT_NAVIGATING',
+          message: '还没在导航，没有路可改', suggestion: '先用 navigation.setDestination 设目的地' }
+      const amap = needAmap()
+      const destLoc = String(store.get('navigation.destinationLocation') || '')
+      const destName = String(store.get('navigation.destination') || '')
+      let wps = String(store.get('navigation.waypoints') || '').split(';').filter(Boolean)
+      let names = String(store.get('navigation.waypointNames') || '').split(';').filter(Boolean)
+
+      if (args.removeWaypoint !== undefined) {
+        const key = String(args.removeWaypoint)
+        const idx = names.findIndex(n => n.includes(key) || key.includes(n))
+        if (idx < 0)
+          return { status: 'rejected', code: 'WAYPOINT_NOT_FOUND',
+            message: `途经点里没有「${key}」（现有：${names.join('、') || '无'}）`,
+            suggestion: '按现有名字说，或用 navigation.getStatus 看当前路线' }
+        wps.splice(idx, 1); names.splice(idx, 1)
+      }
+      if (args.addWaypoint !== undefined) {
+        const raw = String(args.addWaypoint)
+        // 坐标形状（"lng,lat"）直用；否则按地点名搜第一个——判据是数据形状
+        if (/^[\d.]+,[\d.]+$/.test(raw)) {
+          wps.push(raw); names.push(String(args.addWaypointName ?? '途经点'))
+        } else {
+          const hits = await amap.placeSearch(raw)
+          if (!hits?.length)
+            return { status: 'unavailable', code: 'PLACE_NOT_FOUND',
+              message: `找不到「${raw}」`, suggestion: '换个更具体的名称，或先用 navigation.search 挑' }
+          wps.push(hits[0].location); names.push(hits[0].name)
+        }
+      }
+
+      const prevEta = Number(store.get('navigation.eta') || 0)
+      const origin = store.get('vehicle.location') as string
+      const route = await amap.driving(origin, destLoc, {
+        preference: args.preference ?? 'default', waypoints: wps.length ? wps : undefined,
+        ...vehicleProfile(store),
+      })
+      const eta = Math.round((route.duration ?? 0) / 60)
+      store.setMany([
+        ['navigation.eta', eta],
+        ['navigation.distanceRemaining', Math.round(route.distance / 100) / 10],
+        ['navigation.nextInstruction', route.steps[0]?.instruction ?? ''],
+        ['navigation.routePolyline', route.polyline ?? ''],
+        ['navigation.waypoints', wps.join(';')],
+        ['navigation.waypointNames', names.join(';')],
+      ])
+      // 静态图拼不出来不拖垮改路——地图会保持上一帧,路线数据本身已更新
+      try {
+        const mapUrl = buildMapUrl(amap, origin, destLoc, route.polyline, wps)
+        if (mapUrl) store.set('navigation.mapUrl', mapUrl)
+      } catch { /* 地图供应能力缺失时静默 */ }
+      const deltaEta = eta - prevEta
+      return { status: 'ok',
+        data: { destination: destName, waypoints: names, eta, deltaEta,
+          detourLabel: deltaEta > 0 ? `绕路约 ${deltaEta} 分钟` : undefined },
+        message: `路线改好了，终点还是「${destName}」${names.length ? `，途经 ${names.join('、')}` : ''}` +
+          `${deltaEta > 0 ? `，绕路约 ${deltaEta} 分钟` : ''}——报给用户时说分钟不说米` }
+    },
+
     navControl: (args: any): ToolResult => {
       if ((args.action === 'start' || args.action === 'resume') && !store.get('navigation.destination'))
         return {

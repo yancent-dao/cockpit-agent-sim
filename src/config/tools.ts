@@ -426,8 +426,8 @@ export const TOOLS: ToolDef[] = [
     name: 'navigation.setDestination',
     brief: '设目的地开始导航',
     desc: '设置导航目的地并规划路线，调用成功后导航自动开始，导航卡会由系统自动出现在桌面上——你不需要也不应该再调 card.show 或 navigation.control 的 start。poiId（来自 navigation.search 的结果）和 address 二选一传。'
-      + '**用户说"顺路/途经/路过 X"：目的地不变**，把 X 的 location 加进 waypoints 重新调一次——'
-      + '不要把目的地改成 X（实拍：导航去春熙路途中"途径一个饺子店"，被改成了去饺子店，春熙路丢了）。',
+      + '**导航中用户说"顺路/途经/路过 X"：用 navigation.modifyRoute，不要动这个工具**'
+      + '（实拍：途经饺子店被改成了去饺子店，春熙路丢了）。waypoints 参数只在**初次设目的地就带着途经点**时用。',
     permission: '彩',
     params: {
       alias: { type: 'string', desc: '常用地址别名，如"家""公司"。用户说"回家"时优先用这个，不用再搜' },
@@ -528,7 +528,7 @@ export const TOOLS: ToolDef[] = [
 **可以多次调用来组合出复杂需求**——传 near 就能以任意坐标为中心再搜一圈。
 例："找个周围有饺子馆的充电站" = 先调一次拿到几个充电站及其 location，
 再对每个 location 传 near + query:"饺子" + radius:800 各搜一次，哪个有结果就是它。
-找到后把该地点的 location 作为 waypoints 传给 navigation.setDestination 即可顺路去。`,
+找到后把该地点的 location 传给 navigation.modifyRoute 的 addWaypoint 即可顺路去（终点不动）。`,
     permission: '彩',
     params: {
       query: { type: 'string', desc: '要找什么，如"充电站""服务区""饺子"（跟 navigation.search 的 query 同名同义）。不传则按车型自动选' },
@@ -536,6 +536,24 @@ export const TOOLS: ToolDef[] = [
       radius: { type: 'number', range: [100, 50000], desc: '搜索半径（米），默认 5000。找"某地周围步行可达的店"时用 500-1000' },
     },
     handler: 'navSearchAlong',
+  },
+  {
+    name: 'navigation.modifyRoute',
+    brief: '改当前路线：加删途经点/换偏好',
+    desc: '导航中改路线，**终点永远不变**（这个工具没有目的地参数，改不了）。' +
+      '用户说"顺路去 X / 途经 X / 先去 X" → addWaypoint 传地点名（自动搜）或' +
+      'searchAlong 结果里的坐标；说"不去 X 了 / 删掉途经点" → removeWaypoint 传名字；' +
+      '说"躲避拥堵 / 走高速 / 别走高速" → preference。改完返回带绕路分钟数，' +
+      '照着报："加了 XX，绕路约 5 分钟"。**别再用 setDestination 加途经点**——那是设终点的。',
+    permission: '彩',
+    params: {
+      addWaypoint: { type: 'string', desc: '要加的途经点：地点名（如"特来电充电站"）或坐标"经度,纬度"' },
+      addWaypointName: { type: 'string', desc: '传坐标时配的名字，导航卡要靠它显示"经 XX"' },
+      removeWaypoint: { type: 'string', desc: '要删的途经点名字' },
+      preference: { type: 'enum', values: ['default', 'fastest', 'highwayFirst', 'avoidHighway', 'avoidCongestion', 'avoidToll'],
+        desc: '路线偏好。用户说"躲避拥堵/走高速/少收费"时改' },
+    },
+    handler: 'navModifyRoute',
   },
   {
     name: 'navigation.compareRoutes',

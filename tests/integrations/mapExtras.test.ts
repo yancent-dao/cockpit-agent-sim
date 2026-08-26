@@ -96,3 +96,81 @@ describe('defrost.set 除雾', () => {
     expect(store.get('cabin.defrost.rear.isOn')).toBe(true)
   })
 })
+
+/**
+ * navigation.modifyRoute（2026-08-25 实拍「加途经点老被改成终点」）。
+ *
+ * 根因是结构性的：加途经点没有自己的动词——模型要搜坐标、找回原目的地、
+ * 重调 setDestination 全量重传，三步错任何一步终点就没了。这个工具
+ * **根本没有 destination 参数**：终点保持是机制保证，模型想改都改不了。
+ * 市场对齐：高德/百度车机的「途经 XX」「删除途经点」「躲避拥堵」都是
+ * 导航中的一句话动作，不是重设目的地。
+ */
+describe('navigation.modifyRoute：改路不动终点', () => {
+  const amap = {
+    geocode: async (addr: string) => ({ location: '104.10,30.70', formattedAddress: addr }),
+    placeSearch: async (q: string) => [{ id: 'p1', name: q, location: '104.08,30.66', address: 'x' }],
+    driving: async (_o: string, dest: string, opts: any) => ({
+      distance: 8200, duration: (18 + (opts?.waypoints?.length ?? 0) * 5) * 60,
+      steps: [{ instruction: '直行' }], polyline: '1,1;2,2', dest,
+    }),
+  }
+  const nav = () => {
+    store.set('vehicle.location', '104.06,30.54')
+    store.set('navigation.active', true)
+    store.set('navigation.destination', '春熙路')
+    store.set('navigation.destinationLocation', '104.07,30.65')
+    store.set('navigation.eta', 18)
+    store.set('navigation.waypoints', '')
+    store.set('navigation.waypointNames', '')
+  }
+  const mk = () => createRegistry(store, TOOLS, Date.now, { amap } as any)
+
+  it('按名字加途经点：终点纹丝不动，途经点落信号，返回带绕路代价', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute', { addWaypoint: '特来电充电站' })
+    expect(r.status).toBe('ok')
+    expect(store.get('navigation.destination'), '终点是机制锁死的').toBe('春熙路')
+    expect(String(store.get('navigation.waypointNames'))).toContain('特来电充电站')
+    expect(JSON.stringify(r.data)).toMatch(/detour|绕路|deltaEta/)
+  })
+
+  it('按坐标加途经点（来自 searchAlong 的 location）不再搜一遍', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute',
+      { addWaypoint: '104.09,30.60', addWaypointName: '服务区' })
+    expect(r.status).toBe('ok')
+    expect(String(store.get('navigation.waypoints'))).toContain('104.09,30.60')
+    expect(String(store.get('navigation.waypointNames'))).toContain('服务区')
+  })
+
+  it('删途经点按名字：其余保留', async () => {
+    nav()
+    store.set('navigation.waypoints', '104.09,30.60;104.10,30.61')
+    store.set('navigation.waypointNames', '服务区;充电站')
+    const r = await mk().invoke('navigation.modifyRoute', { removeWaypoint: '服务区' })
+    expect(r.status).toBe('ok')
+    expect(String(store.get('navigation.waypointNames'))).toBe('充电站')
+    expect(String(store.get('navigation.waypoints'))).toBe('104.10,30.61')
+  })
+
+  it('导航中改路线偏好（躲避拥堵）就地重规划，不用重设目的地', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute', { preference: 'avoidCongestion' })
+    expect(r.status).toBe('ok')
+    expect(store.get('navigation.destination')).toBe('春熙路')
+  })
+
+  it('没在导航时拒——没有路可改', async () => {
+    const r = await mk().invoke('navigation.modifyRoute', { addWaypoint: 'x' })
+    expect(r.status).toBe('rejected')
+    expect(String(r.message)).toContain('导航')
+  })
+
+  it('删一个不存在的途经点如实说，不假装删了', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute', { removeWaypoint: '不存在' })
+    expect(r.status).toBe('rejected')
+    expect(String(r.message)).toContain('不存在')
+  })
+})

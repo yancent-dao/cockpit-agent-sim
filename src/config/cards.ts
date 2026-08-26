@@ -170,7 +170,9 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     fields: { destination: { type: 'string', required: true } } },
   // 两档：court 双栏网格、full 铺满四栏。砍掉了最小档——用户问"你能做什么"，
   // 屏幕回答一个数字「33 项」不是答案。唯一能用 full 的：能力要铺得开
-  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['court', 'full'], requireItems: true,
+  // systemOnly（2026-08-26 实拍）：模型调完 capability.list 又自己手拼 20 项建卡，
+  // 内容凭记忆编、必然过时——唯一渲染出口在 capability.list 的机制建卡（trend/automation 先例）
+  { id: 'capability', label: '能力目录卡', defaultSize: 'full', sizes: ['court', 'full'], requireItems: true, systemOnly: true,
     desc: '本车全部可用能力。data: {title, items:[{label, desc, off}]}——items 必须原样来自 capability.list 的返回结果，不要自己总结、分类或改写内容，否则会跟实际能力对不上。',
     fields: { items: { type: 'array', required: true } } },
   /* ══════════ 2026-08-14 新增六张 ══════════

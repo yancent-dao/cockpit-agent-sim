@@ -1514,4 +1514,17 @@ export const CAPABILITY_DOMAINS: Array<{ match: string[]; icon: string; label: s
   { match: ['media'], icon: '🎚️', label: '播放控制', blurb: '换曲、音量、进度、收藏，通用于音乐电台' },
   { match: ['web'], icon: '🔍', label: '联网搜索', blurb: '答不上来的现查' },
   { match: ['memory'], icon: '🧠', label: '记忆', blurb: '"记住我喜欢 24 度"，下次直接照做' },
+  // 2026-08-26 补齐（实拍：能力卡缺了一年来的新域，"过时"）。
+  // 有测试盯完整性：TOOLS 新增前缀没进这张表会当场红
+  { match: ['defrost'], icon: '💨', label: '除霜除雾', blurb: '前后风挡除雾，雨天起雾一句话' },
+  { match: ['podcast'], icon: '🎙️', label: '播客', blurb: '搜节目就能听，支持倍速快进' },
+  { match: ['traffic'], icon: '🚦', label: '路况', blurb: '查这附近或任何地方堵不堵' },
+  { match: ['map'], icon: '🗺️', label: '地图显示', blurb: '卫星图、路况图层、缩放全览、模拟行驶' },
+  { match: ['stock'], icon: '📈', label: '股票', blurb: '查股价和指数，涨跌说人话' },
+  { match: ['holiday'], icon: '📅', label: '节假日', blurb: '下个假期还有几天、哪天调休补班' },
+  { match: ['poem'], icon: '📜', label: '每日诗词', blurb: '来一句应景的诗' },
+  { match: ['theme', 'wallpaper'], icon: '🎨', label: '主题壁纸', blurb: '日夜主题切换，壁纸用预设或 AI 现画一张' },
+  { match: ['automation'], icon: '⚙️', label: '自动化', blurb: '"下雨自动关窗""每天四点开空调"，用嘴建规则' },
+  { match: ['story'], icon: '📖', label: '讲故事', blurb: '孩子当主角的互动绘本，配图朗读，还能做成书发给家人' },
+  { match: ['travel'], icon: '🧳', label: '行程管家', blurb: '一起定攻略，机票酒店帮你盯价，降了叫你' },
 ]

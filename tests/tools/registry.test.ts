@@ -2183,3 +2183,15 @@ describe('拒绝要带可行动信息：缺参/枚举错附可选值（2026-08-2
     expect(String(r.message)).toContain('canvas')
   })
 })
+
+describe('能力目录的完整性（2026-08-26 实拍：能力卡缺了行程管家/绘本/自动化/主题等一年来的新域，"过时"）', () => {
+  it('TOOLS 里每个用户能力前缀都被 CAPABILITY_DOMAINS 覆盖', async () => {
+    const { CAPABILITY_DOMAINS } = await import('../../src/config/tools')
+    // 不进能力卡的：黑级（brake）、内部查询（vehicle.getState）、卡片/桌面/目录管理
+    const EXEMPT = new Set(['brake', 'vehicle', 'card', 'desktop', 'capability'])
+    const matched = new Set(CAPABILITY_DOMAINS.flatMap(d => d.match))
+    const uncovered = [...new Set(TOOLS.map(t => t.name.split('.')[0]))]
+      .filter(p => !EXEMPT.has(p) && !matched.has(p))
+    expect(uncovered, '这些能力域没进能力卡，用户问"你会什么"看不到它们').toEqual([])
+  })
+})

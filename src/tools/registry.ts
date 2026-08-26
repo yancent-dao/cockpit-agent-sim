@@ -215,7 +215,10 @@ export function createRegistry(
       // "清空桌面"是一句话动作（2026-08-26 实拍：模型逐张猜 id 三连拒）
       if (args.cardId === 'all') {
         const d = need()
-        const all = [...d.layout().cards.map((c: any) => c.id), ...(d.layout().staged ?? []).map((c: any) => c.id)]
+        const l = d.layout()
+        // 覆盖层不在 cards 里（layout 单列）——漏了它，"清空桌面"后 full 卡还盖在屏上（实拍）
+        const all = [...l.cards.map((c: any) => c.id), ...(l.staged ?? []).map((c: any) => c.id),
+          ...(l.overlay ? [(l.overlay as any).id] : [])]
         all.forEach((id: string) => d.dismiss(id, { byUser: true }))
         return { status: 'ok', message: all.length ? `清掉了 ${all.length} 张卡` : '桌面本来就是空的' }
       }

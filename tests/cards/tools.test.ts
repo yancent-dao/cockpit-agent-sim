@@ -60,10 +60,17 @@ describe('卡片调度 Tool', () => {
   })
 
   it('data 缺少模板必填字段时拒绝，不是静默渲染空白', async () => {
-    const r = await show({ template: 'capability', size: 'full', data: {} })
+    const r = await show({ template: 'list', size: 'box', data: {} })
     expect(r.status).toBe('rejected')
     expect(r.code).toBe('DATA_SHAPE_MISMATCH')
     expect(r.message).toContain('items')
+  })
+
+  it('capability 是 systemOnly——唯一渲染出口在 capability.list，模型手拼的目录必然过时（2026-08-26 实拍）', async () => {
+    const r = await show({ template: 'capability', size: 'full',
+      data: { title: '我能做的事', items: [{ label: '导航', desc: '编的' }] } })
+    expect(r.status).toBe('rejected')
+    expect(r.code).toBe('SYSTEM_TEMPLATE')
   })
 
   it('天气卡缺 now 字段时拒绝', async () => {
@@ -237,6 +244,17 @@ describe('卡片 id 的可发现性（2026-08-26 实拍三次瞎猜：resize "na
     await reg.invoke('card.show', { template: 'list', size: 'box', ttl: 60, data: { title: 'B', items: [{ label: 'y' }] } })
     const r = await reg.invoke('card.dismiss', { cardId: 'all' })
     expect(r.status).toBe('ok')
+    expect(desk.layout().cards.length).toBe(0)
+  })
+
+  it('dismiss "all" 连覆盖层一起清（2026-08-26 实拍：full 档能力卡清空桌面后还盖在屏上）', async () => {
+    await reg.invoke('card.show', { template: 'list', size: 'box', ttl: 60, data: { title: 'A', items: [{ label: 'x' }] } })
+    desk.render({ key: 'capabilities', template: 'capability', size: 'full', kind: 'task', ttl: 'untilDismissed',
+      data: { title: '我能做的事', items: [{ label: '导航', desc: 'x' }] } })
+    expect(desk.layout().overlay, '前置：full 档确实走了覆盖层').toBeTruthy()
+    const r = await reg.invoke('card.dismiss', { cardId: 'all' })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().overlay).toBeUndefined()
     expect(desk.layout().cards.length).toBe(0)
   })
 })

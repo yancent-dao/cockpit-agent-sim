@@ -3,7 +3,7 @@ import type { Skill } from './index'
 /** 媒体章法。CP 特性坑从 tool desc 搬来——desc 该说"什么时候用我"，坑放剧本里 */
 export const MEDIA_SKILL: Skill = {
   name: '媒体',
-  whenToUse: '听歌/电台/新闻/视频',
+  whenToUse: '放音乐电台播客新闻视频。提到听什么/放什么/来点声音就必用',
   tools: ['music.search', 'music.play', 'radio.search', 'radio.play',
     'news.headlines', 'news.search', 'news.read', 'video.search', 'video.play',
     'media.control', 'media.volume', 'media.queue', 'media.favorite', 'media.favorites'],

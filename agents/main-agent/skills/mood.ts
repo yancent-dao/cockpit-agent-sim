@@ -7,7 +7,7 @@ import type { Skill } from './index'
  */
 export const MOOD_SKILL: Skill = {
   name: '氛围导演',
-  whenToUse: '来点氛围/放松/浪漫/提神',
+  whenToUse: '灯光香氛音乐一键成景。说来点氛围/放松/浪漫/提神就用',
   tools: ['ambientLight.set', 'fragrance.set', 'climate.set',
     'music.generate', 'music.play', 'media.volume'],
   inject: `氛围导演的章法——一个场景词，灯、香、乐、温一步到位：

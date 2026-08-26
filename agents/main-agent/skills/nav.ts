@@ -3,7 +3,7 @@ import type { Skill } from './index'
 /** 导航章法。全流程 + 撤卡时机 + 顺路充电，都是 pilot 跑批取证过的经验 */
 export const NAV_SKILL: Skill = {
   name: '导航',
-  whenToUse: '找地方/设路线/顺路搜/常用地址',
+  whenToUse: '找地点、设路线、沿途搜。提到去哪/导航/附近/顺路/常用地址就必用',
   tools: ['navigation.search', 'navigation.setDestination', 'navigation.searchAlong',
     'navigation.compareRoutes', 'navigation.control', 'navigation.getStatus',
     'places.save', 'places.list'],

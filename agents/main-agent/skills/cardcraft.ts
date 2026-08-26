@@ -7,7 +7,7 @@ import type { Skill } from './index'
  */
 export const CARDCRAFT_SKILL: Skill = {
   name: '生成卡片',
-  whenToUse: '用 canvas 建卡前必读',
+  whenToUse: '用 canvas 自由排版建卡。做报告/图表/自定义界面前必读',
   tools: ['card.show', 'card.dismiss'],
   inject: `canvas 卡设计规范（不分内容类型，一律照此）。
 【铁律】卡片环境已内置一套 HMI 类，**只用类拼结构，不手写 style 排版**——

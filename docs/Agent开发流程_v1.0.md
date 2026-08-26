@@ -146,6 +146,17 @@ handler 必须带 NOT_WIRED 守卫:没装配返回人话 unavailable,
 
 ### Tool desc / 返回 message
 
+> 2026-08-25 对照 Anthropic 官方《Writing effective tools for agents》与
+> agent-design 指南,六条官方共识(我们已全对齐,新工具照此自查):
+> ①命名空间前缀分组(travel.*/media.*——已是纪律);②参数名明确无歧义
+> (taskId 不叫 id);③相关操作**扩参不扩工具**(media.control 扩 jump/
+> speed 先例);④返回带**语义标签不裸技术 ID**(quotes 带 label/kindLabel
+> ——裸 id 会诱发模型编造,placeId 实拍先例);⑤错误信息**可行动+带正确
+> 示例**(形状示例先例);⑥评估驱动=pilot。
+> desc 的标准是"像带新同事:把隐性上下文写显"——灰权限的为什么、
+> 资源间关系(news.search vs headlines)、使用时机(撤卡分两类),
+> 但**不灌水**:车门开关不需要三行说明,Claude 已经很聪明。
+
 - desc 是**给模型的指令**,不是给自己的备忘录(元信息会被当话念出来)。
 - desc 和人设打架时模型两边都想满足,结果两边都不对——查奇怪话术先查矛盾。
 - 数组参数必须用 `items` 写 JSON Schema;报错要带"收到的键"和

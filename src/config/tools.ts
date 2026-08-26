@@ -185,7 +185,7 @@ export const TOOLS: ToolDef[] = [
     name: 'steeringWheel.set',
     brief: '方向盘加热',
     fast: true,
-    desc: '控制方向盘加热档位。',
+    desc: '控制方向盘加热档位。0 是关，档位越高越热。',
     permission: '彩',
     params: { heating: { type: 'number', range: [0, 3], required: true, desc: '加热档位 0-3' } },
     writes: [{ path: 'cabin.steeringWheel.heating', from: 'heating' }],
@@ -278,7 +278,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'door.set',
     brief: '开关车门，需确认',
-    desc: '开关车门。open 打开，close 关闭。',
+    desc: '开关车门。open 打开，close 关闭。涉及行车安全，系统会自动向用户弹确认。',
     permission: '灰',
     params: {
       door: {
@@ -295,7 +295,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'trunk.set',
     brief: '开关后备箱，需确认',
-    desc: '开关后备箱。只有 P 挡才能打开。',
+    desc: '开关后备箱。只有 P 挡才能打开——被拒时如实告诉用户停稳挂 P 挡再试。',
     permission: '灰',
     params: {
       target: { type: 'enum', values: ['trunk'], required: true, desc: '目标' },
@@ -309,7 +309,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'chargePort.set',
     brief: '开关充电口，需确认',
-    desc: '开关充电口盖。',
+    desc: '开关充电口盖。用户要充电或拔枪收口时用。',
     permission: '彩',
     params: { action: { type: 'enum', values: ['open', 'close'], required: true, desc: '动作' } },
     writes: [{ path: 'cabin.chargePort.isOpen', from: 'action', map: { open: true, close: false } }],
@@ -320,7 +320,7 @@ export const TOOLS: ToolDef[] = [
     name: 'childLock.set',
     brief: '儿童锁开关',
     fast: true,
-    desc: '开关后排儿童锁。开启后后排车窗与车门将无法控制。',
+    desc: '开关后排儿童锁。开启后后排车窗与车门将无法控制——后排乘客抱怨车窗车门失灵时先查它。',
     permission: '彩',
     params: { enabled: { type: 'boolean', required: true, desc: '是否开启' } },
     writes: [{ path: 'cabin.childLock', from: 'enabled' }],
@@ -331,7 +331,7 @@ export const TOOLS: ToolDef[] = [
     name: 'ambientLight.set',
     brief: '氛围灯开关颜色亮度',
     fast: true,
-    desc: '控制氛围灯。可以一次传多个字段，只传要改的即可。',
+    desc: '控制氛围灯。可以一次传多个字段，只传要改的即可。营造场景时配合亮度和颜色一起调。',
     permission: '彩',
     params: {
       power: { type: 'boolean', desc: '开关' },
@@ -352,7 +352,7 @@ export const TOOLS: ToolDef[] = [
     name: 'fragrance.set',
     brief: '香氛开关香型浓度',
     fast: true,
-    desc: '控制香氛。可以一次传多个字段，只传要改的即可。',
+    desc: '控制香氛。可以一次传多个字段，只传要改的即可。营造场景时常与氛围灯、音乐一起用。',
     permission: '彩',
     params: {
       power: { type: 'boolean', desc: '开关' },
@@ -1010,7 +1010,7 @@ export const TOOLS: ToolDef[] = [
     name: 'news.search',
     brief: '按话题搜新闻',
     fast: true,
-    desc: '按关键词搜新闻。列表自动上屏带编号。',
+    desc: '按关键词搜特定话题的新闻，列表自动上屏带编号。看当日要闻用 news.headlines，别用这个。',
     permission: '彩',
     params: {
       query: { type: 'string', required: true, desc: '关键词' },
@@ -1162,7 +1162,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'card.resize',
     brief: '调卡片大小',
-    desc: '改变卡片尺寸。空间不够时系统会自动腾位。',
+    desc: '改变卡片尺寸。这是用户意愿层——用户明说"大一点/小一点"才调，调完尺寸会锁住不被系统自动改回；模板不支持的档位会被拒。',
     permission: '彩',
     params: {
       cardId: { type: 'string', required: true, desc: '卡片 id' },
@@ -1176,7 +1176,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'card.dismiss',
     brief: '撤掉卡片',
-    desc: '移除一张卡片。',
+    desc: '移除一张卡片。撤卡分两类：问题卡（确认/提问）用户答完就撤；候选/结果卡等这件事翻篇再撤——用户的下一句常是冲着屏幕问的，撤早了他没东西可指。',
     permission: '彩',
     params: { cardId: { type: 'string', required: true, desc: '卡片 id' } },
     handler: 'cardDismiss',
@@ -1259,7 +1259,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'automation.delete',
     brief: '删自动任务',
-    desc: '删除一条自动任务。',
+    desc: '删除一条自动任务（不可恢复）。用户只是暂时不想要就用 automation.toggle 停用，明说"删掉"才删。',
     permission: '彩',
     params: {
       id: { type: 'string', desc: '任务 id' },
@@ -1298,7 +1298,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'memory.list',
     brief: '列出记住的事',
-    desc: '用户问"你记住了什么"时调用，清单会上屏。',
+    desc: '用户问"你记住了什么/有什么偏好"时调用，清单会上屏——口头挑一两条说，别逐条念。',
     permission: '彩',
     params: {},
     handler: 'memoryList',

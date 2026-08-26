@@ -6,7 +6,7 @@ import type { Skill } from './index'
  */
 export const BRIEFING_SKILL: Skill = {
   name: '出发晨报',
-  whenToUse: '出发了/早上好/今天啥情况',
+  whenToUse: '上车简报：日程天气路况要闻。用户说出发/早上好/今天啥情况就用',
   tools: ['weather.query', 'holiday.query', 'traffic.status', 'news.headlines',
     'stock.query', 'poem.today', 'memory.list'],
   inject: `出发晨报的章法——目标是 30 秒内一段连贯的口头简报，不是逐项汇报：

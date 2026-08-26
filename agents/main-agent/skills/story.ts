@@ -9,7 +9,7 @@ import type { Skill } from './index'
  */
 export const STORY_SKILL: Skill = {
   name: '讲故事',
-  whenToUse: '给孩子讲绘本、续故事、成书导出之前必读',
+  whenToUse: '给孩子讲互动绘本、配图成书。提到讲故事/绘本/听故事就必用',
   tools: ['story.profile', 'story.cast', 'story.begin', 'story.continue', 'story.finish', 'story.export'],
   inject: `给孩子讲绘本的章法：
 

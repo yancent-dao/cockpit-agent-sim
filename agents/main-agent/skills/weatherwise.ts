@@ -7,7 +7,7 @@ import type { Skill } from './index'
  */
 export const WEATHERWISE_SKILL: Skill = {
   name: '天气应对',
-  whenToUse: '下雨了/起雾/太晒/天气突变',
+  whenToUse: '恶劣天气的车控与路线应对。下雨/起雾/太晒/天气突变时必用',
   tools: ['weather.query', 'wiper.set', 'light.set', 'window.set', 'sunroof.set',
     'defrost.set', 'airPurifier.set', 'climate.set', 'traffic.status'],
   inject: `天气应对的章法——按当下天气把车调到位，一轮并行调完，一句话交代：

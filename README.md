@@ -70,7 +70,7 @@ flowchart TB
         state["src/state/ 记忆四级<br/>瞬时 · 会话 · 领域 · 长期"]
     end
     subgraph DATA["src/config/ 数据（越多越好）+ agents/ 实例"]
-        config["113 信号(VSS) · 84 Tool · 约束 · 卡片规则/模板契约"]
+        config["113 信号(VSS) · 94 Tool · 约束 · 卡片规则/模板契约"]
         manifest["manifest + 人设 + 快层微人设 + 技能包"]
     end
     integrations["src/integrations/ 三方适配<br/>高德 · Open-Meteo · iTunes/播客 · Radio Browser · NewsAPI · Pexels · 腾讯行情 · OpenRouter 图像/视频/音乐"]
@@ -86,7 +86,7 @@ flowchart TB
 
 ### Agent 的组成部分
 
-**快慢双层。** 简单任务快层执行，复杂任务慢层执行。快层会把执行结果转交给慢层：两层共享同一份对话记录，慢层对着快层的调用记录做校验，错了就改，剩下的活接着干；否则保持沉默。快层碰到自己无权调的工具会立刻收手转交，被拒的工具名直接预载给慢层。
+**快慢双层。** 简单任务快层执行，复杂任务慢层执行。（快层目前**默认关闭**、全走慢层——实测可用的小模型要么比大模型还慢、要么爱把工具调用念出来；机制全保留，面板一键可开，换到真正快的模型即可启用。）快层会把执行结果转交给慢层：两层共享同一份对话记录，慢层对着快层的调用记录做校验，错了就改，剩下的活接着干；否则保持沉默。快层碰到自己无权调的工具会立刻收手转交，被拒的工具名直接预载给慢层。
 
 ```mermaid
 sequenceDiagram
@@ -116,6 +116,7 @@ sequenceDiagram
 **用户随时可以插话。** 每轮对话带标签。用户追加一句，旧的那轮活照干完、只是不再抢占，迟到的话术降级进横幅；清空会话则整轮直接作废。
 
 **记忆分四级。** 瞬时是信号 Store（对齐 VSS）；会话是域仓结论加对话滑窗摘要，由小模型异步压缩；领域是播放队列、历史、收藏，落 localStorage；长期是用户明说要记的偏好，注入 system，最多十条。偏好的自动学习不做。
+长对话（几十轮的功能巡演）另有三道保线：压缩**滞后批量化**（攒够十轮才折叠一次，摘要不被反复复印丢细节）；**议程位** `agenda.set`——模型给自己记一条跨轮主线备忘，每轮随状态注入回到眼前、不经过压缩；**上下文三层化**——system 只放逐字稳定的人设与目录（prompt cache 整段命中），车辆状态、桌面、议程这些易变态以 system 角色贴在消息末尾，每轮现拼现贴。
 
 ```mermaid
 flowchart LR
@@ -147,7 +148,7 @@ flowchart LR
     c --> f["卡片们再往左上靠一靠<br/>不留散落的空洞"]
 ```
 
-## 能力清单（84 Tools）
+## 能力清单（94 Tools）
 
 下面是全部工具，按域分组。⚡ 表示挂在快层，能先斩后奏。
 
@@ -179,12 +180,13 @@ flowchart LR
 </details>
 
 <details>
-<summary><b>导航 · 地图 · 天气 · 路况（高德 + Open-Meteo）</b>（14 个）</summary>
+<summary><b>导航 · 地图 · 天气 · 路况（高德 + Open-Meteo）</b>（15 个）</summary>
 
 | Tool | 说明 | 权限 | 快层 |
 |---|---|:-:|:-:|
 | `navigation.search` | 搜地点出候选列表 | 彩 |  |
 | `navigation.setDestination` | 设目的地开始导航 | 彩 |  |
+| `navigation.modifyRoute` | 导航中改路不动终点：加删途经点、换偏好 | 彩 |  |
 | `navigation.searchAlong` | 沿途周边搜服务点 | 彩 |  |
 | `navigation.compareRoutes` | 多路线方案对比 | 彩 |  |
 | `navigation.control` | 暂停恢复结束导航 | 彩 |  |
@@ -262,7 +264,7 @@ flowchart LR
 </details>
 
 <details>
-<summary><b>语音与屏幕</b>（11 个）</summary>
+<summary><b>语音与屏幕</b>（12 个）</summary>
 
 | Tool | 说明 | 权限 | 快层 |
 |---|---|:-:|:-:|
@@ -271,7 +273,8 @@ flowchart LR
 | `voice.speak` | 主动播报一句话 | 彩 |  |
 | `voice.ask` | 向用户提问出选择卡 | 彩 |  |
 | `voice.config` | 换朗读音色、调语速 | 彩 |  |
-| `card.show` | 建卡片上屏 | 彩 |  |
+| `card.show` | 建卡片上屏（现成模板） | 彩 |  |
+| `card.generate` | 生成式卡：模型直出 HTML/SVG 自由排版或 iframe 小应用 | 彩 |  |
 | `card.update` | 更新卡片数据 | 彩 |  |
 | `card.resize` | 调卡片大小 | 彩 |  |
 | `card.dismiss` | 撤掉卡片 | 彩 |  |
@@ -288,6 +291,24 @@ flowchart LR
 | `memory.remember` | 记住用户偏好 | 彩 |  |
 | `memory.forget` | 删掉记住的偏好 | 彩 |  |
 | `memory.list` | 列出记住的事 | 彩 |  |
+
+</details>
+
+<details>
+<summary><b>旅行助手（分步共建攻略 · 机酒盯价 · 每日天气）</b>（8 个）</summary>
+
+| Tool | 说明 | 权限 | 快层 |
+|---|---|:-:|:-:|
+| `travel.plan` | 交攻略：宽泛目的地先给几条线收敛，选定后按天日程上卡 | 彩 |  |
+| `travel.create` | 建旅行任务并配齐监控，返回首采参考价 | 彩 |  |
+| `travel.watch` | 盯一项（机票/分段住宿/汇率），可设阈值 | 彩 |  |
+| `travel.unwatch` | 撤一项监控，样本保留 | 彩 |  |
+| `travel.list` | 查全景：30 天事实（极值/分位/走向），可钻取走势卡 | 彩 |  |
+| `travel.refresh` | 立即采一轮最新价 | 彩 |  |
+| `travel.update` | 改日期/人数/目的地，监控与天气自动重算 | 彩 |  |
+| `travel.delete` | 删任务连监控，需确认 | 灰 |  |
+
+价格数据源说明：汇率是 frankfurter 真实历史；机票酒店暂为带标记的示例数据（RapidAPI 免费层 + 国内覆盖 + 历史价格三者不可兼得），接口已留槽，Key 到位换一行。
 
 </details>
 
@@ -326,7 +347,11 @@ flowchart LR
 | Radio Browser | 网络电台 | 零 Key | 社区节点,可用性有波动 |
 | NewsAPI | 新闻 | 可选 | ⚠ 免费层**仅限 localhost,禁止部署** |
 | Pexels | 短视频 | 可选 | — |
-| 讯飞开放平台 | 云端超拟人 TTS(可选,不配则用浏览器本机音色) | 可选,三个值 | 免费额度以控制台为准 |
+| 豆包(火山)TTS | 云端 TTS(主对话流式播报) | 可选 | Key 经代理注入 header,不进前端;控制台需给 Key 授权语音资源 |
+| 讯飞开放平台 | 云端超拟人 TTS(豆包之前的方案,单文件版仍可用) | 可选,三个值 | 免费额度以控制台为准 |
+| frankfurter | 汇率(含 30 天真实历史) | **零 Key** | — |
+| lrclib | 歌词(播放器逐句显示) | **零 Key** | — |
+| 腾讯行情 | 股价指数 | 零 Key | — |
 
 Key 放本地的 `.env.local`（已 gitignore）或控制面板，不经过任何后端。
 

@@ -1086,6 +1086,24 @@ async function ask(text: string, opts: { answer?: boolean; source?: string } = {
 
 $('send').onclick = () => { const v = $<HTMLInputElement>('say').value.trim(); if (v) { $<HTMLInputElement>('say').value = ''; ask(v) } }
 /**
+ * IME 重绑（2026-08-25 实拍二修：组字保护后仍「根本打不了中文」）。
+ * 排查：代码里没有任何全局键盘拦截——这是 Chrome 在多窗口（车机屏是
+ * 独立窗口）间切换后 IME 上下文丢在旧窗口的浏览器层毛病，用户手动
+ * 切一轮输入法就是在逼系统重绑。workaround：每次聚焦输入框自动做一轮
+ * blur→refocus，把重绑动作代劳了。标志位防死循环。
+ */
+{
+  const say = $<HTMLInputElement>('say')
+  let rebinding = false
+  say.addEventListener('focus', () => {
+    if (rebinding) { rebinding = false; return }
+    rebinding = true
+    say.blur()
+    setTimeout(() => say.focus(), 0)
+  })
+}
+
+/**
  * 输入法组字保护（2026-08-25 实拍：中文打一半按 Enter 选词，半截拼音被
  * 当消息发出去；组字被打断后 IME 状态错乱，之后只能输字母）。
  * isComposing / keyCode 229 = 输入法正在组字，这个 Enter 是选词不是发送。

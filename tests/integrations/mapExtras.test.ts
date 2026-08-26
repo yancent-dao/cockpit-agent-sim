@@ -174,3 +174,40 @@ describe('navigation.modifyRoute：改路不动终点', () => {
     expect(String(r.message)).toContain('不存在')
   })
 })
+
+/**
+ * 全链路：modifyRoute 改完信号，导航卡的 data 要跟着长出途经点
+ * （2026-08-25 实拍：改路成功、话术都对，桌面地图卡上却没有途经点）。
+ */
+describe('modifyRoute → 导航卡数据跟上', () => {
+  it('卡 data.via 出现途经点名、waypoints 坐标进活地图参数', async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    const { createOrchestrator } = await import('../../src/cards/orchestrator')
+    const { CARD_RULES, DATA_BUILDERS } = await import('../../src/config/cardRules')
+    const amap = {
+      geocode: async (addr: string) => ({ location: '104.10,30.70', formattedAddress: addr }),
+      placeSearch: async (q: string) => [{ id: 'p1', name: q, location: '104.08,30.66', address: 'x' }],
+      placeDetail: async () => ({ name: '黄山风景区', location: '118.17,30.13' }),
+      driving: async (_o: string, _d: string, opts: any) => ({
+        distance: 8200, duration: 23 * 60, steps: [{ instruction: '直行' }],
+        polyline: '1,1;2,2' + (opts?.waypoints?.length ? ';3,3' : ''),
+      }),
+      staticMapUrl: () => 'http://x/map.png',
+    }
+    const desk = createDesk()
+    createOrchestrator({ store, desk, rules: CARD_RULES, builders: DATA_BUILDERS,
+      deps: { store, amap } as any }).start()
+    const reg2 = createRegistry(store, TOOLS, Date.now, { amap, desk } as any)
+    store.set('vehicle.location', '104.06,30.54')
+    ok(await reg2.invoke('navigation.setDestination', { poiId: 'B01' }))
+    const before = desk.layout().cards.find(c => c.key === 'nav')!
+    expect((before.data as any).via ?? []).toHaveLength(0)
+
+    ok(await reg2.invoke('navigation.modifyRoute', { addWaypoint: '合肥' }))
+    const after = desk.layout().cards.find(c => c.key === 'nav')!
+    expect((after.data as any).via, '途经点名要进卡').toContain('合肥')
+    expect(String((after.data as any).waypoints), '坐标要进活地图参数').toContain('104.08,30.66')
+  })
+})
+
+function ok(r: any) { if (r.status !== 'ok') throw new Error('调用失败: ' + JSON.stringify(r).slice(0, 200)); return r }

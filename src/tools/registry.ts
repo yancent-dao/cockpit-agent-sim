@@ -441,6 +441,18 @@ export function createRegistry(
         // 实拍第三次撞见）：期望数组收到单个对象 → 包成单元素数组。
         // 跟 "24"→24 同族：协议适配不是意图分支，判据只看数据形状
         if (v && typeof v === 'object') { args[key] = [v]; v = args[key] }
+        /**
+         * JSON 字符串化的数组（2026-08-25 实拍：全走慢层后模型把 pages 传成
+         * "[{…}]"，两轮自纠失败，收场"系统有点卡"）——function calling 的
+         * 双重编码退化，宽容家族补员。解析出来不是数组的照拒：宽容不是不校验。
+         */
+        else if (typeof v === 'string' && v.trim().startsWith('[')) {
+          try {
+            const parsed = JSON.parse(v)
+            if (Array.isArray(parsed)) { args[key] = parsed; v = parsed }
+            else return `${key} 需要数组`
+          } catch { return `${key} 需要数组（收到的字符串不是合法 JSON）` }
+        }
         else return `${key} 需要数组`
       }
       if (def.type === 'array' && Array.isArray(v)) {

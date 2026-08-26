@@ -530,6 +530,43 @@ describe('协作段按快层开关注入（2026-08-25 审计：快层关闭后 s
   })
 })
 
+describe('装载集的生命周期：LRU 触碰 + 闲置衰减（2026-08-25 拍板：FIFO 会误逐常用工具、旧域工具只进不出）', () => {
+  const toolNames = (req: any) => (req.tools ?? []).map((t: any) => t.function?.name ?? t.name)
+
+  it('被调用过的工具触碰队尾——常用的不被先装载的身份误逐', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    // run1 装 travel.list 并调用它；随后塞满装载集把老的往外挤
+    const loads = Array.from({ length: 20 }, (_, i) => ['media.play', 'news.headlines', 'weather.query', 'travel.refresh', 'places.list', 'music.search', 'radio.play', 'video.play', 'news.search', 'web.search', 'travel.create', 'travel.watch', 'travel.update', 'navigation.search', 'navigation.setDestination', 'navigation.searchAlong', 'navigation.compareRoutes', 'navigation.control', 'navigation.getStatus', 'places.save'][i])
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('tools.load', { names: ['travel.list'] })] }),
+      () => ({ toolCalls: [call('travel.list', {})] }),      // 使用它 → 触碰
+      () => ({ text: '好' }),
+      () => ({ toolCalls: [call('tools.load', { names: loads })] }),  // 塞满挤兑
+      () => ({ text: '好' }),
+      () => ({ text: '第三轮' }),
+    )
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('第一句')
+    await p.run('第二句')
+    await p.run('第三句')
+    expect(toolNames(slow.seen.at(-1)!), '用过的活下来').toContain('travel_list')
+  })
+
+  it('连续 8 个 run 没用过的工具退出装载集——换话题后旧域轻装', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const replies = [
+      () => ({ toolCalls: [call('tools.load', { names: ['travel.list'] })] }),
+      () => ({ text: '好' }),
+      ...Array.from({ length: 9 }, () => () => ({ text: '闲聊' })),
+    ]
+    let i = 0
+    const slow = fakeLLM(...replies.map(f => f) as any)
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    for (let r = 0; r < 10; r++) await p.run(`第${r}句`)
+    expect(toolNames(slow.seen.at(-1)!), '闲置 8 个 run 后退场').not.toContain('travel_list')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

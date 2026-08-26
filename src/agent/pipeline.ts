@@ -285,6 +285,8 @@ export function createPipeline(deps: PipelineDeps) {
       trace.push({ type: 'toolResult', at: clock(), name, result, ms: clock() - s })
       // mic 工具真出声了 → turn 记一笔（空收场兜底靠它分"合法静默"和"全程哑场"）
       if (MIC.has(name) && result.status === 'ok') turn.markSpoke()
+      // LRU 触碰：装载集里的工具被成功调用 → 挪到队尾，常用的不被误逐
+      if (result.status === 'ok' && sessionLoaded.has(name)) rememberLoaded(name)
       if (result.status === 'inputRequired' && audible()) emit({ type: 'confirming', text: result.message ?? '需要确认' })
       // 快层的拒绝不上横幅（quietRejects）：越权是转交的常态、约束拒绝的解释权归慢层——
       // 结果都如实进报告，慢层看得到（用户实拍："已拒绝执行 无权调用 navigation.setDestination"）
@@ -643,11 +645,21 @@ export function createPipeline(deps: PipelineDeps) {
    * 符合官方 tool search 的「append 不 swap」——还顺带保住 prompt 缓存前缀。
    */
   const SESSION_LOADED_MAX = 20
-  const sessionLoaded = new Set<string>()
+  /** 连续几个 run 没用就退出装载集——换话题后旧域工具自动轻装（2026-08-25 拍板） */
+  const SESSION_IDLE_RUNS = 8
+  /** name → 最后一次装载/使用的 run 序号。LRU：调用成功也触碰，常用的不被误逐 */
+  const sessionLoaded = new Map<string, number>()
   const rememberLoaded = (n: string) => {
-    sessionLoaded.delete(n); sessionLoaded.add(n)
-    while (sessionLoaded.size > SESSION_LOADED_MAX)
-      sessionLoaded.delete(sessionLoaded.values().next().value!)
+    sessionLoaded.set(n, runSeq)
+    if (sessionLoaded.size > SESSION_LOADED_MAX) {
+      const oldest = [...sessionLoaded.entries()].sort((a, b) => a[1] - b[1])[0]
+      sessionLoaded.delete(oldest[0])
+    }
+  }
+  /** run 开始时的衰减扫：闲置过久的移出 */
+  const decayLoaded = () => {
+    for (const [n, at] of sessionLoaded)
+      if (runSeq - at > SESSION_IDLE_RUNS) sessionLoaded.delete(n)
   }
 
   /** tools.load 拦截器工厂：快慢/子 Agent 各自的 loaded 集合 */
@@ -677,7 +689,7 @@ export function createPipeline(deps: PipelineDeps) {
     const canSpeak = () => !fastReported || slowActed
     let turnOk = 0   // 本 turn 业务成功数——空收场兜底的措辞靠它分"办成没说"和"没办成"
     const sm = deps.slowManifest
-    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n)), ...sessionLoaded])
+    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n)), ...sessionLoaded.keys()])
     /**
      * 冻结视图 + **视角改写**（2026-08-18 实拍）：thread 里快层的
      * NOT_AUTHORIZED 记录对慢层是假的——被拒的是快层，慢层全权。
@@ -876,6 +888,7 @@ export function createPipeline(deps: PipelineDeps) {
     // run 可观测（交互总设计 R1-②）：每个 run 有唯一 id 与来源标签——
     // double-run、幽灵 run 从"疑似"变"看得见"
     const runId = `r${++runSeq}`
+    decayLoaded()   // 闲置过久的装载退场——每个 run 入口扫一次
     const source = runOpts.source ?? (runOpts.answer ? 'tap-answer' : 'voice')
     // 空输入直接返回：送进模型它会凭空发挥（实测会无端开窗）
     if (!text.trim()) return { reply: '', trace, rounds: 0, stopReason: 'empty' }

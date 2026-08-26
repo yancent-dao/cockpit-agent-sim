@@ -34,6 +34,9 @@ export interface TravelTask {
   /** draft 待定 · active 监控中 · archived 已归档（可查、可当模板复用） */
   status: 'draft' | 'active' | 'archived'
   createdAt: number
+  /** 最近一次被操作（plan/create/update/watch）的时刻。trip 卡的主角按它挑——
+      「最近在聊的」不是「最近创建的」（2026-08-25 实拍：海南复用老任务，卡还钉在澳大利亚） */
+  touchedAt?: number
   /* ── 攻略数据（2026-08-25 融合卡）：卡 = f(仓)，攻略也进仓 ── */
   days?: TripDay[]
   prep?: string[]
@@ -84,6 +87,9 @@ export function createTravelStore(storage: DomainStorage) {
   } catch { /* 坏数据兜底成空仓 */ }
 
   const persist = () => { try { storage.set(KEY, JSON.stringify(db)) } catch { /* 配额满静默 */ } }
+  /** 触碰时间戳单调递增：同毫秒内两次操作也分得出先后（排序判据不许并列） */
+  let lastTouch = Math.max(0, ...db.tasks.map(t => t.touchedAt ?? 0))
+  const touch = () => (lastTouch = Math.max(Date.now(), lastTouch + 1))
   /** 淘汰过期样本。每次写样本时顺手做，不用单开一个清理任务 */
   const prune = (now: number) => { db.samples = db.samples.filter(s => now - s.at <= WINDOW) }
 
@@ -96,10 +102,10 @@ export function createTravelStore(storage: DomainStorage) {
     },
     // 防御性拷贝：外部引用不许穿透进仓——共享对象被调用方改一下，
     // 仓里的"事实"就悄悄变了（自动化规则仓真踩到过）
-    addTask(t: TravelTask) { db.tasks.push({ ...t }); persist() },
+    addTask(t: TravelTask) { db.tasks.push({ ...t, touchedAt: touch() }); persist() },
     updateTask(id: string, patch: Partial<TravelTask>) {
       const t = db.tasks.find(x => x.id === id)
-      if (t) { Object.assign(t, patch); persist() }
+      if (t) { Object.assign(t, patch, { touchedAt: touch() }); persist() }
       return t && { ...t }
     },
     /** 删任务连它的委托一起删，返回被停掉的那些——收场话术要念出来 */
@@ -118,7 +124,12 @@ export function createTravelStore(storage: DomainStorage) {
     activeWatches: (now: number = Date.now()): TravelWatch[] =>
       db.watches.filter(w => w.status === 'active' && (w.expiresAt === undefined || w.expiresAt > now))
         .map(w => ({ ...w })),
-    addWatch(w: TravelWatch) { db.watches.push({ ...w }); persist() },
+    addWatch(w: TravelWatch) {
+      db.watches.push({ ...w })
+      const t = db.tasks.find(x => x.id === w.taskId)
+      if (t) t.touchedAt = touch()   // 给任务加监控也是在聊它
+      persist()
+    },
     markFired(id: string, value: number, at: number) {
       const w = db.watches.find(x => x.id === id)
       if (w) { w.status = 'fired'; w.lastValue = value; w.lastAt = at; persist() }

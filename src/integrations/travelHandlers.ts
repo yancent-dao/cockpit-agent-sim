@@ -88,7 +88,8 @@ function core(deps: TravelDeps) {
     if (!d) return
     const tasks = S().tasks().filter(t => t.status !== 'archived')
     if (!tasks.length) { const c = d.findByKey(TRIP_KEY); if (c) d.dismiss(c.id); return }
-    const t = tasks[tasks.length - 1]                      // 最新的那次旅行是主角
+    // 主角 = 最近被操作的（touchedAt），不是最近创建的——复用老任务时卡要跟过去
+    const t = [...tasks].sort((a, b) => (b.touchedAt ?? b.createdAt) - (a.touchedAt ?? a.createdAt))[0]
     const ws = S().watches().filter(w => w.taskId === t.id && w.status !== 'cancelled')
     const alive = ws.filter(w => w.status === 'active' || w.status === 'fired')
     const flightW = alive.find(w => w.kind === 'flight')

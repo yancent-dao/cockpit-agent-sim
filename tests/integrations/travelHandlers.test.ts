@@ -164,6 +164,26 @@ describe('行程天气（v3：确认后每天带天气，超窗不编造）', ()
   })
 })
 
+describe('trip 卡的主角 = 最近被操作的任务（2026-08-25 实拍：说"去海南"，plan 复用了老海南任务，卡上却还是后建的澳大利亚——「最近创建」不等于「最近在聊」）', () => {
+  const plan = (dest: string) => h.travelPlan({ destination: dest,
+    days: [{ title: 'D1', stops: [{ name: 'x' }] }] })
+
+  it('复用老任务更新后，卡切到它——不再钉死在最新创建的任务上', async () => {
+    ok(await plan('海南'))
+    ok(await plan('澳大利亚'))
+    expect((desk.findByKey('travel-trip')!.data as any).dest).toBe('澳大利亚')
+    ok(await plan('海南'))          // 复用老海南任务
+    expect((desk.findByKey('travel-trip')!.data as any).dest, '聊谁显示谁').toBe('海南')
+  })
+
+  it('update/watch 老任务同样把它带回台前', async () => {
+    const a = (ok(await plan('海南')).data as any).taskId
+    ok(await plan('澳大利亚'))
+    ok(await h.travelWatch({ taskId: a, kind: 'flight' }))
+    expect((desk.findByKey('travel-trip')!.data as any).dest).toBe('海南')
+  })
+})
+
 describe('travel.create：信息不全也照建', () => {
   it('只给目的地就能建——待定态，缺什么在返回里说清楚', async () => {
     const r = ok(await h.travelCreate({ title: '韩国行', destination: '首尔' }))

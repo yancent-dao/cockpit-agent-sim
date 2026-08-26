@@ -1,8 +1,19 @@
 # cockpit-agent-sim
 
-一个面向智能座舱业务的 Agent 框架。覆盖车辆信号模拟、Agent 运行时、记忆系统、工具系统、AI HMI、TTS 等模块，理想情况下对于新增的场景只需要新增 Skill 即可。个人使用需要配置 API，详情见文档。
+**一个面向智能座舱业务的 Agent 框架**——车辆信号模拟、Agent 运行时、工具系统、记忆系统、AI HMI、TTS 全栈覆盖，新增场景理想情况下只需要新增一个 Skill。
 
-对话由 LLM 驱动，导航、天气、音乐、新闻、云端 TTS 接的都是真实服务。车机屏是独立窗口，可以用来演示
+<p>
+  <img alt="tests" src="https://img.shields.io/badge/tests-1646%20passing-brightgreen" />
+  <img alt="runtime deps" src="https://img.shields.io/badge/runtime%20deps-0-blue" />
+  <img alt="backend" src="https://img.shields.io/badge/backend-none-blue" />
+  <img alt="signals" src="https://img.shields.io/badge/VSS%20signals-113-informational" />
+  <img alt="tools" src="https://img.shields.io/badge/tools-94-informational" />
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-black" />
+</p>
+
+[能干什么](#能干什么) · [快速开始](#快速开始) · [系统架构](#系统架构) · [能力清单](#能力清单94-tools) · [设计文档](#设计文档)
+
+对话由 LLM 驱动，导航、天气、音乐、新闻、云端 TTS 接的都是**真实服务**。车机屏是独立窗口，可以直接投屏演示。
 
 ![车机屏桌面：导航活地图、天气、音乐](docs/screenshots/界面1.png)
 
@@ -12,6 +23,20 @@
 
 ![控制面板：模型选择、车辆状态注入、全链路追踪](docs/screenshots/控制台.png)
 
+## 能干什么
+
+- **说话控车**：车窗、空调、座椅、氛围灯、除雾……"后排冷了"知道该关谁的窗。涉及安全的（车门、后备箱）先弹卡确认。
+- **真地图导航**：搜地点、设目的地、对比路线、沿途搜充电站、导航中加删途经点不动终点。地图是高德活瓦片。
+- **听歌看闻**：音乐、电台、播客、新闻、短视频，一套播控通吃；歌词逐句点亮，放完自动接下一首。
+- **给孩子讲绘本**：孩子照片画成主角、边讲边画插图、孩子说的点子写进故事，成书导出 H5 发给家人。
+- **旅行管家**：一起把攻略从"想去云南"聊成按天日程，认可后自动盯机票酒店价，每天天气对齐到行程。
+- **自动化情景**："每天四点开空调""下雨自动关窗"，用嘴建规则，规则可导出分享。
+- **生成式卡片**：报告、图表、小游戏——模型现写 HTML 上屏，有消毒和溢出闸兜底。
+- **记得住你**："记住我喜欢 24 度"下次直接照做；几十轮长对话有议程位保线，不会聊着聊着忘了正在干嘛。
+
+> [!NOTE]
+> 这是一个**演示底座**而非量产产品：没有 ASR（文字输入代替）、没有后端、机酒价格暂为带标记的示例数据。它优化的目标是"每次做新 Demo 不用从零开始"。
+
 ## 快速开始
 
 ```bash
@@ -19,14 +44,15 @@ npm install
 cp .env.local.example .env.local   # 填入你自己的 Key（见文件内注释）
 npm run dev                        # → http://localhost:5173
 ```
-没有做 ASR，直接在控制面板里输入文字即可
+没有做 ASR，直接在控制面板里输入文字即可。
 
-Key 的门槛很低：一个 [OpenRouter](https://openrouter.ai) 的 Key 就能启动。导航和地图要高德的 Key；天气、音乐、电台用的都是免注册服务，什么都不用配。
+> [!TIP]
+> Key 的门槛很低：一个 [OpenRouter](https://openrouter.ai) 的 Key 就能启动。导航和地图要高德的 Key；天气、音乐、电台、歌词、汇率、股价用的都是免注册服务，什么都不用配。
 
 ```bash
 npm test               # 批量测试
 npx tsc --noEmit       # 类型检查
-npm run pilot [场景id] # 自动化体验闭环（消耗真实 API 额度，不进 npm test）
+npm run pilot [场景id] # 自动化体验闭环（⚠ 消耗真实 API 额度，不进 npm test）
 node build-single.mjs  # 单文件版 → single/（双击可开；注意读不到 .env，Key 相关能力不可用）
 ```
 
@@ -415,7 +441,8 @@ Key 放本地的 `.env.local`（已 gitignore）或控制面板，不经过任�
 
 ## 隐私须知（绘本功能）
 
-「路上的故事」会把儿童照片发给第三方图像模型（OpenRouter）生成动漫形象。项目本身不存照片——没有后端，`public/hero/` 也在 gitignore 里——但照片会发给模型。演示或部署给别人用之前，需确认监护人知情同意；界面里的授权勾选是一次性动作，不是默认开关。
+> [!IMPORTANT]
+> 「路上的故事」会把儿童照片发给第三方图像模型（OpenRouter）生成动漫形象。项目本身不存照片——没有后端，`public/hero/` 也在 gitignore 里——但照片会发给模型。演示或部署给别人用之前，需确认监护人知情同意；界面里的授权勾选是一次性动作，不是默认开关。
 
 ## 明确不做
 

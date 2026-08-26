@@ -264,6 +264,7 @@ async function runScenario(s: Scenario) {
   const history: Array<{ role: 'user' | 'assistant'; content: string }> = []
   const turns: any[] = []
 
+  let skillUsed = false        // expectSkill 检查：官方对齐——技能欠触发要被看见
   for (let i = 1; i <= s.maxTurns; i++) {
     const { say, done } = await bot.next(s.goal, history)
     if (!say.trim()) { console.log(`  [${i}] 用户机器人没话说了，收尾`); break }
@@ -310,6 +311,8 @@ async function runScenario(s: Scenario) {
       firstSpeakMs, fastSaid, slowSilent,
       issues: [
         ...detectIssues(store, desk, calls, r.reply ?? ''),
+        ...((skillUsed ||= calls.some((c: any) => c.name === 'skill.use'
+              && String(c.args?.name ?? '').includes(s.expectSkill ?? '\u0000'))), []),
         // 用户机器人串戏会污染整场对话，得标出来，不然人工评审会当成产品问题
         ...(soundsLikeAssistant(say) ? [`用户机器人串戏演了助手：「${say.slice(0, 40)}」（这轮结论不可信）`] : []),
       ],
@@ -328,6 +331,9 @@ async function runScenario(s: Scenario) {
 
     if (done) break
   }
+  if (s.expectSkill && !skillUsed)
+    turns.at(-1)?.issues.push(
+      `提示 · 全程没取「${s.expectSkill}」技能（skill.use 未点名）——章法没进上下文，whenToUse 可能欠触发`)
   return { scenario: s.id, name: s.name, goal: s.goal, turns }
 }
 

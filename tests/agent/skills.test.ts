@@ -45,7 +45,7 @@ const mk = (slowFn: (req: LLMRequest, n: number) => LLMReply | Promise<LLMReply>
 }
 
 describe('skill 全是数据', () => {
-  it('导航、媒体、生成卡片，正文 ≤40 行、whenToUse ≤20 字', () => {
+  it('导航、媒体、生成卡片，正文 ≤40 行、whenToUse ≤50 字（官方对齐 2026-08-25：description 要「做什么+何时用」且宁过触发——20 字只装得下触发词，实拍模型该取不取）', () => {
     const names = SKILLS.map(s => s.name)
     expect(names).toContain('导航')
     expect(names).toContain('媒体')
@@ -54,7 +54,7 @@ describe('skill 全是数据', () => {
     // 规范跟着"卡"走不跟着"场景"走，任何意料之外的需求同一条路
     expect(names).not.toContain('调研报告')
     for (const s of SKILLS) {
-      expect(s.whenToUse.length, `${s.name} whenToUse 超长`).toBeLessThanOrEqual(20)
+      expect(s.whenToUse.length, `${s.name} whenToUse 超长`).toBeLessThanOrEqual(50)
       expect(s.inject.split('\n').length, `${s.name} 正文超 40 行`).toBeLessThanOrEqual(40)
       // 技能点的工具必须真实存在——剧本引用幽灵工具，模型照着调只会撞 UNKNOWN_TOOL
       for (const t of s.tools ?? [])

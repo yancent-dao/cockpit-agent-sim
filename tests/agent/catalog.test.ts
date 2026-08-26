@@ -41,23 +41,23 @@ describe('brief 数据位：目录的原料', () => {
   })
 })
 
-describe('card.show 携带模板说明书', () => {
-  // 用户实拍：调研报告没走生成式卡。根因：CARD_TEMPLATES 里每个模板的 desc
-  // （canvas 的 html/text 契约、像素画布）从没注入过任何 prompt——
-  // 模型不知道 canvas 怎么用，等于这个模板不存在
-  it('template 参数描述含各模板用途，canvas 的 html 契约与像素在内', () => {
+describe('模板说明书的分工（2026-08-25 B 方案）', () => {
+  // 普通模板的说明书随 card.show 到场；生成式契约（html/text/像素容量）
+  // 独立在 card.generate——低频大契约按需装载，不占每轮常驻
+  it('card.show 的 template 描述含普通模板用途，生成式模板不在其中', () => {
     const schema = reg().schemas('openai', ['card.show'])[0]
     const desc: string = schema.function.parameters.properties.template.description
-    expect(desc).toContain('canvas')
-    expect(desc).toContain('html')
-    expect(desc).toContain('对比表')
-    expect(desc, '像素契约在内').toMatch(/\d{3,}×\d{3,}/)
+    expect(desc).toContain('list')
+    expect(desc).not.toContain('data.html')
+    expect(schema.function.parameters.properties.template.enum).not.toContain('canvas')
   })
 
-  it('systemOnly 模板（时钟/导航/播放器）不进说明书——模型建不了的别教', () => {
-    const schema = reg().schemas('openai', ['card.show'])[0]
-    const desc: string = schema.function.parameters.properties.template.description
-    expect(desc).not.toContain('clock')
+  it('card.generate 携带完整生成式契约：html/text 兜底与像素容量', () => {
+    const schema = reg().schemas('openai', ['card.generate'])[0]
+    const desc: string = schema.function.description
+    expect(desc).toContain('html')
+    expect(desc).toContain('text')
+    expect(desc).toMatch(/约 \d+ 行/)
   })
 })
 

@@ -54,6 +54,8 @@ export interface CardTemplate {
    * 而且数据是它编的而不是来自信号。
    */
   systemOnly?: boolean
+  /** 生成式模板（2026-08-25）：不进 card.show 的清单，由 card.generate 专门工具建——契约按需到场 */
+  generative?: boolean
   /**
    * 列表类：items 为空时整张卡无意义，一律拒绝建卡。
    *
@@ -256,6 +258,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 买不买是策略。同 climate.set 不替用户多加两度。
    */
   { id: 'trend', label: '趋势卡', defaultSize: 'hall', sizes: ['box', 'hall', 'stage'],
+    systemOnly: true,   // 2026-08-25：唯一渲染出口是 paintTrend（钻取），模型手建是歧路
     desc: '价格/汇率的走势与结论。data: {title, unit?, current, changeFromPrev?, min?, max?, ' +
       'median?, percentile?, points:[{at,value}], forecast?:[{at,value,lo?,hi?}], ' +
       'threshold?, thresholdLabel?, verdict?:{label,tone:ok|warn|info}, basis?:[一句话依据], ' +
@@ -278,6 +281,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
     desc: '一次旅行的家：攻略/盯价/到价同一张卡。由 travel.* 机制生成，不手动建。',
     fields: { days: { type: 'array' } } },
   { id: 'automation', label: '自动任务卡', defaultSize: 'tower', sizes: ['box', 'tower', 'court'],
+    systemOnly: true,   // 2026-08-25：由 automation.list 机制建
     requireItems: true,
     desc: '自动任务清单（机制生成为主）。data: {title, items:[{value:任务id, label, sub}]}，点条目=启停',
     fields: { items: { type: 'array', required: true } } },
@@ -287,7 +291,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 生成式卡。**先确认别的模板真的装不下再用它** —— 它每次长得都不一样，
    * 跟「同一场景每次演示长得一样」是正面冲突的，产品已知并接受这个代价。
    */
-  { id: 'canvas', label: '生成式卡', defaultSize: 'wide', sizes: [...CANVAS_ALLOWED],
+  { generative: true, id: 'canvas', label: '生成式卡', defaultSize: 'wide', sizes: [...CANVAS_ALLOWED],
     desc: '**万能兜底**：凡是现有模板装不下的内容——分析报告、对比表、图表、带版式的' +
       '说明、任何需要自由排版的东西——都用它，直接写 HTML/SVG 片段放进 data.html。' +
       '判据只有一条：先看现有模板够不够用，够用就用现成的（可预测），不够就大胆用它。' +
@@ -302,7 +306,7 @@ export const CARD_TEMPLATES: CardTemplate[] = [
    * 跟 canvas 的分工：静态图文走 canvas（Shadow DOM + 消毒），
    * 需要交互/动画/计算的小组件才走这（每卡一个 iframe，重但值）。
    */
-  { id: 'canvas-app', label: '生成式小组件', defaultSize: 'hall', sizes: [...CANVAS_ALLOWED],
+  { generative: true, id: 'canvas-app', label: '生成式小组件', defaultSize: 'hall', sizes: [...CANVAS_ALLOWED],
     desc: '带交互或动画的临场小组件才用它（用户张口要个计算器/换算器/小游戏/倒计时这类没有现成工具的需求，就用它现做一个，别说做不了）：你写完整的 HTML+CSS+JS 放进 data.html，**按内容形状选尺寸**（同层进桌面，绝不覆盖别的卡）：游戏/排行这类竖向内容用 court 或 tower；近正方的用 frame 或 hall；横向信息流用 wide 或 panel；小部件 tile。内容形状和卡片形状拧着来就是"裁一半+空一片"。' +
       '会在隔离沙箱里执行。能用 canvas 静态表达的就别用这个。' +
       '**排版必须跟整张桌面一体**：沙箱已带系统字体和浅色配色（文字 var(--tx-1)、底透明），' +

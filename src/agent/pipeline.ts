@@ -625,16 +625,32 @@ export function createPipeline(deps: PipelineDeps) {
       return { status: 'rejected', code: 'UNKNOWN_SKILL', message: `技能目录里没有「${args?.name}」`, suggestion: '对照技能目录里的名字' }
     for (const n of skill.tools ?? []) {
       const c = registry.canonicalName(n)
-      if (registry.list().some(t => t.name === c)) loaded.add(c)
+      if (registry.list().some(t => t.name === c)) { loaded.add(c); rememberLoaded(c) }
     }
     return { status: 'ok', message: skill.inject, data: { unlocked: skill.tools ?? [] } }
+  }
+
+  /**
+   * 会话级装载记忆（2026-08-25 审计）：loaded 集原来每个 run 重建——
+   * 上一轮 tools.load 的工具下一轮就没了，跨轮重复补载白烧轮次（实拍
+   * load travel.create 后下轮又 load travel.watch，每次 5–10s）。
+   * load 过的记进会话集，下个 run 直接在手边；上限 FIFO 防会话后期
+   * schema 无限膨胀；reset 清空。skill.use 解锁的工具同样记住。
+   * 符合官方 tool search 的「append 不 swap」——还顺带保住 prompt 缓存前缀。
+   */
+  const SESSION_LOADED_MAX = 20
+  const sessionLoaded = new Set<string>()
+  const rememberLoaded = (n: string) => {
+    sessionLoaded.delete(n); sessionLoaded.add(n)
+    while (sessionLoaded.size > SESSION_LOADED_MAX)
+      sessionLoaded.delete(sessionLoaded.values().next().value!)
   }
 
   /** tools.load 拦截器工厂：快慢/子 Agent 各自的 loaded 集合 */
   const mkLoader = (loaded: Set<string>) => (args: any): ToolResult => {
     const names: string[] = ((args?.names ?? []) as string[]).map(n => registry.canonicalName(n))
     const known = names.filter(n => registry.list().some(t => t.name === n))
-    known.forEach(n => loaded.add(n))
+    known.forEach(n => { loaded.add(n); rememberLoaded(n) })
     const unknown = names.filter(n => !known.includes(n))
     return known.length
       ? { status: 'ok', message: `已装载：${known.join('、')}${unknown.length ? `；没有这些工具：${unknown.join('、')}` : ''}` }
@@ -657,7 +673,7 @@ export function createPipeline(deps: PipelineDeps) {
     const canSpeak = () => !fastReported || slowActed
     let turnOk = 0   // 本 turn 业务成功数——空收场兜底的措辞靠它分"办成没说"和"没办成"
     const sm = deps.slowManifest
-    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n))])
+    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n)), ...sessionLoaded])
     /**
      * 冻结视图 + **视角改写**（2026-08-18 实拍）：thread 里快层的
      * NOT_AUTHORIZED 记录对慢层是假的——被拒的是快层，慢层全权。
@@ -965,6 +981,7 @@ export function createPipeline(deps: PipelineDeps) {
    * 把上一个会话的【前情摘要】塞进新会话开头并持久化。
    */
   const reset = () => {
+    sessionLoaded.clear()   // 新会话轻装上阵
     thread.length = 0; boundary = 0; resetGen = ++gen
     // 跨会话那行也一起忘掉。只清 thread 的话"重置"名不副实：
     // 当下看着干净，一刷新页面上回的记忆又回来了（实拍踩过）

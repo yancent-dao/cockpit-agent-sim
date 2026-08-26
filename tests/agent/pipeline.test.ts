@@ -480,6 +480,38 @@ describe('兜底话术要进 trace（2026-08-25 实拍：面板「首声 —」�
   })
 })
 
+describe('装载记忆是会话级（2026-08-25 审计：loaded 集每个 run 重建，上一轮 tools.load 的工具下一轮就没了，跨轮重复补载白烧轮次——实拍 load travel.create 后下轮又 load travel.watch）', () => {
+  it('run1 补载的工具，run2 第一轮就在手边，不用再 load', async () => {
+    const toolNames = (req: any) => (req.tools ?? []).map((t: any) => t.function?.name ?? t.name)
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('tools.load', { names: ['travel.list'] })] }),
+      () => ({ text: '好' }),
+      () => ({ text: '第二轮开始' }),
+    )
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('第一句')
+    await p.run('第二句')
+    const lastReq = slow.seen.at(-1)!
+    expect(toolNames(lastReq), 'run2 无需重新补载').toContain('travel_list')
+  })
+
+  it('reset 清空装载记忆——新会话轻装上阵', async () => {
+    const toolNames = (req: any) => (req.tools ?? []).map((t: any) => t.function?.name ?? t.name)
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('tools.load', { names: ['travel.list'] })] }),
+      () => ({ text: '好' }),
+      () => ({ text: '新会话' }),
+    )
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('第一句')
+    p.reset()
+    await p.run('新会话第一句')
+    expect(toolNames(slow.seen.at(-1)!)).not.toContain('travel_list')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

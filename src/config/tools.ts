@@ -1120,14 +1120,18 @@ export const TOOLS: ToolDef[] = [
     permission: '彩',
     params: {
       template: {
-        type: 'enum', values: TEMPLATE_IDS, required: true,
-        // 模板说明书必须随 schema 到达模型——之前这里只有"卡片模板"三个字，
-        // canvas 的 html/text 契约和像素画布模型根本看不到，等于模板不存在
-        // （实拍：调研报告没走生成式卡）。systemOnly 的不教——模型建不了
+        // 模板说明书必须随 schema 到达模型。systemOnly 的不教——模型建不了；
+        // generative 的不在这（2026-08-25 B 方案）：生成式卡低频、契约巨大
+        // （像素表+白名单 1400 字），独立成 card.generate 按需装载
+        type: 'enum', required: true,
+        // systemOnly 留在 enum：handler 的 SYSTEM_TEMPLATE 拒绝带指路话术，
+        // 比 enum 校验的通用拒绝有用；generative 排除——schema 层就不给选
+        values: TEMPLATE_IDS.filter(id => !(CARD_TEMPLATES.find(x => x.id === id) as any)?.generative),
         desc: '卡片模板。各模板用途与 data 形状：\n' + CARD_TEMPLATES
-          .filter(t => !t.systemOnly)
+          .filter(t => !t.systemOnly && !(t as any).generative)
           .map(t => `- ${t.id}：${t.desc}`)
-          .join('\n'),
+          .join('\n') +
+          '\n自由排版/小游戏这类现成模板装不下的 → card.generate（先 tools.load 它）',
       },
       size: {
         type: 'enum', values: [...ALL_SIZES], required: true,
@@ -1168,6 +1172,27 @@ export const TOOLS: ToolDef[] = [
       },
     },
     handler: 'cardShow',
+  },
+  {
+    name: 'card.generate',
+    brief: '生成式卡：自由排版/小应用',
+    desc: '生成式卡片——模型直出 HTML/SVG 自由排版（kind=canvas）或 iframe 小应用如' +
+      '小游戏/交互演示（kind=app）。**能用 card.show 的现成模板表达的就别用这个**：' +
+      '它每次长得都不一样，跟"同一场景演示结果一致"冲突，是最后手段。\n' +
+      '两种 kind 的契约：\n' + '' +
+      CARD_TEMPLATES.filter(t => (t as any).generative)
+        .map(t => `- ${t.id === 'canvas-app' ? 'app' : t.id}：${t.desc}`).join('\n'),
+    permission: '彩',
+    params: {
+      kind: { type: 'enum', values: ['canvas', 'app'], required: true,
+        desc: 'canvas=静态自由排版（图表/报告版式）；app=iframe 沙箱小应用（游戏/交互）' },
+      size: { type: 'string', desc: '尺寸建议，不合法会自动降到合法档。不确定就不传' },
+      ttl: { type: 'string', required: true, desc: '同 card.show 的 ttl：常看内容 untilDismissed' },
+      key: { type: 'string', desc: '同 key 复用更新，重排内容必须带同一个 key，别堆新卡' },
+      data: { type: 'object', required: true,
+        desc: '卡片内容。kind=canvas：{title, html, text 兜底}；kind=app：{title, html 完整小应用}——具体形状见上方各 kind 契约' },
+    },
+    handler: 'cardGenerate',
   },
   {
     name: 'card.update',

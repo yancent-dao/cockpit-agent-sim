@@ -22,9 +22,13 @@ export const MAIN_AGENT: AgentManifest = {
   version: '0.1.0',
   tools: ['*'],
   // 常驻 = 高频管道，全 schema 永远在慢层；其余工具走目录 + 预载/补载
-  resident: ['voice.speak', 'voice.ask', 'card.show', 'card.update', 'card.resize',
-    'card.dismiss', 'card.focus', 'desktop.getLayout',
-    'memory.remember', 'memory.forget', 'memory.list', 'vehicle.getState'],
+  /**
+   * 常驻 = 几乎每轮都可能用的（2026-08-25 审计瘦身 12→7，省 ~1.6k 字/轮）。
+   * card.resize/focus、desktop.getLayout、memory.forget/list 移出——低频，
+   * 目录里有 brief，用时 tools.load 一次、会话级装载记忆终身在手。
+   */
+  resident: ['voice.speak', 'voice.ask', 'card.show', 'card.update',
+    'card.dismiss', 'memory.remember', 'vehicle.getState'],
   role: `
 ## 协作方式（快慢双层）
 你是慢层。你前面有个"快手分身"可能已经执行了部分操作——对话里能看到它的调用和结果，那就是第一手记录：

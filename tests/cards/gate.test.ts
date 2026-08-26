@@ -83,13 +83,13 @@ describe('canvas 尺寸白名单开全档', () => {
 
   it('canvas 可用 2/3 竖向大块；full 被拒（覆盖层资格已取消）', async () => {
     const reg = await mk()
-    const big = await reg.invoke('card.show', {
-      template: 'canvas', size: 'stage', ttl: 'untilDismissed',
+    const big = await reg.invoke('card.generate', {
+      kind: 'canvas', size: 'stage', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
     expect(big.status).toBe('ok')
-    const fs = await reg.invoke('card.show', {
-      template: 'canvas', size: 'full', ttl: 'untilDismissed',
+    const fs = await reg.invoke('card.generate', {
+      kind: 'canvas', size: 'full', ttl: 'untilDismissed',
       data: { title: '对比', html: '<p>图</p>', text: '兜底' },
     })
     // 降级语义（2026-08-25）：full 不给，但卡照建——降到白名单里的档，
@@ -118,7 +118,7 @@ describe('canvas 尺寸白名单开全档', () => {
     }
     const store = createStore(SIGNALS, CONSTRAINTS)
     const reg2 = createRegistry(store, TOOLS, Date.now, { desk: createDesk() })
-    const r = await reg2.invoke('card.show', { template: 'canvas', size: 'full',
+    const r = await reg2.invoke('card.generate', { kind: 'canvas', size: 'full',
       ttl: 'untilDismissed', data: { title: 'x', html: '<p>1</p>', text: 'x' } })
     expect(r.status).toBe('ok')                 // 降级不拒
     expect((r.data as any)?.size).not.toBe('full')   // 但绝不以 full 上屏

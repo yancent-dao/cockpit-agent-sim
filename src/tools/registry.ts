@@ -165,7 +165,20 @@ export function createRegistry(
     },
 
     /* ── 卡片调度：把 desk 的结果翻译成统一返回契约 ── */
-    cardShow: args => {
+    // 生成式卡的建卡入口（B 方案）：kind → 模板名的映射是协议适配。
+    // 建出来的仍是普通卡生命周期（update/resize/dismiss 走 card.* 家族）
+    cardGenerate: (args: any) => (handlers as any).cardShow({
+      ...args, template: args.kind === 'app' ? 'canvas-app' : 'canvas',
+    }, { allowGenerative: true }),
+    cardShow: (args, _ctx?: any) => {
+      const opts = _ctx as { allowGenerative?: boolean } | undefined
+      const tmplPre = CARD_TEMPLATES.find(t => t.id === args.template)
+      if ((tmplPre as any)?.generative && !opts?.allowGenerative)
+        return {
+          status: 'rejected', code: 'USE_GENERATE',
+          message: '生成式卡走 card.generate（先 tools.load 它，契约在它的说明里）',
+          suggestion: '普通内容优先用现成模板；确实要自由排版就 tools.load card.generate',
+        }
       const tmpl = CARD_TEMPLATES.find(t => t.id === args.template)
       if (tmpl?.systemOnly)
         return {

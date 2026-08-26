@@ -2116,3 +2116,48 @@ describe('travel.plan 的两种形状要过 registry 校验层（2026-08-25 实�
     expect(plan.function.parameters.required).not.toContain('days')
   })
 })
+
+describe('card.generate：生成式卡独立成工具（2026-08-25 B 方案：契约按需到场，card.show 常驻态瘦身）', () => {
+  const mkDesk = async () => {
+    const { createDesk } = await import('../../src/cards/desk')
+    return createDesk()
+  }
+
+  it('kind=canvas 建出 canvas 卡，kind=app 建出 canvas-app 卡', async () => {
+    const desk = await mkDesk()
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, { desk } as any)
+    const r1 = await reg2.invoke('card.generate', { kind: 'canvas', size: 'stage',
+      ttl: 'untilDismissed', data: { title: '图', html: '<p>1</p>', text: '兜底' } })
+    expect(r1.status).toBe('ok')
+    expect(desk.layout().cards.some(c => c.template === 'canvas')).toBe(true)
+  })
+
+  it('card.show 不再认生成式模板——enum 里没有 canvas/canvas-app', async () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, { desk: await mkDesk() } as any)
+    const r = await reg2.invoke('card.show', { template: 'canvas', size: 'stage',
+      ttl: 'untilDismissed', data: { title: 'x', html: '<p>1</p>', text: 'x' } })
+    expect(r.status).toBe('rejected')
+    const schema = reg2.schemas('openai', ['card.show'])[0] as any
+    expect(schema.function.parameters.properties.template.enum).not.toContain('canvas')
+    expect(schema.function.parameters.properties.template.enum).not.toContain('canvas-app')
+  })
+
+  it('契约随 card.generate 的 schema 到场，card.show 瘦下来', async () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, {} as any)
+    const gen = JSON.stringify(reg2.schemas('openai', ['card.generate'])[0])
+    expect(gen).toContain('剥掉')                    // 消毒白名单契约在
+    expect(gen).toContain('text')                    // 兜底契约在
+    expect(gen).toMatch(/约 \d+ 行/)                 // 像素容量表在
+    const show = JSON.stringify(reg2.schemas('openai', ['card.show'])[0])
+    expect(show.length, 'card.show 常驻态 ≤3600 字').toBeLessThanOrEqual(3600)
+  })
+
+  it('trend/automation 转 systemOnly——它们由机制建，模型手建是歧路', async () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, { desk: await mkDesk() } as any)
+    for (const template of ['trend', 'automation']) {
+      const r = await reg2.invoke('card.show', { template, size: 'box',
+        ttl: 'untilDismissed', data: { title: 'x', items: [{ label: 'a' }], points: [{ at: 1, value: 1 }] } })
+      expect(r.status, template).toBe('rejected')
+    }
+  })
+})

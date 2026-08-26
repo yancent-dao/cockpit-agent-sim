@@ -1085,7 +1085,15 @@ async function ask(text: string, opts: { answer?: boolean; source?: string } = {
 }
 
 $('send').onclick = () => { const v = $<HTMLInputElement>('say').value.trim(); if (v) { $<HTMLInputElement>('say').value = ''; ask(v) } }
-$<HTMLInputElement>('say').onkeydown = e => { if (e.key === 'Enter') $('send').click() }
+/**
+ * 输入法组字保护（2026-08-25 实拍：中文打一半按 Enter 选词，半截拼音被
+ * 当消息发出去；组字被打断后 IME 状态错乱，之后只能输字母）。
+ * isComposing / keyCode 229 = 输入法正在组字，这个 Enter 是选词不是发送。
+ */
+$<HTMLInputElement>('say').onkeydown = e => {
+  if (e.isComposing || e.keyCode === 229) return
+  if (e.key === 'Enter') $('send').click()
+}
 
 /* ══════════ 车辆状态控件 ══════════
    全部 setDirect：这里模拟的是**物理世界的事实**（人踩油门、人拉门、天下雨），

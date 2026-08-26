@@ -5,7 +5,7 @@ import { createDomainState } from '../../src/state/domain'
 import { createStore } from '../../src/core/store'
 import { createDesk } from '../../src/cards/desk'
 import { createRegistry } from '../../src/tools/registry'
-import { buildSystemPrompt } from '../../src/agent/context'
+import { buildStateNote } from '../../src/agent/context'
 import { MAIN_AGENT } from '../../agents/main-agent/manifest'
 import { SIGNALS } from '../../src/config/signals'
 import { CONSTRAINTS } from '../../src/config/constraints'
@@ -87,7 +87,7 @@ describe('注入：偏好进 system，注入的是结论不是原始数据', () 
     const reg = createRegistry(store, TOOLS, Date.now, {})
     const prefs = createPrefs(fakeStorage(), () => 0)
     prefs.remember('空调默认 24 度')
-    const sys = buildSystemPrompt(MAIN_AGENT, store, reg, { prefs: prefs.list().map(p => p.text) })
+    const sys = buildStateNote(MAIN_AGENT, store, { prefs: prefs.list().map(p => p.text) })
     expect(sys).toContain('空调默认 24 度')
     expect(sys).toMatch(/偏好/)
   })
@@ -96,7 +96,7 @@ describe('注入：偏好进 system，注入的是结论不是原始数据', () 
     const store = createStore(SIGNALS, CONSTRAINTS)
     const reg = createRegistry(store, TOOLS, Date.now, {})
     const texts = Array.from({ length: 15 }, (_, i) => `偏好${i}`)
-    const sys = buildSystemPrompt(MAIN_AGENT, store, reg, { prefs: texts })
+    const sys = buildStateNote(MAIN_AGENT, store, { prefs: texts })
     expect(sys).toContain('偏好14')
     expect(sys).not.toContain('偏好0')
   })

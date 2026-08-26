@@ -553,9 +553,9 @@ export function cardBody(c: CardView): string {
       }
       // 选线阶段：目的地宽泛先收敛，点一条 = 说了那句话
       const linesBlk = !days.length && d.lines?.length
-        ? `<div class="tplines">${d.lines.map((l: any) =>
+        ? `<div class="tplines">${d.lines.map((l: any, li: number) =>
             `<div class="tpline-item" data-act="tap:item" data-value="就走${esc(l.name ?? '')}">
-              <div class="tplh"><b>${esc(l.name ?? '')}</b>${l.days ? `<span class="num">${esc(l.days)}</span>` : ''}</div>
+              <div class="tplh"><b class="tplno num">${li + 1}</b><b>${esc(l.name ?? '')}</b>${l.days ? `<span class="num">${esc(l.days)}</span>` : ''}</div>
               <div class="tplr num">${esc(l.route ?? '')}</div>${l.note ? `<small>${esc(l.note)}</small>` : ''}
             </div>`).join('')}</div>` : ''
       // 每天的行头：D 几 · 动线 · 当天天气 · 宿哪（换城日琥珀）

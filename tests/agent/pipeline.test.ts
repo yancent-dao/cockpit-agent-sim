@@ -567,6 +567,70 @@ describe('装载集的生命周期：LRU 触碰 + 闲置衰减（2026-08-25 拍�
   })
 })
 
+describe('议程位 agenda（2026-08-25 Hermes 对照拍板：「只有话没有仓」的跨轮计划要有不被压缩的锚）', () => {
+  const stateOf = (req: any) => {
+    const last = (req.messages as any[]).at(-1)
+    return last?.role === 'system' ? String(last.content) : ''
+  }
+
+  it('agenda.set 后每轮状态注入带议程；clear 后消失', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('agenda.set', { text: '功能巡演：已试空调，下一步车窗' })] }),
+      () => ({ text: '好' }),
+      () => ({ text: '第二轮' }),
+      () => ({ toolCalls: [call('agenda.clear', {})] }),
+      () => ({ text: '清了' }),
+      () => ({ text: '第四轮' }),
+    )
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('带我试所有功能')
+    await p.run('继续')
+    expect(stateOf(slow.seen.at(-1)!)).toContain('功能巡演')
+    await p.run('不试了')
+    await p.run('随便聊聊')
+    expect(stateOf(slow.seen.at(-1)!)).not.toContain('功能巡演')
+  })
+
+  it('reset 清议程', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('agenda.set', { text: '巡演中' })] }),
+      () => ({ text: '好' }),
+      () => ({ text: '新会话' }),
+    )
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('开始')
+    p.reset()
+    await p.run('新会话第一句')
+    expect(stateOf(slow.seen.at(-1)!)).not.toContain('巡演中')
+  })
+})
+
+describe('上下文三层化（Hermes 对照：稳定层留 system 保前缀缓存，易变态贴着本轮输入走）', () => {
+  it('system 只含稳定层——车辆状态/桌面/说话人不再进 system', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false, desktopSummary: () => '桌面：空' })
+    await p.run('你好')
+    const req = slow.seen[0]
+    expect(req.system).not.toContain('## 当前车辆状态')
+    expect(req.system).not.toContain('## 桌面布局')
+    expect(req.system).toContain('工具目录')          // 稳定层还在
+  })
+
+  it('易变态以 system 角色贴在消息末尾——每轮都是最后一条，前缀不被它打破', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false, desktopSummary: () => '桌面：空' })
+    await p.run('你好')
+    const last = (slow.seen[0].messages as any[]).at(-1)
+    expect(last.role).toBe('system')
+    expect(String(last.content)).toContain('当前车辆状态')
+    expect(String(last.content)).toContain('桌面')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired
@@ -638,7 +702,8 @@ describe('快层上下文', () => {
     const { p } = mk(fast, slow)
     await p.run('空调24度')
     await p.run('再热一点')
-    const msgs = fast.seen[2].messages    // turn2 首轮：历史 = turn1，本轮只有新输入
+    // 三层化后消息尾多一条实时状态注入——它不是对话，剥掉再验视图形状
+    const msgs = (fast.seen[2].messages as any[]).filter(m => !String(m.content ?? '').startsWith('【实时状态】'))
     expect(msgs.some(m => m.role === 'tool'), '历史轮工具结果不进视图').toBe(false)
     expect(msgs.some(m => m.tool_calls?.length), '历史轮 tool_calls 不进视图').toBe(false)
     expect(msgs[msgs.length - 1].content).toBe('再热一点')
@@ -792,7 +857,9 @@ describe('越权转交的接力棒', () => {
     const slow = fakeLLM(() => ({ text: '好' }))
     const { p } = mk(fast, slow)
     await p.run('导航去春熙路')
-    const view = (slow as any).seen[0].messages
+    // 三层化后消息尾是实时状态注入，接力说明在它前面——剥掉状态注入再看末尾
+    const view = ((slow as any).seen[0].messages as any[])
+      .filter(m => !String(m.content ?? '').startsWith('【实时状态】'))
     const hint = view[view.length - 1]
     expect(hint.role).toBe('system')
     expect(hint.content).toContain('navigation.setDestination')

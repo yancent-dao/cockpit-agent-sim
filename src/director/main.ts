@@ -1052,7 +1052,7 @@ async function ask(text: string, opts: { answer?: boolean; source?: string } = {
     // 完整 Prompt / 消息视图 / 模型原始返回打进浏览器控制台（面板放不下也不该放）
     if (s.type === 'prompt') {
       rn++
-      log('p', `  ${s.layer === 'fast' ? '⚡快层' : '🐢慢层'} · LLM ${s.llmMs != null ? (s.llmMs / 1000).toFixed(1) + 's' : '?'} · 注入 system ${s.system.length}${s.schemaChars ? ` + 工具 ${s.schemaChars}` : ''} 字 / ${s.toolCount} 工具`)
+      log('p', `  ${s.layer === 'fast' ? '⚡快层' : '🐢慢层'} · LLM ${s.llmMs != null ? (s.llmMs / 1000).toFixed(1) + 's' : '?'} · 注入 system ${s.system.length}${s.stateChars ? ` + 状态 ${s.stateChars}` : ''}${s.schemaChars ? ` + 工具 ${s.schemaChars}` : ''} 字 / ${s.toolCount} 工具`)
       console.groupCollapsed(`%c[R${rn} ${s.layer === 'fast' ? '⚡快层' : '🐢慢层'}] LLM ${((s.llmMs ?? 0) / 1000).toFixed(1)}s`, 'color:#4DA3FF')
       console.log('system:\n' + s.system)
       console.log('messages:', (s as any).view)

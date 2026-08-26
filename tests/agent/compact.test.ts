@@ -54,28 +54,28 @@ const mk = (opts: { memory?: ReturnType<typeof memStore>; compactReply?: (req: L
 }
 
 describe('K 轮滑动窗口 + epoch 摘要', () => {
-  it('超过 6 轮后旧轮次折叠成摘要头，最近 6 轮保持全文（2026-08-25 从 4 上调：拿一点 token 换记忆窗口）', async () => {
+  it('滞后批量化（Hermes 对照后定稿）：超过 10 轮才压、一次折到剩 6 轮——摘要复印频率降 4 倍', async () => {
     const { p } = mk()
-    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     await p.compaction
     const users = p.thread.filter(m => m.role === 'user').map(m => m.content)
     expect(users.length).toBeLessThanOrEqual(6)
-    expect(users).toContain('第八句')
+    expect(users).toContain('第十一句')
     expect(p.thread[0].role).toBe('assistant')
     expect(p.thread[0].content).toContain('前情摘要')
     expect(p.thread[0].content, '摘要含实体索引行').toContain('提到过')
   })
 
-  it('6 轮以内不压缩——短对话不花这笔钱', async () => {
+  it('10 轮以内不压缩——滞后窗口里全文保留', async () => {
     const { p, fast } = mk()
-    for (const s of ['一', '二', '三', '四', '五']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九']) await p.run(`第${s}句`)
     await p.compaction
     expect(fast.seen.filter(r => r.system.includes('前情摘要'))).toHaveLength(0)
   })
 
   it('压缩不占响应路径：run 返回时话术已出，压缩晚于它', async () => {
     const { p } = mk()
-    for (const s of ['一', '二', '三', '四', '五', '六', '七']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     // run 已全部返回，此刻压缩可能仍在跑——thread 里的用户轮次仍可能超窗
     await p.compaction
     expect(p.thread.filter(m => m.role === 'user').length).toBeLessThanOrEqual(6)
@@ -85,11 +85,11 @@ describe('K 轮滑动窗口 + epoch 摘要', () => {
 describe('压缩的健壮性', () => {
   it('压缩失败保持原样，不丢一条消息', async () => {
     const { p } = mk({ compactReply: () => { throw new Error('小模型挂了') } })
-    for (const s of ['一', '二', '三', '四', '五', '六', '七']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     const before = p.thread.length
     await p.compaction
     expect(p.thread.length).toBe(before)
-    expect(p.thread.filter(m => m.role === 'user')).toHaveLength(7)
+    expect(p.thread.filter(m => m.role === 'user')).toHaveLength(11)
   })
 
   it('压缩期间用户开口 → 放弃本次，thread 不被旧压缩改写', async () => {
@@ -112,7 +112,7 @@ describe('上回说到：跨会话一行', () => {
   it('压缩时顺手落盘', async () => {
     const memory = memStore()
     const { p } = mk({ memory })
-    for (const s of ['一', '二', '三', '四', '五', '六', '七']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     await p.compaction
     expect(memory.get()).toContain('空调')
   })
@@ -131,21 +131,33 @@ describe('上回说到：跨会话一行', () => {
 describe('操作史必须活过压缩（2026-08-25 实拍：「我刚才对空调的操作是什么」答「没操作过」——旧提示词只留结论与未完成的事，已办完的操作被判可丢）', () => {
   it('压缩提示词要求保留做过的操作清单', async () => {
     const { p, fast } = mk()
-    for (const s of ['一', '二', '三', '四', '五', '六', '七']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     await p.compaction
     const req = fast.seen.find(r => r.system.includes('前情摘要'))!
     expect(req.system).toMatch(/做过|操作|执行/)
     expect(req.system).toMatch(/次序|顺序|时间/)
+    // Hermes 对照定稿：三段结构——进行中任务置顶 + 未解决的问题 + 警示前缀
+    expect(req.system).toMatch(/进行中/)
+    expect(req.system).toMatch(/未解决|等用户/)
   })
 
   it('压缩完成 emit compacted 事件——不再盲飞', async () => {
     const { p } = mk()
     const events: any[] = []
     p.on(e => events.push(e))
-    for (const s of ['一', '二', '三', '四', '五', '六', '七']) await p.run(`第${s}句`)
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
     await p.compaction
     const c = events.find(e => e.type === 'compacted')
     expect(c).toBeTruthy()
     expect(c.chars).toBeGreaterThan(0)
+  })
+})
+
+describe('摘要头的警示前缀（Hermes 对照：交接参考不是新指令）', () => {
+  it('折叠进 thread 的摘要头带「交接参考」字样', async () => {
+    const { p } = mk()
+    for (const s of ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一']) await p.run(`第${s}句`)
+    await p.compaction
+    expect(String(p.thread[0].content)).toMatch(/交接|参考|不是新指令/)
   })
 })

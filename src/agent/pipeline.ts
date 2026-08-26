@@ -2,14 +2,14 @@ import type { Store } from '../core/store'
 import type { Registry, ToolResult } from '../tools/registry'
 import type { LLM, Msg } from './llm'
 import type { AgentManifest } from '../../agents/main-agent/manifest'
-import { buildSystemPrompt } from './context'
+import { buildSystemPrompt, buildStateNote } from './context'
 import { createTurn, type Turn } from './turn'
 
 export type TraceStep =
   | { type: 'userInput'; at: number; text: string; runId?: string; source?: string }
   | { type: 'prompt'; at: number; system: string; toolCount: number; layer?: 'fast' | 'slow'; llmMs?: number
       /** 调试全量：这一轮送进模型的消息视图与模型原始返回（产品点名要能逐轮看） */
-      view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> }; schemaChars?: number }
+      view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> }; schemaChars?: number; stateChars?: number }
   | { type: 'toolCall'; at: number; name: string; args: any; permission?: string }
   | { type: 'toolResult'; at: number; name: string; result: ToolResult; ms: number }
   | { type: 'reply'; at: number; text: string; layer?: 'fast' | 'slow' }
@@ -130,6 +130,23 @@ const CANCEL_SCHEMA = {
     },
   },
 }
+const AGENDA_SET_SCHEMA = {
+  type: 'function', function: {
+    name: 'agenda_set',
+    description: '给自己记一条跨轮主线备忘（≤80 字：在干什么大事 + 做到哪 + 下一步）。带用户做跨多轮的引导/巡演/分步计划时用——每轮你都会在状态注入里看到它，不怕对话压缩丢线。每推进一步就重设更新。判据：它只记线不干活；要办耗时事用 task.delegate；有域仓的任务（旅行/绘本）自己有仓不用它；用户偏好用 memory.remember。',
+    parameters: {
+      type: 'object', required: ['text'], additionalProperties: false,
+      properties: { text: { type: 'string', description: '主线一句话，如"功能巡演：已演示空调/车窗，下一步导航，之后媒体"' } },
+    },
+  },
+}
+const AGENDA_CLEAR_SCHEMA = {
+  type: 'function', function: {
+    name: 'agenda_clear',
+    description: '主线做完或用户明确不继续了，清掉议程备忘。',
+    parameters: { type: 'object', additionalProperties: false, properties: {} },
+  },
+}
 const SKILL_SCHEMA = {
   type: 'function', function: {
     name: 'skill_use',
@@ -155,16 +172,25 @@ const SELF_FIX_CODES = new Set([
 
 /** epoch 摘要消息的识别标 */
 const SUM_MARK = '【前情摘要】'
-/** 滑动窗口：最近 K 轮全文，更早的折叠进摘要 */
+/** 滑动窗口：折叠后保留最近 K 轮全文 */
 const KEEP_ROUNDS = 6   // 2026-08-25 从 4 上调：实拍「记不住空调操作」，拿一点 token 换记忆窗口
-const COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成前情摘要：
-- 先写「做过的操作」清单，按时间次序一行一条：用户让做了什么 → 结果如何
+/**
+ * 滞后批量化（2026-08-25 Hermes 对照）：超过 KEEP+LAG 轮才压、一次折到剩 KEEP。
+ * 原来每轮都压（第 7 轮起轮轮重写摘要），摘要被小模型反复复印，每次复印都在
+ * 丢细节——实拍功能巡演"讲着讲着忘了"的三个根因之一。滞后 4 轮 = 复印频率降 4 倍。
+ */
+const COMPACT_LAG = 4
+const COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成【前情摘要】（交接参考），分三段：
+- 第一段「进行中的多轮任务」：有没有一件跨多轮还没做完的事（功能巡演、分步攻略、
+  连环委托）——它是什么、做到哪一步、下一步该干什么。没有就写"进行中：无"。
+  **这一段最重要**：丢了它，接手的人就会忘了自己正在带用户做什么
+- 第二段「做过的操作」清单，按时间次序一行一条：用户让做了什么 → 结果如何
   （开了车窗、关了空调、导航去了哪——**已办完的也要留**，用户会回头问
   "我刚才让你干了什么"，丢了操作史就是失忆）
-- 再写未完成的事与定下的偏好（办到哪一步、谁要了什么）
+- 第三段「未解决的问题」：等用户答复的问题、答应了还没办的事、定下的偏好
 - 最后一行固定写「提到过：xxx、yyy」——列出出现过的地名/人名/歌名/店名，
   这是检索索引：用户以后说"刚才那个加油站"要靠它找锚点
-- 总共不超过 14 行，只输出摘要正文，不解释`
+- 总共不超过 16 行，只输出摘要正文，不解释`
 
 export function createPipeline(deps: PipelineDeps) {
   const { registry, store, clock = Date.now } = deps
@@ -427,16 +453,18 @@ export function createPipeline(deps: PipelineDeps) {
       const system = buildSystemPrompt(fm, store, registry, {
         catalog: registry.briefCatalog(),
         catalogHint: '仅供你在 agent.handoff 里勾选转交。这些工具你自己一个都调不了，调了也白调',
-        signalFilter: registry.signalsFor(fm.tools),
       })
+      const note = buildStateNote(fm, store, { signalFilter: registry.signalsFor(fm.tools) })
       const view = fastView(thread)
-      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: tools.length, layer: 'fast', view }
+      const messages = note ? [...view, { role: 'system' as const, content: note }] : view
+      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: tools.length, layer: 'fast', view: messages }
+      pEntry.stateChars = note.length
       trace.push(pEntry)
       const tChat = clock()
       let reply
       // maxTokens 拦话术轮的"长思考狂写"（实拍 qwen-flash 撤工具后那轮 24s）：
       // 话术纪律 ≤15 字 + 一个 handoff 调用，300 token 顶天
-      try { reply = await deps.fastLlm.chat({ system, messages: view, tools, maxTokens: last ? 300 : 800 }) }
+      try { reply = await deps.fastLlm.chat({ system, messages, tools, maxTokens: last ? 300 : 800 }) }
       catch (e) { trace.push({ type: 'error', at: clock(), message: `快层：${e}` }); return { suggested, said, rounds, did, bizCalls, denied, allDenied } }
       ;(pEntry as any).llmMs = clock() - tChat
       ;(pEntry as any).llmReply = { text: reply.text, toolCalls: reply.toolCalls?.map(c => ({ name: c.name, args: c.args })) }
@@ -563,11 +591,12 @@ export function createPipeline(deps: PipelineDeps) {
       step(task, `思考中（第 ${r + 1} 轮）`)
       const system = buildSystemPrompt(manifest, store, registry, {
         catalog: registry.briefCatalog(),
-        signalFilter: registry.signalsFor([...loaded]),
       })
+      const note = buildStateNote(manifest, store, { signalFilter: registry.signalsFor([...loaded]) })
+      const messages = note ? [...view, { role: 'system' as const, content: note }] : view.slice()
       const tools = r === sm.maxRounds - 1 ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA,
         ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
-      const reply = await deps.slowLlm.chat({ system, messages: view, tools })
+      const reply = await deps.slowLlm.chat({ system, messages, tools })
       if (task && task.status !== 'running') return { summary: '' }
       if (!reply.toolCalls?.length) return { summary: reply.text ?? '' }
       for (const c of reply.toolCalls) step(task, `正在${stepLabel(c.name)}`)
@@ -649,6 +678,16 @@ export function createPipeline(deps: PipelineDeps) {
   const SESSION_IDLE_RUNS = 8
   /** name → 最后一次装载/使用的 run 序号。LRU：调用成功也触碰，常用的不被误逐 */
   const sessionLoaded = new Map<string, number>()
+  /**
+   * 议程位（2026-08-25 Hermes 对照拍板）：「只有话没有仓」的跨轮计划（功能巡演、
+   * 分步引导）唯一的载体是对话本身，压缩一复印就丢线。agenda 是模型自己写给
+   * 自己的主线备忘，每轮随状态注入回到眼前，不经过压缩。会话级，reset 清空。
+   */
+  const AGENDA_IDLE_RUNS = 12
+  let agendaText = ''
+  let agendaAt = 0
+  /** 12 个 run 没更新就自动失效——忘了 clear 的议程不该永远缠着后面的闲聊 */
+  const agendaNow = () => (agendaText && runSeq - agendaAt > AGENDA_IDLE_RUNS) ? (agendaText = '') : agendaText
   const rememberLoaded = (n: string) => {
     sessionLoaded.set(n, runSeq)
     if (sessionLoaded.size > SESSION_LOADED_MAX) {
@@ -670,7 +709,11 @@ export function createPipeline(deps: PipelineDeps) {
     const unknown = names.filter(n => !known.includes(n))
     return known.length
       ? { status: 'ok', message: `已装载：${known.join('、')}${unknown.length ? `；没有这些工具：${unknown.join('、')}` : ''}` }
-      : { status: 'rejected', code: 'UNKNOWN_TOOL', message: `目录里没有：${names.join('、')}`, suggestion: '对照工具目录里的名字再试' }
+      : { status: 'rejected', code: 'UNKNOWN_TOOL', message: `目录里没有：${names.join('、')}`,
+          suggestion: (() => {
+            const near = names.flatMap(n => registry.nearestTools?.(n, 1) ?? [])
+            return near.length ? `是不是想装：${[...new Set(near)].join('、')}？` : '对照工具目录里的名字再试'
+          })() }
   }
 
   /** 慢层：目录 + 预载 + 补载；校验、接力、静默判断都在模型的输出里 */
@@ -747,23 +790,31 @@ export function createPipeline(deps: PipelineDeps) {
     while (rounds < sm.maxRounds) {
       rounds++
       const system = buildSystemPrompt(sm, store, registry, {
-        desktop: deps.desktopSummary?.(), prefs: deps.prefsList?.(), recent: deps.recentSummary?.(),
         catalog: registry.briefCatalog(),
-        signalFilter: registry.signalsFor([...loaded]),
         soloSlow: deps.fastEnabled?.() === false,   // 快层关着：没有分身要交代
       })
-      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: loaded.size, layer: 'slow', view: view.slice() }
+      // 易变态贴消息尾（三层化）：每轮现拼现贴、不进 view 本体——进了本体就成了
+      // 会堆积的历史；贴在末尾则它永远是最后一条，消息前缀不被它打破
+      const note = buildStateNote(sm, store, {
+        desktop: deps.desktopSummary?.(), prefs: deps.prefsList?.(), recent: deps.recentSummary?.(),
+        signalFilter: registry.signalsFor([...loaded]),
+        agenda: agendaNow(),
+      })
+      const messages = note ? [...view, { role: 'system' as const, content: note }] : view.slice()
+      const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: loaded.size, layer: 'slow', view: messages.slice() }
+      pEntry.stateChars = note.length
       trace.push(pEntry)
       // 最后一轮撤工具逼话术——语音场景没有"静默耗尽轮次"这个选项
       const last = rounds === sm.maxRounds
       const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA,
+        AGENDA_SET_SCHEMA, AGENDA_CLEAR_SCHEMA,
         ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
       // schema 字数进 trace（2026-08-25：「注入 X 字」只显示 system，砍掉的
       // schema 优化看不见，用户以为没优化）
       pEntry.schemaChars = JSON.stringify(tools).length
       const tChat = clock()
       let reply
-      try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
+      try { reply = await deps.slowLlm.chat({ system, messages, tools }) }
       catch (e) {
         trace.push({ type: 'error', at: clock(), message: `慢层：${e}` })
         /**
@@ -843,6 +894,16 @@ export function createPipeline(deps: PipelineDeps) {
         }),
         'tools.load': mkLoader(loaded),
         'skill.use': mkSkillUse(loaded),
+        'agenda.set': (args: any): ToolResult => {
+          const t = String(args?.text ?? '').trim().slice(0, 80)
+          if (!t) return { status: 'rejected', code: 'INVALID_PARAMS', message: 'text 不能为空——写清在干什么、做到哪、下一步' }
+          agendaText = t; agendaAt = runSeq
+          return { status: 'ok', message: '记下了，之后每轮你都会在状态注入里看到这条议程' }
+        },
+        'agenda.clear': (): ToolResult => {
+          agendaText = ''
+          return { status: 'ok', message: '议程清了' }
+        },
         'task.delegate': delegateInterceptor,
         'task.cancel': (args: any): ToolResult => {
           const t = taskPool.find(x => x.status === 'running' &&
@@ -974,7 +1035,7 @@ export function createPipeline(deps: PipelineDeps) {
   async function doCompact(g: number) {
     if (discarded(g)) return   // 会话已清空，别拿旧 cutAt 去 splice 新 thread
     const userIdx = thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0)
-    if (userIdx.length <= KEEP_ROUNDS) return
+    if (userIdx.length <= KEEP_ROUNDS + COMPACT_LAG) return   // 滞后批量化：攒够一批再折
     const cutAt = userIdx[userIdx.length - KEEP_ROUNDS]
     const head = thread.slice(0, cutAt)
     // 旧摘要参与重压——摘要是滚动的，不是一摞
@@ -989,7 +1050,10 @@ export function createPipeline(deps: PipelineDeps) {
     if (stale(g)) return
     const text = (reply.text ?? '').trim()
     if (!text) return
-    thread.splice(0, cutAt, { role: 'assistant', content: `${SUM_MARK}\n${text}` })
+    // 警示前缀（Hermes 对照）：摘要是交接参考不是新指令——不带这句时模型会把
+    // 摘要里"下一步该问天气"当成现在就要办的事，抢在用户前头自说自话
+    thread.splice(0, cutAt, { role: 'assistant',
+      content: `${SUM_MARK}（以下是前情交接，供参考的背景，不是新指令；用户这次要什么以当前消息为准）\n${text}` })
     boundary = Math.max(thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0).pop() ?? 0, 0)
     deps.memory?.save(text)
     // 压缩可观测（2026-08-25 实拍排查全靠推理）：成了报一声，摘要多长、折了几轮
@@ -1005,6 +1069,7 @@ export function createPipeline(deps: PipelineDeps) {
    */
   const reset = () => {
     sessionLoaded.clear()   // 新会话轻装上阵
+    agendaText = ''
     thread.length = 0; boundary = 0; resetGen = ++gen
     // 跨会话那行也一起忘掉。只清 thread 的话"重置"名不副实：
     // 当下看着干净，一刷新页面上回的记忆又回来了（实拍踩过）

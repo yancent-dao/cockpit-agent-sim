@@ -586,7 +586,13 @@ export function createRegistry(
     currentRound = ctx.round ?? ++autoRound
     args = unwrapItem(args)
     const t = resolve(name)
-    if (!t) return { status: 'unavailable', code: 'UNKNOWN_TOOL', message: `没有名为 ${name} 的能力` }
+    if (!t) {
+      // 近似建议（Hermes 对照：坏工具名是正常运行条件不是异常）——模型拼错一个
+      // 字母就吃裸拒绝，白烧一轮；给出最像的名字它下一轮就能修
+      const near = nearestTools(name, 1)
+      return { status: 'unavailable', code: 'UNKNOWN_TOOL', message: `没有名为 ${name} 的能力`,
+               ...(near.length && { suggestion: `是不是想调 ${near[0]}？` }) }
+    }
     name = t.name // 归一化成内部点号形式：鉴权白名单、token 绑定都按这个来
 
     /**
@@ -778,7 +784,27 @@ export function createRegistry(
    */
   const clearConfirms = () => tokens.clear()
 
-  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms }
+  /** 编辑距离（经典 DP，名字都很短，O(mn) 足够） */
+  const editDist = (a: string, b: string): number => {
+    const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+    for (let j = 1; j <= b.length; j++) dp[0][j] = j
+    for (let i = 1; i <= a.length; i++)
+      for (let j = 1; j <= b.length; j++)
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    return dp[a.length][b.length]
+  }
+
+  /** 拼错的工具名给最近似的候选：距离 ≤ 名字长度 1/3 才算像，纯瞎编不硬凑 */
+  const nearestTools = (name: string, k = 3): string[] => {
+    const q = name.toLowerCase().replace(/_/g, '.')
+    return tools.map(t => ({ n: t.name, d: editDist(q, t.name.toLowerCase()) }))
+      .filter(x => x.d <= Math.max(2, Math.ceil(q.length / 3)))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, k)
+      .map(x => x.n)
+  }
+
+  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms, nearestTools }
 }
 
 export type Registry = ReturnType<typeof createRegistry>

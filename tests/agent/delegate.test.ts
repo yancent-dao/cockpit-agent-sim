@@ -173,7 +173,7 @@ describe('进展流：机制副产品，零模型成本（§6.2）', () => {
       if (isSub(req, '查东西')) {
         if (!req.messages.some(m => m.role === 'tool'))
           return { toolCalls: [call('tools.load', { names: ['weather.query'] })] }
-        if (!req.messages.some(m => m.content.includes('天气')))
+        if (!req.messages.some(m => m.role === 'tool' && String(m.content).includes('天气')))
           return { toolCalls: [call('weather.query', { location: '成都' })] }
         return gate
       }

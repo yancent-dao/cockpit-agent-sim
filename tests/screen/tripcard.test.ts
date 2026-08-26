@@ -80,6 +80,12 @@ describe('选线阶段：目的地宽泛先收敛', () => {
     expect(html.match(/data-act="tap:item"/g)!.length).toBeGreaterThanOrEqual(2)
   })
 
+  it('每条线带序号——话术"说第几个"要有可指认的编号（pilot 实拍硬伤）', () => {
+    expect(html).toContain('tplno')
+    expect(html).toMatch(/1[\s\S]*?滇西北/)
+    expect(html).toMatch(/2[\s\S]*?滇南/)
+  })
+
   it('选线阶段没有 Day 也没有价格块', () => {
     expect(html).not.toContain('tpday')
     expect(html).not.toContain('tpprice')

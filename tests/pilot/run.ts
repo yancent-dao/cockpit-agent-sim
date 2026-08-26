@@ -145,7 +145,7 @@ function detectIssues(store: any, desk: any, calls: any[], reply: string): strin
     out.push(`提示 · 话术在催用户点屏幕（语音才是主通道）：「${reply.slice(0, 40)}」`)
   // 说"你说第几个"就得真有编号可数。实测出现过问是非题却让用户报序号
   if (/第几个|说编号|报个号/.test(reply)
-      && !layout.cards.some((c: any) => (c.data?.items?.length ?? c.data?.options?.length ?? 0) >= 2)
+      && !layout.cards.some((c: any) => (c.data?.items?.length ?? c.data?.options?.length ?? c.data?.lines?.length ?? 0) >= 2)
       && !((layout.overlay?.data?.items?.length ?? 0) >= 2))
     out.push(`话术让用户"说第几个"，但屏幕上没有可数的编号项：「${reply.slice(0, 40)}」`)
   // 车载产品不该报底层模型身份

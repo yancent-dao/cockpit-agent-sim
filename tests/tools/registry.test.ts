@@ -2161,3 +2161,11 @@ describe('card.generate：生成式卡独立成工具（2026-08-25 B 方案：�
     }
   })
 })
+
+describe('幻觉工具名的近似建议（Hermes 对照：坏名字是正常运行条件）', () => {
+  it('拼错的名字给最近似的候选', () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, {} as any)
+    const hint = reg2.nearestTools('navigaton.serch')
+    expect(hint[0]).toBe('navigation.search')
+  })
+})

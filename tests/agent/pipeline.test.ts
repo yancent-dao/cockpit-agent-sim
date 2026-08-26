@@ -469,6 +469,17 @@ describe('快层开关（2026-08-25 产品决策：快层模型普遍太慢/爱�
   })
 })
 
+describe('兜底话术要进 trace（2026-08-25 实拍：面板「首声 —」看起来全程哑场，其实兜底播了——只 emit 不 push trace，⟵🐢 那行就不出现）', () => {
+  it('空收场兜底进 trace', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    const r = await p.run('随便说点什么')
+    const replies = (r.trace as any[]).filter(t => t.type === 'reply' && t.layer === 'slow')
+    expect(replies.some(x => /没弄成|办好了/.test(x.text))).toBe(true)
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

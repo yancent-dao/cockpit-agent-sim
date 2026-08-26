@@ -2067,5 +2067,8 @@ describe('数组元素形状校验', () => {
     expect(r.status).toBe('rejected')
     expect(r.message).toContain('line')
     expect(r.message).toContain('text')   // 报出收到的键，模型才知道怎么改
+    // 2026-08-25 实拍：模型自造 {date,title,activities} 三连拒——光说缺什么
+    // 不够，把正确形状摆在报错里（一条鲜活的错误记录比 desc 重得多）
+    expect(r.message).toMatch(/形如|\{.*line.*scene.*\}|\{.*scene.*line.*\}/)
   })
 })

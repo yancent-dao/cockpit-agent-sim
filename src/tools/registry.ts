@@ -465,12 +465,22 @@ export function createRegistry(
          * 正文空白上屏、朗读没词可念。报出收到的键，模型才知道怎么改。
          */
         const req: string[] = (def.items as any)?.required ?? []
+        /**
+         * 报错附正确形状（2026-08-25 实拍：模型自造 {date,title,activities}
+         * 三连拒——光说"缺少字段 stops"不够，它不知道 stops 里装什么。
+         * 形状从 items schema 现生成，一条鲜活的错误记录比 desc 重得多。
+         */
+        const shapeOf = () => {
+          const props = Object.keys((def.items as any)?.properties ?? {})
+          const ks = props.length ? props : req
+          return ks.length ? `；每个元素形如 {${ks.map(k2 => req.includes(k2) ? k2 : `${k2}?`).join(', ')}}` : ''
+        }
         if (req.length) for (let i = 0; i < v.length; i++) {
           const el = v[i]
-          if (!el || typeof el !== 'object') return `${key}[${i}] 需要对象`
+          if (!el || typeof el !== 'object') return `${key}[${i}] 需要对象${shapeOf()}`
           const miss = req.filter(k2 => el[k2] === undefined || el[k2] === null)
           if (miss.length)
-            return `${key}[${i}] 缺少字段 ${miss.join('、')}（收到的键：${Object.keys(el).join('、') || '无'}）`
+            return `${key}[${i}] 缺少字段 ${miss.join('、')}（收到的键：${Object.keys(el).join('、') || '无'}）${shapeOf()}`
         }
       }
     }

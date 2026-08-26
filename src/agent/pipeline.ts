@@ -776,6 +776,7 @@ export function createPipeline(deps: PipelineDeps) {
         // 兜底又追一句"没弄成"把成功现场说成失败）→ 空收场是合法静默
         if (!text && !echo && !fastSpoke && !turn.spoke() && !stale(g)) {
           const fb = turnOk > 0 ? '办好了，结果在屏幕上' : '这件事我没弄成，换个说法我再试试'
+          trace.push({ type: 'reply', at: clock(), text: fb, layer: 'slow' })   // 兜底也要可观测
           emit({ type: 'speaking', text: fb, layer: 'slow' })
           emit({ type: 'done' })
           return { said: fb, rounds, stop: 'reply' }
@@ -834,6 +835,7 @@ export function createPipeline(deps: PipelineDeps) {
      * 兜一句诚实的，跟拒绝必须携带人话原因是同一条。
      */
     const fallback = '这件事我没弄成，换个说法我再试试'
+    trace.push({ type: 'reply', at: clock(), text: fallback, layer: 'slow' })   // 兜底也要可观测
     if (!stale(g)) {
       emit({ type: 'speaking', text: fallback, layer: 'slow' })
       emit({ type: 'done' })

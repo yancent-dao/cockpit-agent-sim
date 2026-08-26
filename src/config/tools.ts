@@ -71,6 +71,12 @@ export interface ToolDef {
   fast?: boolean
   /** 元工具（tools.load / handoff 这类装载管道），不进目录不进能力卡 */
   meta?: boolean
+  /**
+   * 活动态常备条件（[path,op,value] 三元组，约束引擎同款形状）：条件为真时
+   * 该工具自动在慢层手边，不用 tools.load。给"停止/取消正在进行的事"这类
+   * 应急动作用——判据是系统状态，不是意图
+   */
+  sticky?: [string, Op, Value]
 }
 
 /**
@@ -569,6 +575,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'navigation.control',
+    sticky: ['navigation.active', '==', true],   // 导航中"取消/暂停"是应急动作，常备手边
     brief: '暂停恢复结束导航',
     desc: '控制导航会话：resume 从暂停恢复/pause 暂停/cancel 取消。start 一般用不上——navigation.setDestination 成功后会自动开始导航；只有目的地已经设过、又被 pause 了，现在要重新开始，才需要用 start（或者干脆用 resume，效果一样）。',
     permission: '彩',
@@ -868,6 +875,7 @@ export const TOOLS: ToolDef[] = [
   /* ══════════ 媒体：传输控制（内容源无关，音乐/电台/视频共用） ══════════ */
   {
     name: 'media.control',
+    sticky: ['media.source', '!=', 'none'],   // 在播时"停/暂停/换曲"是应急动作，常备手边
     brief: '播放暂停上下曲',
     fast: true,
     desc: '播放控制：继续/暂停/停止/上一首/下一首。点过歌之后同一批搜索结果就是播放队列，next/prev 沿队列走；放完也会自动播下一首，不用你操心。play 是"恢复当前内容"，想换内容请用 music.play / radio.play / video.play。stop 会把正在放的整个清掉、播放器卡跟着退场，只是想停一下用 pause。jump 跳到队列第 index 首（0 起）；speed 设倍速（播客常用，配 speed 参数 0.5-3）。',
@@ -1208,7 +1216,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'card.resize',
     brief: '调卡片大小',
-    desc: '改变卡片尺寸。这是用户意愿层——用户明说"大一点/小一点"才调，调完尺寸会锁住不被系统自动改回；模板不支持的档位会被拒。',
+    desc: '改变卡片尺寸。这是用户意愿层——用户明说"大一点/小一点"才调，调完尺寸会锁住不被系统自动改回；模板不支持的档位会被拒。cardId 用桌面布局里的 id（card_N 形式，别拿标题或尺寸名当 id）。',
     permission: '彩',
     params: {
       cardId: { type: 'string', required: true, desc: '卡片 id' },
@@ -1222,7 +1230,7 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'card.dismiss',
     brief: '撤掉卡片',
-    desc: '移除一张卡片。撤卡分两类：问题卡（确认/提问）用户答完就撤；候选/结果卡等这件事翻篇再撤——用户的下一句常是冲着屏幕问的，撤早了他没东西可指。',
+    desc: '移除一张卡片。撤卡分两类：问题卡（确认/提问）用户答完就撤；候选/结果卡等这件事翻篇再撤——用户的下一句常是冲着屏幕问的，撤早了他没东西可指。cardId 用桌面布局里的 id（card_N 形式，别猜别的）；传 "all" 一次清空全部卡片。',
     permission: '彩',
     params: { cardId: { type: 'string', required: true, desc: '卡片 id' } },
     handler: 'cardDismiss',

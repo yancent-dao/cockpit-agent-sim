@@ -1,6 +1,6 @@
 import type { Store } from '../core/store'
 import { compare } from '../core/types'
-import type { Permission, Value } from '../core/types'
+import type { Op,  Permission, Value } from '../core/types'
 import type { ToolDef, ParamDef } from '../config/tools'
 import { CAPABILITY_DOMAINS } from '../config/tools'
 import { globMatch } from '../core/glob'
@@ -116,6 +116,10 @@ export function createRegistry(
     return deps.image
   }
 
+  // flowHint 是流程状态提示不是工具 handler，摘出来单独走（进状态注入，不进 handlers 表）
+  const { flowHint: storyFlowHint, ...storyHandlers } =
+    createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage())
+
   const handlers: Record<string, (args: any) => ToolResult | Promise<ToolResult>> = {
     getState: args => {
       const snap = store.snapshot()
@@ -207,7 +211,16 @@ export function createRegistry(
     cardResize: args => toResult(need().resize(args.cardId, args.size)),
     // byUser：模型撤卡是在替用户执行"把它收起来"——规则卡被抑制，
     // 不许下一秒被 reconcile 补回（诈尸），直到 watch 信号重新断言
-    cardDismiss: args => toResult(need().dismiss(args.cardId, { byUser: true })),
+    cardDismiss: args => {
+      // "清空桌面"是一句话动作（2026-08-26 实拍：模型逐张猜 id 三连拒）
+      if (args.cardId === 'all') {
+        const d = need()
+        const all = [...d.layout().cards.map((c: any) => c.id), ...(d.layout().staged ?? []).map((c: any) => c.id)]
+        all.forEach((id: string) => d.dismiss(id, { byUser: true }))
+        return { status: 'ok', message: all.length ? `清掉了 ${all.length} 张卡` : '桌面本来就是空的' }
+      }
+      return toResult(need().dismiss(args.cardId, { byUser: true }))
+    },
     cardFocus: args => toResult(need().focus(args.cardId)),
     deskLayout: () => {
       const l = need().layout()
@@ -292,7 +305,7 @@ export function createRegistry(
     ...createNavHandlers(store, () => needAmap(), () => sizedDesk(), () => currentRound, deps.storage, deps.openmeteo),
     ...createMemoryHandlers(() => deps.prefs, () => sizedDesk()),
     /* ── 路上的故事：真实逻辑在 storyHandlers.ts ── */
-    ...createStoryHandlers(store, () => sizedDesk(), () => needStory(), () => needImage()),
+    ...storyHandlers,
     ...createGenHandlers(store, () => deps.orvideo, () => deps.ormusic),
     ...createAutomationHandlers(() => sizedDesk(), () => deps.automation,
       n => tools.some(t => t.name === n),
@@ -433,7 +446,10 @@ export function createRegistry(
     const missing = (Object.entries(t.params) as [string, ParamDef][])
       .filter(([k, d]) => d.required && (args?.[k] === undefined || args?.[k] === null))
       .map(([k]) => k)
-    if (missing.length) return `缺少必填参数 ${missing.join('、')}`
+    if (missing.length) return `缺少必填参数 ${missing.map(k => {
+      const d = t.params[k]
+      return d?.type === 'enum' && d.values ? `${k}（可选值：${d.values.join('、')}）` : k
+    }).join('、')}`
     for (const [key, def] of Object.entries(t.params) as [string, ParamDef][]) {
       let v = args?.[key]
       if (v === undefined || v === null) continue
@@ -447,7 +463,8 @@ export function createRegistry(
         if (def.range && (v < def.range[0] || v > def.range[1]))
           return `${key} 需在 ${def.range[0]}~${def.range[1]} 之间`
       }
-      if (def.type === 'enum' && !def.values?.includes(v)) return `${key} 不支持取值 ${v}`
+      if (def.type === 'enum' && !def.values?.includes(v))
+        return `${key} 不支持取值 ${v}（可选：${def.values?.join('、')}）`
       if (def.type === 'boolean' && typeof v !== 'boolean') return `${key} 需要布尔值`
       if (def.type === 'array' && !Array.isArray(v)) {
         // 宽容单元素退化（{item:单对象} 经 unwrapItem 剥壳后就是这个形状，
@@ -804,7 +821,21 @@ export function createRegistry(
       .map(x => x.n)
   }
 
-  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms, nearestTools }
+  /**
+   * 活动态常备工具（2026-08-26 实拍："导航关了""别放歌了"每次都要多烧一轮装载）。
+   * 工具用 sticky 声明自己的活动条件（[path,op,value] 三元组，约束引擎同款形状），
+   * 条件为真时该工具自动在慢层手边——判据是系统状态，pipeline 不点名工具。
+   */
+  const stickyTools = (): string[] =>
+    tools.filter(t => {
+      const c = (t as any).sticky as [string, Op, Value] | undefined
+      return c && compare(store.get(c[0]), c[1], c[2])
+    }).map(t => t.name)
+
+  /** 各长流程的活跃提示（技能正文会被压缩折走，铁律经这里每轮回到模型眼前） */
+  const flowHints = (): string[] => [storyFlowHint?.()].filter(Boolean) as string[]
+
+  return { list, schemas, invoke, permissionOf, canonicalName, tools, briefCatalog, signalsFor, pendingConfirm, clearConfirms, nearestTools, stickyTools, flowHints }
 }
 
 export type Registry = ReturnType<typeof createRegistry>

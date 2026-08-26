@@ -448,9 +448,17 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
       }
       if (args.addWaypoint !== undefined) {
         const raw = String(args.addWaypoint)
-        // 坐标形状（"lng,lat"）直用；否则按地点名搜第一个——判据是数据形状
+        // 三种形状（判据全是数据形状，不是意图）：坐标直用；poiId（高德 B 开头）
+        // 走 placeDetail——2026-08-26 实拍它被当关键词搜出无关小区，"绕路 2448 分钟"；
+        // 其余按地点名搜第一个
         if (/^[\d.]+,[\d.]+$/.test(raw)) {
           wps.push(raw); names.push(String(args.addWaypointName ?? '途经点'))
+        } else if (/^B[0-9A-Z]{6,}$/i.test(raw)) {
+          const poi = await amap.placeDetail(raw)
+          if (!poi?.location)
+            return { status: 'unavailable', code: 'PLACE_NOT_FOUND',
+              message: `按 poiId「${raw}」查不到地点`, suggestion: '传坐标（searchAlong 返回里有 location）或地点名' }
+          wps.push(poi.location); names.push(String(args.addWaypointName ?? poi.name ?? '途经点'))
         } else {
           const hits = await amap.placeSearch(raw)
           if (!hits?.length)
@@ -467,7 +475,7 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         ...vehicleProfile(store),
       })
       const eta = Math.round((route.duration ?? 0) / 60)
-      store.setMany([
+      const wrote = store.setMany([
         ['navigation.eta', eta],
         ['navigation.distanceRemaining', Math.round(route.distance / 100) / 10],
         ['navigation.nextInstruction', route.steps[0]?.instruction ?? ''],
@@ -475,6 +483,13 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
         ['navigation.waypoints', wps.join(';')],
         ['navigation.waypointNames', names.join(';')],
       ])
+      // 写库结果必须有人看（2026-08-26 实拍破案）：eta 2463 分钟超旧 range 上限，
+      // setMany 整批静默不写、途经点蒸发，而这里照样报 ok"途经 XX"——下一轮
+      // remove 就撞上"现有：无"。原子写被拒 = 这次改路没落地，如实说
+      if (wrote.status !== 'ok')
+        return { status: 'rejected', code: wrote.code ?? 'WRITE_FAILED',
+          message: `路线算出来了但没落库（${wrote.message ?? '写入被拒'}）——这次改路没生效`,
+          suggestion: '绕路代价异常大时先跟用户确认是不是选错了点' }
       // 静态图拼不出来不拖垮改路——地图会保持上一帧,路线数据本身已更新
       try {
         const mapUrl = buildMapUrl(amap, origin, destLoc, route.polyline, wps)

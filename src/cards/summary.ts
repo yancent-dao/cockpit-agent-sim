@@ -33,7 +33,8 @@ export function summarize(l: { cards: PlacedCard[]; free: number; overlay?: Card
   const slots = Math.floor(l.free / cellsOfTier('box'))
   const room = slots > 0 ? `还放得下 ${slots} 张小卡` : `已经放满了，再上卡就得收起一张`
   lines.push(l.cards.length
-    ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size})`).join('、')}，${room}`
+    // id 必须亮出来（2026-08-26 实拍：只给「新疆(court)」，模型把尺寸名当 cardId 传）
+    ? `桌面卡片：${l.cards.map(c => `${titleOf(c)}(${c.size}·id=${c.id})`).join('、')}，${room}`
     : `桌面为空，${room}`)
   // 截断信息必须回给 Agent。只做 UI 的话模型以为屏上有 12 条、
   // 张口就说"第 10 个"，而用户根本看不到第 5 条之后的东西

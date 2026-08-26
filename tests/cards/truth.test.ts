@@ -109,3 +109,12 @@ describe('titleOf：空串标题跌落到模板 label', () => {
     expect(titleOf({ template: 'weather', data: { title: '成都天气' } } as any)).toBe('成都天气')
   })
 })
+
+describe('摘要要带卡片 id（2026-08-26 实拍：摘要只给「新疆(court)」，模型把尺寸名当 id 传）', () => {
+  it('桌面摘要每张卡带自己的 id，模型 resize/dismiss 不用瞎猜', () => {
+    const desk = createDesk(() => 0)
+    desk.show({ template: 'list', size: 'box', ttl: 60, data: { title: '候选', items: [{ label: 'x' }] } })
+    const s = desk.summary()
+    expect(s).toMatch(/card_\d+/)
+  })
+})

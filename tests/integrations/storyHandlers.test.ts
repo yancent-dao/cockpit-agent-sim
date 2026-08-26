@@ -490,3 +490,16 @@ describe('finish 之后故事就锁门了', () => {
     expect(store.get('story.active')).toBe(true)
   })
 })
+
+describe('flowHint：讲述中把收尾铁律亮在状态注入里（技能正文会被压缩折走，铁律不能跟着丢）', () => {
+  it('telling 态给提示且点名 story.finish；idle 态为空', async () => {
+    expect(h.flowHint()).toBe('')
+    story.savePhoto('p'); story.consent()
+    await h.storyCast({ look: '短发男孩' })
+    await h.storyBegin({ title: 'T', pages: [
+      { line: '第一页的句子在这里凑够字数了', scene: 'a' },
+      { line: '第二页的句子也在这里凑够字数', scene: 'b' },
+      { line: '第三页的句子同样凑够了字数啊', scene: 'c' } ] })
+    expect(h.flowHint()).toContain('story.finish')
+  })
+})

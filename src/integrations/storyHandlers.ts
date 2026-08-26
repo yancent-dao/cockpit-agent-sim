@@ -81,7 +81,8 @@ export function createStoryHandlers(
     states: {
       idle: { tools: ['story.profile', 'story.cast'], deny: '还没开书。先 story.cast 给主角定妆，家长认可后才 begin' },
       casting: { tools: ['story.profile', 'story.cast', 'story.begin'], deny: '定妆照在等家长认可——除了重画（cast）什么都别做' },
-      telling: { tools: ['story.profile', 'story.continue', 'story.finish', 'story.page'], deny: '正在讲这本书，不能重新 begin/cast。想收尾用 story.finish' },
+      telling: { tools: ['story.profile', 'story.continue', 'story.finish', 'story.page'], deny: '正在讲这本书，不能重新 begin/cast。想收尾用 story.finish',
+        hint: '绘本讲述中：用户说"结束/不讲了/别讲了"就调 story.finish 给个像样的结局——不要 card.dismiss 卡片，也不要反问' },
       done: { tools: ['story.profile', 'story.cast', 'story.export'], deny: '这本已经讲完收场了。只有孩子亲口说"再讲一个"才重新 cast 开新书' },
     },
   })
@@ -90,6 +91,12 @@ export function createStoryHandlers(
    * 不进这个闭包——信号是跨模块的唯一事实，flow 跟它走，消除双源漂移），
    * 再按状态白名单判定。
    */
+  /** 状态注入用：当前流程的提示行（对齐信号后取，划走卡片收场的不再提示） */
+  const flowHint = (): string => {
+    if (flow.state === 'telling' && !store.get('story.active')) flow.to('done')
+    return flow.hint()
+  }
+
   const gate = (tool: string): ToolResult | null => {
     // 只对 telling 态对齐：casting 态 active 本来就是 false（还没开书），
     // 误判成"已收场"会把 begin 拒在门外
@@ -225,6 +232,7 @@ export function createStoryHandlers(
   }
 
   return {
+    flowHint,
     storyProfile: async (a: any): Promise<ToolResult> => {
       story().saveProfile({ name: a?.name, age: a?.age, interests: a?.interests, lesson: a?.lesson })
       return { status: 'ok', message: `记住了，${a?.name ?? '孩子'}的档案存好了` }

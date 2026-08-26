@@ -74,11 +74,17 @@ export function buildStateNote(
     signalFilter?: string[]
     /** 议程位：模型自己用 agenda.set 记下的跨轮主线 */
     agenda?: string
+    /** 长流程活跃提示（flow 声明的 hint）——铁律不经压缩每轮回到眼前 */
+    flowHints?: string[]
   } = {},
 ): string {
   const want = new Set(manifest.context)
   const g = (p: string) => store.get(p)
   const parts: string[] = []
+
+  // 流程提示最先：它是"此刻必须遵守的铁律"，比议程和环境事实都硬
+  if (extras.flowHints?.length)
+    parts.push(`## 进行中的流程\n${extras.flowHints.map(h => `- ${h}`).join('\n')}`)
 
   // 议程置顶：它是模型自己留给自己的主线备忘，比环境事实更该先被看到
   if (extras.agenda)

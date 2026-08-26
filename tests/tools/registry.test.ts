@@ -2169,3 +2169,17 @@ describe('幻觉工具名的近似建议（Hermes 对照：坏名字是正常运
     expect(hint[0]).toBe('navigation.search')
   })
 })
+
+describe('拒绝要带可行动信息：缺参/枚举错附可选值（2026-08-26 实拍 card.generate 三连拒才猜对）', () => {
+  it('缺必填的枚举参数时报错附可选值', async () => {
+    const r = await reg.invoke('card.generate', { data: { title: 'x', html: '<div>1</div>', text: 'x' } })
+    expect(r.code).toBe('INVALID_PARAMS')
+    expect(String(r.message)).toContain('canvas')
+    expect(String(r.message)).toContain('app')
+  })
+  it('枚举值不对时报错附可用值', async () => {
+    const r = await reg.invoke('card.generate', { kind: 'task', ttl: 60, data: { title: 'x', html: '<div>1</div>', text: 'x' } })
+    expect(r.code).toBe('INVALID_PARAMS')
+    expect(String(r.message)).toContain('canvas')
+  })
+})

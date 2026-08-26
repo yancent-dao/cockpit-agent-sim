@@ -220,3 +220,23 @@ describe('已作废的 Tool 不应存在', () => {
     expect(names).not.toContain('desktop.unpin')
   })
 })
+
+describe('卡片 id 的可发现性（2026-08-26 实拍三次瞎猜：resize "nav"、dismiss "court/box/tile"、dismiss "storybook_书名"）', () => {
+  it('NO_SUCH_CARD 拒绝带现有卡片清单（id+标题），一次报全', async () => {
+    const shown = await reg.invoke('card.show', { template: 'list', size: 'box', ttl: 60,
+      data: { title: '候选', items: [{ label: 'a' }, { label: 'b' }] } })
+    expect(shown.status, JSON.stringify(shown)).toBe('ok')
+    const r = await reg.invoke('card.dismiss', { cardId: 'nav' })
+    expect(r.code).toBe('NO_SUCH_CARD')
+    expect(String(r.message)).toMatch(/card_\d+/)
+    expect(String(r.message)).toContain('候选')
+  })
+
+  it('card.dismiss cardId:"all" 清空全部卡片——"清空桌面"是一句话动作，不用逐张猜 id', async () => {
+    await reg.invoke('card.show', { template: 'list', size: 'box', ttl: 60, data: { title: 'A', items: [{ label: 'x' }] } })
+    await reg.invoke('card.show', { template: 'list', size: 'box', ttl: 60, data: { title: 'B', items: [{ label: 'y' }] } })
+    const r = await reg.invoke('card.dismiss', { cardId: 'all' })
+    expect(r.status).toBe('ok')
+    expect(desk.layout().cards.length).toBe(0)
+  })
+})

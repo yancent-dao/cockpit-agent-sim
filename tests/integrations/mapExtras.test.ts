@@ -175,6 +175,45 @@ describe('navigation.modifyRoute：改路不动终点', () => {
     expect(String(store.get('navigation.waypointNames'))).toContain('世茂城四期东区')
   })
 
+  it('addWaypoint 收 poiId（B 开头）——走 placeDetail，不当地点名瞎搜（2026-08-26 实拍：poiId 被当关键词搜出无关小区，绕路 2448 分钟）', async () => {
+    nav()
+    const amap2 = { ...amap,
+      placeDetail: async (id: string) => ({ id, name: '蔚景云充电站', location: '104.09,30.61', address: 'y' }),
+      placeSearch: async () => { throw new Error('poiId 不许走关键词搜索') },
+    }
+    const r = await createRegistry(store, TOOLS, Date.now, { amap: amap2 } as any)
+      .invoke('navigation.modifyRoute', { addWaypoint: 'B0K2FXTDDN' })
+    expect(r.status).toBe('ok')
+    expect(String(store.get('navigation.waypointNames'))).toContain('蔚景云充电站')
+    expect(String(store.get('navigation.waypoints'))).toContain('104.09,30.61')
+  })
+
+  it('绕路很久也要落库：eta 超旧 range 上限不许让途经点静默蒸发（2026-08-26 实拍：add 报 ok 下一轮"现有：无"）', async () => {
+    nav()
+    const amap2 = { ...amap,
+      driving: async () => ({ distance: 8200, duration: 2463 * 60, steps: [{ instruction: '直行' }], polyline: '1,1;2,2' }),
+    }
+    const r = await createRegistry(store, TOOLS, Date.now, { amap: amap2 } as any)
+      .invoke('navigation.modifyRoute', { addWaypoint: '104.09,30.60', addWaypointName: '远方充电站' })
+    expect(r.status).toBe('ok')
+    // 关键断言：报了 ok 就必须真的在库里——add 完立刻 remove 得成功（闭环）
+    expect(String(store.get('navigation.waypointNames'))).toContain('远方充电站')
+    const r2 = await createRegistry(store, TOOLS, Date.now, { amap: amap2 } as any)
+      .invoke('navigation.modifyRoute', { removeWaypoint: '远方充电站' })
+    expect(r2.status).toBe('ok')
+  })
+
+  it('写库真失败时不许报 ok——setMany 的拒绝要如实带出', async () => {
+    nav()
+    const amap2 = { ...amap,
+      driving: async () => ({ distance: 8200, duration: 600000 * 60, steps: [{ instruction: '直行' }], polyline: '1,1' }),
+    }
+    const r = await createRegistry(store, TOOLS, Date.now, { amap: amap2 } as any)
+      .invoke('navigation.modifyRoute', { addWaypoint: '104.09,30.60', addWaypointName: 'x' })
+    expect(r.status).not.toBe('ok')
+    expect(String(r.message)).toMatch(/没落|失败|没能|超/)
+  })
+
   it('什么都没让改就拒——不许空操作报成功', async () => {
     nav()
     const r = await mk().invoke('navigation.modifyRoute', {})

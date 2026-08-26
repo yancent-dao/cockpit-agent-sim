@@ -69,6 +69,8 @@ export interface PipelineDeps {
   onTurnStart?: () => void
   /** "上回说到"的落盘口（localStorage 由装配方给）。缺省 = 不跨会话 */
   memory?: { load(): string | null; save(text: string): void }
+  /** 长流程活跃提示（缺省取 registry.flowHints）。技能正文会被压缩折走，铁律走这条不压缩的通道 */
+  flowHints?: () => string[]
 }
 
 export interface TurnResult {
@@ -150,7 +152,7 @@ const AGENDA_CLEAR_SCHEMA = {
 const SKILL_SCHEMA = {
   type: 'function', function: {
     name: 'skill_use',
-    description: '取一个技能的剧本正文（见技能目录）。有剧本的活先取剧本再动手，照章执行。',
+    description: '取一个技能的剧本正文（见技能目录）。有剧本的活先取剧本再动手，照章执行。**介绍/列举功能不用取剧本**——技能目录那一行就是介绍，逐个取正文只会烧光轮次；取了剧本就意味着现在要照着干这件事。',
     parameters: {
       type: 'object', required: ['name'],
       properties: { name: { type: 'string', description: '技能名，来自技能目录' } },
@@ -731,8 +733,17 @@ export function createPipeline(deps: PipelineDeps) {
     /** 出声权：快层没替系统说过话，或慢层干了新活（新信息该说）。单一决策点 */
     const canSpeak = () => !fastReported || slowActed
     let turnOk = 0   // 本 turn 业务成功数——空收场兜底的措辞靠它分"办成没说"和"没办成"
+    /**
+     * 收尾诚实度（2026-08-26 实拍两次撒谎）：turnOk>0 只说明**中途**办成过，
+     * 收尾一轮全失败还兜"办好了，结果在屏幕上"就是骗人（card.generate 三连拒、
+     * removeWaypoint 四连败都被这么收的场）。只在有业务调用的轮更新，
+     * 元工具轮不动它——判据全是系统状态
+     */
+    let lastRoundOk = true
     const sm = deps.slowManifest
-    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n)), ...sessionLoaded.keys()])
+    const loaded = new Set<string>([...(sm.resident ?? []), ...suggested.map(n => registry.canonicalName(n)), ...sessionLoaded.keys(),
+      // 活动态常备（sticky 声明 + 系统状态）："导航关了"不用先装载一轮
+      ...(registry.stickyTools?.() ?? [])])
     /**
      * 冻结视图 + **视角改写**（2026-08-18 实拍）：thread 里快层的
      * NOT_AUTHORIZED 记录对慢层是假的——被拒的是快层，慢层全权。
@@ -799,6 +810,7 @@ export function createPipeline(deps: PipelineDeps) {
         desktop: deps.desktopSummary?.(), prefs: deps.prefsList?.(), recent: deps.recentSummary?.(),
         signalFilter: registry.signalsFor([...loaded]),
         agenda: agendaNow(),
+        flowHints: (deps.flowHints ?? registry.flowHints)?.() ?? [],
       })
       const messages = note ? [...view, { role: 'system' as const, content: note }] : view.slice()
       const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: loaded.size, layer: 'slow', view: messages.slice() }
@@ -862,7 +874,7 @@ export function createPipeline(deps: PipelineDeps) {
         // 慢层这轮已经用 mic 工具播过（2026-08-25 实拍：plan ok + speak 都成了，
         // 兜底又追一句"没弄成"把成功现场说成失败）→ 空收场是合法静默
         if (!text && !echo && !fastSpoke && !turn.spoke() && !stale(g)) {
-          const fb = turnOk > 0 ? '办好了，结果在屏幕上' : '这件事我没弄成，换个说法我再试试'
+          const fb = turnOk > 0 && lastRoundOk ? '办好了，结果在屏幕上' : '这件事我没弄成，换个说法我再试试'
           trace.push({ type: 'reply', at: clock(), text: fb, layer: 'slow' })   // 兜底也要可观测
           emit({ type: 'speaking', text: fb, layer: 'slow' })
           emit({ type: 'done' })
@@ -914,7 +926,7 @@ export function createPipeline(deps: PipelineDeps) {
         },
       }, turn, { lane: 'slow', canSpeak })
       commit(g, ...outcome.toolMsgs); view.push(...outcome.toolMsgs)
-      if (outcome.bizCalls > 0) slowActed = true   // 动过业务工具（含被拒——解释失败是新信息）
+      if (outcome.bizCalls > 0) { slowActed = true; lastRoundOk = outcome.bizOk > 0 }   // 动过业务工具（含被拒——解释失败是新信息）
       turnOk += outcome.bizOk
       // voice.ask 成功 = 问题挂出去了：下一句输入是答案，直达慢层（状态分支不是意图分支）
       if (reply.toolCalls.some((c: any) => registry.canonicalName(c.name) === 'voice.ask') && outcome.bizOk > 0)

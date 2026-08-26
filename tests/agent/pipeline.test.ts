@@ -631,6 +631,57 @@ describe('上下文三层化（Hermes 对照：稳定层留 system 保前缀缓�
   })
 })
 
+describe('兜底话术的诚实度（2026-08-26 实拍两次撒谎：收尾连败还说"办好了"）', () => {
+  it('前面办成过、收尾一轮全失败 → 空收场兜"没弄成"，不兜"办好了"', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(
+      () => ({ toolCalls: [call('window.set', { window: 'driver', position: 50 })] }),  // ok
+      () => ({ toolCalls: [call('card.dismiss', { cardId: 'nope1' })] }),               // 失败
+      () => ({ toolCalls: [call('card.dismiss', { cardId: 'nope2' })] }),               // 失败
+      () => ({ text: '' }),                                                          // 空收场
+      () => ({ text: '' }),
+    )
+    const { p, events } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('开窗然后清空桌面')
+    const said = events.filter(e => e.type === 'speaking').map((e: any) => e.text).join(' ')
+    expect(said).not.toContain('办好了')
+  })
+})
+
+describe('活动态工具常在手边（2026-08-26 实拍："导航关了""别放歌了"每次都要多烧一轮装载）', () => {
+  it('导航进行中，navigation.control 的 schema 不用装载就在慢层手边', async () => {
+    store.setDirect('navigation.active', true)
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('随便聊聊')
+    const names = (slow.seen[0].tools as any[]).map(t => t.function?.name ?? t.name)
+    expect(names).toContain('navigation_control')
+  })
+
+  it('没在导航也没在播放时不占地方', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('随便聊聊')
+    const names = (slow.seen[0].tools as any[]).map(t => t.function?.name ?? t.name)
+    expect(names).not.toContain('navigation_control')
+  })
+})
+
+describe('流程提示进状态注入（2026-08-26 实拍：技能正文被压缩折走，"结束=story.finish"铁律丢失）', () => {
+  it('装配方给的 flowHints 出现在每轮状态注入里', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false,
+      flowHints: () => ['绘本讲述中：用户要结束就调 story.finish 给结局'] })
+    await p.run('别讲了')
+    const last = (slow.seen[0].messages as any[]).at(-1)
+    expect(last.role).toBe('system')
+    expect(String(last.content)).toContain('story.finish')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

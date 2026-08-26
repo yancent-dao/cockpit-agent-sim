@@ -511,7 +511,9 @@ export const SIGNALS: Signal[] = [
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 'sequential' },
 
   { alias: 'navigation.eta', vssPath: 'Vehicle.X-Ext.Navigation.ETA',
-    type: 'number', range: [0, 999], unit: '分钟', label: '预计到达时间',
+    // range 上限 2026-08-26 从 999 上调：真实远途/选错途经点的 ETA 能到几千分钟，
+    // 超限会让整批 setMany 静默失败（途经点蒸发实拍）。9999≈7 天，够任何驾车场景
+    type: 'number', range: [0, 9999], unit: '分钟', label: '预计到达时间',
     access: 'READ_WRITE', changeMode: 'ONCHANGE', permission: '彩', initial: 0 },
 
   { alias: 'navigation.distanceRemaining', vssPath: 'Vehicle.X-Ext.Navigation.DistanceRemaining',

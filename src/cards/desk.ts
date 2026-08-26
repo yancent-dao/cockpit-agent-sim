@@ -239,6 +239,17 @@ export function createDesk(clock: () => number = Date.now) {
   let layoutCache: { gen: number; value: ReturnType<typeof computeLayout> } | undefined
   const emit = () => { deskGen++; listeners.forEach(l => l()) }
   const getById = (id: string) => cards.get(id) ?? staged.get(id)
+
+  /**
+   * NO_SUCH_CARD 要带现有清单（2026-08-26 实拍三次瞎猜：模型把尺寸名、key、
+   * "nav" 当 id 传）——跟 WAYPOINT_NOT_FOUND 带"现有：xx"同族，一次报全
+   */
+  const noSuch = (id: string): DeskResult => {
+    const all = [...cards.values(), ...staged.values()]
+      .map(c => `${c.id}「${(c.data as any)?.title ?? c.template}」`)
+    return { status: 'rejected', code: 'NO_SUCH_CARD',
+      message: `找不到卡片 ${id}（现有：${all.join('、') || '无'}）` }
+  }
   /**
    * 挤出告知。desk 只发**事实**（这几张卡被收起来了、人话怎么说），
    * 怎么显示由 UI 决定 —— 走横幅还是走播报不是桌面该管的事。
@@ -641,7 +652,7 @@ export function createDesk(clock: () => number = Date.now) {
 
   function update(id: string, data: any): DeskResult {
     const c = getById(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     const next = { ...c.data, ...data }
     // 真变了才通知（JSON 比对够用：卡片 data 本来就是可序列化的投影数据）
     const changed = JSON.stringify(next) !== JSON.stringify(c.data)
@@ -665,7 +676,7 @@ export function createDesk(clock: () => number = Date.now) {
 
   function resize(id: string, size: Size, byUser = true): DeskResult {
     const c = getById(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     const gateErr = resizeGate(id, size)
     if (gateErr) return gateErr
     const prev = c.size
@@ -709,7 +720,7 @@ export function createDesk(clock: () => number = Date.now) {
    */
   function growTo(id: string, size: Size): DeskResult {
     const c = getById(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     const prev = { size: c.size, desiredSize: c.desiredSize, sizeLocked: c.sizeLocked }
     c.size = size
     c.desiredSize = size
@@ -722,7 +733,7 @@ export function createDesk(clock: () => number = Date.now) {
 
   function step(id: string, dir: 'up' | 'down'): DeskResult {
     const c = getById(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     const { allowed, pos } = sizeSteps(c)
     const next = dir === 'down' ? pos - 1 : pos + 1
     if (next < 0 || next >= allowed.length)
@@ -744,7 +755,7 @@ export function createDesk(clock: () => number = Date.now) {
 
   function dismiss(id: string, opts?: { byUser?: boolean }): DeskResult {
     const c = getById(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     // 用户亲手关的规则卡不许被 reconcile 立刻补回（诈尸）——
     // 抑制到 watch 信号下次变化（render 会清除抑制，规则重新断言）
     if (opts?.byUser && c.key) suppressed.add(c.key)
@@ -764,7 +775,7 @@ export function createDesk(clock: () => number = Date.now) {
     const staging = staged.get(id)
     if (staging) return fit(staging, 'recall')
     const c = cards.get(id)
-    if (!c) return { status: 'rejected', code: 'NO_SUCH_CARD', message: `找不到卡片 ${id}` }
+    if (!c) return noSuch(id)
     c.touchedAt = clock()
     emit()
     return { status: 'ok', cardId: id }

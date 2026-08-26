@@ -20,6 +20,11 @@ export interface FlowDecl {
     tools: string[]
     /** 名单内工具在错误状态被调时，给模型看的人话（说清现在处在哪、该干嘛） */
     deny: string
+    /**
+     * 本状态活跃时随状态注入亮给模型的一行提示（可选）。动机：章法住在技能正文里，
+     * 会被记忆压缩折走——铁律（"结束=story.finish"）得有条不经过压缩的通道
+     */
+    hint?: string
   }>
 }
 
@@ -39,6 +44,8 @@ export function createFlow(decl: FlowDecl) {
      * 这个工具现在能不能调。null = 放行；字符串 = 拒绝理由（给模型的人话）。
      * 不归本流程管的工具一律放行——状态机只管自家流程。
      */
+    /** 当前状态的提示行（没声明就空串） */
+    hint(): string { return decl.states[current].hint ?? '' },
     allow(tool: string): string | null {
       if (!managed.has(tool)) return null
       return decl.states[current].tools.includes(tool) ? null : decl.states[current].deny

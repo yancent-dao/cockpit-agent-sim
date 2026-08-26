@@ -9,7 +9,7 @@ export type TraceStep =
   | { type: 'userInput'; at: number; text: string; runId?: string; source?: string }
   | { type: 'prompt'; at: number; system: string; toolCount: number; layer?: 'fast' | 'slow'; llmMs?: number
       /** 调试全量：这一轮送进模型的消息视图与模型原始返回（产品点名要能逐轮看） */
-      view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> } }
+      view?: Msg[]; llmReply?: { text?: string; toolCalls?: Array<{ name: string; args: any }> }; schemaChars?: number }
   | { type: 'toolCall'; at: number; name: string; args: any; permission?: string }
   | { type: 'toolResult'; at: number; name: string; result: ToolResult; ms: number }
   | { type: 'reply'; at: number; text: string; layer?: 'fast' | 'slow' }
@@ -36,6 +36,7 @@ export type PipelineEvent =
   | { type: 'taskDone'; taskId: string; summary: string; ok: boolean }
   | { type: 'done' }
   | { type: 'error'; message: string }
+  | { type: 'compacted'; chars: number; foldedRounds: number }
 
 export interface BgTask {
   id: string
@@ -155,12 +156,15 @@ const SELF_FIX_CODES = new Set([
 /** epoch 摘要消息的识别标 */
 const SUM_MARK = '【前情摘要】'
 /** 滑动窗口：最近 K 轮全文，更早的折叠进摘要 */
-const KEEP_ROUNDS = 4
+const KEEP_ROUNDS = 6   // 2026-08-25 从 4 上调：实拍「记不住空调操作」，拿一点 token 换记忆窗口
 const COMPACT_PROMPT = `你是座舱对话的记忆压缩器。把给你的**较早对话**压成前情摘要：
-- 不超过 10 行，只写结论与未完成的事（谁要了什么、办到哪一步、定了什么偏好）
+- 先写「做过的操作」清单，按时间次序一行一条：用户让做了什么 → 结果如何
+  （开了车窗、关了空调、导航去了哪——**已办完的也要留**，用户会回头问
+  "我刚才让你干了什么"，丢了操作史就是失忆）
+- 再写未完成的事与定下的偏好（办到哪一步、谁要了什么）
 - 最后一行固定写「提到过：xxx、yyy」——列出出现过的地名/人名/歌名/店名，
   这是检索索引：用户以后说"刚才那个加油站"要靠它找锚点
-- 只输出摘要正文，不解释`
+- 总共不超过 14 行，只输出摘要正文，不解释`
 
 export function createPipeline(deps: PipelineDeps) {
   const { registry, store, clock = Date.now } = deps
@@ -741,6 +745,9 @@ export function createPipeline(deps: PipelineDeps) {
       const last = rounds === sm.maxRounds
       const tools = last ? [] : [...registry.schemas('openai', [...loaded]), LOAD_SCHEMA, DELEGATE_SCHEMA, CANCEL_SCHEMA,
         ...(sm.skills?.length ? [SKILL_SCHEMA] : [])]
+      // schema 字数进 trace（2026-08-25：「注入 X 字」只显示 system，砍掉的
+      // schema 优化看不见，用户以为没优化）
+      pEntry.schemaChars = JSON.stringify(tools).length
       const tChat = clock()
       let reply
       try { reply = await deps.slowLlm.chat({ system, messages: view, tools }) }
@@ -971,6 +978,8 @@ export function createPipeline(deps: PipelineDeps) {
     thread.splice(0, cutAt, { role: 'assistant', content: `${SUM_MARK}\n${text}` })
     boundary = Math.max(thread.map((m, i) => (m.role === 'user' ? i : -1)).filter(i => i >= 0).pop() ?? 0, 0)
     deps.memory?.save(text)
+    // 压缩可观测（2026-08-25 实拍排查全靠推理）：成了报一声，摘要多长、折了几轮
+    emit({ type: 'compacted', chars: text.length, foldedRounds: userIdx.length - KEEP_ROUNDS })
   }
 
   /**

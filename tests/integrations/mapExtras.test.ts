@@ -167,6 +167,21 @@ describe('navigation.modifyRoute：改路不动终点', () => {
     expect(String(r.message)).toContain('导航')
   })
 
+  it('waypoints/waypointNames 是参数名退化——照收（2026-08-25 实拍：全被忽略却报「路线改好了」，空操作报成功）', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute',
+      { waypoints: ['104.09,30.60'], waypointNames: ['世茂城四期东区'] })
+    expect(r.status).toBe('ok')
+    expect(String(store.get('navigation.waypointNames'))).toContain('世茂城四期东区')
+  })
+
+  it('什么都没让改就拒——不许空操作报成功', async () => {
+    nav()
+    const r = await mk().invoke('navigation.modifyRoute', {})
+    expect(r.status).toBe('rejected')
+    expect(String(r.message)).toMatch(/没说要改|要改什么/)
+  })
+
   it('删一个不存在的途经点如实说，不假装删了', async () => {
     nav()
     const r = await mk().invoke('navigation.modifyRoute', { removeWaypoint: '不存在' })

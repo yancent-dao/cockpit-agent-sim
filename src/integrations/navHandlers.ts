@@ -417,6 +417,17 @@ export function createNavHandlers(store: Store, needAmap: () => AmapClient, desk
      * addWaypoint 收地点名（自动搜）或坐标（"lng,lat"，来自 searchAlong）。
      */
     navModifyRoute: async (args: any): Promise<ToolResult> => {
+      // 参数名退化照收（2026-08-25 实拍：模型传 waypoints/waypointNames，
+      // 全被忽略却报「路线改好了」——空操作报成功比拒绝更糟）
+      if (args.addWaypoint === undefined && Array.isArray(args.waypoints) && args.waypoints.length) {
+        args.addWaypoint = String(args.waypoints[0])
+        if (args.addWaypointName === undefined && Array.isArray(args.waypointNames))
+          args.addWaypointName = args.waypointNames[0]
+      }
+      if (args.addWaypoint === undefined && args.removeWaypoint === undefined && args.preference === undefined)
+        return { status: 'rejected', code: 'INVALID_PARAMS',
+          message: '没说要改什么——addWaypoint 加途经点 / removeWaypoint 删 / preference 换偏好，至少给一个',
+          suggestion: '例：{"addWaypoint":"世茂城"} 或 {"preference":"avoidCongestion"}' }
       if (!store.get('navigation.active'))
         return { status: 'rejected', code: 'NOT_NAVIGATING',
           message: '还没在导航，没有路可改', suggestion: '先用 navigation.setDestination 设目的地' }

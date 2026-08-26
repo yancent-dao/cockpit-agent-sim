@@ -2072,3 +2072,22 @@ describe('数组元素形状校验', () => {
     expect(r.message).toMatch(/形如|\{.*line.*scene.*\}|\{.*scene.*line.*\}/)
   })
 })
+
+describe('出站 schema 的保真（2026-08-25 破案：模型"不看 schema"其实是 schema 里没有说明）', () => {
+  it('items 子树里手写的 desc 归一成标准 description——非标键模型直接忽略，字段说明等于没写', () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, {} as any)
+    const flat = JSON.stringify(reg2.schemas('openai'))
+    expect(flat).not.toContain('"desc":')
+    // travel.plan 的 days.items.title 的说明要真的以 description 出现
+    const plan = reg2.schemas('openai', ['travel.plan'])[0] as any
+    const title = plan.function.parameters.properties.days.items.properties.title
+    expect(title.description).toContain('当天动线')
+    expect(title.desc).toBeUndefined()
+  })
+
+  it('每个工具的 parameters 声明 additionalProperties:false——幻觉参数（startDate/interests/prompt 实拍）在 schema 层就被声明拒绝', () => {
+    const reg2 = createRegistry(createStore(SIGNALS, CONSTRAINTS), TOOLS, Date.now, {} as any)
+    for (const t of reg2.schemas('openai') as any[])
+      expect(t.function.parameters.additionalProperties, t.function.name).toBe(false)
+  })
+})

@@ -655,6 +655,23 @@ export function createRegistry(
   const jsonType = (d: ParamDef) =>
     d.type === 'enum' ? 'string' : d.type === 'array' ? 'array' : d.type
 
+  /**
+   * 手写 items schema 归一化（2026-08-25 破案：模型"不看 schema"其实是
+   * schema 里没有说明——ParamDef 风格的 desc 是非标键，模型直接忽略，
+   * days.items.title 的说明等于没写，自造 {date,title,activities} 是必然）。
+   * 递归把子树里的 desc 改写成标准 description，一处治全部，防未来手滑。
+   */
+  const normalizeSchema = (v: any): any => {
+    if (Array.isArray(v)) return v.map(normalizeSchema)
+    if (v && typeof v === 'object') {
+      const out: any = {}
+      for (const [k, x] of Object.entries(v))
+        out[k === 'desc' ? 'description' : k] = normalizeSchema(x)
+      return out
+    }
+    return v
+  }
+
   function schemas(format: 'openai' | 'anthropic' | 'mcp' = 'openai', allow?: string[]): any[] {
     return list(allow).map(t => {
       const properties: Record<string, any> = {}
@@ -663,7 +680,7 @@ export function createRegistry(
         properties[k] = { type: jsonType(d), description: d.desc }
         if (d.values) properties[k].enum = d.values
         // items 可以是类型名（老写法）也可以是一整段 JSON Schema（数组装对象时）
-        if (d.items) properties[k].items = typeof d.items === 'string' ? { type: d.items } : d.items
+        if (d.items) properties[k].items = typeof d.items === 'string' ? { type: d.items } : normalizeSchema(d.items)
         if (d.required) required.push(k)
       }
       // 可能需要二次确认的 Tool，把 MRTR 令牌作为显式参数暴露给模型，
@@ -673,7 +690,10 @@ export function createRegistry(
           type: 'string',
           description: '二次确认令牌。首次调用不要传；若返回 CONFIRM_REQUIRED，在用户明确同意后用返回的 token 再次调用本工具。',
         }
-      const parameters = { type: 'object', properties, required }
+      // 幻觉参数（startDate/interests/prompt 实拍连环）在 schema 层就声明拒绝。
+      // 非 strict 模式下这是提示性约束——尊重 schema 的模型不再编字段，
+      // 不尊重的仍有 registry 宽容层兜底，零风险
+      const parameters = { type: 'object', properties, required, additionalProperties: false }
       const name = wireName(t.name)
       if (format === 'openai')
         return { type: 'function', function: { name, description: t.desc, parameters } }

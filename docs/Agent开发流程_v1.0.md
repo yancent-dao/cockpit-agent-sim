@@ -168,6 +168,12 @@ handler 必须带 NOT_WIRED 守卫:没装配返回人话 unavailable,
   ——判据必须是系统状态/数据形状,出现意图字符串比对即违规。
 - 模型参数退化在 **registry 统一宽容**("24"→24、{item} 剥壳、
   字符串化数组、startDate→departDate),handler 里不许散装适配。
+- **先查出站 schema 再怪模型**(2026-08-25 破案):手写 items schema 里
+  ParamDef 风格的 desc 是非标键,模型直接忽略——"模型不看 schema"其实是
+  schema 里没有说明。转换层递归归一 desc→description;每个工具的
+  parameters 都带 additionalProperties:false(幻觉参数在 schema 层声明拒绝)。
+- **返回瘦身**:模型自己刚交的内容(days 全文)、卡上已有的,不要在
+  返回里再喂一遍——换 dayCount 这类摘要,大对象吃上下文还催生复述。
 - 幻觉数据按形状拦(过去的日期不入仓、参数引用字面量不当地名)。
 
 ### 卡片 / 渲染

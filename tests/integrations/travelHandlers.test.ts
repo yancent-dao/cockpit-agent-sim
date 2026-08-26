@@ -356,6 +356,16 @@ describe('travel.list：问答的数据底座', () => {
     expect(d.watches[0].verdict).toBeUndefined()
   })
 
+  it('返回不回传 days/wx 全文——模型自己刚交的内容别再喂回去吃上下文（官方 token 效率）', async () => {
+    ok(await h.travelPlan({ destination: '曼谷',
+      days: [{ title: 'D1', stops: [{ name: '大皇宫', note: '很长的介绍'.repeat(10) }] }],
+      prep: ['a', 'b'] }))
+    const d = ok(await h.travelList({})).data as any
+    expect(d.tasks[0].days).toBeUndefined()
+    expect(d.tasks[0].wx).toBeUndefined()
+    expect(d.tasks[0].dayCount).toBe(1)
+  })
+
   it('行程单卡上屏', async () => {
     ok(await h.travelCreate({ title: '韩国行', destination: '首尔' }))
     ok(await h.travelList({}))

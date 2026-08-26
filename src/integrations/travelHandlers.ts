@@ -437,7 +437,13 @@ function core(deps: TravelDeps) {
     /* ── 全景。问答的数据底座，也是行程单卡的来源 ── */
     travelList: async (args: any): Promise<ToolResult> => {
       const st = S()
-      const tasks = args?.taskId ? st.tasks().filter(t => t.id === args.taskId) : st.tasks()
+      /**
+       * 返回瘦身（官方 token 效率）：days/wx/prep 全文模型自己刚交过、卡上
+       * 也有，回传一遍纯吃上下文——换成 dayCount/hasWx 摘要。
+       */
+      const tasks = (args?.taskId ? st.tasks().filter(t => t.id === args.taskId) : st.tasks())
+        .map(({ days, wx, prep, lines, ...rest }) => ({ ...rest,
+          dayCount: days?.length, hasWx: !!wx?.length, lineCount: lines?.length }))
       const watches = st.watches()
         .filter(w => tasks.some(t => t.id === w.taskId))
         .map(w => ({ ...w, kindLabel: KIND_LABEL[w.kind], trend: factsOf(w) }))

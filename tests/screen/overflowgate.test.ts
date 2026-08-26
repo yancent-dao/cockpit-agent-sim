@@ -131,3 +131,12 @@ describe('严重溢出：能滚就别丢', () => {
     expect(fitScale({ ...box, contentW: 900, contentH: 500, canScroll: true })).toEqual({ do: 'none' })
   })
 })
+
+describe('stickyClasses：渲染器后加的状态类在 className 单写者重写时保留（2026-08-25 实拍：生成式卡滑动只有第一次有效——cvscroll 被 4 秒心跳抹掉，同 is-video 先例）', () => {
+  it('存在的保留、不存在的不凭空加', async () => {
+    const { stickyClasses } = await import('../../src/screen/overflowgate')
+    const has = (n: string) => n === 'cvscroll'
+    expect(stickyClasses(has, ['cvscroll', 'cvend', 'fresh'])).toBe(' cvscroll')
+    expect(stickyClasses(() => false, ['cvscroll', 'cvend'])).toBe('')
+  })
+})

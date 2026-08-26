@@ -66,3 +66,12 @@ export function fitScale(i: FitInput): FitResult {
   if (i.canScroll && kx >= MIN_SCALE) return { do: 'scroll' }
   return { do: 'text' }
 }
+
+/**
+ * 渲染器后加的状态类，在 className 单写者整体重写时保留（2026-08-25
+ * 实拍：生成式卡滑动只有第一次有效——cvscroll 被 4 秒心跳抹掉，卡内
+ * 滚动锁死。同 is-video 先例：toggle 上去的类心跳内必被抹，
+ * 唯一出路是重写时把它算进去）。纯函数：has 谓词注入，DOM 零依赖。
+ */
+export const stickyClasses = (has: (name: string) => boolean, names: string[]): string =>
+  names.filter(has).map(n => ` ${n}`).join('')

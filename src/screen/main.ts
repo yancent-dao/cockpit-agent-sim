@@ -10,7 +10,7 @@ import { createGalaxy } from './galaxy'
 import { isCloudVoice, xfVcn, synthesize as xfSynthesize, synthesizeStream as xfStream, warm as xfWarm } from '../integrations/xftts'
 import { isVolcVoice, volcSpeaker, volcStream } from '../integrations/volctts'
 import { micAct, type MicSource } from './mic'
-import { fitScale } from './overflowgate'
+import { fitScale, stickyClasses } from './overflowgate'
 import { parseTurn, dayLabel, speedChip } from './turn'
 import { navForm, mediaForm, formOf } from '../config/forms'
 import { createBannerQueue, toneOf, bannerHtml } from './banner'
@@ -676,7 +676,8 @@ function renderDesk() {
     // 渲染器里 toggle 上去的类 4 秒内必被抹掉（实拍：视频卡渲染成音乐版式）
     const cls = `card tpl-${c.template} kind-${c.kind} ${tierClass(c.size)} ${
       accentClass(c.template, c.data)}${hotCards.has(c.id) ? ' hot' : ''}${picking ? ' picking' : ''}${isFresh ? ' fresh' : ''}${
-      c.template === 'media' && c.data?.source === 'video' ? ' is-video' : ''}`
+      c.template === 'media' && c.data?.source === 'video' ? ' is-video' : ''}${
+      stickyClasses(n => node.classList.contains(n), ['cvscroll', 'cvend'])}`
     // 变了才写：hello 心跳每 4 秒全量重推（容错设计），renderDesk 必须真幂等，
     // 否则属性风暴让整屏看着在"周期刷新"（用户实拍）
     if (node.className !== cls) node.className = cls

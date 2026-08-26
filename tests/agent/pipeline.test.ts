@@ -512,6 +512,24 @@ describe('装载记忆是会话级（2026-08-25 审计：loaded 集每个 run �
   })
 })
 
+describe('协作段按快层开关注入（2026-08-25 审计：快层关闭后 system 里 912 字还在讲"你前面有个快手分身"——描述一个不存在的协作者）', () => {
+  it('快层关：system 不含协作段', async () => {
+    const fast = fakeLLM(() => ({ text: '' }))
+    const slow = fakeLLM(() => ({ text: '好' }))
+    const { p } = mk(fast, slow, { fastEnabled: () => false })
+    await p.run('你好')
+    expect(slow.seen[0].system).not.toContain('快手分身')
+  })
+
+  it('快层开：协作段照常在——分身真的存在时必须交代', async () => {
+    const fast = fakeLLM(() => ({ text: '好' }))
+    const slow = fakeLLM(() => ({ text: '' }))
+    const { p } = mk(fast, slow)
+    await p.run('你好')
+    expect(slow.seen[0].system).toContain('快手分身')
+  })
+})
+
 describe('确认流跨层：pending 确认直达慢层', () => {
   it('有 pending 确认时，用户下一句不过快层', async () => {
     await reg.invoke('door.set', { door: 'passenger', action: 'open' })   // 灰 → inputRequired

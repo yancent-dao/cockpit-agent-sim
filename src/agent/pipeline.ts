@@ -738,6 +738,7 @@ export function createPipeline(deps: PipelineDeps) {
         desktop: deps.desktopSummary?.(), prefs: deps.prefsList?.(), recent: deps.recentSummary?.(),
         catalog: registry.briefCatalog(),
         signalFilter: registry.signalsFor([...loaded]),
+        soloSlow: deps.fastEnabled?.() === false,   // 快层关着：没有分身要交代
       })
       const pEntry: TraceStep = { type: 'prompt', at: clock(), system, toolCount: loaded.size, layer: 'slow', view: view.slice() }
       trace.push(pEntry)

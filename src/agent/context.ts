@@ -23,6 +23,8 @@ export function buildSystemPrompt(
   registry: Registry,
   extras: {
     desktop?: string; prefs?: string[]; recent?: string
+    /** 全走慢层（快层开关关）：协作段不注入——别描述一个不存在的分身 */
+    soloSlow?: boolean
     /** 工具目录（brief 行）。慢层常驻，快层用于勾选转交 */
     catalog?: string
     /** 目录段的使用说明。快慢两层的目录用途不同：慢层补载、快层只许勾选 */
@@ -33,7 +35,9 @@ export function buildSystemPrompt(
 ): string {
   /* ── 稳定前缀 ── */
   const parts: string[] = [manifest.persona]
-  if (manifest.role) parts.push(manifest.role)
+  // 协作段按快层开关注入（2026-08-25 审计）：快层关闭时这 912 字在描述
+  // 一个不存在的"快手分身"——纯死重还可能误导。判据是系统配置状态
+  if (manifest.role && !extras.soloSlow) parts.push(manifest.role)
   const want = new Set(manifest.context)
   const g = (p: string) => store.get(p)
 
